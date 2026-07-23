@@ -43,6 +43,7 @@
 #include <cctype>
 #include <charconv>
 #include <chrono>
+#include <climits>
 #include <cwctype>
 #include <fstream>
 #include <iomanip>
@@ -229,11 +230,82 @@ struct InstallationPlan {
     InstalledRecord existing;
 };
 
-std::wstring lowerWide(std::wstring value) {
-    std::transform(value.begin(), value.end(), value.begin(), [](wchar_t ch) {
-        return static_cast<wchar_t>(std::towlower(ch));
-    });
-    return value;
+bool ordinalEqualsIgnoreCase(std::wstring_view left, std::wstring_view right) {
+    if (left.size() != right.size() || left.size() > static_cast<size_t>(INT_MAX))
+        return false;
+    if (left.empty())
+        return true;
+    return CompareStringOrdinal(left.data(),
+                                static_cast<int>(left.size()),
+                                right.data(),
+                                static_cast<int>(right.size()),
+                                TRUE) == CSTR_EQUAL;
+}
+
+std::wstring foldWindowsCase(std::wstring_view value) {
+    if (value.empty())
+        return {};
+    if (value.size() > static_cast<size_t>(INT_MAX))
+        throw std::runtime_error("Windows path is too long to case-fold safely");
+    const int length = static_cast<int>(value.size());
+    const int required = LCMapStringEx(LOCALE_NAME_INVARIANT,
+                                       LCMAP_LOWERCASE,
+                                       value.data(),
+                                       length,
+                                       nullptr,
+                                       0,
+                                       nullptr,
+                                       nullptr,
+                                       0);
+    if (required <= 0)
+        throw std::runtime_error("cannot case-fold a Windows path");
+    std::wstring result(static_cast<size_t>(required), L'\0');
+    if (LCMapStringEx(LOCALE_NAME_INVARIANT,
+                      LCMAP_LOWERCASE,
+                      value.data(),
+                      length,
+                      result.data(),
+                      required,
+                      nullptr,
+                      nullptr,
+                      0) != required) {
+        throw std::runtime_error("cannot case-fold a Windows path");
+    }
+    return result;
+}
+
+std::wstring normalizedWindowsPathText(const fs::path &path) {
+    fs::path normalized = path.lexically_normal();
+    normalized.make_preferred();
+    return normalized.wstring();
+}
+
+bool sameWindowsPath(const fs::path &left, const fs::path &right) {
+    return ordinalEqualsIgnoreCase(normalizedWindowsPathText(left),
+                                   normalizedWindowsPathText(right));
+}
+
+bool windowsPathBeginsWith(const fs::path &candidate, const fs::path &root) {
+    const std::wstring value = normalizedWindowsPathText(candidate);
+    std::wstring prefix = normalizedWindowsPathText(root);
+    while (prefix.size() > 3U && (prefix.back() == L'\\' || prefix.back() == L'/'))
+        prefix.pop_back();
+    if (prefix.empty() || value.size() < prefix.size())
+        return false;
+    const std::wstring_view leading(value.data(), prefix.size());
+    if (!ordinalEqualsIgnoreCase(leading, prefix))
+        return false;
+    if (value.size() == prefix.size())
+        return true;
+    return value[prefix.size()] == L'\\' || value[prefix.size()] == L'/';
+}
+
+template <size_t Size>
+std::optional<std::wstring_view> terminatedWideView(const std::array<wchar_t, Size> &buffer) {
+    const auto terminator = std::find(buffer.begin(), buffer.end(), L'\0');
+    if (terminator == buffer.end())
+        return std::nullopt;
+    return std::wstring_view(buffer.data(), static_cast<size_t>(terminator - buffer.begin()));
 }
 
 std::string lowerAscii(std::string value) {
@@ -302,8 +374,11 @@ fs::path safeJoin(const fs::path &root, std::string_view relative) {
 std::wstring knownFolder(REFKNOWNFOLDERID id) {
     PWSTR raw = nullptr;
     const HRESULT result = SHGetKnownFolderPath(id, KF_FLAG_DEFAULT, nullptr, &raw);
-    if (FAILED(result) || !raw)
+    if (FAILED(result) || !raw || !*raw) {
+        if (raw)
+            CoTaskMemFree(raw);
         throw std::runtime_error("cannot resolve a required Windows known folder");
+    }
     std::wstring path(raw);
     CoTaskMemFree(raw);
     return path;
@@ -333,11 +408,16 @@ RegKey openKey(HKEY root, std::wstring_view subkey, REGSAM access, bool create) 
     } else {
         result = RegOpenKeyExW(root, std::wstring(subkey).c_str(), 0, access, &key);
     }
-    if (result == ERROR_FILE_NOT_FOUND && !create)
-        return {};
-    if (result != ERROR_SUCCESS)
+    if (result != ERROR_SUCCESS) {
+        if (key)
+            RegCloseKey(key);
+        if (result == ERROR_FILE_NOT_FOUND && !create)
+            return {};
         throw std::runtime_error("Windows registry operation failed: " +
                                  wideToUtf8(formatWindowsError(static_cast<DWORD>(result))));
+    }
+    if (!key)
+        throw std::runtime_error("Windows registry operation returned no key");
     return RegKey(key);
 }
 
@@ -351,9 +431,8 @@ std::optional<std::wstring> queryRegistryString(HKEY key, std::wstring_view name
         if (result == ERROR_FILE_NOT_FOUND)
             return std::nullopt;
         if (result != ERROR_SUCCESS || (type != REG_SZ && type != REG_EXPAND_SZ) ||
-            size > 32U * 1024U * 1024U || size % sizeof(wchar_t) != 0U) {
-            return std::nullopt;
-        }
+            size > 32U * 1024U * 1024U || size % sizeof(wchar_t) != 0U)
+            throw std::runtime_error("Windows registry string is unreadable or malformed");
         std::vector<wchar_t> buffer(size / sizeof(wchar_t) + 1U, L'\0');
         DWORD readSize = size;
         DWORD readType = 0;
@@ -366,27 +445,32 @@ std::optional<std::wstring> queryRegistryString(HKEY key, std::wstring_view name
         if (result == ERROR_MORE_DATA)
             continue;
         if (result != ERROR_SUCCESS || (readType != REG_SZ && readType != REG_EXPAND_SZ) ||
-            readSize > size || readSize % sizeof(wchar_t) != 0U) {
-            return std::nullopt;
-        }
+            readSize > size || readSize % sizeof(wchar_t) != 0U)
+            throw std::runtime_error("Windows registry string changed or became malformed");
+        const size_t readCharacters = static_cast<size_t>(readSize) / sizeof(wchar_t);
         const size_t length =
-            std::find(buffer.begin(), buffer.begin() + readSize / sizeof(wchar_t), L'\0') -
-            buffer.begin();
+            std::find(buffer.begin(), buffer.begin() + readCharacters, L'\0') - buffer.begin();
         return std::wstring(buffer.data(), length);
     }
-    return std::nullopt;
+    throw std::runtime_error("Windows registry string changed repeatedly while being read");
 }
 
 void setRegistryString(HKEY key,
                        std::wstring_view name,
                        std::wstring_view value,
                        DWORD type = REG_SZ) {
+    if (!key || (type != REG_SZ && type != REG_EXPAND_SZ) ||
+        value.find(L'\0') != std::wstring_view::npos ||
+        value.size() > static_cast<size_t>(MAXDWORD) / sizeof(wchar_t) - 1U) {
+        throw std::runtime_error("refusing to write an invalid Windows registry string");
+    }
+    const DWORD bytes = static_cast<DWORD>((value.size() + 1U) * sizeof(wchar_t));
     const LONG result = RegSetValueExW(key,
                                        name.empty() ? nullptr : std::wstring(name).c_str(),
                                        0,
                                        type,
                                        reinterpret_cast<const BYTE *>(value.data()),
-                                       static_cast<DWORD>((value.size() + 1U) * sizeof(wchar_t)));
+                                       bytes);
     if (result != ERROR_SUCCESS)
         throw std::runtime_error("cannot write Windows registry string: " +
                                  wideToUtf8(formatWindowsError(static_cast<DWORD>(result))));
@@ -498,9 +582,9 @@ InstalledRecord readInstalledRecord(std::string_view identifier, InstallScope sc
 
 uint64_t fnv1a64(std::wstring_view value) {
     uint64_t hash = 1469598103934665603ULL;
-    for (wchar_t ch : value) {
-        const wchar_t folded = static_cast<wchar_t>(std::towlower(ch));
-        hash ^= static_cast<uint16_t>(folded);
+    const std::wstring folded = foldWindowsCase(value);
+    for (wchar_t ch : folded) {
+        hash ^= static_cast<uint16_t>(ch);
         hash *= 1099511628211ULL;
     }
     return hash;
@@ -728,7 +812,7 @@ fs::path canonicalDestination(const fs::path &requested) {
             throw std::runtime_error("installation destination contains an invalid Windows name");
         }
         std::wstring base = component.substr(0, component.find(L'.'));
-        base = lowerWide(std::move(base));
+        base = foldWindowsCase(base);
         const bool numberedDevice = base.size() == 4U &&
                                     (base.rfind(L"com", 0) == 0 || base.rfind(L"lpt", 0) == 0) &&
                                     base[3] >= L'1' && base[3] <= L'9';
@@ -746,21 +830,12 @@ fs::path canonicalDestination(const fs::path &requested) {
         std::wstring value(32768, L'\0');
         const UINT length = GetWindowsDirectoryW(value.data(), static_cast<UINT>(value.size()));
         if (length == 0 || length >= value.size())
-            return fs::path{};
+            throw std::runtime_error("cannot resolve the protected Windows directory");
         value.resize(length);
         return fs::path(value).lexically_normal();
     }();
-    auto pathBeginsWith = [](const fs::path &candidate, const fs::path &root) {
-        std::wstring value = lowerWide(candidate.lexically_normal().wstring());
-        std::wstring prefix = lowerWide(root.lexically_normal().wstring());
-        while (prefix.size() > 3U && (prefix.back() == L'\\' || prefix.back() == L'/'))
-            prefix.pop_back();
-        return value == prefix ||
-               (value.size() > prefix.size() && value.compare(0, prefix.size(), prefix) == 0 &&
-                (value[prefix.size()] == L'\\' || value[prefix.size()] == L'/'));
-    };
-    if (!windowsDir.empty() &&
-        (pathBeginsWith(absolute, windowsDir) || pathBeginsWith(windowsDir, absolute))) {
+    if (windowsPathBeginsWith(absolute, windowsDir) ||
+        windowsPathBeginsWith(windowsDir, absolute)) {
         throw std::runtime_error("installation in or above the Windows directory is prohibited");
     }
     const std::array<KNOWNFOLDERID, 9> protectedFolders = {FOLDERID_ProgramFiles,
@@ -774,11 +849,15 @@ fs::path canonicalDestination(const fs::path &requested) {
                                                            FOLDERID_Programs};
     for (REFKNOWNFOLDERID id : protectedFolders) {
         PWSTR raw = nullptr;
-        if (FAILED(SHGetKnownFolderPath(id, KF_FLAG_DEFAULT, nullptr, &raw)) || !raw)
-            continue;
+        const HRESULT result = SHGetKnownFolderPath(id, KF_FLAG_DEFAULT, nullptr, &raw);
+        if (FAILED(result) || !raw || !*raw) {
+            if (raw)
+                CoTaskMemFree(raw);
+            throw std::runtime_error("cannot resolve a protected Windows known folder");
+        }
         const fs::path protectedPath(raw);
         CoTaskMemFree(raw);
-        if (pathBeginsWith(protectedPath, absolute)) {
+        if (windowsPathBeginsWith(protectedPath, absolute)) {
             throw std::runtime_error(
                 "installation destination is a protected Windows or user-profile folder");
         }
@@ -794,6 +873,12 @@ void rejectReparseAncestors(const fs::path &path) {
             if ((attributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0)
                 throw std::runtime_error("installation path traverses a reparse point: " +
                                          wideToUtf8(current.wstring()));
+        } else {
+            const DWORD error = GetLastError();
+            if (error != ERROR_FILE_NOT_FOUND && error != ERROR_PATH_NOT_FOUND) {
+                throw std::runtime_error("cannot verify an installation path ancestor: " +
+                                         wideToUtf8(formatWindowsError(error)));
+            }
         }
         current = current.parent_path();
     }
@@ -901,8 +986,7 @@ InstallationPlan makePlan(const HostPackage &package,
                     ? safeJoin(plan.existing.installRoot, package.metadata.uninstallerRelativePath)
                     : fs::path{};
             if (!installedUninstaller.empty() &&
-                lowerWide(currentExecutablePath().lexically_normal().wstring()) ==
-                    lowerWide(installedUninstaller.lexically_normal().wstring())) {
+                sameWindowsPath(currentExecutablePath(), installedUninstaller)) {
                 plan.operation = Operation::Uninstall;
             } else if (options.uiLevel != UiLevel::Full) {
                 throw std::runtime_error(
@@ -930,8 +1014,7 @@ InstallationPlan makePlan(const HostPackage &package,
         plan.installRoot =
             canonicalDestination(base / utf8ToWide(package.metadata.defaultInstallDir));
     }
-    if (plan.existing.present &&
-        lowerWide(plan.installRoot.wstring()) != lowerWide(plan.existing.installRoot.wstring())) {
+    if (plan.existing.present && !sameWindowsPath(plan.installRoot, plan.existing.installRoot)) {
         throw std::runtime_error(
             "maintenance destination does not match the registered installation");
     }
@@ -1087,7 +1170,7 @@ void preflightDisk(const HostPackage &package, const InstallationPlan &plan) {
                                                    static_cast<DWORD>(std::size(cacheVolume))))) {
         throw std::runtime_error("cannot determine the maintenance cache volume");
     }
-    if (cacheRequired != 0 && lowerWide(installVolume) == lowerWide(cacheVolume)) {
+    if (cacheRequired != 0 && ordinalEqualsIgnoreCase(installVolume, cacheVolume)) {
         if (cacheRequired > std::numeric_limits<uint64_t>::max() - required)
             throw std::runtime_error("installer disk requirement overflow");
         required += cacheRequired;
@@ -1122,7 +1205,7 @@ class LifecycleMutex {
     LifecycleMutex(const InstallationPlan &plan, std::string_view identifier) {
         const std::wstring seed = utf8ToWide(identifier) + L"|" +
                                   (plan.scope == InstallScope::User ? L"user|" : L"machine|") +
-                                  lowerWide(plan.installRoot.wstring());
+                                  foldWindowsCase(normalizedWindowsPathText(plan.installRoot));
         const std::wstring name = (plan.scope == InstallScope::Machine ? L"Global\\" : L"Local\\") +
                                   std::wstring(L"ZannaInstaller-") + hashHex(fnv1a64(seed));
         handle_.reset(CreateMutexW(nullptr, FALSE, name.c_str()));
@@ -1258,28 +1341,71 @@ void handleFilesInUse(RestartManagerSession &restart,
 }
 
 std::wstring readTextFileWide(const fs::path &path) {
+    constexpr uintmax_t kMaximumTextFileBytes = 32ULL * 1024ULL * 1024ULL;
+    std::error_code error;
+    const bool exists = fs::exists(path, error);
+    if (error)
+        throw std::runtime_error("cannot inspect installer metadata text file");
+    if (!exists)
+        return {};
+    if (!fs::is_regular_file(path, error) || error)
+        throw std::runtime_error("installer metadata text path is not a readable regular file");
+    const uintmax_t size = fs::file_size(path, error);
+    if (error || size > kMaximumTextFileBytes)
+        throw std::runtime_error("installer metadata text file is unreadable or too large");
     std::ifstream input(path, std::ios::binary);
     if (!input)
-        return {};
-    std::ostringstream bytes;
-    bytes << input.rdbuf();
-    return utf8ToWide(bytes.str());
+        throw std::runtime_error("cannot open installer metadata text file");
+    std::string bytes(static_cast<size_t>(size), '\0');
+    if (!bytes.empty()) {
+        input.read(bytes.data(), static_cast<std::streamsize>(bytes.size()));
+        if (input.gcount() != static_cast<std::streamsize>(bytes.size()))
+            throw std::runtime_error("installer metadata text file changed while being read");
+    }
+    if (input.peek() != std::char_traits<char>::eof())
+        throw std::runtime_error("installer metadata text file grew while being read");
+    if (input.bad())
+        throw std::runtime_error("cannot finish reading installer metadata text file");
+    return utf8ToWide(bytes);
 }
 
 void writeBytesAtomic(const fs::path &path, const std::vector<uint8_t> &bytes) {
     fs::create_directories(path.parent_path());
     const fs::path temporary = path.wstring() + L".tmp-" + std::to_wstring(GetCurrentProcessId()) +
                                L"-" + hashHex(GetTickCount64());
-    {
-        std::ofstream output(temporary, std::ios::binary | std::ios::trunc);
-        if (!output ||
-            (!bytes.empty() && !output.write(reinterpret_cast<const char *>(bytes.data()),
-                                             static_cast<std::streamsize>(bytes.size())))) {
-            throw std::runtime_error("cannot write staged installer file");
-        }
-        output.flush();
+    bool created = false;
+    try {
+        UniqueHandle output(CreateFileW(temporary.c_str(),
+                                        GENERIC_WRITE,
+                                        0,
+                                        nullptr,
+                                        CREATE_NEW,
+                                        FILE_ATTRIBUTE_NORMAL,
+                                        nullptr));
         if (!output)
-            throw std::runtime_error("cannot flush staged installer file");
+            throw std::runtime_error("cannot create a staged installer file: " +
+                                     wideToUtf8(formatWindowsError(GetLastError())));
+        created = true;
+        size_t offset = 0;
+        while (offset < bytes.size()) {
+            const DWORD chunk = static_cast<DWORD>(
+                std::min<size_t>(bytes.size() - offset, static_cast<size_t>(MAXDWORD)));
+            DWORD written = 0;
+            if (!WriteFile(output.get(), bytes.data() + offset, chunk, &written, nullptr) ||
+                written == 0U || written > chunk) {
+                throw std::runtime_error("cannot write a staged installer file: " +
+                                         wideToUtf8(formatWindowsError(GetLastError())));
+            }
+            offset += written;
+        }
+        if (!FlushFileBuffers(output.get()))
+            throw std::runtime_error("cannot durably flush a staged installer file: " +
+                                     wideToUtf8(formatWindowsError(GetLastError())));
+        output.reset();
+    } catch (...) {
+        if (created)
+            DeleteFileW(temporary.c_str());
+        throw;
     }
     if (!MoveFileExW(
             temporary.c_str(), path.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
@@ -1479,9 +1605,9 @@ bool isRecognizedLegacyUninstaller(const fs::path &path, const HostPackage &inco
     }
     const auto originalName = versionResourceString(path, L"OriginalFilename");
     const auto description = versionResourceString(path, L"FileDescription");
-    if (!originalName || lowerWide(*originalName) != L"uninstall.exe" || !description ||
-        description->size() < 12U ||
-        lowerWide(description->substr(description->size() - 12U)) != L" uninstaller") {
+    if (!originalName || !ordinalEqualsIgnoreCase(*originalName, L"uninstall.exe") ||
+        !description || description->size() < 12U ||
+        !ordinalEqualsIgnoreCase(description->substr(description->size() - 12U), L" uninstaller")) {
         return false;
     }
     std::error_code sizeError;
@@ -1686,19 +1812,19 @@ std::wstring journalName(JournalState state) {
 }
 
 JournalState parseJournal(std::wstring_view value) {
-    if (value.find(L"state=prepared") != std::wstring_view::npos)
-        return JournalState::Prepared;
-    if (value.find(L"state=old-moved") != std::wstring_view::npos)
-        return JournalState::OldMoved;
-    if (value.find(L"state=new-active") != std::wstring_view::npos)
-        return JournalState::NewActive;
-    if (value.find(L"state=metadata-committed") != std::wstring_view::npos)
-        return JournalState::MetadataCommitted;
-    if (value.find(L"state=rollback-files-restored") != std::wstring_view::npos)
-        return JournalState::RollbackFilesRestored;
-    if (value.find(L"state=committed") != std::wstring_view::npos)
-        return JournalState::Committed;
-    return JournalState::None;
+    if (value.empty())
+        return JournalState::None;
+    constexpr std::array states = {JournalState::Prepared,
+                                   JournalState::OldMoved,
+                                   JournalState::NewActive,
+                                   JournalState::MetadataCommitted,
+                                   JournalState::RollbackFilesRestored,
+                                   JournalState::Committed};
+    for (const JournalState state : states) {
+        if (value == L"schema=2\r\nstate=" + journalName(state) + L"\r\n")
+            return state;
+    }
+    throw std::runtime_error("installer transaction journal is malformed");
 }
 
 struct TransactionPaths {
@@ -1847,7 +1973,58 @@ std::wstring trimPathEntry(std::wstring value) {
         value = value.substr(1, value.size() - 2);
     while (value.size() > 3 && (value.back() == L'\\' || value.back() == L'/'))
         value.pop_back();
-    return lowerWide(value);
+    return value;
+}
+
+struct PathBackup {
+    bool present{false};
+    DWORD type{REG_EXPAND_SZ};
+    std::wstring value;
+};
+
+PathBackup readPathValue(HKEY environment) {
+    if (!environment)
+        throw std::runtime_error("cannot read PATH through a null registry key");
+    for (unsigned attempt = 0; attempt < 8U; ++attempt) {
+        DWORD type = 0;
+        DWORD bytes = 0;
+        LONG result = RegQueryValueExW(environment, L"Path", nullptr, &type, nullptr, &bytes);
+        if (result == ERROR_FILE_NOT_FOUND)
+            return {};
+        if (result != ERROR_SUCCESS || (type != REG_SZ && type != REG_EXPAND_SZ) ||
+            bytes > 32U * 1024U * 1024U || bytes % sizeof(wchar_t) != 0U) {
+            throw std::runtime_error("cannot snapshot the environment PATH value");
+        }
+        std::vector<wchar_t> value(static_cast<size_t>(bytes) / sizeof(wchar_t) + 1U, L'\0');
+        DWORD readBytes = bytes;
+        DWORD readType = 0;
+        result = RegQueryValueExW(environment,
+                                  L"Path",
+                                  nullptr,
+                                  &readType,
+                                  reinterpret_cast<BYTE *>(value.data()),
+                                  &readBytes);
+        if (result == ERROR_MORE_DATA)
+            continue;
+        if (result != ERROR_SUCCESS || (readType != REG_SZ && readType != REG_EXPAND_SZ) ||
+            readBytes > bytes || readBytes % sizeof(wchar_t) != 0U) {
+            throw std::runtime_error("cannot read the environment PATH value for rollback");
+        }
+        const size_t readCharacters = static_cast<size_t>(readBytes) / sizeof(wchar_t);
+        const size_t length =
+            std::find(value.begin(), value.begin() + readCharacters, L'\0') - value.begin();
+        return {true, readType, std::wstring(value.data(), length)};
+    }
+    throw std::runtime_error("the environment PATH changed repeatedly while being read");
+}
+
+PathBackup readCurrentPath(InstallScope scope) {
+    RegKey environment =
+        openKey(rootKey(scope),
+                scope == InstallScope::User ? kUserEnvironment : kMachineEnvironment,
+                KEY_QUERY_VALUE,
+                true);
+    return readPathValue(environment.get());
 }
 
 void broadcastEnvironment() {
@@ -1869,19 +2046,20 @@ std::wstring updatePath(InstallScope scope,
                 scope == InstallScope::User ? kUserEnvironment : kMachineEnvironment,
                 KEY_QUERY_VALUE | KEY_SET_VALUE,
                 true);
-    const std::wstring original = queryRegistryString(environment.get(), L"Path").value_or(L"");
-    std::vector<std::wstring> entries = splitPathValue(original);
+    const PathBackup original = readPathValue(environment.get());
+    std::vector<std::wstring> entries = splitPathValue(original.value);
     const std::wstring removeKey = trimPathEntry(std::wstring(removeEntry));
     const std::wstring addKey = trimPathEntry(std::wstring(addEntry));
-    entries.erase(std::remove_if(entries.begin(),
-                                 entries.end(),
-                                 [&](const std::wstring &entry) {
-                                     const std::wstring key = trimPathEntry(entry);
-                                     return key.empty() ||
-                                            (!removeKey.empty() && key == removeKey) ||
-                                            (!addKey.empty() && key == addKey);
-                                 }),
-                  entries.end());
+    entries.erase(
+        std::remove_if(entries.begin(),
+                       entries.end(),
+                       [&](const std::wstring &entry) {
+                           const std::wstring key = trimPathEntry(entry);
+                           return key.empty() ||
+                                  (!removeKey.empty() && ordinalEqualsIgnoreCase(key, removeKey)) ||
+                                  (!addKey.empty() && ordinalEqualsIgnoreCase(key, addKey));
+                       }),
+        entries.end());
     if (!addEntry.empty())
         entries.emplace_back(addEntry);
     std::wstring updated;
@@ -1890,9 +2068,10 @@ std::wstring updatePath(InstallScope scope,
             updated.push_back(L';');
         updated += entry;
     }
-    setRegistryString(environment.get(), L"Path", updated, REG_EXPAND_SZ);
+    setRegistryString(
+        environment.get(), L"Path", updated, original.present ? original.type : REG_EXPAND_SZ);
     broadcastEnvironment();
-    return original;
+    return original.value;
 }
 
 std::wstring bytesToHex(std::string_view bytes) {
@@ -1923,51 +2102,6 @@ std::string hexToBytes(std::wstring_view text) {
         result.push_back(static_cast<char>((hexNibble(text[i]) << 4U) | hexNibble(text[i + 1U])));
     }
     return result;
-}
-
-struct PathBackup {
-    bool present{false};
-    DWORD type{REG_EXPAND_SZ};
-    std::wstring value;
-};
-
-PathBackup readCurrentPath(InstallScope scope) {
-    RegKey environment =
-        openKey(rootKey(scope),
-                scope == InstallScope::User ? kUserEnvironment : kMachineEnvironment,
-                KEY_QUERY_VALUE,
-                true);
-    for (unsigned attempt = 0; attempt < 8U; ++attempt) {
-        DWORD type = 0;
-        DWORD bytes = 0;
-        LONG result = RegQueryValueExW(environment.get(), L"Path", nullptr, &type, nullptr, &bytes);
-        if (result == ERROR_FILE_NOT_FOUND)
-            return {};
-        if (result != ERROR_SUCCESS || (type != REG_SZ && type != REG_EXPAND_SZ) ||
-            bytes > 32U * 1024U * 1024U || bytes % sizeof(wchar_t) != 0U) {
-            throw std::runtime_error("cannot snapshot the environment PATH value");
-        }
-        std::vector<wchar_t> value(static_cast<size_t>(bytes) / sizeof(wchar_t) + 1U, L'\0');
-        DWORD readBytes = bytes;
-        DWORD readType = 0;
-        result = RegQueryValueExW(environment.get(),
-                                  L"Path",
-                                  nullptr,
-                                  &readType,
-                                  reinterpret_cast<BYTE *>(value.data()),
-                                  &readBytes);
-        if (result == ERROR_MORE_DATA)
-            continue;
-        if (result != ERROR_SUCCESS || (readType != REG_SZ && readType != REG_EXPAND_SZ) ||
-            readBytes > bytes || readBytes % sizeof(wchar_t) != 0U) {
-            throw std::runtime_error("cannot read the environment PATH value for rollback");
-        }
-        const size_t length =
-            std::find(value.begin(), value.begin() + readBytes / sizeof(wchar_t), L'\0') -
-            value.begin();
-        return {true, readType, std::wstring(value.data(), length)};
-    }
-    throw std::runtime_error("the environment PATH changed repeatedly while being read");
 }
 
 void writePathBackup(const TransactionPaths &paths, InstallScope scope) {
@@ -2051,9 +2185,12 @@ void recordAppliedShortcut(const TransactionPaths &paths, const fs::path &path) 
         throw std::runtime_error("cannot open the shortcut rollback journal");
     const std::wstring line = bytesToHex(wideToUtf8(path.wstring())) + L"\r\n";
     const std::string bytes = wideToUtf8(line);
+    if (bytes.size() > static_cast<size_t>(MAXDWORD))
+        throw std::runtime_error("shortcut rollback journal entry is too large");
+    const DWORD byteCount = static_cast<DWORD>(bytes.size());
     DWORD written = 0;
-    if (!WriteFile(file.get(), bytes.data(), static_cast<DWORD>(bytes.size()), &written, nullptr) ||
-        written != bytes.size() || !FlushFileBuffers(file.get())) {
+    if (!WriteFile(file.get(), bytes.data(), byteCount, &written, nullptr) ||
+        written != byteCount || !FlushFileBuffers(file.get())) {
         throw std::runtime_error("cannot update the shortcut rollback journal");
     }
 }
@@ -2246,11 +2383,12 @@ bool shellLinkMatches(const fs::path &path,
 
     ComPtr<IShellLinkW> link;
     if (FAILED(CoCreateInstance(
-            CLSID_ShellLink, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(link.put())))) {
+            CLSID_ShellLink, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(link.put()))) ||
+        !link) {
         return false;
     }
     ComPtr<IPersistFile> persist;
-    if (FAILED(link->QueryInterface(IID_PPV_ARGS(persist.put()))) ||
+    if (FAILED(link->QueryInterface(IID_PPV_ARGS(persist.put()))) || !persist ||
         FAILED(persist->Load(path.c_str(), STGM_READ))) {
         return false;
     }
@@ -2267,19 +2405,22 @@ bool shellLinkMatches(const fs::path &path,
         FAILED(link->GetIconLocation(icon.data(), static_cast<int>(icon.size()), &iconIndex))) {
         return false;
     }
-    auto samePath = [](std::wstring_view left, const fs::path &right) {
-        return lowerWide(fs::path(left).lexically_normal().wstring()) ==
-               lowerWide(right.lexically_normal().wstring());
-    };
-    if (!samePath(target.data(),
-                  resolveShortcutPath(plan, metadata.targetRoot, metadata.targetPath)) ||
-        !samePath(working.data(),
-                  resolveShortcutPath(plan, metadata.workingRoot, metadata.workingPath)) ||
-        std::wstring(arguments.data()) != shortcutArguments(metadata, plan)) {
+    const auto targetText = terminatedWideView(target);
+    const auto workingText = terminatedWideView(working);
+    const auto argumentText = terminatedWideView(arguments);
+    const auto iconText = terminatedWideView(icon);
+    if (!targetText || !workingText || !argumentText || !iconText)
+        return false;
+    if (!sameWindowsPath(fs::path(*targetText),
+                         resolveShortcutPath(plan, metadata.targetRoot, metadata.targetPath)) ||
+        !sameWindowsPath(fs::path(*workingText),
+                         resolveShortcutPath(plan, metadata.workingRoot, metadata.workingPath)) ||
+        *argumentText != shortcutArguments(metadata, plan)) {
         return false;
     }
     if (!metadata.iconPath.empty() &&
-        (!samePath(icon.data(), resolveShortcutPath(plan, metadata.iconRoot, metadata.iconPath)) ||
+        (!sameWindowsPath(fs::path(*iconText),
+                          resolveShortcutPath(plan, metadata.iconRoot, metadata.iconPath)) ||
          iconIndex != metadata.iconIndex)) {
         return false;
     }
@@ -2307,7 +2448,7 @@ void createShellLink(const zanna::pkg::WindowsInstallerShortcutMetadata &metadat
     ComPtr<IShellLinkW> link;
     HRESULT result =
         CoCreateInstance(CLSID_ShellLink, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(link.put()));
-    if (FAILED(result))
+    if (FAILED(result) || !link)
         throw std::runtime_error("cannot create a Windows Shell Link object");
     const fs::path target = resolveShortcutPath(plan, metadata.targetRoot, metadata.targetPath);
     const fs::path working = resolveShortcutPath(plan, metadata.workingRoot, metadata.workingPath);
@@ -2329,7 +2470,7 @@ void createShellLink(const zanna::pkg::WindowsInstallerShortcutMetadata &metadat
 
     ComPtr<IPersistFile> persist;
     result = link->QueryInterface(IID_PPV_ARGS(persist.put()));
-    if (FAILED(result))
+    if (FAILED(result) || !persist)
         throw std::runtime_error("cannot persist a Windows shortcut");
     fs::create_directories(destination.parent_path());
     const fs::path temporary = destination.wstring() + L".tmp-" +
@@ -2369,10 +2510,10 @@ std::vector<fs::path> installShortcuts(const HostPackage &package,
             root /= utf8ToWide(package.metadata.defaultInstallDir);
         }
         const fs::path destination = safeJoin(root, shortcut.relativePath);
-        const bool recorded = std::any_of(
-            recognized.shortcuts.begin(), recognized.shortcuts.end(), [&](const fs::path &old) {
-                return lowerWide(old.wstring()) == lowerWide(destination.wstring());
-            });
+        const bool recorded =
+            std::any_of(recognized.shortcuts.begin(),
+                        recognized.shortcuts.end(),
+                        [&](const fs::path &old) { return sameWindowsPath(old, destination); });
         if (!recorded && fs::is_regular_file(destination) &&
             shellLinkMatches(destination, shortcut, plan)) {
             recognized.shortcuts.push_back(destination);
@@ -2401,11 +2542,11 @@ std::vector<fs::path> installShortcuts(const HostPackage &package,
             root /= utf8ToWide(package.metadata.defaultInstallDir);
         }
         const fs::path destination = safeJoin(root, shortcut.relativePath);
-        if (fs::exists(destination) &&
-            std::find_if(
-                existing.shortcuts.begin(), existing.shortcuts.end(), [&](const fs::path &old) {
-                    return lowerWide(old.wstring()) == lowerWide(destination.wstring());
-                }) == existing.shortcuts.end()) {
+        if (fs::exists(destination) && std::find_if(existing.shortcuts.begin(),
+                                                    existing.shortcuts.end(),
+                                                    [&](const fs::path &old) {
+                                                        return sameWindowsPath(old, destination);
+                                                    }) == existing.shortcuts.end()) {
             logger.warning(L"Skipped unowned shortcut collision: " + destination.wstring());
             continue;
         }
@@ -2417,15 +2558,43 @@ std::vector<fs::path> installShortcuts(const HostPackage &package,
     return installed;
 }
 
+bool isProtectedShortcutRoot(const fs::path &path) {
+    const std::array<KNOWNFOLDERID, 4> roots = {
+        FOLDERID_Desktop, FOLDERID_PublicDesktop, FOLDERID_Programs, FOLDERID_CommonPrograms};
+    for (REFKNOWNFOLDERID id : roots) {
+        PWSTR raw = nullptr;
+        const HRESULT result = SHGetKnownFolderPath(id, KF_FLAG_DEFAULT, nullptr, &raw);
+        if (FAILED(result) || !raw || !*raw) {
+            if (raw)
+                CoTaskMemFree(raw);
+            return true;
+        }
+        const bool matches = sameWindowsPath(path, fs::path(raw));
+        CoTaskMemFree(raw);
+        if (matches)
+            return true;
+    }
+    return false;
+}
+
 void removeShortcuts(const InstalledRecord &record) {
     for (const fs::path &path : record.shortcuts) {
-        std::error_code error;
-        fs::remove(path, error);
-        if (error || fs::exists(path))
-            throw std::runtime_error("cannot remove an installed Zanna shortcut");
+        const DWORD attributes = GetFileAttributesW(path.c_str());
+        if (attributes == INVALID_FILE_ATTRIBUTES) {
+            const DWORD error = GetLastError();
+            if (error == ERROR_FILE_NOT_FOUND || error == ERROR_PATH_NOT_FOUND)
+                continue;
+            throw std::runtime_error("cannot inspect an installed Zanna shortcut: " +
+                                     wideToUtf8(formatWindowsError(error)));
+        }
+        if ((attributes & (FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_REPARSE_POINT)) != 0U)
+            throw std::runtime_error("refusing to remove a non-file Zanna shortcut path");
+        if (!DeleteFileW(path.c_str()))
+            throw std::runtime_error("cannot remove an installed Zanna shortcut: " +
+                                     wideToUtf8(formatWindowsError(GetLastError())));
         fs::path parent = path.parent_path();
-        if (!parent.empty()) {
-            error.clear();
+        if (!parent.empty() && !isProtectedShortcutRoot(parent)) {
+            std::error_code error;
             fs::remove(parent, error);
             if (error == std::errc::directory_not_empty) {
                 error.clear();
@@ -2743,16 +2912,7 @@ bool cleanupCacheAfterUninstall(const HostPackage &package,
 }
 
 bool pathIsWithin(const fs::path &root, const fs::path &candidate) {
-    std::wstring rootText = lowerWide(root.lexically_normal().wstring());
-    const std::wstring candidateText = lowerWide(candidate.lexically_normal().wstring());
-    while (rootText.size() > 3U && (rootText.back() == L'\\' || rootText.back() == L'/')) {
-        rootText.pop_back();
-    }
-    if (candidateText == rootText)
-        return true;
-    rootText.push_back(L'\\');
-    return candidateText.size() > rootText.size() &&
-           candidateText.compare(0, rootText.size(), rootText) == 0;
+    return windowsPathBeginsWith(candidate, root);
 }
 
 int launchMaintenanceHandoff(const HostPackage &package,
@@ -2986,7 +3146,16 @@ void recoverTransaction(const HostPackage &package,
         removeRecoveryMarker(plan);
         return;
     }
-    if (state == JournalState::None || state == JournalState::Prepared) {
+    if (state == JournalState::None) {
+        if (fs::exists(paths.oldRoot)) {
+            throw std::runtime_error("installer transaction journal is missing after the old tree "
+                                     "moved; transaction retained");
+        }
+        removeTreeChecked(paths.directory);
+        removeRecoveryMarker(plan);
+        return;
+    }
+    if (state == JournalState::Prepared) {
         removeTreeChecked(paths.directory);
         removeRecoveryMarker(plan);
         return;
@@ -3268,7 +3437,7 @@ int runLifecycle(HINSTANCE instance,
     logger.info(L"Destination: " + plan.installRoot.wstring());
     const fs::path runningExecutable = currentExecutablePath();
     if (!options.uninstallWorker && package.metadata.packageMode == "maintenance" &&
-        lowerWide(runningExecutable.wstring()) != lowerWide(plan.cacheExecutable.wstring()) &&
+        !sameWindowsPath(runningExecutable, plan.cacheExecutable) &&
         pathIsWithin(plan.installRoot, runningExecutable)) {
         return launchMaintenanceHandoff(package, options, plan, logger);
     }

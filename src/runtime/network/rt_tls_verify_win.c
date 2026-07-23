@@ -24,32 +24,59 @@
 #include "rt_tls_verify_internal.h"
 
 #if defined(_WIN32)
+enum {
+    TLS_MAX_CUSTOM_CA_FILE_BYTES = 16 * 1024 * 1024,
+    TLS_MAX_CUSTOM_CA_CERTIFICATES = 1024,
+};
+
+/// @brief Open one runtime UTF-8 path through the Unicode Windows CRT boundary.
+static FILE *tls_open_file_utf8_win(const char *path) {
+    wchar_t *wide_path = NULL;
+    FILE *file = NULL;
+    int required;
+
+    if (!path || !*path)
+        return NULL;
+    required = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, path, -1, NULL, 0);
+    if (required <= 0 || (size_t)required > SIZE_MAX / sizeof(wchar_t))
+        return NULL;
+    wide_path = (wchar_t *)malloc((size_t)required * sizeof(wchar_t));
+    if (!wide_path)
+        return NULL;
+    if (MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, path, -1, wide_path, required) ==
+        required) {
+        file = _wfopen(wide_path, L"rb");
+    }
+    free(wide_path);
+    return file;
+}
+
 /// @brief Read an entire file into a freshly allocated buffer (Windows).
 ///        Caller must free() the returned pointer.
 /// @return Pointer to null-terminated buffer on success, NULL on failure.
 static char *tls_read_file_bytes_win(const char *path, size_t *len_out) {
     FILE *f = NULL;
     char *buf = NULL;
-    long len = 0;
+    __int64 len = 0;
 
     if (len_out)
         *len_out = 0;
     if (!path || !*path)
         return NULL;
 
-    f = fopen(path, "rb");
+    f = tls_open_file_utf8_win(path);
     if (!f)
         return NULL;
-    if (fseek(f, 0, SEEK_END) != 0) {
+    if (_fseeki64(f, 0, SEEK_END) != 0) {
         fclose(f);
         return NULL;
     }
-    len = ftell(f);
-    if (len < 0) {
+    len = _ftelli64(f);
+    if (len < 0 || len > TLS_MAX_CUSTOM_CA_FILE_BYTES) {
         fclose(f);
         return NULL;
     }
-    if (fseek(f, 0, SEEK_SET) != 0) {
+    if (_fseeki64(f, 0, SEEK_SET) != 0) {
         fclose(f);
         return NULL;
     }
@@ -60,6 +87,12 @@ static char *tls_read_file_bytes_win(const char *path, size_t *len_out) {
         return NULL;
     }
     if (len > 0 && fread(buf, 1, (size_t)len, f) != (size_t)len) {
+        free(buf);
+        fclose(f);
+        return NULL;
+    }
+    /* Reject a file that grew after the size snapshot instead of silently trusting a prefix. */
+    if (fgetc(f) != EOF || ferror(f)) {
         free(buf);
         fclose(f);
         return NULL;
@@ -77,12 +110,22 @@ static int tls_add_pem_or_der_certs_to_store_win(HCERTSTORE store, const char *p
     static const char begin_marker[] = "-----BEGIN CERTIFICATE-----";
     static const char end_marker[] = "-----END CERTIFICATE-----";
     size_t file_len = 0;
-    char *file = tls_read_file_bytes_win(path, &file_len);
-    char *cursor = file;
+    char *file = NULL;
+    char *cursor = NULL;
     int added = 0;
+    int saw_pem = 0;
+    int malformed = 0;
 
-    if (!store || !file)
+    if (!store || !path || !*path)
         return 0;
+    file = tls_read_file_bytes_win(path, &file_len);
+    if (!file)
+        return 0;
+    cursor = file;
+    if (strstr(file, begin_marker) && memchr(file, '\0', file_len)) {
+        free(file);
+        return 0;
+    }
 
     while (cursor && *cursor) {
         char *begin = strstr(cursor, begin_marker);
@@ -91,33 +134,44 @@ static int tls_add_pem_or_der_certs_to_store_win(HCERTSTORE store, const char *p
         uint8_t *der = NULL;
         size_t pem_len = 0;
 
-        if (!begin || !end)
+        if (!begin)
             break;
+        saw_pem = 1;
+        if (!end || added >= TLS_MAX_CUSTOM_CA_CERTIFICATES) {
+            malformed = 1;
+            break;
+        }
         end += strlen(end_marker);
         pem_len = (size_t)(end - begin);
 
-        if (CryptStringToBinaryA(
-                begin, (DWORD)pem_len, CRYPT_STRING_BASE64HEADER, NULL, &der_len, NULL, NULL) &&
-            der_len > 0) {
-            der = (uint8_t *)malloc(der_len);
-            if (der &&
-                CryptStringToBinaryA(
-                    begin, (DWORD)pem_len, CRYPT_STRING_BASE64HEADER, der, &der_len, NULL, NULL) &&
-                CertAddEncodedCertificateToStore(store,
-                                                 X509_ASN_ENCODING | PKCS_7_ASN_ENCODING,
-                                                 der,
-                                                 der_len,
-                                                 CERT_STORE_ADD_ALWAYS,
-                                                 NULL)) {
-                added++;
-            }
-            free(der);
+        if (pem_len > UINT32_MAX ||
+            !CryptStringToBinaryA(
+                begin, (DWORD)pem_len, CRYPT_STRING_BASE64HEADER, NULL, &der_len, NULL, NULL) ||
+            der_len == 0) {
+            malformed = 1;
+            break;
         }
+        der = (uint8_t *)malloc(der_len);
+        if (!der ||
+            !CryptStringToBinaryA(
+                begin, (DWORD)pem_len, CRYPT_STRING_BASE64HEADER, der, &der_len, NULL, NULL) ||
+            !CertAddEncodedCertificateToStore(store,
+                                              X509_ASN_ENCODING | PKCS_7_ASN_ENCODING,
+                                              der,
+                                              der_len,
+                                              CERT_STORE_ADD_ALWAYS,
+                                              NULL)) {
+            free(der);
+            malformed = 1;
+            break;
+        }
+        free(der);
+        added++;
 
         cursor = end;
     }
 
-    if (added == 0 && file_len > 0 &&
+    if (!malformed && !saw_pem && file_len > 0 && file_len <= UINT32_MAX &&
         CertAddEncodedCertificateToStore(store,
                                          X509_ASN_ENCODING | PKCS_7_ASN_ENCODING,
                                          (const BYTE *)file,
@@ -128,7 +182,7 @@ static int tls_add_pem_or_der_certs_to_store_win(HCERTSTORE store, const char *p
     }
 
     free(file);
-    return added > 0;
+    return !malformed && added > 0;
 }
 
 /// @brief Check whether a certificate permits TLS server authentication (Windows).
@@ -270,6 +324,8 @@ static RT_TLS_MAYBE_UNUSED int cert_allows_tls_server_auth(const uint8_t *cert_d
 ///        added as additional store hints.
 /// @return RT_TLS_OK on success, RT_TLS_ERROR_HANDSHAKE on validation failure.
 int tls_verify_chain(rt_tls_session_t *session) {
+    if (!session)
+        return RT_TLS_ERROR_HANDSHAKE;
     const uint8_t *server_cert_der = tls_session_server_cert_der(session);
     if (!server_cert_der) {
         session->error = "TLS: no certificate to validate";
@@ -284,6 +340,10 @@ int tls_verify_chain(rt_tls_session_t *session) {
         return RT_TLS_ERROR_HANDSHAKE;
     }
 
+    if (session->server_cert_der_len > UINT32_MAX) {
+        session->error = "TLS: certificate is too large for Windows CryptoAPI";
+        return RT_TLS_ERROR_HANDSHAKE;
+    }
     PCCERT_CONTEXT cert_ctx = CertCreateCertificateContext(X509_ASN_ENCODING | PKCS_7_ASN_ENCODING,
                                                            server_cert_der,
                                                            (DWORD)session->server_cert_der_len);
@@ -331,6 +391,8 @@ int tls_verify_chain(rt_tls_session_t *session) {
         engine_config.hRestrictedRoot = root_store;
 #endif
         if (!CertCreateCertificateChainEngine(&engine_config, &chain_engine)) {
+            if (chain_engine)
+                CertFreeCertificateChainEngine(chain_engine);
             CertCloseStore(root_store, 0);
             CertCloseStore(extra_store, 0);
             CertFreeCertificateContext(cert_ctx);
@@ -374,6 +436,16 @@ int tls_verify_chain(rt_tls_session_t *session) {
                 return RT_TLS_ERROR_HANDSHAKE;
             }
             cert_index++;
+            if (cert_len > UINT32_MAX) {
+                if (chain_engine)
+                    CertFreeCertificateChainEngine(chain_engine);
+                if (root_store)
+                    CertCloseStore(root_store, 0);
+                CertCloseStore(extra_store, 0);
+                CertFreeCertificateContext(cert_ctx);
+                session->error = "TLS: intermediate certificate is too large for Windows CryptoAPI";
+                return RT_TLS_ERROR_HANDSHAKE;
+            }
             if (!CertAddEncodedCertificateToStore(extra_store,
                                                   X509_ASN_ENCODING | PKCS_7_ASN_ENCODING,
                                                   cert_der,
@@ -398,6 +470,8 @@ int tls_verify_chain(rt_tls_session_t *session) {
     CertCloseStore(extra_store, 0);
 
     if (!ok || !chain_ctx) {
+        if (chain_ctx)
+            CertFreeCertificateChain(chain_ctx);
         if (chain_engine)
             CertFreeCertificateChainEngine(chain_engine);
         if (root_store)
@@ -565,6 +639,10 @@ int tls_verify_cert_verify(rt_tls_session_t *session, const uint8_t *data, size_
         session->error = "TLS: CertVerify: no certificate stored";
         return RT_TLS_ERROR_HANDSHAKE;
     }
+    if (session->server_cert_der_len > UINT32_MAX) {
+        session->error = "TLS: CertVerify: certificate is too large for Windows CryptoAPI";
+        return RT_TLS_ERROR_HANDSHAKE;
+    }
     if (!build_cert_verify_hash_for_scheme_win(
             sig_scheme, session->cert_transcript_hash, content_hash, &hash_len)) {
         session->error = "TLS: CertificateVerify: unsupported scheme (Windows)";
@@ -596,7 +674,10 @@ int tls_verify_cert_verify(rt_tls_session_t *session, const uint8_t *data, size_
         memcpy(raw_sig + sizeof(sig_r), sig_s, sizeof(sig_s));
 
         if (!CryptImportPublicKeyInfoEx2(
-                X509_ASN_ENCODING, &cert_ctx->pCertInfo->SubjectPublicKeyInfo, 0, NULL, &key)) {
+                X509_ASN_ENCODING, &cert_ctx->pCertInfo->SubjectPublicKeyInfo, 0, NULL, &key) ||
+            !key) {
+            if (key)
+                BCryptDestroyKey(key);
             CertFreeCertificateContext(cert_ctx);
             session->error = "TLS: CertVerify: CryptImportPublicKeyInfoEx2 failed";
             return RT_TLS_ERROR_HANDSHAKE;
@@ -624,7 +705,10 @@ int tls_verify_cert_verify(rt_tls_session_t *session, const uint8_t *data, size_
         NTSTATUS status;
 
         if (!CryptImportPublicKeyInfoEx2(
-                X509_ASN_ENCODING, &cert_ctx->pCertInfo->SubjectPublicKeyInfo, 0, NULL, &key)) {
+                X509_ASN_ENCODING, &cert_ctx->pCertInfo->SubjectPublicKeyInfo, 0, NULL, &key) ||
+            !key) {
+            if (key)
+                BCryptDestroyKey(key);
             CertFreeCertificateContext(cert_ctx);
             session->error = "TLS: CertVerify: CryptImportPublicKeyInfoEx2 failed";
             return RT_TLS_ERROR_HANDSHAKE;

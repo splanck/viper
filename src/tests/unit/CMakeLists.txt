@@ -143,6 +143,17 @@ if (WIN32 AND NOT TARGET test_windows_installer_update)
     zanna_add_test_labels(test_windows_installer_update installer packaging requires_windows)
 endif ()
 
+if (WIN32 AND NOT TARGET test_windows_installer_lifecycle_contract)
+    zanna_add_test(test_windows_installer_lifecycle_contract
+            ${ZANNA_TESTS_DIR}/unit/test_windows_installer_lifecycle_contract.cpp)
+    target_compile_definitions(test_windows_installer_lifecycle_contract PRIVATE
+            ZANNA_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+    zanna_add_ctest(test_windows_installer_lifecycle_contract
+            test_windows_installer_lifecycle_contract)
+    zanna_add_test_labels(test_windows_installer_lifecycle_contract
+            installer packaging requires_windows unit)
+endif ()
+
 # Packaging subsystem unit tests (ZAPS)
 if (NOT TARGET test_packaging)
     if (WIN32)

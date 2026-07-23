@@ -1192,6 +1192,11 @@ add_test(NAME zia_zannastudio_editor_hot_path
 set_tests_properties(zia_zannastudio_editor_hot_path PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
         LABELS "zia;zannastudio;editor;requires_display;perf"
+        # This probe enforces two 250 ms wall-clock budgets.  CPU contention
+        # from an otherwise unrelated parallel CTest worker can violate those
+        # budgets even though the editor hot path is unchanged, so its timing
+        # sample must own the host while it runs.
+        RUN_SERIAL TRUE
         TIMEOUT 60)
 
 add_test(NAME zia_zannastudio_palette_query

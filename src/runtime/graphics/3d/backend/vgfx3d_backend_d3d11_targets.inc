@@ -322,12 +322,11 @@ static int d3d11_snapshot_backbuffer_for_readback(d3d11_context_t *ctx) {
     return 1;
 }
 
-/// @brief Release every offscreen render-target the scene path uses.
-///
-/// Tears down: scene color RTV/SRV, motion-vector RTV/SRV, depth
-/// DSV/SRV, and the overlay color target. Called on resize and
-/// during context destruction.
-static void d3d11_destroy_scene_targets(d3d11_context_t *ctx) {
+/// @brief Release the scaled scene and its size-dependent auxiliary targets.
+/// @details The native-size overlay is intentionally preserved. This lets a render-scale change
+///   stage a replacement scene while retaining both the last usable scene and overlay until every
+///   allocation needed for the new route has succeeded.
+static void d3d11_destroy_scene_route_targets(d3d11_context_t *ctx) {
     if (!ctx)
         return;
     d3d11_unbind_postfx_resources(ctx);
@@ -349,9 +348,6 @@ static void d3d11_destroy_scene_targets(d3d11_context_t *ctx) {
     d3d11_destroy_ssr_target(ctx);
     d3d11_release_readback_staging_texture(ctx);
     SAFE_RELEASE(ctx->presented_color_tex);
-    SAFE_RELEASE(ctx->overlay_color_srv);
-    SAFE_RELEASE(ctx->overlay_color_rtv);
-    SAFE_RELEASE(ctx->overlay_color_tex);
     SAFE_RELEASE(ctx->scene_depth_srv);
     SAFE_RELEASE(ctx->scene_dsv);
     SAFE_RELEASE(ctx->scene_depth_tex);
@@ -364,8 +360,6 @@ static void d3d11_destroy_scene_targets(d3d11_context_t *ctx) {
     d3d11_reset_depth_probe_state(ctx);
     ctx->scene_width = 0;
     ctx->scene_height = 0;
-    ctx->overlay_width = 0;
-    ctx->overlay_height = 0;
     ctx->postfx_width = 0;
     ctx->postfx_height = 0;
     ctx->postfx_scratch_width = 0;
@@ -374,6 +368,20 @@ static void d3d11_destroy_scene_targets(d3d11_context_t *ctx) {
     ctx->presented_height = 0;
     ctx->presented_color_valid = 0;
     d3d11_reset_temporal_scene_state(ctx);
+}
+
+/// @brief Release every offscreen target used by the window-scene route.
+/// @details Full teardown is used on resize and context destruction. Scene-only replacement uses
+///   d3d11_destroy_scene_route_targets so a valid native-size overlay survives transactionally.
+static void d3d11_destroy_scene_targets(d3d11_context_t *ctx) {
+    if (!ctx)
+        return;
+    d3d11_destroy_scene_route_targets(ctx);
+    SAFE_RELEASE(ctx->overlay_color_srv);
+    SAFE_RELEASE(ctx->overlay_color_rtv);
+    SAFE_RELEASE(ctx->overlay_color_tex);
+    ctx->overlay_width = 0;
+    ctx->overlay_height = 0;
 }
 
 /// @brief Allocate scene render targets at the requested size, idempotent on size match.
@@ -423,7 +431,7 @@ static HRESULT d3d11_ensure_scene_targets(d3d11_context_t *ctx, int32_t width, i
     if (FAILED(hr))
         goto fail;
 
-    d3d11_destroy_scene_targets(ctx);
+    d3d11_destroy_scene_route_targets(ctx);
     ctx->scene_color_tex = new_color_tex;
     ctx->scene_color_rtv = new_color_rtv;
     ctx->scene_color_srv = new_color_srv;

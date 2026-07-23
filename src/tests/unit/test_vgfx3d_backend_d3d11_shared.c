@@ -2125,7 +2125,7 @@ static void test_d3d11_backend_source_contracts(void) {
     EXPECT_TRUE(text_appears_in_order_after(source,
                                             "d3d11_ensure_scene_targets",
                                             "&new_depth_srv);",
-                                            "d3d11_destroy_scene_targets(ctx);"),
+                                            "d3d11_destroy_scene_route_targets(ctx);"),
                 "Scene targets stage every color/depth view before publication");
     EXPECT_TRUE(text_appears_in_order_after(source,
                                             "d3d11_ensure_overlay_target",
@@ -2203,6 +2203,23 @@ static void test_d3d11_backend_source_contracts(void) {
     EXPECT_TRUE(strstr(source, "FAILED(hr) || !*out_tex") != NULL &&
                     strstr(source, "FAILED(hr) || !back_buffer") != NULL,
                 "D3D11 target helpers reject successful calls with missing COM outputs");
+    EXPECT_TRUE(
+        strstr(source, "static HRESULT d3d11_required_output_result") != NULL &&
+            strstr(source, "hr = d3d11_required_output_result(hr, ctx->depth_state)") != NULL &&
+            strstr(source, "hr = d3d11_required_output_result(hr, ctx->vs_main)") != NULL &&
+            strstr(source, "hr = d3d11_required_output_result(hr, ctx->input_layout)") != NULL,
+        "Required state, shader, and input-layout factories validate COM outputs");
+    EXPECT_TRUE(strstr(source, "(!ctx->swap_chain || !ctx->device || !ctx->ctx)") != NULL,
+                "Device creation rejects a successful HRESULT with any missing core interface");
+    EXPECT_TRUE(strstr(source, "if (hr != S_OK)") != NULL,
+                "Present status codes do not publish an unconfirmed displayed-frame snapshot");
+    EXPECT_TRUE(text_appears_in_order_after(source,
+                                            "static int8_t d3d11_set_render_scale(",
+                                            "d3d11_ensure_overlay_target",
+                                            "d3d11_ensure_scene_targets"),
+                "Render-scale changes make the native overlay ready before publishing a scene");
+    EXPECT_TRUE(strstr(source, "d3d11_destroy_scene_route_targets(ctx);") != NULL,
+                "Scene replacement preserves the independent native-size overlay target");
     free(source);
 }
 

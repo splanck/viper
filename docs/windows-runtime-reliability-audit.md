@@ -173,6 +173,47 @@ pass only: no IL opcode, grammar, verifier rule, runtime C ABI, or cross-layer d
 | WR-155 | Windows demo architecture | Build type was unchecked and host detection missed native ARM64 when invoked from an emulated shell. The driver validates configurations and honors `PROCESSOR_ARCHITEW6432`. |
 | WR-156 | Windows demo tool discovery | The driver assumed a multi-config executable path and reused CMake trees without checking declared architecture. It now resolves multi- and single-config layouts and rejects incompatible caches before reuse. |
 | WR-157 | Windows demo manifests | Asset/project paths could escape their roots and duplicate or unsafe manifest names could overwrite outputs. Lexical confinement, safe-name rules, and case-insensitive duplicate rejection now protect staging. |
+| WR-158 | Windows CTest scheduling | The editor hot-path probe enforced 250 ms wall-clock budgets while sharing the host with up to seven unrelated tests, producing a clean-build-only false failure. The absolute-timing probe now runs serially. |
+| WR-159 | D3D11 telemetry queries | Frame-timing query creation trusted successful HRESULTs with null objects. Every required query now passes through the shared successful-null normalizer before it can be published. |
+| WR-160 | D3D11 resource factories | Rasterizer and constant-buffer factories could return nominal success without a usable object, allowing a null cache entry or later dereference. Both factory boundaries now require their output. |
+| WR-161 | D3D11 fallback resources | White 2D/cube textures, their SRVs, and the BRDF lookup texture/SRV all trusted successful-null creation. Each mandatory fallback resource is now validated before initialization continues. |
+| WR-162 | D3D11 pipeline state | Required depth-stencil, blend, and sampler states accepted successful-null driver outputs. Context creation now rejects every missing state at the call that created it. |
+| WR-163 | D3D11 startup assets | Shader objects, required and optional input layouts, and the skybox vertex buffer could publish null outputs after successful HRESULTs. All startup assets now normalize that contract to `E_POINTER`; optional compact layouts remain optional only after an actual failure is handled. |
+| WR-164 | D3D11 device creation | `D3D11CreateDeviceAndSwapChain` success was accepted without proving that the swapchain, device, and immediate context trio existed. Initialization now requires all three outputs before continuing. |
+| WR-165 | D3D11 DXGI outputs | Factory-parent lookup and the dedicated readback `GetBuffer` path trusted successful-null outputs and did not defensively release a failed partial output. Both paths now validate and retire partial interfaces. |
+| WR-166 | D3D11 presentation | Non-failing DXGI status codes such as occlusion were treated as proof that a captured backbuffer reached the display. Only `S_OK` now publishes a presented-frame snapshot; all other statuses invalidate it. |
+| WR-167 | D3D11 scene replacement | Publishing a newly staged scene called the full teardown routine, unnecessarily discarding the valid native-size overlay before the route was complete. Scene-only teardown is now separate and preserves the overlay transactionally. |
+| WR-168 | D3D11 render scale | Scale changes destroyed the last usable scene route before replacement allocation and committed the requested scale before resources existed. Overlay and scene resources now become ready first, and only then is the scale committed. |
+| WR-169 | D3D11 route repair | Same-scale requests returned success even when route resources were missing, while returning to native scale could retain an unused offscreen route and stale temporal/present state. Calls now repair incomplete routes, retire unnecessary targets, and invalidate dependent state. |
+| WR-170 | Windows TLS CA paths | Custom CA files were opened through the narrow CRT path boundary, failing for names outside the active ANSI code page. Paths now convert strictly from UTF-8 and open with `_wfopen`. |
+| WR-171 | Windows TLS CA sizing | CA loading used 32-bit `long` seek/tell results and had no file-size limit. It now uses 64-bit CRT offsets and rejects bundles larger than 16 MiB before allocation. |
+| WR-172 | Windows TLS CA snapshots | A CA file that grew after sizing was silently accepted as a verified prefix. The loader now requires exact content and rejects any trailing byte or read error after the snapshot. |
+| WR-173 | Windows TLS CA framing | Null stores/paths and embedded NUL bytes in PEM input were not rejected at the parser boundary, permitting leaked allocations or truncated interpretation. Inputs are validated before reading and PEM must be NUL-free. |
+| WR-174 | Windows TLS PEM parsing | A valid certificate followed by a truncated, undecodable, unallocatable, or unaddable PEM block still accepted the earlier prefix. Bundle parsing is now all-or-nothing. |
+| WR-175 | Windows TLS CA count | PEM bundles had no certificate-count ceiling. Custom stores now reject more than 1,024 certificates before unbounded decode/store work. |
+| WR-176 | Windows TLS DER input | Raw DER bundle length was narrowed to CryptoAPI's `DWORD` without a boundary check. Oversized input is now rejected before the cast. |
+| WR-177 | Windows TLS chain input | `tls_verify_chain(NULL)` could dereference its session, and an oversized leaf length narrowed into `CertCreateCertificateContext`. Null sessions and leaf sizes beyond the CryptoAPI contract now fail deterministically. |
+| WR-178 | Windows TLS chain construction | Intermediate lengths could narrow, and failed chain-engine/chain-context APIs could leave partial outputs allocated. Lengths are checked and all failed partial outputs are released. |
+| WR-179 | Windows TLS CertificateVerify | Oversized leaf lengths and successful-null CNG key imports could reach CertificateVerify processing; failed imports could also leak a partial key. Bounds and required key outputs are now enforced with cleanup. |
+| WR-180 | installer update configuration | Supplying only part of the manifest URL/modulus/exponent tuple silently disabled update verification. Only a wholly absent tuple is unconfigured; partial security configuration is now an error. |
+| WR-181 | installer update key modulus | The pinned RSA modulus had no public-boundary size or canonical-hex validation. Verification now requires a lowercase, non-zero-leading 2,048- to 4,096-bit modulus. |
+| WR-182 | installer update key exponent | The pinned exponent could be oversized, non-canonical, even, or otherwise invalid before CNG import. It is now bounded to 32 bits, minimally encoded, odd, and at least three. |
+| WR-183 | installer update signatures | Signature text was decoded and allocated before proving its encoding or expected RSA width. It must now be lowercase hex with exactly the pinned modulus length. |
+| WR-184 | installer update digests | Download SHA-256 text was decoded before enforcing its exact representation. Manifests now require exactly 64 lowercase hexadecimal characters. |
+| WR-185 | installer update URLs | Raw backslashes and spaces were left for WinHTTP canonicalization, allowing the signed URL text and requested resource to differ ambiguously. Such characters are now rejected before parsing. |
+| WR-186 | installer update origins | Same-origin comparison lowercased hosts with the process locale. Host identity now uses Windows ordinal case-insensitive comparison without mutation. |
+| WR-187 | installer update transport | The update session did not explicitly require the supported TLS floor or enable certificate revocation checks. WinHTTP now requires TLS 1.2 and enables SSL revocation before sending. |
+| WR-188 | installer update reads | A corrupted or shimmed `WinHttpReadData` byte count could exceed the supplied buffer yet still be appended. Returned counts are now bounded by both the buffer and manifest cap. |
+| WR-189 | installer path identity | Lifecycle path comparisons and mutex/cache hashes depended on `towlower` and the process locale. Comparisons now use ordinal Windows semantics and hashes use invariant case folding over preferred separators. |
+| WR-190 | installer protected roots | Windows-directory and protected-known-folder lookup failures made destination protection fail open, and partial known-folder outputs could leak. Resolution is now mandatory and every returned allocation is released. |
+| WR-191 | installer registry boundary | Registry opens could report success with no key, malformed string queries were conflated with missing values, and string-write size/type/NUL constraints were unchecked. The adapter now validates handles, exact reads, and bounded writes. |
+| WR-192 | installer reparse defense | Unexpected `GetFileAttributesW` errors on a destination ancestor were treated like a nonexistent path, so safety could not actually be proven. Only file/path-not-found is skippable; every other error fails closed. |
+| WR-193 | installer metadata reads | Transaction and ownership text files were read without a bound, and unreadable files were conflated with absent files. Reads now require a regular file, cap it at 32 MiB, and consume one exact snapshot. |
+| WR-194 | installer atomic writes | Staged metadata used stream flush only and could leave temporary files after write/flush exceptions. Native writes now loop exactly, call `FlushFileBuffers`, publish with write-through, and clean failed staging. |
+| WR-195 | installer recovery journal | Journal state was selected by substring, so corrupt or contradictory text could drive destructive recovery; a missing journal could also discard a preserved old tree. Parsing now requires the exact schema and retains ambiguous transactions. |
+| WR-196 | installer PATH updates | PATH mutation used a lossy optional query, overwrote malformed reads with an empty value, forced `REG_EXPAND_SZ`, and compared entries with locale folding. It now uses the exact snapshot reader, preserves the existing type, and compares ordinally. |
+| WR-197 | installer Shell Links | Successful-null Shell Link/persistence interfaces could be dereferenced, and getter buffers were assumed to contain a terminator. Required COM outputs and bounded NUL termination are now verified before ownership matching. |
+| WR-198 | installer shortcut cleanup | Missing shortcut records still triggered parent cleanup, directories/reparse points could be removed as links, and a desktop shortcut could cause the Desktop root itself to be removed if empty. Cleanup now skips absent links, requires plain files, and protects all shell roots. |
 
 ## Regression coverage
 
@@ -184,7 +225,8 @@ pass only: no IL opcode, grammar, verifier rule, runtime C ABI, or cross-layer d
   modification-time behavior without allocating the file's logical size.
 - `test_rt_args` races small and 16 KiB environment values across the Win32 size/read boundary.
 - `test_rt_locale` exercises sentinel, malformed-tag, normalization, and cleared-output behavior.
-- `test_rt_tls_cert` exercises exact CertificateVerify framing and null-session rejection.
+- `test_rt_tls_cert` exercises exact CertificateVerify framing, null-session rejection, non-ASCII
+  custom-CA paths, malformed trailing PEM blocks, and the 16 MiB Windows bundle limit.
 - `test_rt_exec` relaunches itself through both Process and ConPTY with intentionally unsorted,
   non-ASCII explicit environments; it also rejects duplicate variables and malformed UTF-8.
 - `test_rt_asset` mounts a non-ASCII pack path and verifies Windows ordinal case identity.
@@ -193,9 +235,9 @@ pass only: no IL opcode, grammar, verifier rule, runtime C ABI, or cross-layer d
 - `test_rt_watcher`, `test_rt_future`, `test_rt_concqueue`, `test_rt_threads_monitor`,
   `test_rt_threads_thread`, and `test_rt_threads_primitives` cover the affected runtime contracts.
 - `test_vgfx3d_backend_d3d11_shared` covers timestamp/depth-probe poll budgets and source contracts
-  requiring stage-before-publish ordering for all eighteen repaired D3D11 replacement paths,
-  successful-null COM output rejection, and the shader helpers' initialized single-result control
-  flow; `zia_smoke_d3d11_rtt_readback`,
+  requiring stage-before-publish ordering for all repaired D3D11 replacement paths, required
+  startup-object validation, exact presentation status, overlay-preserving scene replacement, and
+  the shader helpers' initialized single-result control flow; `zia_smoke_d3d11_rtt_readback`,
   `g3d_test_canvas3d_viewmodel_sprite`, `g3d_test_canvas3d_point_shadows_d3d11`, and the Ridgebound
   D3D11 smoke exercise the hardware backend.
 - `test_linker_platform_import_planners` verifies that the 64-bit stat and floating-remainder
@@ -207,6 +249,10 @@ pass only: no IL opcode, grammar, verifier rule, runtime C ABI, or cross-layer d
 - `windows_automation_script_contracts` exercises failure-atomic signing, timestamp-URL rejection,
   staging cleanup, single-config tool discovery, architecture checks, path confinement, and
   duplicate demo-output rejection.
+- `test_windows_installer_update` covers partial pinned configurations, key/digest/signature bounds,
+  ambiguous URLs, and ordinal origin matching. `test_windows_installer_lifecycle_contract` protects
+  exact recovery schemas, durable staging, validated PATH mutation, required Shell Link outputs,
+  and fail-closed destination/shortcut cleanup.
 
 The required end-to-end gates are `scripts/build_zanna_win.ps1` and
 `scripts/build_demos_win.ps1 --run`; repository-owned `.cmd` wrappers are intentionally absent under
@@ -221,14 +267,24 @@ Revalidated on Windows x64/MSVC on 2026-07-22:
   native Studio link, 1,804-test non-slow selection, runtime/API audits, platform lint, host smoke
   checks, and install stage. A final incremental pass re-exercised those stages after the native
   import correction.
+- A later clean revalidation exposed one contention-only failure in the editor hot-path timing
+  probe; the probe passed immediately in isolation. After serializing that absolute-timing sample,
+  the canonical eight-worker pipeline completed all build, non-slow CTest, audit, smoke, policy,
+  and install stages successfully.
+- The WR-159 through WR-198 pass then completed a fresh warning-as-error rebuild; its clean-tree
+  1,805-test non-slow CTest log reported all tests passed. An immediate canonical incremental run
+  returned exit 0 across build, the same complete test selection, audits, platform policy, host
+  smoke checks, and the install stage.
 - The focused installer, automation, D3D11, machine-runtime, and native-import planner regressions
-  passed. The opt-in IntelliSense slow test also passes in 340.79 seconds under its measured
-  420-second timeout.
+  passed. The user-scope native installer lifecycle smoke also completed install, integration,
+  uninstall, and cleanup. The opt-in IntelliSense slow test also passes in 340.79 seconds under its
+  measured 420-second timeout.
 - An exploratory all-slow-label pass found only `source_health_audit` failing four stale baseline
   limits. A detached clean-HEAD audit produced the identical four metrics, proving this change did
   not add that debt; its baseline was deliberately not weakened here.
 - `scripts/lint_platform_policy.sh --strict --changed-only`, the PowerShell parser checks, the
-  source-header audit, and `git diff --check` passed.
+  source-header audit, and `git diff --check` passed; the new TLS regression uses the shared
+  `ZANNA_HOST_WINDOWS` capability rather than a raw host macro.
 - A `scripts/build_demos_win.ps1 --clean --run` invocation built and launch-smoked all nine curated
   x64 demos successfully: Ashfall, 3dbowling, Ridgebound, Xenoscape, Crackman, Chess, Baseball,
   Paint, and ZannaSQL.

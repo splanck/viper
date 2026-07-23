@@ -24,6 +24,7 @@
 //               "subjectAltName=DNS:example.com,DNS:*.example.com,DNS:www.example.com"
 //===----------------------------------------------------------------------===//
 
+#include "common/PlatformCapabilities.hpp"
 #include "rt_tls.h"
 #include "rt_tls_internal.h"
 
@@ -34,6 +35,7 @@
 #include <filesystem>
 #include <fstream>
 #include <string>
+#include <string_view>
 #include <vector>
 
 // ---------------------------------------------------------------------------
@@ -260,6 +262,17 @@ static std::vector<uint8_t> make_minimal_cert_with_dns_sans(size_t filler_count,
     return der_tlv(0x30, tbs);
 }
 
+static std::filesystem::path filesystem_path_from_utf8(std::string_view text) {
+    return std::filesystem::path(
+        std::u8string(reinterpret_cast<const char8_t *>(text.data()),
+                      reinterpret_cast<const char8_t *>(text.data()) + text.size()));
+}
+
+static std::string filesystem_path_to_utf8(const std::filesystem::path &path) {
+    const std::u8string encoded = path.u8string();
+    return std::string(reinterpret_cast<const char *>(encoded.data()), encoded.size());
+}
+
 struct temp_text_file_t {
     std::string path;
 
@@ -276,7 +289,7 @@ struct temp_text_file_t {
             return *this;
         std::error_code ec;
         if (!path.empty())
-            std::filesystem::remove(path, ec);
+            std::filesystem::remove(filesystem_path_from_utf8(path), ec);
         path = std::move(other.path);
         other.path.clear();
         return *this;
@@ -285,7 +298,7 @@ struct temp_text_file_t {
     ~temp_text_file_t() {
         std::error_code ec;
         if (!path.empty())
-            std::filesystem::remove(path, ec);
+            std::filesystem::remove(filesystem_path_from_utf8(path), ec);
     }
 };
 
@@ -293,8 +306,10 @@ static temp_text_file_t write_temp_text_file(const char *suffix, const char *con
     temp_text_file_t file;
     std::filesystem::path dir = std::filesystem::temp_directory_path();
     auto id = (unsigned long long)std::chrono::steady_clock::now().time_since_epoch().count();
-    file.path = (dir / ("zanna_tls_cert_" + std::to_string(id) + suffix)).string();
-    std::ofstream out(file.path, std::ios::binary | std::ios::trunc);
+    const std::filesystem::path native_path =
+        dir / filesystem_path_from_utf8("zanna_tls_cert_" + std::to_string(id) + suffix);
+    file.path = filesystem_path_to_utf8(native_path);
+    std::ofstream out(native_path, std::ios::binary | std::ios::trunc);
     if (!out)
         file.path.clear();
     else
@@ -731,7 +746,8 @@ static void test_hostname_verification_scans_past_san_extraction_cap(void) {
 
 static void test_chain_verification_custom_bundle_rsa(void) {
     std::vector<uint8_t> leaf_der = decode_pem_certificate(TEST_RSA_LEAF_CERT_PEM);
-    temp_text_file_t ca_file = write_temp_text_file("_rsa_ca.pem", TEST_RSA_ROOT_CERT_PEM);
+    temp_text_file_t ca_file =
+        write_temp_text_file("_rsa_\xe6\xa0\xb9_ca.pem", TEST_RSA_ROOT_CERT_PEM);
     rt_tls_session_t session;
 
     assert(!leaf_der.empty());
@@ -775,6 +791,47 @@ static void test_chain_verification_rejects_too_many_intermediates(void) {
     free(session.server_cert_list);
     printf("  PASS: test_chain_verification_rejects_too_many_intermediates\n");
 }
+
+#if ZANNA_HOST_WINDOWS
+static void test_windows_chain_verification_rejects_bad_ca_inputs(void) {
+    std::vector<uint8_t> leaf_der = decode_pem_certificate(TEST_RSA_LEAF_CERT_PEM);
+    const std::string truncated_bundle =
+        std::string(TEST_RSA_ROOT_CERT_PEM) + "\n-----BEGIN CERTIFICATE-----\nAAAA\n";
+    temp_text_file_t malformed =
+        write_temp_text_file("_malformed_ca.pem", truncated_bundle.c_str());
+    temp_text_file_t oversized = write_temp_text_file("_oversized_ca.pem", "");
+    rt_tls_session_t session;
+
+    assert(!leaf_der.empty());
+    assert(!malformed.path.empty());
+    assert(!oversized.path.empty());
+
+    memset(&session, 0, sizeof(session));
+    memcpy(session.server_cert_der, leaf_der.data(), leaf_der.size());
+    session.server_cert_der_len = leaf_der.size();
+    strncpy(session.ca_file, malformed.path.c_str(), sizeof(session.ca_file) - 1);
+    assert(tls_verify_chain(&session) == RT_TLS_ERROR_HANDSHAKE);
+    assert(session.error && strstr(session.error, "could not load custom CA file"));
+
+    {
+        std::ofstream out(filesystem_path_from_utf8(oversized.path),
+                          std::ios::binary | std::ios::trunc);
+        assert(out);
+        out.seekp(16 * 1024 * 1024);
+        out.put('x');
+        assert(out.good());
+    }
+    memset(&session, 0, sizeof(session));
+    memcpy(session.server_cert_der, leaf_der.data(), leaf_der.size());
+    session.server_cert_der_len = leaf_der.size();
+    strncpy(session.ca_file, oversized.path.c_str(), sizeof(session.ca_file) - 1);
+    assert(tls_verify_chain(&session) == RT_TLS_ERROR_HANDSHAKE);
+    assert(session.error && strstr(session.error, "could not load custom CA file"));
+
+    assert(tls_verify_chain(nullptr) == RT_TLS_ERROR_HANDSHAKE);
+    printf("  PASS: test_windows_chain_verification_rejects_bad_ca_inputs\n");
+}
+#endif
 
 static void test_certificate_verify_requires_exact_signature_length(void) {
     rt_tls_session_t session;
@@ -837,6 +894,9 @@ int main(void) {
     printf("-- Native RSA chain verification --\n");
     test_chain_verification_custom_bundle_rsa();
     test_chain_verification_rejects_too_many_intermediates();
+#if ZANNA_HOST_WINDOWS
+    test_windows_chain_verification_rejects_bad_ca_inputs();
+#endif
 
     printf("-- CertificateVerify message framing --\n");
     test_certificate_verify_requires_exact_signature_length();
