@@ -339,11 +339,29 @@ static void vgfx_wl_keyboard_keymap(void *data, struct wl_proxy *keyboard, uint3
     munmap(map, size);
     if (input->xkb.keymap) input->xkb.state = input->xkb.state_new(input->xkb.keymap);
 }
+void vgfx_wayland_input_sync_pressed(vgfx_wayland_input_t *input,
+                                     const struct wl_array *keys) {
+    if (!input || !input->window)
+        return;
+    vgfx_internal_clear_input_state(input->window);
+    if (!keys || !keys->data)
+        return;
+    const uint32_t *pressed = (const uint32_t *)keys->data;
+    size_t count = keys->size / sizeof(*pressed);
+    for (size_t i = 0; i < count; ++i) {
+        vgfx_key_t key = vgfx_wayland_translate_evdev_key(pressed[i]);
+        if (key != VGFX_KEY_UNKNOWN)
+            vgfx_internal_set_key_state(input->window, key, 1);
+    }
+}
 static void vgfx_wl_keyboard_enter(void *data, struct wl_proxy *keyboard, uint32_t serial,
                                    struct wl_proxy *surface, struct wl_array *keys) {
-    (void)keyboard; (void)keys;
+    (void)keyboard;
     vgfx_wayland_input_t *input = data;
-    if (input && surface == input->surface) input->keyboard_serial = serial;
+    if (!input || surface != input->surface)
+        return;
+    input->keyboard_serial = serial;
+    vgfx_wayland_input_sync_pressed(input, keys);
 }
 static void vgfx_wl_keyboard_leave(void *data, struct wl_proxy *keyboard, uint32_t serial,
                                    struct wl_proxy *surface) {

@@ -130,22 +130,35 @@ static int vgfx_wayland_dispatch_available(vgfx_wayland_platform_t *platform, in
             dispatched = 1;
     }
     int flush_result = api->display_flush(platform->connection.display);
-    if (flush_result < 0 && errno != EAGAIN) {
+    int flush_blocked = flush_result < 0 && errno == EAGAIN;
+    if (flush_result < 0 && !flush_blocked) {
         api->display_cancel_read(platform->connection.display);
         return 0;
     }
     struct pollfd descriptor = {
-        .fd = api->display_get_fd(platform->connection.display), .events = POLLIN, .revents = 0};
+        .fd = api->display_get_fd(platform->connection.display),
+        .events = (short)(POLLIN | (flush_blocked ? POLLOUT : 0)),
+        .revents = 0};
     int result;
     do {
         result = poll(&descriptor, 1, timeout_ms < 0 ? -1 : timeout_ms);
     } while (result < 0 && errno == EINTR);
+    if (result > 0 && (descriptor.revents & (POLLERR | POLLHUP | POLLNVAL))) {
+        api->display_cancel_read(platform->connection.display);
+        return 0;
+    }
     if (result > 0 && (descriptor.revents & POLLIN)) {
         if (api->display_read_events(platform->connection.display) < 0)
+            return 0;
+        if (flush_blocked && (descriptor.revents & POLLOUT) &&
+            api->display_flush(platform->connection.display) < 0 && errno != EAGAIN)
             return 0;
         return api->display_dispatch_pending(platform->connection.display) >= 0 ? 2 : 0;
     }
     api->display_cancel_read(platform->connection.display);
+    if (result > 0 && flush_blocked && (descriptor.revents & POLLOUT) &&
+        api->display_flush(platform->connection.display) < 0 && errno != EAGAIN)
+        return 0;
     return result >= 0 ? (dispatched ? 2 : 1) : 0;
 }
 
@@ -606,16 +619,19 @@ vgfx_window_capabilities_t vgfx_get_window_capabilities(vgfx_window_t window) {
     const vgfx_wayland_platform_t *platform =
         (const vgfx_wayland_platform_t *)window->platform_data;
     const uint32_t globals = platform->connection.globals;
-    vgfx_window_capabilities_t result = VGFX_CAP_CLIPBOARD_TEXT | VGFX_CAP_FILE_DROP;
+    vgfx_window_capabilities_t result = 0;
+    if (platform->data.device)
+        result |= VGFX_CAP_CLIPBOARD_TEXT | VGFX_CAP_FILE_DROP;
     if ((globals &
          (VGFX_WAYLAND_GLOBAL_RELATIVE_POINTER_V1 | VGFX_WAYLAND_GLOBAL_POINTER_CONSTRAINTS_V1)) ==
-        (VGFX_WAYLAND_GLOBAL_RELATIVE_POINTER_V1 | VGFX_WAYLAND_GLOBAL_POINTER_CONSTRAINTS_V1))
+        (VGFX_WAYLAND_GLOBAL_RELATIVE_POINTER_V1 |
+         VGFX_WAYLAND_GLOBAL_POINTER_CONSTRAINTS_V1))
         result |= VGFX_CAP_RELATIVE_MOUSE;
-    if (globals & VGFX_WAYLAND_GLOBAL_TEXT_INPUT_MANAGER_V3)
+    if (platform->text_input.proxy)
         result |= VGFX_CAP_TEXT_COMPOSITION;
-    if (globals & VGFX_WAYLAND_GLOBAL_FRACTIONAL_SCALE_V1)
+    if (platform->scale.fractional_scale && platform->scale.viewport)
         result |= VGFX_CAP_FRACTIONAL_SCALE;
-    if (globals & VGFX_WAYLAND_GLOBAL_XDG_DECORATION_V1)
+    if (platform->shell.decoration)
         result |= VGFX_CAP_SERVER_DECORATIONS;
     if (globals & VGFX_WAYLAND_GLOBAL_XDG_ACTIVATION_V1)
         result |= VGFX_CAP_ACTIVATION | VGFX_CAP_FOCUS_REQUEST;

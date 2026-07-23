@@ -39,6 +39,8 @@ typedef struct vgfx_wayland_shell {
     uint32_t entered_output_count;
     void (*output_observer)(void *data, struct wl_proxy *output, int32_t entered);
     void *output_observer_data;
+    void (*preferred_scale_observer)(void *data, int32_t factor);
+    void *preferred_scale_observer_data;
 } vgfx_wayland_shell_t;
 
 /// @brief Create an xdg toplevel and complete its initial configure handshake.

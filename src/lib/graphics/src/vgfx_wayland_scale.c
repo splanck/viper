@@ -54,7 +54,9 @@ static vgfx_wayland_output_t *vgfx_scale_output(vgfx_wayland_scale_t *scale,
 static void vgfx_scale_recompute(vgfx_wayland_scale_t *scale) {
     if (!scale || !scale->shell || !scale->shell->surface)
         return;
-    int32_t factor = vgfx_wayland_scale_select_factor(scale->outputs, scale->output_count);
+    int32_t factor = scale->preferred_buffer_scale > 0
+                         ? scale->preferred_buffer_scale
+                         : vgfx_wayland_scale_select_factor(scale->outputs, scale->output_count);
     if (factor == scale->scale)
         return;
     scale->scale = factor;
@@ -215,6 +217,14 @@ static void vgfx_scale_surface(void *data, struct wl_proxy *output, int32_t ente
     vgfx_scale_recompute(scale);
 }
 
+static void vgfx_scale_preferred(void *data, int32_t factor) {
+    vgfx_wayland_scale_t *scale = data;
+    if (!scale || factor <= 0 || factor == scale->preferred_buffer_scale)
+        return;
+    scale->preferred_buffer_scale = factor;
+    vgfx_scale_recompute(scale);
+}
+
 int vgfx_wayland_scale_open(vgfx_wayland_scale_t *scale,
                             vgfx_wayland_connection_t *connection,
                             vgfx_wayland_shell_t *shell) {
@@ -229,6 +239,8 @@ int vgfx_wayland_scale_open(vgfx_wayland_scale_t *scale,
     connection->global_observer_data = scale;
     shell->output_observer = vgfx_scale_surface;
     shell->output_observer_data = scale;
+    shell->preferred_scale_observer = vgfx_scale_preferred;
+    shell->preferred_scale_observer_data = scale;
     uint32_t count = connection->output_count;
     uint32_t names[16];
     uint32_t versions[16];
@@ -290,6 +302,10 @@ void vgfx_wayland_scale_close(vgfx_wayland_scale_t *scale) {
     if (scale->shell && scale->shell->output_observer_data == scale) {
         scale->shell->output_observer = NULL;
         scale->shell->output_observer_data = NULL;
+    }
+    if (scale->shell && scale->shell->preferred_scale_observer_data == scale) {
+        scale->shell->preferred_scale_observer = NULL;
+        scale->shell->preferred_scale_observer_data = NULL;
     }
     if (scale->fractional_scale && scale->connection)
         (void)scale->connection->api.proxy_marshal_flags(

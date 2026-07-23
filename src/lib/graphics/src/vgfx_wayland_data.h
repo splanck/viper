@@ -28,6 +28,7 @@ typedef struct vgfx_wayland_offer {
     int32_t text_utf8;
     int32_t text_plain;
     int32_t uri_list;
+    uint32_t action;
 } vgfx_wayland_offer_t;
 
 typedef struct vgfx_wayland_transfer {

@@ -35,6 +35,9 @@ typedef struct vgfx_wayland_cursor {
     int32_t visible;
 } vgfx_wayland_cursor_t;
 
+/// @brief Return the primary Xcursor theme name for one public cursor type.
+const char *vgfx_wayland_cursor_name(int32_t type);
+
 int vgfx_wayland_cursor_open(vgfx_wayland_cursor_t *cursor,
                              vgfx_wayland_connection_t *connection,
                              vgfx_wayland_input_t *input);

@@ -34,6 +34,7 @@ typedef struct vgfx_wayland_scale {
     struct wp_fractional_scale_v1 *fractional_scale;
     uint32_t output_count;
     int32_t scale;
+    int32_t preferred_buffer_scale;
     uint32_t preferred_scale_120;
     int32_t logical_width;
     int32_t logical_height;

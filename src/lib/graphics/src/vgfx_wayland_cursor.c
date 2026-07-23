@@ -43,19 +43,27 @@ struct wl_cursor {
     char *name;
 };
 
-static const char *vgfx_cursor_name(int32_t type) {
+const char *vgfx_wayland_cursor_name(int32_t type) {
     switch (type) {
     case VGFX_CURSOR_POINTER: return "pointer";
     case VGFX_CURSOR_TEXT: return "text";
     case VGFX_CURSOR_RESIZE_H: return "ew-resize";
     case VGFX_CURSOR_RESIZE_V: return "ns-resize";
     case VGFX_CURSOR_WAIT: return "wait";
+    case VGFX_CURSOR_RESIZE_NWSE: return "nwse-resize";
+    case VGFX_CURSOR_RESIZE_NESW: return "nesw-resize";
+    case VGFX_CURSOR_GRAB: return "grab";
+    case VGFX_CURSOR_GRABBING: return "grabbing";
+    case VGFX_CURSOR_CROSSHAIR: return "crosshair";
+    case VGFX_CURSOR_HELP: return "help";
+    case VGFX_CURSOR_NOT_ALLOWED: return "not-allowed";
     default: return "default";
     }
 }
 
 static struct wl_cursor *vgfx_cursor_lookup(vgfx_wayland_cursor_t *cursor, int32_t type) {
-    struct wl_cursor *result = cursor->theme_get_cursor(cursor->theme, vgfx_cursor_name(type));
+    struct wl_cursor *result =
+        cursor->theme_get_cursor(cursor->theme, vgfx_wayland_cursor_name(type));
     if (!result && type == VGFX_CURSOR_DEFAULT)
         result = cursor->theme_get_cursor(cursor->theme, "left_ptr");
     if (!result && type == VGFX_CURSOR_POINTER)

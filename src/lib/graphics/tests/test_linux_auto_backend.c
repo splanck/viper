@@ -53,6 +53,12 @@ static void test_expected_backend(const char *expected) {
     ASSERT_NOT_NULL(handles.display);
     ASSERT_EQ(vgfx_update(window), 1);
     ASSERT_EQ(vgfx_pump_events(window), 1);
+    if (strcmp(expected, "wayland") == 0) {
+        vgfx_maximize(window);
+        ASSERT_EQ(vgfx_pump_events(window), 1);
+        vgfx_restore(window);
+        ASSERT_EQ(vgfx_pump_events(window), 1);
+    }
     vgfx_destroy_window(window);
     TEST_END();
 }
