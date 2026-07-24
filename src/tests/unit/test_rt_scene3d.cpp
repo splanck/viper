@@ -858,16 +858,16 @@ static void test_try_add_child_preserve_world_keeps_complete_subtree_pose() {
     void *source_rotation = rt_quat_from_euler(0.2, -0.4, 0.3);
     void *target_rotation = rt_quat_from_euler(-0.1, 0.6, -0.25);
     void *child_rotation = rt_quat_from_euler(0.35, 0.15, -0.5);
-    double child_world_before[16];
-    double grandchild_world_before[16];
-    double child_world_after[16];
-    double grandchild_world_after[16];
-    double local_x_before;
-    double local_y_before;
-    double local_z_before;
-    double local_x_after;
-    double local_y_after;
-    double local_z_after;
+    double child_world_before[16]{};
+    double grandchild_world_before[16]{};
+    double child_world_after[16]{};
+    double grandchild_world_after[16]{};
+    double local_x_before = 0.0;
+    double local_y_before = 0.0;
+    double local_z_before = 0.0;
+    double local_x_after = 0.0;
+    double local_y_after = 0.0;
+    double local_z_after = 0.0;
 
     rt_scene_node3d_set_transform(source_parent,
                                   8.0,

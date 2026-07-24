@@ -1322,9 +1322,9 @@ add_test(NAME zia_zannastudio_scene_editor_2d
 set_tests_properties(zia_zannastudio_scene_editor_2d PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
         LABELS "zia;zannastudio;scene;requires_display"
-        # Debug source compilation and hidden-window rendering can exceed the
-        # normal display-only runtime while unrelated CTest workers saturate
-        # the host. Keep bounded headroom above the observed serial runtime.
+        # Source compilation and hidden-window rendering can exceed the normal
+        # display-only runtime while unrelated CTest workers saturate the host.
+        # Keep bounded headroom above the observed serial runtime.
         TIMEOUT 120)
 
 add_test(NAME zia_zannastudio_scene_canvas_selection
@@ -1354,10 +1354,15 @@ set_tests_properties(zia_zannastudio_scene_editor_3d PROPERTIES
         LABELS "zia;zannastudio;scene;requires_display;slow"
         TIMEOUT 600)
 if (WIN32)
-    # The 3D fixture compiles a large Studio graph and drives hidden native
-    # rendering. On Windows it can exceed twice its isolated runtime when
-    # unrelated compiler probes saturate the host, so reserve the runner.
-    set_property(TEST zia_zannastudio_scene_editor_3d PROPERTY RUN_SERIAL TRUE)
+    # Both fixtures compile large Studio graphs and drive hidden native
+    # rendering. Reserve the Windows runner so unrelated compiler probes cannot
+    # starve them. A Release build of the especially large 3D fixture takes
+    # about seven minutes on the reference host, so retain bounded headroom.
+    set_tests_properties(
+            zia_zannastudio_scene_editor_2d
+            zia_zannastudio_scene_editor_3d
+            PROPERTIES RUN_SERIAL TRUE)
+    set_property(TEST zia_zannastudio_scene_editor_3d PROPERTY TIMEOUT 600)
 endif ()
 
 add_test(NAME zia_zannastudio_scene_light_authoring
@@ -2547,7 +2552,9 @@ if (ZANNA_BASH_EXECUTABLE)
             PASS_REGULAR_EXPRESSION "Platform policy lint: clean"
             LABELS "tools;smoke;requires_posix_shell"
             WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
-            TIMEOUT 30)
+            # A clean full-tree scan normally completes in about ten seconds on
+            # Windows; retain headroom for concurrent compiler process startup.
+            TIMEOUT 60)
 
     add_test(NAME platform_policy_lint_empty_candidates
             COMMAND ${ZANNA_BASH_COMMAND} "src/tests/e2e/test_platform_policy_lint_empty_candidates.sh"
@@ -3557,6 +3564,8 @@ if (WIN32)
             test_rt_game3d_cinematics
             test_rt_game3d_hlod
             test_rt_restclient
+            zia_zannastudio_scene_editor_2d
+            zia_zannastudio_scene_editor_3d
             zia_zannastudio_console_search
             zia_season_baseball
             zia_smoke_ridgebound_d3d11

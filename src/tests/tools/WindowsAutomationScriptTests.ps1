@@ -15,10 +15,12 @@
 #   - Studio artifacts are staged, PE-validated, provenance-bound, and pair-published.
 #   - The cmd.exe demo compatibility entry point remains a logic-free forwarding shim.
 #   - Installer automation recognizes every existing-input spelling and requires Studio by default.
+#   - Canonical Windows builds do not clean an unconfigured or absent build tree.
 #   - End-to-end validation has bounded child processes and path-confined cleanup.
 # Ownership/Lifetime: The caller-owned work directory contains all temporary fixtures.
 # Links: scripts/sign-windows-installer.ps1, scripts/build_demos_win.ps1,
 #        scripts/build_ide_win.ps1, scripts/build_installer.ps1,
+#        scripts/build_zanna_win.ps1,
 #        scripts/validate-windows-toolchain-installer.ps1
 #
 #===----------------------------------------------------------------------===#
@@ -28,6 +30,7 @@ param(
     [Parameter(Mandatory = $true)][string]$DemoScript,
     [Parameter(Mandatory = $true)][string]$IdeScript,
     [Parameter(Mandatory = $true)][string]$InstallerScript,
+    [Parameter(Mandatory = $true)][string]$BuildScript,
     [Parameter(Mandatory = $true)][string]$ValidatorScript,
     [Parameter(Mandatory = $true)][string]$WorkDir
 )
@@ -251,6 +254,14 @@ Assert-True ($installerSource.Contains("ZANNA_INSTALL_ZANNASTUDIO") -and
     "The installer wrapper does not verify the default Zanna Studio build."
 Assert-True ($installerSource.Contains("[IO.Path]::GetFullPath(`$buildDir)")) `
     "The installer wrapper does not normalize an absolute build directory."
+
+$buildSource = [IO.File]::ReadAllText($BuildScript)
+Assert-True ($buildSource.Contains(
+                 'Test-Path -LiteralPath (Join-Path $buildRoot "CMakeCache.txt") -PathType Leaf') -and
+             $buildSource.Contains('} elseif ($configuredBuild) {') -and
+             $buildSource.Contains(
+                 'Skipping pre-configure clean because the build tree is not configured.')) `
+    "The canonical Windows build cleans an absent or unconfigured build tree."
 
 $validatorSource = [IO.File]::ReadAllText($ValidatorScript)
 Assert-True ($validatorSource.Contains("ProcessTimeoutSeconds") -and

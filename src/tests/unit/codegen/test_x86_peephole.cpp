@@ -947,6 +947,20 @@ TEST(X86Peephole, LinearMoveFoldingHandlesChainedAdjacentMoves) {
     EXPECT_TRUE(sameRegOperand(instrs[2].operands[1], gpr(PhysReg::RAX)));
 }
 
+TEST(X86Peephole, LinearMoveFoldingPreservesRegistersCarriedToSuccessors) {
+    std::vector<MInstr> instrs = {
+        MInstr{MOpcode::MOVrr, {gpr(PhysReg::R10), gpr(PhysReg::RAX)}},
+        MInstr{MOpcode::MOVrr, {gpr(PhysReg::R11), gpr(PhysReg::R10)}},
+        MInstr{MOpcode::JMP, {lbl(".Lsuccessor")}},
+    };
+
+    peephole::PeepholeStats stats{};
+    EXPECT_EQ(peephole::foldConsecutiveMoves(instrs, stats), 0U);
+    EXPECT_EQ(stats.consecutiveMovsFolded, 0U);
+    ASSERT_EQ(instrs[0].operands.size(), 2U);
+    EXPECT_TRUE(sameRegOperand(instrs[0].operands[0], gpr(PhysReg::R10)));
+}
+
 TEST(X86Peephole, FrameStoreForwardingContinuesAcrossLea) {
     // LEA computes an address without touching memory; it must not act as a
     // memory barrier for store-to-load forwarding. Any later dereference of

@@ -11,6 +11,7 @@
 # Key invariants:
 #   - User-selected generators and compilers are forwarded as discrete native
 #     arguments, without an intervening command shell.
+#   - Pre-configure cleaning runs only for an already configured build tree.
 #   - Only a validated POSIX shell is used by CTest and script-based checks.
 #   - A failed validation stage causes the script to return a nonzero status.
 #
@@ -372,12 +373,16 @@ try {
     $cacheReset = Reset-StaleCompilerCache -BuildRoot $buildRoot `
         -RequestedCompiler $requestedCompiler
 
+    $configuredBuild =
+        Test-Path -LiteralPath (Join-Path $buildRoot "CMakeCache.txt") -PathType Leaf
     if ($skipClean -eq "1") {
         Write-Host "Skipping clean (ZANNA_SKIP_CLEAN=1); incremental rebuild"
-    } elseif (-not $cacheReset) {
+    } elseif ($cacheReset) {
+        Write-Host "Skipping pre-configure clean because cached compiler state was reset."
+    } elseif ($configuredBuild) {
         & cmake --build $buildDir --target clean-all 2>$null
     } else {
-        Write-Host "Skipping pre-configure clean because cached compiler state was reset."
+        Write-Host "Skipping pre-configure clean because the build tree is not configured."
     }
 
     Write-Host "Configuring with CMake..."

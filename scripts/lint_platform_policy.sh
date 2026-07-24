@@ -1,4 +1,25 @@
 #!/usr/bin/env bash
+#===----------------------------------------------------------------------===#
+#
+# Part of the Zanna project, under the GNU GPL v3.
+# See LICENSE for license information.
+#
+#===----------------------------------------------------------------------===#
+#
+# File: scripts/lint_platform_policy.sh
+# Purpose: Enforce the repository policy for raw host and compiler macros.
+# Key invariants:
+#   - Only tracked or explicitly selected source-like files are inspected.
+#   - Allowlisted and migration-baseline uses retain their existing semantics.
+#   - Search processes operate on bounded batches so Windows startup overhead
+#     cannot make the strict CTest probe exceed its budget.
+# Ownership/Lifetime: Candidate and diagnostic arrays live for one invocation.
+# Links: scripts/platform_policy_allowlist.txt,
+#        scripts/platform_policy_migration_baseline.txt,
+#        src/tests/CMakeLists.txt
+#
+#===----------------------------------------------------------------------===#
+
 # Lint raw platform-macro usage so new cross-platform policy does not leak into
 # random shared code. Default mode is advisory; --strict returns non-zero.
 set -euo pipefail
@@ -88,20 +109,20 @@ is_allowlisted() {
     return 1
 }
 
-baseline_count_for() {
+BASELINE_COUNT_RESULT=0
+set_baseline_count_for() {
     local path="$1"
     local i
+    BASELINE_COUNT_RESULT=0
     if [[ ${#BASELINE_PATHS[@]} -eq 0 ]]; then
-        printf '0\n'
         return
     fi
     for ((i = 0; i < ${#BASELINE_PATHS[@]}; i++)); do
         if [[ "${BASELINE_PATHS[$i]}" == "$path" ]]; then
-            printf '%s\n' "${BASELINE_COUNTS[$i]}"
+            BASELINE_COUNT_RESULT="${BASELINE_COUNTS[$i]}"
             return
         fi
     done
-    printf '0\n'
 }
 
 matches_filter() {
@@ -152,34 +173,53 @@ declare -a VIOLATIONS=()
 declare -a TOUCHPOINT_VIOLATIONS=()
 RAW_PATTERN='_WIN32|_WIN64|__APPLE__|__linux__|_MSC_VER'
 search_raw_platform_macros() {
-    local path="$1"
+    local -a paths=("$@")
     if command -v rg >/dev/null 2>&1; then
-        (cd "$ROOT_DIR" && rg --with-filename -n -w "$RAW_PATTERN" --color never "$path" || true)
+        (cd "$ROOT_DIR" &&
+            rg --with-filename -n -w "$RAW_PATTERN" --color never -- "${paths[@]}" ||
+            true)
         return
     fi
-    (cd "$ROOT_DIR" && grep -nEH "(^|[^[:alnum:]_])(${RAW_PATTERN})([^[:alnum:]_]|$)" "$path" || true)
+    (cd "$ROOT_DIR" &&
+        grep -nEH "(^|[^[:alnum:]_])(${RAW_PATTERN})([^[:alnum:]_]|$)" \
+            -- "${paths[@]}" ||
+        true)
 }
 
-record_raw_macro_violations() {
-    local path="$1"
+record_raw_macro_violations_batch() {
+    local -a paths=("$@")
+    local path
     local baseline_count
     local hit
     local -a hits=()
+    local -a path_hits=()
 
     while IFS= read -r hit; do
         hits+=("$hit")
-    done < <(search_raw_platform_macros "$path")
+    done < <(search_raw_platform_macros "${paths[@]}")
 
-    baseline_count="$(baseline_count_for "$path")"
-    if [[ ${#hits[@]} -le $baseline_count ]]; then
-        return
-    fi
+    for path in "${paths[@]}"; do
+        path_hits=()
+        for hit in "${hits[@]}"; do
+            case "$hit" in
+                "$path":*)
+                    path_hits+=("$hit")
+                    ;;
+            esac
+        done
 
-    if [[ $baseline_count -gt 0 ]]; then
-        VIOLATIONS+=("$path: raw host/compiler macro count ${#hits[@]} exceeds migration baseline $baseline_count")
-    fi
-    for hit in "${hits[@]}"; do
-        VIOLATIONS+=("$hit")
+        set_baseline_count_for "$path"
+        baseline_count="$BASELINE_COUNT_RESULT"
+        if [[ ${#path_hits[@]} -le $baseline_count ]]; then
+            continue
+        fi
+
+        if [[ $baseline_count -gt 0 ]]; then
+            VIOLATIONS+=("$path: raw host/compiler macro count ${#path_hits[@]} exceeds migration baseline $baseline_count")
+        fi
+        for hit in "${path_hits[@]}"; do
+            VIOLATIONS+=("$hit")
+        done
     done
 }
 
@@ -188,6 +228,8 @@ while IFS= read -r line; do
     CANDIDATES+=("$line")
 done < <(collect_candidates | LC_ALL=C sort -u)
 
+PLATFORM_POLICY_SEARCH_BATCH_SIZE=128
+declare -a SEARCH_BATCH=()
 if [[ ${#CANDIDATES[@]} -gt 0 ]]; then
     for path in "${CANDIDATES[@]}"; do
         [[ -f "$ROOT_DIR/$path" ]] || continue
@@ -195,7 +237,11 @@ if [[ ${#CANDIDATES[@]} -gt 0 ]]; then
         matches_filter "$path" || continue
 
         if ! is_allowlisted "$path"; then
-            record_raw_macro_violations "$path"
+            SEARCH_BATCH+=("$path")
+            if [[ ${#SEARCH_BATCH[@]} -ge $PLATFORM_POLICY_SEARCH_BATCH_SIZE ]]; then
+                record_raw_macro_violations_batch "${SEARCH_BATCH[@]}"
+                SEARCH_BATCH=()
+            fi
         fi
 
         case "$path" in
@@ -206,6 +252,9 @@ if [[ ${#CANDIDATES[@]} -gt 0 ]]; then
                 ;;
         esac
     done
+    if [[ ${#SEARCH_BATCH[@]} -gt 0 ]]; then
+        record_raw_macro_violations_batch "${SEARCH_BATCH[@]}"
+    fi
 fi
 
 if [[ ${#VIOLATIONS[@]} -eq 0 && ${#TOUCHPOINT_VIOLATIONS[@]} -eq 0 ]]; then

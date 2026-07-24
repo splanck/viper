@@ -10,7 +10,7 @@
 //          Folds consecutive register-to-register moves when the intermediate
 //          register is dead.
 // Key invariants:
-//   - Only folds when r1 is not used after the second move in the same block.
+//   - Only folds when r1 is dead after the second move, including at block exit.
 //   - Argument registers near calls are not folded to avoid ABI violations.
 // Ownership/Lifetime:
 //   - Stateless; all state is owned by the caller.
@@ -124,6 +124,35 @@ void addOperandMemRegs(RegMask &mask, const Operand &op) noexcept {
            regBit(static_cast<uint16_t>(PhysReg::R8)) | regBit(static_cast<uint16_t>(PhysReg::R9));
 }
 
+[[nodiscard]] RegMask allPhysicalRegMask() noexcept {
+    RegMask mask = 0;
+    for (const uint16_t reg : getAllAllocatableRegs())
+        mask |= regBit(reg);
+    return mask;
+}
+
+/// @brief Return whether values can be observed after the instruction list exits.
+/// @details A post-RA block-local rewrite has no successor liveness map. Treat
+///          branches, jump tables, and implicit fallthrough as carrying every
+///          physical register. RET and UD2 are absorbing; their explicit
+///          register semantics are already modeled by @ref usedRegMask.
+[[nodiscard]] bool mayCarryValuesAtExit(const std::vector<MInstr> &instrs) noexcept {
+    for (auto it = instrs.rbegin(); it != instrs.rend(); ++it) {
+        switch (it->opcode) {
+            case MOpcode::RET:
+            case MOpcode::UD2:
+                return false;
+            case MOpcode::JMP:
+            case MOpcode::JCC:
+            case MOpcode::JUMPTABLE:
+                return true;
+            default:
+                break;
+        }
+    }
+    return true;
+}
+
 [[nodiscard]] RegMask regOperandBit(const Operand &op) noexcept {
     const auto *reg = std::get_if<OpReg>(&op);
     if (!reg || !reg->isPhys)
@@ -176,13 +205,19 @@ bool tryFoldConsecutiveMoves(std::vector<MInstr> &instrs, std::size_t idx, Peeph
         }
     }
 
-    // Check that r1 is not used after second in this block
+    // Check that r1 is not used after second in this block. If no local
+    // redefinition kills it, a transferring block may carry r1 to a successor.
+    bool redefinedAfterSecond = false;
     for (std::size_t i = idx + 2; i < instrs.size(); ++i) {
         if (usesReg(instrs[i], r1))
             return false; // r1 is still live, can't fold
-        if (definesReg(instrs[i], r1))
+        if (definesReg(instrs[i], r1)) {
+            redefinedAfterSecond = true;
             break; // r1 is redefined, safe to fold
+        }
     }
+    if (!redefinedAfterSecond && mayCarryValuesAtExit(instrs))
+        return false;
 
     // Perform the fold: second becomes mov r3, r2
     const Operand originalSrc = first.operands[1]; // Save the original source
@@ -199,7 +234,11 @@ std::size_t foldConsecutiveMoves(std::vector<MInstr> &instrs, PeepholeStats &sta
     std::vector<RegMask> usedBeforeDefFrom(instrs.size() + 1, 0);
     std::vector<RegMask> callBeforeDefFrom(instrs.size() + 1, 0);
 
-    RegMask usedBeforeDef = 0;
+    // A branch/fallthrough successor may consume a register without any use in
+    // this instruction list. Seeding every physical register as live-at-exit
+    // keeps those values intact; a later in-block definition still kills the
+    // old value and permits a safe fold before that definition.
+    RegMask usedBeforeDef = mayCarryValuesAtExit(instrs) ? allPhysicalRegMask() : 0;
     RegMask callBeforeDef = 0;
     const RegMask argRegs = allArgRegMask();
     for (std::size_t i = instrs.size(); i-- > 0;) {

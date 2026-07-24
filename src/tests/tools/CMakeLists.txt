@@ -213,6 +213,7 @@ function(zanna_add_tools_tests)
                 -DemoScript ${CMAKE_SOURCE_DIR}/scripts/build_demos_win.ps1
                 -IdeScript ${CMAKE_SOURCE_DIR}/scripts/build_ide_win.ps1
                 -InstallerScript ${CMAKE_SOURCE_DIR}/scripts/build_installer.ps1
+                -BuildScript ${CMAKE_SOURCE_DIR}/scripts/build_zanna_win.ps1
                 -ValidatorScript ${CMAKE_SOURCE_DIR}/scripts/validate-windows-toolchain-installer.ps1
                 -WorkDir ${CMAKE_CURRENT_BINARY_DIR}/windows_automation_script_contracts)
         set_tests_properties(windows_automation_script_contracts PROPERTIES

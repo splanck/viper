@@ -16,7 +16,7 @@
 //   - Each test releases every managed reference it creates.
 //   - The header-capture fixture owns and closes all native sockets.
 // Links: src/runtime/network/rt_http_client.c,
-//        src/runtime/network/rt_http_client.h
+//        src/runtime/network/rt_http_client.h, src/runtime/rt_platform.h
 //
 //===----------------------------------------------------------------------===//
 
@@ -28,6 +28,7 @@
 #include "rt_map.h"
 #include "rt_network.h"
 #include "rt_object.h"
+#include "rt_platform.h"
 #include "rt_seq.h"
 #include "rt_string.h"
 #include "rt_trap.h"
