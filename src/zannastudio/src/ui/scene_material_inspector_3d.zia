@@ -11,11 +11,15 @@
 // Key invariants:
 //   - This presentation object never mutates a SceneNode or Document.
 //   - Controls describe selection, sharing, and embedded-map state truthfully.
+//   - Mixed scalars retain the primary value only as an editing seed; unresolved
+//     fields are omitted from the controller's sparse group patch.
 //   - Assigned-map thumbnails come from the canonical live material, not paths.
 //   - Map selection remains keyboard-focusable without owning scene shortcuts.
 // Ownership/Lifetime: SceneEditor3D owns one inspector; GUI owns its widgets.
 // Links: zannastudio/src/ui/scene_editor_3d.zia,
-//        zannastudio/src/ui/scene_material_3d.zia
+//        zannastudio/src/ui/scene_material_3d.zia,
+//        zannastudio/src/probes/scene_material_batch_probe.zia,
+//        docs/adr/0167-spinner-mixed-value-state.md
 //
 //===----------------------------------------------------------------------===//
 
@@ -46,6 +50,7 @@ bind Pixels = Zanna.Graphics.Pixels;
 class SceneMaterialInspector3D {
     expose GUI.GroupBox group;
     expose GUI.Label summary;
+    expose GUI.Checkbox colorOverride;
     expose GUI.ColorPicker colorPicker;
     expose GUI.Spinner alpha;
     expose GUI.Spinner metallic;
@@ -72,6 +77,7 @@ class SceneMaterialInspector3D {
     expose func init() {
         group = null;
         summary = null;
+        colorOverride = null;
         colorPicker = null;
         alpha = null;
         metallic = null;
@@ -104,6 +110,11 @@ class SceneMaterialInspector3D {
             "No material component. Apply creates a node-local PBR material.");
         summary.SetWordWrap(true);
 
+        colorOverride = GUI.Checkbox.New(group, "Base color");
+        colorOverride.SetAccessibleName("Apply node material base color");
+        colorOverride.SetChecked(true);
+        colorOverride.SetTooltip(
+            "Mixed means selected nodes keep their own colors until resolved");
         colorPicker = GUI.ColorPicker.New(group);
         colorPicker.SetAccessibleName("Node material base color");
         colorPicker.SetAlphaEnabled(false);
@@ -128,6 +139,7 @@ class SceneMaterialInspector3D {
         alphaMode.AddItem("Opaque");
         alphaMode.AddItem("Mask");
         alphaMode.AddItem("Blend");
+        alphaMode.SetPlaceholder("Mixed");
         alphaMode.SetSelected(scene_material_3d.ALPHA_OPAQUE);
         doubleSided = GUI.Checkbox.New(group, "Double-sided");
         unlit = GUI.Checkbox.New(group, "Unlit");
@@ -191,38 +203,126 @@ class SceneMaterialInspector3D {
     expose func Refresh(node: SceneNode,
                         usageCount: Integer,
                         editorEnabled: Boolean) {
-        if colorPicker == null { return; }
-        var material: Material3D = null;
-        if node != null { material = node.Material; }
-        if material == null {
-            colorPicker.SetColor(scene_material_3d.DEFAULT_COLOR);
-            alpha.SetValue(scene_material_3d.DEFAULT_ALPHA);
-            metallic.SetValue(scene_material_3d.DEFAULT_METALLIC);
-            roughness.SetValue(scene_material_3d.DEFAULT_ROUGHNESS);
-            ambientOcclusion.SetValue(scene_material_3d.DEFAULT_AO);
-            alphaMode.SetSelected(scene_material_3d.ALPHA_OPAQUE);
-            doubleSided.SetChecked(false);
-            unlit.SetChecked(false);
-            if node == null {
-                summary.SetText("Select a node to edit its material.");
-            } else {
-                summary.SetText(
-                    "No material component. Apply or choose a map to create one.");
-            }
-        } else {
-            colorPicker.SetColor(scene_material_3d.PackedRgb(material));
-            alpha.SetValue(material.Alpha);
-            metallic.SetValue(material.Metallic);
-            roughness.SetValue(material.Roughness);
-            ambientOcclusion.SetValue(material.AmbientOcclusion);
-            alphaMode.SetSelected(
-                scene_material_3d.AlphaModeOrOpaque(material.AlphaMode));
-            doubleSided.SetChecked(material.DoubleSided);
-            unlit.SetChecked(material.Unlit);
+        var nodes: List[SceneNode] = [];
+        if node != null { nodes.add(node); }
+        RefreshSelection(nodes, node, usageCount, editorEnabled);
+    }
 
+    /// @brief Refresh truthful common/mixed fields for one node selection.
+    expose func RefreshSelection(nodes: List[SceneNode],
+                                 primary: SceneNode,
+                                 primaryUsageCount: Integer,
+                                 editorEnabled: Boolean) {
+        if colorPicker == null { return; }
+        var resolvedPrimary = primary;
+        if resolvedPrimary == null and nodes.count() > 0 {
+            resolvedPrimary = nodes.get(0);
+        }
+        var material: Material3D = null;
+        if resolvedPrimary != null { material = resolvedPrimary.Material; }
+
+        var primaryColor = scene_material_3d.PackedRgb(material);
+        var primaryAlpha = scene_material_3d.AlphaValue(material);
+        var primaryMetallic = scene_material_3d.MetallicValue(material);
+        var primaryRoughness = scene_material_3d.RoughnessValue(material);
+        var primaryAo =
+            scene_material_3d.AmbientOcclusionValue(material);
+        var primaryAlphaMode = scene_material_3d.AlphaModeValue(material);
+        var primaryDoubleSided =
+            scene_material_3d.DoubleSidedValue(material);
+        var primaryUnlit = scene_material_3d.UnlitValue(material);
+
+        var colorMixed = false;
+        var alphaMixed = false;
+        var metallicMixed = false;
+        var roughnessMixed = false;
+        var aoMixed = false;
+        var alphaModeMixed = false;
+        var doubleSidedMixed = false;
+        var unlitMixed = false;
+        var materialCount = 0;
+        var index = 0;
+        while index < nodes.count() {
+            var candidate = nodes.get(index).Material;
+            if candidate != null { materialCount = materialCount + 1; }
+            if scene_material_3d.PackedRgb(candidate) != primaryColor {
+                colorMixed = true;
+            }
+            if scene_material_3d.ValuesEqual(
+                   scene_material_3d.AlphaValue(candidate),
+                   primaryAlpha) == false {
+                alphaMixed = true;
+            }
+            if scene_material_3d.ValuesEqual(
+                   scene_material_3d.MetallicValue(candidate),
+                   primaryMetallic) == false {
+                metallicMixed = true;
+            }
+            if scene_material_3d.ValuesEqual(
+                   scene_material_3d.RoughnessValue(candidate),
+                   primaryRoughness) == false {
+                roughnessMixed = true;
+            }
+            if scene_material_3d.ValuesEqual(
+                   scene_material_3d.AmbientOcclusionValue(candidate),
+                   primaryAo) == false {
+                aoMixed = true;
+            }
+            if scene_material_3d.AlphaModeValue(candidate)
+                  != primaryAlphaMode {
+                alphaModeMixed = true;
+            }
+            if scene_material_3d.DoubleSidedValue(candidate)
+                  != primaryDoubleSided {
+                doubleSidedMixed = true;
+            }
+            if scene_material_3d.UnlitValue(candidate) != primaryUnlit {
+                unlitMixed = true;
+            }
+            index = index + 1;
+        }
+
+        colorPicker.SetColor(primaryColor);
+        colorOverride.SetChecked(nodes.count() > 0);
+        if colorMixed { colorOverride.SetIndeterminate(true); }
+        alpha.SetValue(primaryAlpha);
+        if alphaMixed { alpha.SetIndeterminate(true); }
+        metallic.SetValue(primaryMetallic);
+        if metallicMixed { metallic.SetIndeterminate(true); }
+        roughness.SetValue(primaryRoughness);
+        if roughnessMixed { roughness.SetIndeterminate(true); }
+        ambientOcclusion.SetValue(primaryAo);
+        if aoMixed { ambientOcclusion.SetIndeterminate(true); }
+        alphaMode.SetSelected(primaryAlphaMode);
+        if alphaModeMixed { alphaMode.SetSelected(-1); }
+        doubleSided.SetChecked(primaryDoubleSided);
+        if doubleSidedMixed { doubleSided.SetIndeterminate(true); }
+        unlit.SetChecked(primaryUnlit);
+        if unlitMixed { unlit.SetIndeterminate(true); }
+        // Programmatic refresh must not look like user intent to resolve color.
+        colorPicker.WasChanged();
+
+        if nodes.count() == 0 {
+            summary.SetText("Select one or more nodes to edit material.");
+        } else if nodes.count() > 1 {
+            var coverage = materialCount + " of " + nodes.count()
+                + " nodes have material components";
+            if materialCount == 0 {
+                coverage = "No selected nodes have material components";
+            } else if materialCount == nodes.count() {
+                coverage = "All " + nodes.count()
+                    + " selected nodes have material components";
+            }
+            summary.SetText(
+                coverage
+                + ". Mixed fields preserve each node's value until resolved.");
+        } else if material == null {
+            summary.SetText(
+                "No material component. Apply or choose a map to create one.");
+        } else {
             var usage = "Node-local material";
-            if usageCount > 1 {
-                usage = "Shared by " + usageCount
+            if primaryUsageCount > 1 {
+                usage = "Shared by " + primaryUsageCount
                     + " nodes; edits create a unique copy";
             }
             var mapCount = scene_material_3d.RetainedMapCount(material);
@@ -233,47 +333,110 @@ class SceneMaterialInspector3D {
             }
             summary.SetText(usage);
         }
-        RefreshMapSummary(node);
-        UpdateControls(editorEnabled, node, usageCount);
+        RefreshMapSummarySelection(nodes);
+        UpdateSelectionControls(
+            editorEnabled, nodes, primaryUsageCount);
     }
 
     /// @brief Refresh the selected map slot without resetting scalar drafts.
     expose func RefreshMapSummary(node: SceneNode) {
+        var nodes: List[SceneNode] = [];
+        if node != null { nodes.add(node); }
+        RefreshMapSummarySelection(nodes);
+    }
+
+    /// @brief Summarize selected-slot coverage without inventing one thumbnail.
+    expose func RefreshMapSummarySelection(nodes: List[SceneNode]) {
         if mapSummary == null { return; }
         var slot = mapSlot.Selected;
         var slotName = scene_material_3d.MapSlotName(slot);
-        var material: Material3D = null;
-        if node != null { material = node.Material; }
-        if node == null {
-            mapSummary.SetText("Select a node to edit texture maps.");
+        var assigned = 0;
+        var firstMaterial: Material3D = null;
+        var firstSource: Pixels = null;
+        var sameSource = true;
+        var sourceKnown = false;
+        var index = 0;
+        while index < nodes.count() {
+            var material = nodes.get(index).Material;
+            if scene_material_3d.HasMap(material, slot) {
+                assigned = assigned + 1;
+                var source = scene_material_3d.MapPixels(material, slot);
+                if sourceKnown == false {
+                    firstMaterial = material;
+                    firstSource = source;
+                    sourceKnown = true;
+                } else if source != firstSource {
+                    sameSource = false;
+                }
+            }
+            index = index + 1;
+        }
+
+        if nodes.count() == 0 {
+            mapSummary.SetText(
+                "Select one or more nodes to edit texture maps.");
             ClearMapPreview();
-        } else if scene_material_3d.HasMap(material, slot) {
-            var source = scene_material_3d.MapPixels(material, slot);
-            if source == null {
+        } else if assigned == 0 {
+            if nodes.count() == 1 {
                 mapSummary.SetText(
-                    slotName + ": embedded; decoded preview is unavailable.");
-                ClearMapPreview();
+                    slotName
+                    + ": no map. Choose an image to embed it in VSCN.");
             } else {
                 mapSummary.SetText(
-                    slotName + ": embedded • " + source.Width + " × "
-                    + source.Height + " pixels.");
-                EnsureMapPreview(material, slot, source, slotName);
+                    slotName + ": no map on " + nodes.count()
+                    + " selected nodes.");
             }
-        } else {
-            mapSummary.SetText(
-                slotName + ": no map. Choose an image to embed it in VSCN.");
             ClearMapPreview();
+        } else if assigned != nodes.count() {
+            mapSummary.SetText(
+                slotName + ": map on " + assigned + " of " + nodes.count()
+                + " selected nodes (mixed).");
+            ClearMapPreview();
+        } else if sameSource == false {
+            mapSummary.SetText(
+                slotName + ": assigned on all " + nodes.count()
+                + " selected nodes; map contents differ.");
+            ClearMapPreview();
+        } else if firstSource == null {
+            if nodes.count() == 1 {
+                mapSummary.SetText(
+                    slotName + ": embedded; decoded preview is unavailable.");
+            } else {
+                mapSummary.SetText(
+                    slotName + ": assigned on all " + nodes.count()
+                    + " nodes; decoded preview is unavailable.");
+            }
+            ClearMapPreview();
+        } else {
+            var coverage = "embedded";
+            if nodes.count() > 1 {
+                coverage = "same map on all " + nodes.count() + " nodes";
+            }
+            mapSummary.SetText(
+                slotName + ": " + coverage + " • " + firstSource.Width
+                + " × " + firstSource.Height + " pixels.");
+            EnsureMapPreview(
+                firstMaterial, slot, firstSource, slotName);
         }
-        clearMapButton.SetEnabled(
-            node != null and scene_material_3d.HasMap(material, slot));
+        clearMapButton.SetEnabled(assigned > 0);
     }
 
     /// @brief Keep actions truthful for selection and material-sharing state.
     expose func UpdateControls(editorEnabled: Boolean,
                                node: SceneNode,
                                usageCount: Integer) {
+        var nodes: List[SceneNode] = [];
+        if node != null { nodes.add(node); }
+        UpdateSelectionControls(editorEnabled, nodes, usageCount);
+    }
+
+    /// @brief Keep material actions truthful for a complete node selection.
+    expose func UpdateSelectionControls(editorEnabled: Boolean,
+                                        nodes: List[SceneNode],
+                                        primaryUsageCount: Integer) {
         if colorPicker == null { return; }
-        var hasSelection = editorEnabled and node != null;
+        var hasSelection = editorEnabled and nodes.count() > 0;
+        colorOverride.SetEnabled(hasSelection);
         colorPicker.SetEnabled(hasSelection);
         alpha.SetEnabled(hasSelection);
         metallic.SetEnabled(hasSelection);
@@ -285,21 +448,52 @@ class SceneMaterialInspector3D {
         applyButton.SetEnabled(hasSelection);
         mapSlot.SetEnabled(hasSelection);
         chooseMapButton.SetEnabled(hasSelection);
+        chooseMapButton.SetTooltip(
+            "Embed PNG, JPEG, BMP, GIF, or strict KTX2 in this material");
+        clearMapButton.SetTooltip(
+            "Clear only the selected map slot; preserve every other map");
+        removeButton.SetTooltip(
+            "Remove the material component while keeping the node and mesh");
 
-        var hasMaterial = hasSelection and node.Material != null;
-        removeButton.SetEnabled(hasMaterial);
-        clearMapButton.SetEnabled(
-            hasSelection
-            and scene_material_3d.HasMap(node.Material, mapSlot.Selected));
+        var materialCount = 0;
+        var mapCount = 0;
+        var index = 0;
+        while index < nodes.count() {
+            var material = nodes.get(index).Material;
+            if material != null { materialCount = materialCount + 1; }
+            if scene_material_3d.HasMap(material, mapSlot.Selected) {
+                mapCount = mapCount + 1;
+            }
+            index = index + 1;
+        }
+        removeButton.SetEnabled(hasSelection and materialCount > 0);
+        clearMapButton.SetEnabled(hasSelection and mapCount > 0);
+        removeButton.SetText("Remove");
 
         if hasSelection == false {
             applyButton.SetText("Apply Material");
             applyButton.SetTooltip("Select a node before editing material");
-        } else if hasMaterial == false {
+            removeButton.SetTooltip(
+                "Select one or more nodes before removing material");
+        } else if nodes.count() > 1 {
+            applyButton.SetText("Apply to " + nodes.count());
+            applyButton.SetTooltip(
+                "Apply resolved PBR fields to all selected nodes; preserve "
+                + "every field still shown as Mixed");
+            removeButton.SetText("Remove (" + materialCount + ")");
+            removeButton.SetTooltip(
+                "Remove material from " + materialCount
+                + " selected node(s) as one undoable edit");
+            chooseMapButton.SetTooltip(
+                "Choose one map to embed on all " + nodes.count()
+                + " selected nodes");
+            clearMapButton.SetTooltip(
+                "Clear this map from every selected node that has it");
+        } else if materialCount == 0 {
             applyButton.SetText("Create Material");
             applyButton.SetTooltip(
                 "Create a node-local PBR material from these values");
-        } else if usageCount > 1 {
+        } else if primaryUsageCount > 1 {
             applyButton.SetText("Apply as Unique");
             applyButton.SetTooltip(
                 "Clone the shared material, preserving maps and other nodes");
@@ -308,6 +502,43 @@ class SceneMaterialInspector3D {
             applyButton.SetTooltip(
                 "Apply these values while preserving unexposed material data");
         }
+    }
+
+    /// @brief Resolve mixed color intent when the picker itself changes.
+    expose func PumpDraftIntent() {
+        if colorPicker != null and colorPicker.WasChanged() {
+            colorOverride.SetChecked(true);
+        }
+    }
+
+    /// @brief Build a sparse patch from every currently determined control.
+    expose func BuildPatch() -> scene_material_3d.MaterialPatch3D {
+        var patch = new scene_material_3d.MaterialPatch3D();
+        if colorPicker == null { return patch; }
+        patch.applyColor =
+            colorOverride.IsIndeterminate() == false
+            and colorOverride.IsChecked();
+        patch.red = scene_material_3d.UnitFromByte(colorPicker.GetRed());
+        patch.green = scene_material_3d.UnitFromByte(
+            colorPicker.GetGreen());
+        patch.blue = scene_material_3d.UnitFromByte(colorPicker.GetBlue());
+        patch.applyAlpha = alpha.IsIndeterminate() == false;
+        patch.alpha = alpha.Value;
+        patch.applyMetallic = metallic.IsIndeterminate() == false;
+        patch.metallic = metallic.Value;
+        patch.applyRoughness = roughness.IsIndeterminate() == false;
+        patch.roughness = roughness.Value;
+        patch.applyAmbientOcclusion =
+            ambientOcclusion.IsIndeterminate() == false;
+        patch.ambientOcclusion = ambientOcclusion.Value;
+        patch.applyAlphaMode = alphaMode.Selected >= 0;
+        patch.alphaMode = alphaMode.Selected;
+        patch.applyDoubleSided =
+            doubleSided.IsIndeterminate() == false;
+        patch.doubleSided = doubleSided.IsChecked();
+        patch.applyUnlit = unlit.IsIndeterminate() == false;
+        patch.unlit = unlit.IsChecked();
+        return patch;
     }
 
     /// @brief Build at most one bounded thumbnail for the live map identity.

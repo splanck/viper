@@ -23,7 +23,8 @@
 // Links: src/runtime/graphics/gui/rt_gui.h,
 //        src/runtime/graphics/gui/rt_gui_internal.h,
 //        src/lib/gui/include/vg_widget.h,
-//        docs/adr/0107-gui-theme-accessibility-input-and-render-policy.md
+//        docs/adr/0107-gui-theme-accessibility-input-and-render-policy.md,
+//        docs/adr/0167-spinner-mixed-value-state.md
 //
 //===----------------------------------------------------------------------===//
 
@@ -161,6 +162,8 @@ static const char *rt_gui_accessibility_inferred_value(const vg_widget_t *widget
                 buffer, buffer_size, "%.9g", (double)((const vg_progressbar_t *)widget)->value);
             return buffer;
         case VG_WIDGET_SPINNER:
+            if (((const vg_spinner_t *)widget)->indeterminate)
+                return "mixed";
             snprintf(buffer, buffer_size, "%.17g", ((const vg_spinner_t *)widget)->value);
             return buffer;
         default:

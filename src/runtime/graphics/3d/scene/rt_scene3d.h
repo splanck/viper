@@ -15,10 +15,15 @@
 //   - SceneNode3D world_matrix is recomputed lazily when dirty.
 //   - Descendants notice parent transform changes through cached world revisions.
 //   - Children are stored as a dynamic array (not GC-managed).
+//   - Gameplay metadata is typed, bounded, and serialized only through VSCN.
 //   - Nodes with both mesh and material are drawn; imported node lights contribute
 //     to scene draw snapshots after world-transform evaluation.
 //
-// Links: rt_canvas3d.h, rt_quat.h, rt_mat4.h, plans/3d/12-scene-graph.md
+// Links: rt_canvas3d.h, rt_quat.h, rt_mat4.h, plans/3d/12-scene-graph.md,
+//   docs/adr/0159-typed-scenenode-metadata-and-vscn-v6.md,
+//   docs/adr/0161-stable-scenenode-sibling-reordering.md,
+//   docs/adr/0162-exact-preserve-world-scenenode-reparenting.md,
+//   docs/adr/0166-exact-scenenode-world-matrix-assignment.md
 //
 //===----------------------------------------------------------------------===//
 #pragma once
@@ -38,6 +43,11 @@ enum {
     RT_SCENE_NODE3D_SYNC_NODE_FROM_ANIMATOR_ROOT_MOTION = 2,
     RT_SCENE_NODE3D_SYNC_TWO_WAY_KINEMATIC = 3,
 };
+
+/// @brief Stable limits for gameplay-facing SceneNode metadata.
+#define RT_SCENE_NODE3D_MAX_METADATA_ENTRIES 256
+#define RT_SCENE_NODE3D_MAX_METADATA_KEY_BYTES 128
+#define RT_SCENE_NODE3D_MAX_METADATA_STRING_BYTES (64 * 1024)
 
 /* Scene3D */
 /// @brief Create an empty 3D scene with a single root node.
@@ -104,6 +114,9 @@ void rt_scene_node3d_set_scale(void *node, double x, double y, double z);
 void *rt_scene_node3d_get_scale(void *node);
 /// @brief Get the node's world-space transform as a Mat4 (lazily recomputed when dirty).
 void *rt_scene_node3d_get_world_matrix(void *node);
+/// @brief Assign a complete world matrix only when it has an exact parent-relative TRS.
+/// @return 1 on success; 0 without mutation for invalid, singular, sheared, or lossy requests.
+int8_t rt_scene_node3d_try_set_world_matrix(void *node, void *world_matrix);
 /// @brief Get the node's world-space position as a Vec3.
 void *rt_scene_node3d_get_world_position(void *node);
 /// @brief Get the node's world-space position as raw components (1 on success, 0 on null node).
@@ -146,6 +159,10 @@ void rt_scene3d_set_node_transforms(void *scene, void *nodes, void *values);
 void rt_scene_node3d_add_child(void *node, void *child);
 /// @brief Attach @p child as a child of @p node, returning 1 when the child is parented there.
 int8_t rt_scene_node3d_try_add_child(void *node, void *child);
+/// @brief Attach @p child while preserving its complete world matrix, or reject without mutation.
+int8_t rt_scene_node3d_try_add_child_preserve_world(void *node, void *child);
+/// @brief Move an existing direct child to @p index without changing its parent.
+int8_t rt_scene_node3d_try_move_child(void *node, void *child, int64_t index);
 /// @brief Detach @p child from @p node (no-op if not actually a child).
 void rt_scene_node3d_remove_child(void *node, void *child);
 /// @brief Number of direct children of @p node.
@@ -178,6 +195,32 @@ int8_t rt_scene_node3d_get_visible(void *node);
 void rt_scene_node3d_set_name(void *node, rt_string name);
 /// @brief Get the node's name as an owned string (empty if unset).
 rt_string rt_scene_node3d_get_name(void *node);
+/// @brief Return every gameplay-metadata key in deterministic lexicographic order.
+void *rt_scene_node3d_metadata_keys(void *node);
+/// @brief Return `null`, `bool`, `int`, `float`, or `string`; empty when @p key is absent.
+rt_string rt_scene_node3d_metadata_kind(void *node, rt_string key);
+/// @brief Return whether the node has an explicit metadata value for @p key.
+int8_t rt_scene_node3d_metadata_has(void *node, rt_string key);
+/// @brief Read exact integer metadata, or @p def when absent or differently typed.
+int64_t rt_scene_node3d_metadata_get_int(void *node, rt_string key, int64_t def);
+/// @brief Read float metadata (or widen an integer), or @p def on mismatch.
+double rt_scene_node3d_metadata_get_float(void *node, rt_string key, double def);
+/// @brief Read boolean metadata, or @p def when absent or differently typed.
+int8_t rt_scene_node3d_metadata_get_bool(void *node, rt_string key, int8_t def);
+/// @brief Read string metadata, or a retained copy of @p def on mismatch.
+rt_string rt_scene_node3d_metadata_get_string(void *node, rt_string key, rt_string def);
+/// @brief Set explicit null metadata; return 0 when the key or bounded table is invalid.
+int8_t rt_scene_node3d_metadata_set_null(void *node, rt_string key);
+/// @brief Set integer metadata; return 0 when the key or bounded table is invalid.
+int8_t rt_scene_node3d_metadata_set_int(void *node, rt_string key, int64_t value);
+/// @brief Set finite float metadata; return 0 for invalid input or a full bounded table.
+int8_t rt_scene_node3d_metadata_set_float(void *node, rt_string key, double value);
+/// @brief Set boolean metadata; return 0 when the key or bounded table is invalid.
+int8_t rt_scene_node3d_metadata_set_bool(void *node, rt_string key, int8_t value);
+/// @brief Set bounded string metadata; return 0 for invalid input or a full table.
+int8_t rt_scene_node3d_metadata_set_string(void *node, rt_string key, rt_string value);
+/// @brief Remove metadata and report whether the key existed.
+int8_t rt_scene_node3d_metadata_remove(void *node, rt_string key);
 /// @brief Get the AABB minimum corner for the node subtree in this node's local space.
 void *rt_scene_node3d_get_aabb_min(void *node);
 /// @brief Get the AABB maximum corner for the node subtree in this node's local space.

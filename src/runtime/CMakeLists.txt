@@ -346,6 +346,7 @@ set(RT_GRAPHICS_SOURCES
         graphics/3d/render/rt_rendertarget3d.c
         graphics/3d/scene/rt_scene3d.c
         graphics/3d/scene/rt_scene3d_node.c
+        graphics/3d/scene/rt_scene3d_metadata.c
         graphics/3d/scene/rt_scene3d_nodeanim.c
         graphics/3d/scene/rt_scene3d_query.c
         graphics/3d/scene/rt_scene3d_spatial.c

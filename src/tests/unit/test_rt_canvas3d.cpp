@@ -18,7 +18,8 @@
 //
 // Ownership/Lifetime:
 //   - Test-scoped runtime objects are retained only for the duration of each case.
-// Links: src/runtime/graphics/3d/render/rt_mesh3d.c
+// Links: src/runtime/graphics/3d/render/rt_mesh3d.c,
+//        docs/adr/0168-windowless-canvas3d-rendering.md
 //
 //===----------------------------------------------------------------------===//
 
@@ -518,6 +519,8 @@ extern "C" void rt_obj_set_finalizer(void *obj, void (*fn)(void *));
 extern "C" void *rt_postfx3d_new(void);
 extern "C" void rt_canvas3d_set_post_fx(void *canvas, void *postfx);
 extern "C" void *rt_canvas3d_screenshot(void *canvas);
+extern "C" void *rt_canvas3d_new_offscreen(void *target);
+extern "C" int8_t rt_canvas3d_get_is_offscreen(void *canvas);
 extern "C" void rt_postfx3d_set_enabled(void *obj, int8_t enabled);
 extern "C" void rt_postfx3d_add_vignette(void *obj, double radius, double softness);
 extern "C" void rt_postfx3d_add_tonemap(void *obj, int64_t mode, double exposure);
@@ -7066,6 +7069,100 @@ static void test_canvas_dimensions_follow_active_render_target() {
     PASS();
 }
 
+static void test_canvas_offscreen_constructor_contract() {
+    TEST("Canvas3D.NewOffscreen creates a windowless software target renderer");
+    void *target = rt_rendertarget3d_new(96, 64);
+    void *canvas = rt_canvas3d_new_offscreen(target);
+
+    EXPECT_TRUE(canvas != nullptr, "NewOffscreen returns a Canvas3D");
+    EXPECT_TRUE(rt_canvas3d_get_is_offscreen(canvas) == 1,
+                "NewOffscreen canvas reports IsOffscreen");
+    EXPECT_EQ(rt_canvas3d_get_width(canvas), 96);
+    EXPECT_EQ(rt_canvas3d_get_height(canvas), 64);
+    EXPECT_EQ(rt_canvas3d_get_active_output_width(canvas), 96);
+    EXPECT_EQ(rt_canvas3d_get_active_output_height(canvas), 64);
+    EXPECT_EQ(rt_canvas3d_get_window_width(canvas), 0);
+    EXPECT_EQ(rt_canvas3d_get_window_height(canvas), 0);
+    EXPECT_EQ(rt_canvas3d_poll(canvas), 0);
+    EXPECT_TRUE(rt_canvas3d_should_close(canvas) == 0,
+                "windowless canvas has no synthetic close request");
+
+    auto *raw = (rt_canvas3d *)canvas;
+    EXPECT_TRUE(raw->gfx_win == nullptr, "NewOffscreen does not create a platform window");
+    EXPECT_TRUE(raw->backend == &vgfx3d_software_backend,
+                "NewOffscreen selects the portable software backend");
+    EXPECT_TRUE(raw->render_target_owner == target && raw->render_target != nullptr,
+                "NewOffscreen retains and binds the explicit RenderTarget3D");
+
+    rt_canvas3d_clear(canvas, 0.25, 0.5, 0.75);
+    auto *shot = (pixels_view_t *)rt_canvas3d_screenshot(canvas);
+    EXPECT_TRUE(shot != nullptr && shot->data != nullptr,
+                "windowless Canvas3D.Screenshot reads the active target");
+    EXPECT_EQ(shot->w, 96);
+    EXPECT_EQ(shot->h, 64);
+    EXPECT_TRUE(shot->data[0] == 0x3F7FBFFFu,
+                "windowless clear writes deterministic RGBA target pixels");
+
+    EXPECT_TRUE(expect_trap_contains(
+                    [&] { rt_canvas3d_reset_render_target(canvas); }, "requires a render target"),
+                "ResetRenderTarget rejects removal of the only offscreen output");
+    EXPECT_TRUE(expect_trap_contains(
+                    [&] { rt_canvas3d_resize(canvas, 48, 32); }, "replace its render target"),
+                "Resize directs offscreen callers to replace the explicit target");
+    EXPECT_EQ(rt_canvas3d_get_width(canvas), 96);
+    EXPECT_EQ(rt_canvas3d_get_height(canvas), 64);
+    PASS();
+}
+
+static void test_canvas_offscreen_renders_and_finalizes_without_window() {
+    TEST("Canvas3D offscreen renders mesh frames and ScreenshotFinal flushes them");
+    void *target = rt_rendertarget3d_new(96, 96);
+    void *canvas = rt_canvas3d_new_offscreen(target);
+    void *camera = rt_camera3d_new_ortho(2.0, 1.0, 0.1, 100.0);
+    void *look_target = rt_vec3_new(0.0, 0.0, 0.0);
+    void *mesh = rt_mesh3d_new_box(1.0, 1.0, 1.0);
+    void *material = rt_material3d_new_color(1.0, 0.0, 0.0);
+    void *transform = rt_mat4_identity();
+
+    EXPECT_TRUE(canvas && camera && look_target && mesh && material && transform,
+                "offscreen rendering fixtures exist");
+    rt_camera3d_orbit(camera, look_target, 10.0, 0.0, 0.0);
+    rt_material3d_set_unlit(material, 1);
+    rt_canvas3d_clear(canvas, 0.0, 0.0, 0.0);
+    rt_canvas3d_begin(canvas, camera);
+    rt_canvas3d_draw_mesh(canvas, mesh, transform, material);
+
+    auto *shot = (pixels_view_t *)rt_canvas3d_screenshot_final(canvas);
+    EXPECT_TRUE(shot != nullptr && shot->data != nullptr,
+                "ScreenshotFinal returns pixels without a platform window");
+    EXPECT_TRUE(((rt_canvas3d *)canvas)->in_frame == 0,
+                "ScreenshotFinal ends the pending offscreen frame");
+
+    int64_t changed_pixels = 0;
+    for (int64_t i = 0; i < shot->w * shot->h; i++) {
+        if (shot->data[i] != 0x000000FFu)
+            changed_pixels++;
+    }
+    EXPECT_TRUE(changed_pixels > 100,
+                "software rasterizer writes visible mesh coverage into the target");
+    PASS();
+}
+
+static void test_canvas_offscreen_rejects_invalid_targets() {
+    TEST("Canvas3D.NewOffscreen rejects null and wrong-class targets");
+    void *wrong = rt_mesh3d_new_box(1.0, 1.0, 1.0);
+
+    EXPECT_TRUE(expect_trap_contains(
+                    [] { (void)rt_canvas3d_new_offscreen(nullptr); }, "RenderTarget3D"),
+                "NewOffscreen traps on a null target");
+    EXPECT_TRUE(expect_trap_contains(
+                    [&] { (void)rt_canvas3d_new_offscreen(wrong); }, "RenderTarget3D"),
+                "NewOffscreen traps on a wrong-class target");
+    EXPECT_TRUE(rt_canvas3d_get_is_offscreen(nullptr) == 0,
+                "IsOffscreen is false for a null handle");
+    PASS();
+}
+
 static void test_canvas_begin2d_uses_render_target_dimensions() {
     TEST("Canvas3D.Begin2D uses render-target size and advances frame serial");
     vgfx3d_backend_t backend = {};
@@ -10719,6 +10816,9 @@ int main() {
     test_rendertarget_as_pixels_syncs_gpu_color_on_demand();
     test_rendertarget_clear_sync_detaches_backend_callback();
     test_rendertarget_rejects_malformed_buffer_layouts();
+    test_canvas_offscreen_constructor_contract();
+    test_canvas_offscreen_renders_and_finalizes_without_window();
+    test_canvas_offscreen_rejects_invalid_targets();
     test_canvas_screenshot_syncs_render_target_on_demand();
     test_canvas_screenshot_returns_null_when_sync_fails();
     test_canvas_dimensions_follow_active_render_target();

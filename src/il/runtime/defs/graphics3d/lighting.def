@@ -13,7 +13,11 @@
 // Ownership/Lifetime:
 //   - Declarative registry data is consumed by rtgen and X-macro tests.
 //   - Generated string storage has process lifetime.
-// Links: src/il/runtime/runtime.def, src/tools/rtgen/rtgen.cpp
+// Links: src/il/runtime/runtime.def, src/tools/rtgen/rtgen.cpp,
+//   docs/adr/0159-typed-scenenode-metadata-and-vscn-v6.md,
+//   docs/adr/0161-stable-scenenode-sibling-reordering.md,
+//   docs/adr/0162-exact-preserve-world-scenenode-reparenting.md,
+//   docs/adr/0166-exact-scenenode-world-matrix-assignment.md
 //
 //===----------------------------------------------------------------------===//
 
@@ -160,6 +164,7 @@ RT_FUNC(SceneNode3DSetTransform,   rt_scene_node3d_set_transform,  "Zanna.Graphi
 RT_FUNC(Scene3DSetNodeTransforms,  rt_scene3d_set_node_transforms, "Zanna.Graphics3D.SceneGraph.SetNodeTransforms", "void(obj,obj,obj)")
 RT_FUNC(SceneNode3DGetScale,       rt_scene_node3d_get_scale,      "Zanna.Graphics3D.SceneNode.get_Scale",      "obj<Zanna.Math.Vec3>(obj)")
 RT_FUNC(SceneNode3DGetWorldMatrix, rt_scene_node3d_get_world_matrix,"Zanna.Graphics3D.SceneNode.get_WorldMatrix","obj<Zanna.Math.Mat4>(obj)")
+RT_FUNC(SceneNode3DTrySetWorldMatrix, rt_scene_node3d_try_set_world_matrix, "Zanna.Graphics3D.SceneNode.TrySetWorldMatrix", "i1(obj,obj<Zanna.Math.Mat4>)")
 RT_FUNC(SceneNode3DGetWorldPosition, rt_scene_node3d_get_world_position,"Zanna.Graphics3D.SceneNode.get_WorldPosition","obj<Zanna.Math.Vec3>(obj)")
 RT_FUNC(SceneNode3DGetWorldRotation, rt_scene_node3d_get_world_rotation,"Zanna.Graphics3D.SceneNode.get_WorldRotation","obj<Zanna.Math.Quat>(obj)")
 RT_FUNC(SceneNode3DGetWorldScale,  rt_scene_node3d_get_world_scale, "Zanna.Graphics3D.SceneNode.get_WorldScale", "obj<Zanna.Math.Vec3>(obj)")
@@ -171,6 +176,8 @@ RT_FUNC(SceneNode3DSetCamera,      rt_scene_node3d_set_camera,     "Zanna.Graphi
 RT_FUNC(SceneNode3DGetCamera,      rt_scene_node3d_get_camera,     "Zanna.Graphics3D.SceneNode.get_Camera",     "obj<Zanna.Graphics3D.Camera3D>(obj)")
 RT_FUNC(SceneNode3DAddChild,       rt_scene_node3d_add_child,      "Zanna.Graphics3D.SceneNode.AddChild",       "void(obj,obj)")
 RT_FUNC(SceneNode3DTryAddChild,    rt_scene_node3d_try_add_child,  "Zanna.Graphics3D.SceneNode.TryAddChild",    "i1(obj,obj)")
+RT_FUNC(SceneNode3DTryAddChildPreserveWorld, rt_scene_node3d_try_add_child_preserve_world, "Zanna.Graphics3D.SceneNode.TryAddChildPreserveWorld", "i1(obj,obj)")
+RT_FUNC(SceneNode3DTryMoveChild,   rt_scene_node3d_try_move_child, "Zanna.Graphics3D.SceneNode.TryMoveChild",   "i1(obj,obj,i64)")
 RT_FUNC(SceneNode3DRemoveChild,    rt_scene_node3d_remove_child,   "Zanna.Graphics3D.SceneNode.RemoveChild",    "void(obj,obj)")
 RT_FUNC(SceneNode3DChildCount,     rt_scene_node3d_child_count,    "Zanna.Graphics3D.SceneNode.get_ChildCount", "i64(obj)")
 RT_FUNC(SceneNode3DGetChild,       rt_scene_node3d_get_child,      "Zanna.Graphics3D.SceneNode.GetChild",       "obj<Zanna.Graphics3D.SceneNode>(obj,i64)")
@@ -180,6 +187,19 @@ RT_FUNC(SceneNode3DSetVisible,     rt_scene_node3d_set_visible,    "Zanna.Graphi
 RT_FUNC(SceneNode3DGetVisible,     rt_scene_node3d_get_visible,    "Zanna.Graphics3D.SceneNode.get_Visible",    "i1(obj)")
 RT_FUNC(SceneNode3DSetName,        rt_scene_node3d_set_name,       "Zanna.Graphics3D.SceneNode.set_Name",       "void(obj,str)")
 RT_FUNC(SceneNode3DGetName,        rt_scene_node3d_get_name,       "Zanna.Graphics3D.SceneNode.get_Name",       "str(obj)")
+RT_FUNC(SceneNode3DMetadataKeys,   rt_scene_node3d_metadata_keys,  "Zanna.Graphics3D.SceneNode.MetadataKeys",   "obj<Zanna.Collections.Seq>(obj)")
+RT_FUNC(SceneNode3DMetadataKind,   rt_scene_node3d_metadata_kind,  "Zanna.Graphics3D.SceneNode.MetadataKind",   "str(obj,str)")
+RT_FUNC(SceneNode3DMetadataHas,    rt_scene_node3d_metadata_has,   "Zanna.Graphics3D.SceneNode.MetadataHas",    "i1(obj,str)")
+RT_FUNC(SceneNode3DMetadataGetInt, rt_scene_node3d_metadata_get_int, "Zanna.Graphics3D.SceneNode.MetadataGetInt", "i64(obj,str,i64)")
+RT_FUNC(SceneNode3DMetadataGetFloat, rt_scene_node3d_metadata_get_float, "Zanna.Graphics3D.SceneNode.MetadataGetFloat", "f64(obj,str,f64)")
+RT_FUNC(SceneNode3DMetadataGetBool, rt_scene_node3d_metadata_get_bool, "Zanna.Graphics3D.SceneNode.MetadataGetBool", "i1(obj,str,i1)")
+RT_FUNC(SceneNode3DMetadataGetString, rt_scene_node3d_metadata_get_string, "Zanna.Graphics3D.SceneNode.MetadataGetString", "str(obj,str,str)")
+RT_FUNC(SceneNode3DMetadataSetNull, rt_scene_node3d_metadata_set_null, "Zanna.Graphics3D.SceneNode.MetadataSetNull", "i1(obj,str)")
+RT_FUNC(SceneNode3DMetadataSetInt, rt_scene_node3d_metadata_set_int, "Zanna.Graphics3D.SceneNode.MetadataSetInt", "i1(obj,str,i64)")
+RT_FUNC(SceneNode3DMetadataSetFloat, rt_scene_node3d_metadata_set_float, "Zanna.Graphics3D.SceneNode.MetadataSetFloat", "i1(obj,str,f64)")
+RT_FUNC(SceneNode3DMetadataSetBool, rt_scene_node3d_metadata_set_bool, "Zanna.Graphics3D.SceneNode.MetadataSetBool", "i1(obj,str,i1)")
+RT_FUNC(SceneNode3DMetadataSetString, rt_scene_node3d_metadata_set_string, "Zanna.Graphics3D.SceneNode.MetadataSetString", "i1(obj,str,str)")
+RT_FUNC(SceneNode3DMetadataRemove, rt_scene_node3d_metadata_remove, "Zanna.Graphics3D.SceneNode.MetadataRemove", "i1(obj,str)")
 RT_FUNC(SceneNode3DGetBoundsMin,   rt_scene_node3d_get_aabb_min,   "Zanna.Graphics3D.SceneNode.get_BoundsMin", "obj<Zanna.Math.Vec3>(obj)")
 RT_FUNC(SceneNode3DGetBoundsMax,   rt_scene_node3d_get_aabb_max,   "Zanna.Graphics3D.SceneNode.get_BoundsMax", "obj<Zanna.Math.Vec3>(obj)")
 RT_FUNC(SceneNode3DBindBody,       rt_scene_node3d_bind_body,      "Zanna.Graphics3D.SceneNode.BindBody",       "void(obj,obj)")
@@ -215,7 +235,8 @@ RT_FUNC(SceneNode3DGetLODResidentBytes, rt_scene_node3d_get_lod_resident_bytes,"
 /// Create `Zanna.Graphics3D.SceneNode` values through its registered constructor and use the
 /// returned object with the instance members below. Its public surface exposes properties such as
 /// `Position`, `Rotation`, `Scale` and operations including `SetPosition`, `SetScale`,
-/// `SetTransform`, `AddChild`.
+/// `SetTransform`, exact world-matrix assignment, `AddChild`, exact preserve-world reparenting,
+/// stable sibling reordering, and bounded typed gameplay metadata accessors.
 RT_CLASS_BEGIN("Zanna.Graphics3D.SceneNode", SceneNode3D, "obj", SceneNode3DNew)
     RT_PROP("Position", "obj<Zanna.Math.Vec3>", SceneNode3DGetPosition, none)
     RT_PROP("Rotation", "obj<Zanna.Math.Quat>", SceneNode3DGetRotation, SceneNode3DSetRotation)
@@ -241,11 +262,27 @@ RT_CLASS_BEGIN("Zanna.Graphics3D.SceneNode", SceneNode3D, "obj", SceneNode3DNew)
     RT_METHOD("SetPosition", "void(f64,f64,f64)", SceneNode3DSetPosition)
     RT_METHOD("SetScale", "void(f64,f64,f64)", SceneNode3DSetScale)
     RT_METHOD("SetTransform", "void(f64,f64,f64,f64,f64,f64,f64,f64,f64,f64)", SceneNode3DSetTransform)
+    RT_METHOD("TrySetWorldMatrix", "i1(obj<Zanna.Math.Mat4>)", SceneNode3DTrySetWorldMatrix)
     RT_METHOD("AddChild", "void(obj)", SceneNode3DAddChild)
     RT_METHOD("TryAddChild", "i1(obj)", SceneNode3DTryAddChild)
+    RT_METHOD("TryAddChildPreserveWorld", "i1(obj)", SceneNode3DTryAddChildPreserveWorld)
+    RT_METHOD("TryMoveChild", "i1(obj,i64)", SceneNode3DTryMoveChild)
     RT_METHOD("RemoveChild", "void(obj)", SceneNode3DRemoveChild)
     RT_METHOD("GetChild", "obj<Zanna.Graphics3D.SceneNode>(i64)", SceneNode3DGetChild)
     RT_METHOD("Find", "obj<Zanna.Option>(str)", SceneNode3DFindOption)
+    RT_METHOD("MetadataKeys", "obj<Zanna.Collections.Seq>()", SceneNode3DMetadataKeys)
+    RT_METHOD("MetadataKind", "str(str)", SceneNode3DMetadataKind)
+    RT_METHOD("MetadataHas", "i1(str)", SceneNode3DMetadataHas)
+    RT_METHOD("MetadataGetInt", "i64(str,i64)", SceneNode3DMetadataGetInt)
+    RT_METHOD("MetadataGetFloat", "f64(str,f64)", SceneNode3DMetadataGetFloat)
+    RT_METHOD("MetadataGetBool", "i1(str,i1)", SceneNode3DMetadataGetBool)
+    RT_METHOD("MetadataGetString", "str(str,str)", SceneNode3DMetadataGetString)
+    RT_METHOD("MetadataSetNull", "i1(str)", SceneNode3DMetadataSetNull)
+    RT_METHOD("MetadataSetInt", "i1(str,i64)", SceneNode3DMetadataSetInt)
+    RT_METHOD("MetadataSetFloat", "i1(str,f64)", SceneNode3DMetadataSetFloat)
+    RT_METHOD("MetadataSetBool", "i1(str,i1)", SceneNode3DMetadataSetBool)
+    RT_METHOD("MetadataSetString", "i1(str,str)", SceneNode3DMetadataSetString)
+    RT_METHOD("MetadataRemove", "i1(str)", SceneNode3DMetadataRemove)
     RT_METHOD("BindBody", "void(obj)", SceneNode3DBindBody)
     RT_METHOD("ClearBodyBinding", "void()", SceneNode3DClearBodyBinding)
     RT_METHOD("BindAnimator", "void(obj)", SceneNode3DBindAnimator)
@@ -528,8 +565,9 @@ RT_CLASS_END()
 /// @details
 /// `Zanna.Graphics3D.SceneAsset` exposes a registry-backed runtime surface without requiring
 /// callers to construct the class directly. Its public surface exposes resource counts,
-/// mesh-aligned morph access, complete VSCN v5 persistence through `Save`, and operations
-/// including `LoadResult`, `LoadWithOptions`, `LoadWithOptionsEx`, `LoadResultWithOptions`.
+/// mesh-aligned morph access, complete VSCN v5/v6 persistence through `Save`, deep-copied
+/// typed node metadata on instances, and operations including `LoadResult`, `LoadWithOptions`,
+/// `LoadWithOptionsEx`, and `LoadResultWithOptions`.
 RT_CLASS_BEGIN("Zanna.Graphics3D.SceneAsset", Model3D, "obj", none)
     RT_PROP("MeshCount", "i64", Model3DMeshCount, none)
     RT_PROP("MaterialCount", "i64", Model3DMaterialCount, none)

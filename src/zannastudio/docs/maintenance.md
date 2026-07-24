@@ -127,6 +127,47 @@ selection/camera/history state and scene-specific save/reload behavior rather
 than routing them through the hidden text editor. The 2D layer-image path is
 serialized document state, while decoded atlas pixels and scaled thumbnails are
 bounded preview state; an explicit image reload must not dirty the document.
+Scene-wide typed-property selection is also document/session state even though
+the shared inspector widgets are presentation state. The same rule applies to
+3D node gameplay-metadata selection: the inspector is presentation-only, while
+the owning scene document stores its bounded selected row.
+
+## Changing Project Scene Component Schemas
+
+`ui/scene_component_schema.zia` is the sole parser for
+`scene-components.json`; both scene editors must consume its validated records
+rather than parsing JSON or inventing target/default rules locally.
+
+When changing the format or authoring behavior:
+
+1. Update [ADR 0160](../../../docs/adr/0160-project-scene-component-schemas.md)
+   when compatibility, ownership, limits, or transaction semantics change.
+2. Keep parsing bounded and fail-closed. Never publish a valid prefix or retain
+   stale definitions after a failed reload.
+3. Keep identities portable and scalar defaults canonical before widgets or
+   runtime mutation see them.
+4. Resolve a saved scene through its owning longest-match workspace root. Do
+   not guess a root for an unsaved scene in a multi-root workspace.
+5. Keep `scene_component_palette.zia` presentation-only. Put pure structured
+   JSON mutations and exact file snapshots in `scene_component_authoring.zia`;
+   route widget intent, external polling, and publication through
+   `scene_component_authoring_controller.zia`.
+6. Preserve unknown version-1 members on retained JSON objects and reparse every
+   structured candidate through the sole schema parser before disk publication.
+7. Keep schema-file history independent of scene history and dirty state.
+   Existing files require exact-content plus expected-metadata replacement;
+   missing files require a no-overwrite atomic create. An external conflict must
+   reject save/undo/redo until reload.
+8. Preflight every selected item before writing scene data. Preserve same-kind
+   values and abort the complete selection on one type conflict.
+9. Verify every runtime write and commit the complete scene operation once. A no-op
+   must not add history.
+10. Update [scene-components.md](scene-components.md), the parser and authoring
+    probes, and both scene-editor probes.
+
+Adding nested values, enums, asset references, schema migrations, generated
+game adapters, or true runtime component membership is a format/architecture
+change, not a palette-only enhancement.
 
 ## Adding A Tool Panel
 
@@ -438,18 +479,30 @@ When summarizing Zanna Studio changes, be specific:
   in-window floating group." State separately that native secondary-window and
   multi-monitor detachment are not implemented.
 - Say "built-in v1 2D/3D scene editors with a visual 2D atlas palette and real
-  layer rendering, stable multi-selection, transactional group
-  transform/duplicate/delete, focus-safe 2D pixel/tile nudging, deterministic
-  primary-axis alignment/distribution, typed 2D batch property set/remove,
-  relative 3D numeric batch transforms, cycle-safe local-preserving 3D
-  reparenting, focus-safe Duplicate/Delete, scene-aware
+  layer rendering, a runtime-backed shaded/triangle-wireframe 3D viewport,
+  stable multi-selection, modifier-aware 2D point and inclusive authored-cell
+  marquee selection, transactional group transform/duplicate/delete,
+  focus-safe 2D pixel/tile nudging, deterministic primary-axis
+  alignment/distribution, typed 2D scene-wide metadata authoring and batch
+  object-property set/remove, a runtime-backed absolute-position 2D object
+  hierarchy with one-step child creation, an explicit bounded multi-root
+  parent chooser, subtree row drops, and hierarchy-preserving clipboard,
+  typed per-node 3D gameplay metadata with exact VSCN scalar kinds,
+  relative 3D numeric batch transforms, cycle-safe exact preserve-world 3D
+  reparenting with a preserve-local opt-out, switchable Local/World 3D
+  Move/Rotate/Scale with exact-or-reject group transactions plus conditioned
+  XY/XZ/YZ Move-plane and Scale-plane handles, true expandable
+  hierarchies with
+  before/into/after transactional row drops, stable sibling-block ordering,
+  focus-safe
+  Duplicate/Delete, scene-aware
   Cut/Copy/Paste/Select All with bounded same-kind cross-document transfer,
   Move/Rotate/Scale axis tools, an integrated asset browser, clone-safe compact
-  PBR material editing, and embedded common texture maps" and separately list
+  PBR material editing with truthful mixed-state batch fields, and batch
+  embedded common texture maps" and separately list
   their advanced tileset
   animation/collision/metadata, shaded material preview, cubemap/lightmap, richer
-  mixed-value/component, local/world, hierarchy drag/sibling-order/
-  preserve-world reparenting, and plane/ring gizmo gaps.
+  runtime-component, and asset-pipeline gaps.
 - Say "debug adapter supports stepping/breakpoints/evaluate/inline watches and
   collection/class expansion" and separately list boxed struct payloads plus
   direct-IL/BASIC layout-sidecar limits.

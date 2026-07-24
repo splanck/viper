@@ -13,6 +13,8 @@
 //   - The production workbench publishes a zoom-aware native minimum window size.
 //   - Responsive editor chrome is reconciled whenever layout dimensions change.
 //   - At most one focus-taking transient surface owns the workbench at a time.
+//   - Surface Edit availability is forwarded unchanged to menu and toolbar
+//     chrome; the shell does not infer text-editor-only behavior.
 // Ownership/Lifetime:
 //   - Constructed once by main.zia and destroyed during IDE shutdown.
 //   - MenuChrome, WorkbenchShell, ToolPanelShell, and StatusShell live for the
@@ -391,10 +393,11 @@ class AppShell {
                                                canPaste: Boolean,
                                                canSelectAll: Boolean,
                                                canDuplicate: Boolean,
-                                               canDeleteScene: Boolean) {
+                                               canDeleteScene: Boolean,
+                                               canFind: Boolean) {
         menuChrome.SetSurfaceEditActionsAvailable(
             canCut, canCopy, canPaste, canSelectAll,
-            canDuplicate, canDeleteScene);
+            canDuplicate, canDeleteScene, canFind);
     }
 
     /// @brief Reflect undo/redo availability for code or visual scene history.

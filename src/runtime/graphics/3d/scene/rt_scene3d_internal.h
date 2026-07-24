@@ -12,10 +12,15 @@
 // Key invariants:
 //   - Public handles are validated before their private payload is accessed.
 //   - Hierarchy owner changes are collected completely before publication.
+//   - Node metadata tables remain sorted and within public ABI limits.
 // Ownership/Lifetime:
 //   - Scene nodes and scenes are runtime-managed objects referenced by opaque handles.
 //   - Internal transaction buffers are native allocations owned by their transaction.
-// Links: rt_scene3d.c, rt_scene3d_node.c, rt_scene3d_helpers.inc
+// Links: rt_scene3d.c, rt_scene3d_node.c, rt_scene3d_metadata.c,
+//   rt_scene3d_helpers.inc,
+//   docs/adr/0159-typed-scenenode-metadata-and-vscn-v6.md,
+//   docs/adr/0162-exact-preserve-world-scenenode-reparenting.md,
+//   docs/adr/0166-exact-scenenode-world-matrix-assignment.md
 //===----------------------------------------------------------------------===//
 #pragma once
 
@@ -204,6 +209,33 @@ typedef struct rt_scene3d_lod_view_state {
 
 #define RT_SCENE3D_LOD_VIEW_STATE_COUNT 4
 
+/// @brief Scalar kinds accepted by durable gameplay-facing node metadata.
+typedef enum rt_scene3d_metadata_kind {
+    RT_SCENE3D_METADATA_NULL = 0,
+    RT_SCENE3D_METADATA_BOOL = 1,
+    RT_SCENE3D_METADATA_INT = 2,
+    RT_SCENE3D_METADATA_FLOAT = 3,
+    RT_SCENE3D_METADATA_STRING = 4,
+} rt_scene3d_metadata_kind;
+
+/// @brief One native-owned, key-sorted metadata scalar.
+typedef struct rt_scene3d_metadata_entry {
+    char *key;
+    int32_t key_length;
+    rt_scene3d_metadata_kind kind;
+
+    union {
+        int8_t bool_value;
+        int64_t int_value;
+        double float_value;
+
+        struct {
+            char *data;
+            int32_t length;
+        } string_value;
+    } value;
+} rt_scene3d_metadata_entry;
+
 /// @brief SceneNode3D payload: local TRS, lazily-recomputed world matrix with dirty flag,
 ///   parent/children links, bound mesh/material/light/body/animator(s) and sync mode,
 ///   visibility, name, cached subtree AABB/bounding-sphere, LOD mesh levels,
@@ -248,6 +280,9 @@ typedef struct rt_scene_node3d {
 
     int8_t visible;
     rt_string name;
+    rt_scene3d_metadata_entry *metadata;
+    int32_t metadata_count;
+    int32_t metadata_capacity;
 
     float aabb_min[3];
     float aabb_max[3];
@@ -292,6 +327,9 @@ typedef struct rt_scene_node3d {
      * transform (which would flash a bogus motion vector on its first frame). */
     uint32_t identity_serial;
 } rt_scene_node3d;
+
+/// @brief Release every native-owned metadata allocation on one node.
+void rt_scene_node3d_metadata_clear_internal(rt_scene_node3d *node);
 
 /// @brief Scene3D payload: the implicit root node, total node count, and the
 ///   frustum-culled count from the most recent draw (a perf metric).
@@ -475,6 +513,23 @@ int scene_node_collect_subtree_bounds(rt_scene_node3d *node,
                                       float out_max[3]);
 void scene_node_get_world_position(rt_scene_node3d *node, double *x, double *y, double *z);
 void scene_node_get_world_rotation(rt_scene_node3d *node, double *out_quat);
+/// @brief Strict finite matrix equality used by exact SceneNode transform transactions.
+int scene3d_preserve_matrix_equal(const double a[16], const double b[16]);
+/// @brief Derive an exact parent-relative TRS for one requested complete world matrix.
+/// @param parent The prospective/current parent, or NULL for a parentless node.
+/// @return 1 when exactly representable; 0 for singular, sheared, projective, or invalid input.
+int scene_node_compute_local_trs_for_world_matrix(rt_scene_node3d *parent,
+                                                  const double desired_world[16],
+                                                  double out_position[3],
+                                                  double out_rotation[4],
+                                                  double out_scale[3]);
+/// @brief Derive an exact local TRS that keeps @p child at its current world matrix.
+/// @return 1 when representable beneath @p new_parent; 0 for singular, sheared, or invalid input.
+int scene_node_compute_preserved_local_trs(rt_scene_node3d *new_parent,
+                                           rt_scene_node3d *child,
+                                           double out_position[3],
+                                           double out_rotation[4],
+                                           double out_scale[3]);
 rt_scene_node3d *scene_node3d_checked(void *obj);
 double scene3d_clamp_abs_or(double value, double fallback);
 void scene3d_canonicalize_aabb_d(double mn[3], double mx[3]);

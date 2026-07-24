@@ -11,11 +11,17 @@
 //   search-by-name.
 // Key invariants:
 //   - Scene roots cannot be reparented and owner changes are transactional.
+//   - Preserve-world reparenting is exact or rejects before any graph mutation.
+//   - Complete world-matrix assignment is exact or leaves every local TRS lane unchanged.
 //   - World transforms, bounds, culling, persistence, and animation remain deterministic.
+//   - Typed node metadata preserves exact kinds and values through VSCN v6.
 // Ownership/Lifetime:
 //   - Runtime fixtures are managed by the runtime test heap.
 //   - White-box payload pointers are borrowed only while the owning fixture is live.
-// Links: src/runtime/graphics/3d/scene/rt_scene3d.h, rt_scene3d_internal.h
+// Links: src/runtime/graphics/3d/scene/rt_scene3d.h, rt_scene3d_internal.h,
+//   docs/adr/0159-typed-scenenode-metadata-and-vscn-v6.md,
+//   docs/adr/0161-stable-scenenode-sibling-reordering.md,
+//   docs/adr/0166-exact-scenenode-world-matrix-assignment.md
 //
 //===----------------------------------------------------------------------===//
 
@@ -75,6 +81,7 @@ extern int8_t rt_scene_node3d_get_world_scale_components(void *node,
                                                          double *y,
                                                          double *z);
 extern int8_t rt_scene_node3d_get_world_matrix_components(void *node, double out[16]);
+extern int8_t rt_scene_node3d_try_add_child_preserve_world(void *parent, void *child);
 extern void rt_scene_node3d_set_transform(void *node,
                                           double px,
                                           double py,
@@ -107,6 +114,19 @@ extern void rt_mesh3d_add_triangle(void *obj, int64_t i0, int64_t i1, int64_t i2
 extern void rt_scene_node3d_set_lod_resident(void *node, int64_t index, int8_t resident);
 extern int8_t rt_scene_node3d_get_lod_resident(void *node, int64_t index);
 extern int64_t rt_scene_node3d_get_lod_resident_bytes(void *node, int64_t index);
+extern void *rt_scene_node3d_metadata_keys(void *node);
+extern rt_string rt_scene_node3d_metadata_kind(void *node, rt_string key);
+extern int8_t rt_scene_node3d_metadata_has(void *node, rt_string key);
+extern int64_t rt_scene_node3d_metadata_get_int(void *node, rt_string key, int64_t def);
+extern double rt_scene_node3d_metadata_get_float(void *node, rt_string key, double def);
+extern int8_t rt_scene_node3d_metadata_get_bool(void *node, rt_string key, int8_t def);
+extern rt_string rt_scene_node3d_metadata_get_string(void *node, rt_string key, rt_string def);
+extern int8_t rt_scene_node3d_metadata_set_null(void *node, rt_string key);
+extern int8_t rt_scene_node3d_metadata_set_int(void *node, rt_string key, int64_t value);
+extern int8_t rt_scene_node3d_metadata_set_float(void *node, rt_string key, double value);
+extern int8_t rt_scene_node3d_metadata_set_bool(void *node, rt_string key, int8_t value);
+extern int8_t rt_scene_node3d_metadata_set_string(void *node, rt_string key, rt_string value);
+extern int8_t rt_scene_node3d_metadata_remove(void *node, rt_string key);
 extern void *rt_obj_new_i64(int64_t class_id, int64_t byte_size);
 extern void rt_obj_retain_maybe(void *p);
 extern int32_t rt_obj_release_check0(void *p);
@@ -772,6 +792,310 @@ static void test_get_child() {
     EXPECT_TRUE(rt_scene_node3d_get_child(parent, 1) == c2, "GetChild(1) returns second child");
     EXPECT_TRUE(rt_scene_node3d_get_child(parent, 2) == nullptr,
                 "GetChild(2) out of bounds returns null");
+}
+
+static void test_try_move_child_reorders_atomically() {
+    void *parent = rt_scene_node3d_new();
+    void *a = rt_scene_node3d_new();
+    void *b = rt_scene_node3d_new();
+    void *c = rt_scene_node3d_new();
+    void *d = rt_scene_node3d_new();
+    void *foreign = rt_scene_node3d_new();
+    rt_scene_node3d_add_child(parent, a);
+    rt_scene_node3d_add_child(parent, b);
+    rt_scene_node3d_add_child(parent, c);
+    rt_scene_node3d_add_child(parent, d);
+
+    EXPECT_TRUE(rt_scene_node3d_try_move_child(parent, c, 0) == 1,
+                "TryMoveChild moves an existing child toward the front");
+    EXPECT_TRUE(
+        rt_scene_node3d_get_child(parent, 0) == c && rt_scene_node3d_get_child(parent, 1) == a &&
+            rt_scene_node3d_get_child(parent, 2) == b && rt_scene_node3d_get_child(parent, 3) == d,
+        "TryMoveChild preserves stable sibling order around a front move");
+    EXPECT_TRUE(rt_scene_node3d_get_parent(c) == parent && rt_scene_node3d_child_count(parent) == 4,
+                "TryMoveChild preserves parent identity and child count");
+
+    EXPECT_TRUE(rt_scene_node3d_try_move_child(parent, c, 3) == 1,
+                "TryMoveChild moves an existing child toward the back");
+    EXPECT_TRUE(
+        rt_scene_node3d_get_child(parent, 0) == a && rt_scene_node3d_get_child(parent, 1) == b &&
+            rt_scene_node3d_get_child(parent, 2) == d && rt_scene_node3d_get_child(parent, 3) == c,
+        "TryMoveChild preserves stable sibling order around a back move");
+    EXPECT_TRUE(rt_scene_node3d_try_move_child(parent, c, 3) == 1,
+                "TryMoveChild accepts an already-satisfied target index");
+
+    EXPECT_TRUE(rt_scene_node3d_try_move_child(parent, c, -1) == 0 &&
+                    rt_scene_node3d_try_move_child(parent, c, 4) == 0 &&
+                    rt_scene_node3d_try_move_child(parent, foreign, 0) == 0,
+                "TryMoveChild rejects invalid targets and unrelated nodes");
+    EXPECT_TRUE(rt_scene_node3d_get_child(parent, 0) == a &&
+                    rt_scene_node3d_get_child(parent, 1) == b &&
+                    rt_scene_node3d_get_child(parent, 2) == d &&
+                    rt_scene_node3d_get_child(parent, 3) == c &&
+                    rt_scene_node3d_get_parent(foreign) == nullptr,
+                "Rejected TryMoveChild calls leave both hierarchies unchanged");
+
+    auto *parent_view = scene_node3d_checked(parent);
+    rt_scene_node3d *saved_slot = parent_view->children[1];
+    parent_view->children[1] = reinterpret_cast<rt_scene_node3d *>(foreign);
+    EXPECT_TRUE(rt_scene_node3d_try_move_child(parent, c, 0) == 0,
+                "TryMoveChild rejects a corrupt direct-child table");
+    EXPECT_TRUE(parent_view->children[0] == reinterpret_cast<rt_scene_node3d *>(a) &&
+                    parent_view->children[1] == reinterpret_cast<rt_scene_node3d *>(foreign) &&
+                    parent_view->children[2] == reinterpret_cast<rt_scene_node3d *>(d) &&
+                    parent_view->children[3] == reinterpret_cast<rt_scene_node3d *>(c),
+                "TryMoveChild validates every direct child before mutation");
+    parent_view->children[1] = saved_slot;
+}
+
+static void test_try_add_child_preserve_world_keeps_complete_subtree_pose() {
+    void *scene = rt_scene3d_new();
+    void *source_parent = rt_scene_node3d_new();
+    void *target_parent = rt_scene_node3d_new();
+    void *child = rt_scene_node3d_new();
+    void *grandchild = rt_scene_node3d_new();
+    void *source_rotation = rt_quat_from_euler(0.2, -0.4, 0.3);
+    void *target_rotation = rt_quat_from_euler(-0.1, 0.6, -0.25);
+    void *child_rotation = rt_quat_from_euler(0.35, 0.15, -0.5);
+    double child_world_before[16];
+    double grandchild_world_before[16];
+    double child_world_after[16];
+    double grandchild_world_after[16];
+    double local_x_before;
+    double local_y_before;
+    double local_z_before;
+    double local_x_after;
+    double local_y_after;
+    double local_z_after;
+
+    rt_scene_node3d_set_transform(source_parent,
+                                  8.0,
+                                  -3.0,
+                                  2.0,
+                                  rt_quat_x(source_rotation),
+                                  rt_quat_y(source_rotation),
+                                  rt_quat_z(source_rotation),
+                                  rt_quat_w(source_rotation),
+                                  2.0,
+                                  2.0,
+                                  2.0);
+    rt_scene_node3d_set_transform(target_parent,
+                                  -4.0,
+                                  5.0,
+                                  7.0,
+                                  rt_quat_x(target_rotation),
+                                  rt_quat_y(target_rotation),
+                                  rt_quat_z(target_rotation),
+                                  rt_quat_w(target_rotation),
+                                  0.5,
+                                  0.5,
+                                  0.5);
+    rt_scene_node3d_set_transform(child,
+                                  1.5,
+                                  -2.0,
+                                  0.75,
+                                  rt_quat_x(child_rotation),
+                                  rt_quat_y(child_rotation),
+                                  rt_quat_z(child_rotation),
+                                  rt_quat_w(child_rotation),
+                                  -1.25,
+                                  0.8,
+                                  1.6);
+    rt_scene_node3d_set_position(grandchild, 0.25, 1.0, -0.5);
+    rt_scene3d_add(scene, source_parent);
+    rt_scene3d_add(scene, target_parent);
+    rt_scene_node3d_add_child(source_parent, child);
+    rt_scene_node3d_add_child(child, grandchild);
+
+    EXPECT_TRUE(
+        rt_scene_node3d_get_world_matrix_components(child, child_world_before) != 0 &&
+            rt_scene_node3d_get_world_matrix_components(grandchild, grandchild_world_before) != 0 &&
+            rt_scene_node3d_get_position_components(
+                child, &local_x_before, &local_y_before, &local_z_before) != 0,
+        "Preserve-world fixture exposes complete source transforms");
+    EXPECT_TRUE(rt_scene_node3d_try_add_child_preserve_world(target_parent, child) != 0,
+                "TryAddChildPreserveWorld accepts an exactly representable transform");
+    EXPECT_TRUE(rt_scene_node3d_get_parent(child) == target_parent &&
+                    rt_scene_node3d_child_count(source_parent) == 0 &&
+                    rt_scene_node3d_child_count(target_parent) == 1,
+                "Preserve-world reparent changes only the requested hierarchy link");
+    EXPECT_TRUE(
+        rt_scene_node3d_get_world_matrix_components(child, child_world_after) != 0 &&
+            rt_scene_node3d_get_world_matrix_components(grandchild, grandchild_world_after) != 0 &&
+            rt_scene_node3d_get_position_components(
+                child, &local_x_after, &local_y_after, &local_z_after) != 0,
+        "Preserve-world reparent exposes its resulting transforms");
+    for (int lane = 0; lane < 16; ++lane) {
+        EXPECT_NEAR(child_world_after[lane],
+                    child_world_before[lane],
+                    1e-8,
+                    "TryAddChildPreserveWorld keeps every child world-matrix lane");
+        EXPECT_NEAR(grandchild_world_after[lane],
+                    grandchild_world_before[lane],
+                    1e-8,
+                    "TryAddChildPreserveWorld keeps descendant world-matrix lanes");
+    }
+    EXPECT_TRUE(fabs(local_x_after - local_x_before) > 0.001 ||
+                    fabs(local_y_after - local_y_before) > 0.001 ||
+                    fabs(local_z_after - local_z_before) > 0.001,
+                "Preserve-world reparent derives a new local transform");
+    EXPECT_TRUE(rt_scene_node3d_try_add_child_preserve_world(target_parent, child) != 0,
+                "TryAddChildPreserveWorld accepts an already-satisfied parent");
+}
+
+static void test_try_add_child_preserve_world_rejects_lossy_changes_atomically() {
+    void *scene = rt_scene3d_new();
+    void *source_parent = rt_scene_node3d_new();
+    void *target_parent = rt_scene_node3d_new();
+    void *child = rt_scene_node3d_new();
+    void *grandchild = rt_scene_node3d_new();
+    void *child_rotation = rt_quat_from_euler(0.0, 0.0, 0.7853981633974483);
+    double world_before[16];
+    double world_after[16];
+    double local_before[3];
+    double local_after[3];
+
+    rt_scene3d_add(scene, source_parent);
+    rt_scene3d_add(scene, target_parent);
+    rt_scene_node3d_add_child(source_parent, child);
+    rt_scene_node3d_add_child(child, grandchild);
+    rt_scene_node3d_set_transform(child,
+                                  2.0,
+                                  3.0,
+                                  4.0,
+                                  rt_quat_x(child_rotation),
+                                  rt_quat_y(child_rotation),
+                                  rt_quat_z(child_rotation),
+                                  rt_quat_w(child_rotation),
+                                  1.0,
+                                  1.0,
+                                  1.0);
+    rt_scene_node3d_set_scale(target_parent, 0.0, 1.0, 1.0);
+    EXPECT_TRUE(rt_scene_node3d_get_world_matrix_components(child, world_before) != 0 &&
+                    rt_scene_node3d_get_position_components(
+                        child, &local_before[0], &local_before[1], &local_before[2]) != 0,
+                "Lossy preserve-world fixture exposes its source transform");
+
+    EXPECT_TRUE(rt_scene_node3d_try_add_child_preserve_world(target_parent, child) == 0,
+                "TryAddChildPreserveWorld rejects a singular destination parent");
+    EXPECT_TRUE(rt_scene_node3d_get_parent(child) == source_parent &&
+                    rt_scene_node3d_child_count(source_parent) == 1 &&
+                    rt_scene_node3d_child_count(target_parent) == 0,
+                "Singular-parent rejection leaves hierarchy links untouched");
+
+    rt_scene_node3d_set_scale(target_parent, 2.0, 1.0, 1.0);
+    EXPECT_TRUE(rt_scene_node3d_try_add_child_preserve_world(target_parent, child) == 0,
+                "TryAddChildPreserveWorld rejects a conversion that requires shear");
+    EXPECT_TRUE(rt_scene_node3d_get_world_matrix_components(child, world_after) != 0 &&
+                    rt_scene_node3d_get_position_components(
+                        child, &local_after[0], &local_after[1], &local_after[2]) != 0,
+                "Rejected preserve-world conversion keeps readable transforms");
+    for (int lane = 0; lane < 16; ++lane)
+        EXPECT_NEAR(world_after[lane],
+                    world_before[lane],
+                    1e-12,
+                    "Rejected preserve-world conversion keeps the world matrix");
+    for (int axis = 0; axis < 3; ++axis)
+        EXPECT_NEAR(local_after[axis],
+                    local_before[axis],
+                    1e-12,
+                    "Rejected preserve-world conversion keeps local position");
+    EXPECT_TRUE(rt_scene_node3d_get_parent(child) == source_parent &&
+                    rt_scene_node3d_child_count(source_parent) == 1 &&
+                    rt_scene_node3d_child_count(target_parent) == 0,
+                "Shear rejection leaves both parent child tables untouched");
+    EXPECT_TRUE(rt_scene_node3d_try_add_child_preserve_world(grandchild, child) == 0,
+                "TryAddChildPreserveWorld rejects hierarchy cycles");
+    EXPECT_TRUE(rt_scene_node3d_try_add_child_preserve_world(target_parent,
+                                                             rt_scene3d_get_root(scene)) == 0,
+                "TryAddChildPreserveWorld rejects implicit scene roots");
+    EXPECT_TRUE(rt_scene_node3d_try_add_child_preserve_world(scene, child) == 0,
+                "TryAddChildPreserveWorld rejects wrong-class parent handles");
+    EXPECT_TRUE(rt_scene_node3d_get_parent(child) == source_parent,
+                "All rejected preserve-world calls retain the original parent");
+}
+
+static void test_try_set_world_matrix_is_exact_and_atomic() {
+    void *scene = rt_scene3d_new();
+    void *parent = rt_scene_node3d_new();
+    void *child = rt_scene_node3d_new();
+    void *parent_rotation = rt_quat_from_euler(0.0, 0.0, M_PI / 6.0);
+    void *desired_translation = rt_mat4_translate(9.0, -3.0, 2.0);
+    void *desired_rotation = rt_mat4_rotate_z(M_PI / 5.0);
+    void *desired_scale = rt_mat4_scale(1.5, 0.75, 2.0);
+    void *desired_basis = rt_mat4_mul(desired_rotation, desired_scale);
+    void *desired_world = rt_mat4_mul(desired_translation, desired_basis);
+    double requested[16];
+    double actual[16];
+
+    rt_scene_node3d_set_transform(parent,
+                                  5.0,
+                                  -2.0,
+                                  1.0,
+                                  rt_quat_x(parent_rotation),
+                                  rt_quat_y(parent_rotation),
+                                  rt_quat_z(parent_rotation),
+                                  rt_quat_w(parent_rotation),
+                                  2.0,
+                                  2.0,
+                                  2.0);
+    rt_scene3d_add(scene, parent);
+    rt_scene_node3d_add_child(parent, child);
+
+    EXPECT_TRUE(rt_scene_node3d_try_set_world_matrix(child, desired_world) != 0,
+                "TrySetWorldMatrix accepts an exactly representable parent-relative TRS");
+    EXPECT_TRUE(rt_scene_node3d_get_world_matrix_components(child, actual) != 0,
+                "TrySetWorldMatrix publishes a readable world matrix");
+    for (int row = 0; row < 4; ++row) {
+        for (int column = 0; column < 4; ++column)
+            requested[row * 4 + column] = rt_mat4_get(desired_world, row, column);
+    }
+    for (int lane = 0; lane < 16; ++lane)
+        EXPECT_NEAR(actual[lane],
+                    requested[lane],
+                    1e-9,
+                    "TrySetWorldMatrix reproduces every requested world-matrix lane");
+    EXPECT_TRUE(rt_scene_node3d_try_set_world_matrix(child, desired_world) != 0,
+                "TrySetWorldMatrix accepts an already-satisfied world transform");
+
+    double local_before[10];
+    double local_after[10];
+    EXPECT_TRUE(
+        rt_scene_node3d_get_position_components(
+            child, &local_before[0], &local_before[1], &local_before[2]) != 0 &&
+            rt_scene_node3d_get_rotation_components(
+                child, &local_before[3], &local_before[4], &local_before[5], &local_before[6]) !=
+                0 &&
+            rt_scene_node3d_get_scale_components(
+                child, &local_before[7], &local_before[8], &local_before[9]) != 0,
+        "TrySetWorldMatrix rejection fixture captures the complete local TRS");
+
+    rt_scene_node3d_set_scale(parent, 0.0, 1.0, 1.0);
+    EXPECT_TRUE(rt_scene_node3d_try_set_world_matrix(child, desired_world) == 0,
+                "TrySetWorldMatrix rejects a singular parent");
+    rt_scene_node3d_set_scale(parent, 2.0, 1.0, 1.0);
+    void *sheared_local =
+        rt_mat4_mul(rt_mat4_translate(3.0, 4.0, 5.0), rt_mat4_rotate_z(M_PI / 4.0));
+    EXPECT_TRUE(rt_scene_node3d_try_set_world_matrix(child, sheared_local) == 0,
+                "TrySetWorldMatrix rejects a request requiring local shear");
+    EXPECT_TRUE(rt_scene_node3d_try_set_world_matrix(child, rt_vec3_new(1.0, 2.0, 3.0)) == 0 &&
+                    rt_scene_node3d_try_set_world_matrix(child, nullptr) == 0 &&
+                    rt_scene_node3d_try_set_world_matrix(scene, desired_world) == 0,
+                "TrySetWorldMatrix rejects wrong-class and null handles");
+
+    EXPECT_TRUE(
+        rt_scene_node3d_get_position_components(
+            child, &local_after[0], &local_after[1], &local_after[2]) != 0 &&
+            rt_scene_node3d_get_rotation_components(
+                child, &local_after[3], &local_after[4], &local_after[5], &local_after[6]) != 0 &&
+            rt_scene_node3d_get_scale_components(
+                child, &local_after[7], &local_after[8], &local_after[9]) != 0,
+        "Rejected TrySetWorldMatrix calls leave the complete local TRS readable");
+    for (int lane = 0; lane < 10; ++lane)
+        EXPECT_NEAR(local_after[lane],
+                    local_before[lane],
+                    1e-12,
+                    "Rejected TrySetWorldMatrix calls are transform-atomic");
 }
 
 static void test_default_transform() {
@@ -3707,10 +4031,180 @@ static void test_scene_roundtrip_preserves_authoring_metadata() {
                 "SceneGraph.Load restores the auto-LOD screen error");
 }
 
+/// @brief Gameplay-facing node metadata must preserve scalar kinds and exact
+///        values through the same canonical VSCN path Studio uses for history.
+static void test_scene_node_metadata_is_typed_bounded_and_persistent() {
+    const char *path = "/tmp/zanna_scene_node_metadata_roundtrip.vscn";
+    void *scene = rt_scene3d_new();
+    void *node = rt_scene_node3d_new();
+    rt_string empty = rt_const_cstr("");
+    rt_string role = rt_const_cstr("role");
+    rt_string health = rt_const_cstr("health");
+    rt_string minimum_health = rt_const_cstr("minimumHealth");
+    rt_string radius = rt_const_cstr("radius");
+    rt_string active = rt_const_cstr("active");
+    rt_string optional_target = rt_const_cstr("optionalTarget");
+
+    rt_scene_node3d_set_name(node, rt_const_cstr("gameplay_probe"));
+    EXPECT_TRUE(rt_scene_node3d_metadata_set_string(node, role, rt_const_cstr("boss\"\nphase")) !=
+                    0,
+                "SceneNode.MetadataSetString accepts bounded gameplay text");
+    EXPECT_TRUE(rt_scene_node3d_metadata_set_int(node, health, INT64_MAX) != 0,
+                "SceneNode.MetadataSetInt accepts the complete i64 range");
+    EXPECT_TRUE(rt_scene_node3d_metadata_set_int(node, minimum_health, INT64_MIN) != 0,
+                "SceneNode.MetadataSetInt accepts the i64 lower bound");
+    EXPECT_TRUE(rt_scene_node3d_metadata_set_float(node, radius, 4.0) != 0,
+                "SceneNode.MetadataSetFloat preserves integral-looking floats");
+    EXPECT_TRUE(rt_scene_node3d_metadata_set_bool(node, active, 1) != 0,
+                "SceneNode.MetadataSetBool accepts booleans");
+    EXPECT_TRUE(rt_scene_node3d_metadata_set_null(node, optional_target) != 0,
+                "SceneNode.MetadataSetNull records explicit null");
+    EXPECT_TRUE(rt_scene_node3d_metadata_set_int(node, empty, 1) == 0,
+                "SceneNode metadata rejects empty keys");
+
+    std::string oversized_key(129, 'k');
+    EXPECT_TRUE(rt_scene_node3d_metadata_set_int(
+                    node, rt_string_from_bytes(oversized_key.data(), oversized_key.size()), 1) == 0,
+                "SceneNode metadata rejects keys beyond the documented limit");
+    EXPECT_TRUE(rt_scene_node3d_metadata_set_float(node, rt_const_cstr("bad"), INFINITY) == 0,
+                "SceneNode metadata rejects non-finite floats");
+    std::string oversized_value(65537, 'v');
+    EXPECT_TRUE(rt_scene_node3d_metadata_set_string(
+                    node,
+                    rt_const_cstr("tooLarge"),
+                    rt_string_from_bytes(oversized_value.data(), oversized_value.size())) == 0,
+                "SceneNode metadata rejects strings beyond the documented limit");
+
+    EXPECT_TRUE(rt_scene_node3d_metadata_has(node, role) != 0,
+                "SceneNode.MetadataHas distinguishes present values");
+    EXPECT_TRUE(rt_scene_node3d_metadata_has(node, rt_const_cstr("missing")) == 0,
+                "SceneNode.MetadataHas distinguishes missing values");
+    EXPECT_TRUE(
+        std::strcmp(rt_string_cstr(rt_scene_node3d_metadata_kind(node, role)), "string") == 0 &&
+            std::strcmp(rt_string_cstr(rt_scene_node3d_metadata_kind(node, health)), "int") == 0 &&
+            std::strcmp(rt_string_cstr(rt_scene_node3d_metadata_kind(node, radius)), "float") ==
+                0 &&
+            std::strcmp(rt_string_cstr(rt_scene_node3d_metadata_kind(node, active)), "bool") == 0 &&
+            std::strcmp(rt_string_cstr(rt_scene_node3d_metadata_kind(node, optional_target)),
+                        "null") == 0,
+        "SceneNode.MetadataKind reports every stable scalar token");
+    EXPECT_TRUE(rt_scene_node3d_metadata_get_int(node, health, 0) == INT64_MAX,
+                "SceneNode.MetadataGetInt returns exact i64 values");
+    EXPECT_NEAR(rt_scene_node3d_metadata_get_float(node, radius, 0.0),
+                4.0,
+                0.0001,
+                "SceneNode.MetadataGetFloat returns exact float values");
+    EXPECT_TRUE(rt_scene_node3d_metadata_get_bool(node, active, 0) != 0,
+                "SceneNode.MetadataGetBool returns exact boolean values");
+    EXPECT_TRUE(std::strcmp(rt_string_cstr(rt_scene_node3d_metadata_get_string(node, role, empty)),
+                            "boss\"\nphase") == 0,
+                "SceneNode.MetadataGetString returns exact string values");
+    EXPECT_TRUE(rt_scene_node3d_metadata_get_int(node, role, 17) == 17,
+                "SceneNode typed getters return defaults on kind mismatch");
+
+    void *keys = rt_scene_node3d_metadata_keys(node);
+    EXPECT_TRUE(rt_seq_len(keys) == 6, "SceneNode.MetadataKeys returns every accepted key");
+    const char *expected_keys[6] = {
+        "active", "health", "minimumHealth", "optionalTarget", "radius", "role"};
+    for (int64_t index = 0; index < 6; ++index) {
+        rt_string key = rt_seq_get_str(keys, index);
+        EXPECT_TRUE(std::strcmp(rt_string_cstr(key), expected_keys[index]) == 0,
+                    "SceneNode.MetadataKeys uses deterministic lexicographic order");
+        rt_string_unref(key);
+    }
+
+    auto *node_view = static_cast<rt_scene_node3d *>(node);
+    const int32_t saved_metadata_count = node_view->metadata_count;
+    node_view->metadata_count = RT_SCENE_NODE3D_MAX_METADATA_ENTRIES + 1;
+    void *corrupt_keys = rt_scene_node3d_metadata_keys(node);
+    EXPECT_TRUE(rt_seq_len(corrupt_keys) == 0 && rt_scene_node3d_metadata_has(node, health) == 0 &&
+                    rt_scene_node3d_metadata_set_int(node, health, 1) == 0,
+                "SceneNode metadata APIs reject corrupt native table bounds safely");
+    node_view->metadata_count = saved_metadata_count;
+
+    rt_scene3d_add(scene, node);
+    EXPECT_TRUE(rt_scene3d_save(scene, rt_const_cstr(path)) == 1,
+                "SceneGraph.Save writes typed node metadata");
+    std::string text;
+    EXPECT_TRUE(read_text_file(path, text), "Typed node metadata VSCN can be reopened");
+    EXPECT_TRUE(text.find("\"version\": 6") != std::string::npos,
+                "Node metadata promotes VSCN output to version 6");
+    EXPECT_TRUE(text.find("\"metadata\": {") != std::string::npos &&
+                    text.find("\"kind\": \"float\", \"value\": 4") != std::string::npos &&
+                    text.find("\"kind\": \"int\", \"value\": \"9223372036854775807\"") !=
+                        std::string::npos &&
+                    text.find("\"kind\": \"int\", \"value\": \"-9223372036854775808\"") !=
+                        std::string::npos,
+                "VSCN uses tagged metadata that preserves scalar kinds and full i64 values");
+
+    void *loaded = rt_scene3d_load(rt_const_cstr(path));
+    EXPECT_TRUE(loaded != nullptr, "SceneGraph.Load reads VSCN v6 node metadata");
+    if (!loaded)
+        return;
+    void *loaded_node = rt_scene3d_find(loaded, rt_const_cstr("gameplay_probe"));
+    EXPECT_TRUE(loaded_node != nullptr, "SceneGraph.Load restores metadata-bearing nodes");
+    if (!loaded_node)
+        return;
+    EXPECT_TRUE(rt_scene_node3d_metadata_get_int(loaded_node, health, 0) == INT64_MAX,
+                "VSCN v6 round-trip preserves full-width integers");
+    EXPECT_TRUE(rt_scene_node3d_metadata_get_int(loaded_node, minimum_health, 0) == INT64_MIN,
+                "VSCN v6 round-trip preserves the i64 lower bound");
+    EXPECT_TRUE(
+        std::strcmp(rt_string_cstr(rt_scene_node3d_metadata_kind(loaded_node, radius)), "float") ==
+                0 &&
+            std::fabs(rt_scene_node3d_metadata_get_float(loaded_node, radius, 0.0) - 4.0) < 0.0001,
+        "VSCN v6 round-trip preserves integral-looking float kind");
+    EXPECT_TRUE(
+        rt_scene_node3d_metadata_get_bool(loaded_node, active, 0) != 0 &&
+            std::strcmp(rt_string_cstr(rt_scene_node3d_metadata_kind(loaded_node, optional_target)),
+                        "null") == 0,
+        "VSCN v6 round-trip preserves bool and explicit null");
+    EXPECT_TRUE(
+        std::strcmp(rt_string_cstr(rt_scene_node3d_metadata_get_string(loaded_node, role, empty)),
+                    "boss\"\nphase") == 0,
+        "VSCN v6 round-trip preserves escaped string metadata");
+    EXPECT_TRUE(rt_scene_node3d_metadata_remove(loaded_node, role) != 0 &&
+                    rt_scene_node3d_metadata_remove(loaded_node, role) == 0,
+                "SceneNode.MetadataRemove reports removal and missing-key no-op distinctly");
+}
+
 static void test_scene_save_rejects_wrong_handle() {
     void *node = rt_scene_node3d_new();
     EXPECT_TRUE(rt_scene3d_save(node, rt_const_cstr("/tmp/zanna_scene_wrong_handle.vscn")) == 0,
                 "SceneGraph.Save rejects non-SceneGraph handles");
+}
+
+static void test_scene_load_rejects_malformed_node_metadata() {
+    const char *path = "/tmp/zanna_scene_invalid_node_metadata.vscn";
+    const char *invalid_payloads[] = {"100",
+                                      "\"9223372036854775808\"",
+                                      "\"-9223372036854775809\"",
+                                      "\"+1\"",
+                                      "\"01\"",
+                                      "\"-0\"",
+                                      "\"\""};
+    for (const char *payload : invalid_payloads) {
+        std::string json =
+            "{\n"
+            "  \"format\": \"vscn\",\n"
+            "  \"version\": 6,\n"
+            "  \"textures\": [],\n"
+            "  \"cubemaps\": [],\n"
+            "  \"materials\": [],\n"
+            "  \"meshes\": [],\n"
+            "  \"nodes\": [\n"
+            "    {\"name\": \"bad\", \"position\": [0,0,0], \"rotation\": [0,0,0,1], "
+            "\"scale\": [1,1,1], \"visible\": true, \"mesh\": -1, \"material\": -1, "
+            "\"metadata\": {\"health\": {\"kind\": \"int\", \"value\": " +
+            std::string(payload) +
+            "}}}\n"
+            "  ]\n"
+            "}\n";
+        EXPECT_TRUE(write_text_file(path, json.c_str()),
+                    "Malformed node-metadata fixture can be written");
+        EXPECT_TRUE(rt_scene3d_load(rt_const_cstr(path)) == nullptr,
+                    "SceneGraph.Load rejects non-canonical or out-of-range metadata integers");
+    }
 }
 
 static void test_scene_load_rejects_malformed_json() {
@@ -4006,6 +4500,10 @@ int main() {
     test_subtree_aabb_includes_child_meshes();
     test_clear();
     test_get_child();
+    test_try_move_child_reorders_atomically();
+    test_try_add_child_preserve_world_keeps_complete_subtree_pose();
+    test_try_add_child_preserve_world_rejects_lossy_changes_atomically();
+    test_try_set_world_matrix_is_exact_and_atomic();
     test_default_transform();
     test_node_sanitizes_nonfinite_transform_and_lod();
     test_scene_repairs_corrupt_private_counts();
@@ -4044,6 +4542,7 @@ int main() {
     test_scene_save_serializes_visibility_and_lod_metadata();
     test_scene_roundtrip_loads_shared_assets();
     test_scene_roundtrip_preserves_authoring_metadata();
+    test_scene_node_metadata_is_typed_bounded_and_persistent();
     test_scene_roundtrip_deep_hierarchy_uses_format_depth_limit();
     test_scene_save_skips_invalid_material_asset_refs();
     test_node_animator_handles_large_morph_weight_channels();
@@ -4066,6 +4565,7 @@ int main() {
     test_scene_node_attached_camera_tracks_world_transform();
     test_scene_roundtrip_preserves_node_lights();
     test_scene_save_rejects_wrong_handle();
+    test_scene_load_rejects_malformed_node_metadata();
     test_scene_load_rejects_malformed_json();
     test_scene_load_rejects_invalid_node_references();
     test_scene_load_rejects_out_of_range_numeric_indices();

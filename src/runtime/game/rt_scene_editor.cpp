@@ -17,7 +17,8 @@
 //
 // Links: rt_scene_editor.h, rt_tiled_import.cpp,
 //   docs/adr/0144-complete-tiled-map-import.md,
-//   docs/adr/0155-scene-object-authoring-metadata-and-duplication.md
+//   docs/adr/0155-scene-object-authoring-metadata-and-duplication.md,
+//   docs/adr/0164-backward-compatible-2d-scene-object-hierarchy.md
 //
 //===----------------------------------------------------------------------===//
 
@@ -76,6 +77,7 @@ constexpr size_t kMaxStringValueBytes = 64 * 1024;
 constexpr size_t kMaxPreservedBytes = 4 * 1024 * 1024;
 constexpr size_t kMaxDiagnostics = 256;
 constexpr size_t kMaxTilemapLayerNameBytes = 31;
+constexpr const char *kObjectParentProperty = "zanna.hierarchy.parentIndex";
 
 std::string toStd(rt_string s) {
     if (!s)
@@ -289,6 +291,7 @@ struct Object {
     std::string id;
     int64_t x{0};
     int64_t y{0};
+    int64_t parent{-1};
     std::map<std::string, SceneScalar> properties;
 };
 
@@ -414,6 +417,14 @@ bool validTile(const SceneState &s, int64_t x, int64_t y) {
 
 bool validObjectIndex(const SceneState &s, int64_t index) {
     return index >= 0 && index < static_cast<int64_t>(s.objects.size());
+}
+
+bool isReservedObjectProperty(const std::string &key) {
+    return key == kObjectParentProperty;
+}
+
+bool isReservedObjectProperty(rt_string key) {
+    return isReservedObjectProperty(toStd(key));
 }
 
 bool validKey(const std::string &key) {
@@ -929,6 +940,67 @@ void parseLayers(SceneState &s, void *sourceMap, bool legacy, bool nestedDraft) 
         s.layers.push_back(makeLayer(s, "base"));
 }
 
+void validateObjectParents(SceneState &s) {
+    const int64_t count = static_cast<int64_t>(s.objects.size());
+    for (int64_t index = 0; index < count; ++index) {
+        Object &object = s.objects[static_cast<size_t>(index)];
+        if (object.parent == -1)
+            continue;
+        if (object.parent < -1 || object.parent >= count) {
+            addDiagnostic(s,
+                          "scene.schema.invalid_object_parent",
+                          "error",
+                          "object parent index is outside the object array",
+                          "/objects/" + std::to_string(index) + "/properties/" +
+                              kObjectParentProperty);
+            object.parent = -1;
+            continue;
+        }
+        if (object.parent == index) {
+            addDiagnostic(s,
+                          "scene.schema.invalid_object_parent",
+                          "error",
+                          "object cannot be its own parent",
+                          "/objects/" + std::to_string(index) + "/properties/" +
+                              kObjectParentProperty);
+            object.parent = -1;
+        }
+    }
+
+    std::vector<uint8_t> state(static_cast<size_t>(count), 0);
+    for (int64_t start = 0; start < count; ++start) {
+        if (state[static_cast<size_t>(start)] != 0)
+            continue;
+
+        std::vector<int64_t> chain;
+        int64_t current = start;
+        while (current >= 0 && state[static_cast<size_t>(current)] == 0) {
+            state[static_cast<size_t>(current)] = 1;
+            chain.push_back(current);
+            current = s.objects[static_cast<size_t>(current)].parent;
+        }
+
+        if (current >= 0 && state[static_cast<size_t>(current)] == 1) {
+            auto cycleStart = std::find(chain.begin(), chain.end(), current);
+            addDiagnostic(s,
+                          "scene.schema.object_parent_cycle",
+                          "error",
+                          "object hierarchy contains a parent cycle",
+                          "/objects/" + std::to_string(current) + "/properties/" +
+                              kObjectParentProperty);
+            if (cycleStart == chain.end()) {
+                s.objects[static_cast<size_t>(current)].parent = -1;
+            } else {
+                for (auto it = cycleStart; it != chain.end(); ++it)
+                    s.objects[static_cast<size_t>(*it)].parent = -1;
+            }
+        }
+
+        for (int64_t index : chain)
+            state[static_cast<size_t>(index)] = 2;
+    }
+}
+
 void parseObjects(SceneState &s, void *root) {
     void *objects = mapGet(root, "objects");
     if (!isSeq(objects))
@@ -995,8 +1067,24 @@ void parseObjects(SceneState &s, void *root) {
             obj.properties[key] = std::move(scalar);
         }
         releaseObject(keys);
+
+        auto parent = obj.properties.find(kObjectParentProperty);
+        if (parent != obj.properties.end()) {
+            if (parent->second.kind == ScalarKind::Int) {
+                obj.parent = parent->second.intValue;
+            } else {
+                addDiagnostic(s,
+                              "scene.schema.invalid_type",
+                              "error",
+                              "object parent index must be an integer",
+                              "/objects/" + std::to_string(i) + "/properties/" +
+                                  kObjectParentProperty);
+            }
+            obj.properties.erase(parent);
+        }
         s.objects.push_back(std::move(obj));
     }
+    validateObjectParents(s);
 }
 
 SceneState loadStateFromJson(rt_string text, const std::string &sourcePath) {
@@ -1194,7 +1282,10 @@ void writeCanonicalJson(std::ostringstream &out, const SceneState &s) {
         out << "      \"x\": " << obj.x << ",\n";
         out << "      \"y\": " << obj.y << ",\n";
         out << "      \"properties\": ";
-        writeScalarMap(out, obj.properties, 3);
+        std::map<std::string, SceneScalar> properties = obj.properties;
+        if (obj.parent >= 0)
+            properties[kObjectParentProperty] = makeIntScalar(obj.parent);
+        writeScalarMap(out, properties, 3);
         out << "\n";
         out << "    }";
         if (oi + 1 < s.objects.size())
@@ -1368,7 +1459,8 @@ const SceneScalar *findScalar(const std::map<std::string, SceneScalar> &map, rt_
 void setScalar(std::map<std::string, SceneScalar> &map,
                SceneState &s,
                rt_string key,
-               SceneScalar value) {
+               SceneScalar value,
+               int64_t maxEntries) {
     std::string k = toStd(key);
     if (!validKey(k)) {
         addDiagnostic(s, "scene.edit.rejected", "warning", "property key exceeds 128 bytes");
@@ -1378,7 +1470,15 @@ void setScalar(std::map<std::string, SceneScalar> &map,
         addDiagnostic(s, "scene.edit.rejected", "warning", "string property value exceeds 64 KiB");
         return;
     }
+    if (map.find(k) == map.end() && map.size() >= static_cast<size_t>(maxEntries)) {
+        addDiagnostic(s, "scene.edit.rejected", "warning", "too many properties");
+        return;
+    }
     map[k] = std::move(value);
+}
+
+int64_t maxPublicObjectProperties(const Object &object) {
+    return kMaxObjectProperties - (object.parent >= 0 ? 1 : 0);
 }
 
 uint64_t currentProcessId() {
@@ -1737,6 +1837,22 @@ void applyPreservedTilemapSections(const SceneState &s, void *tilemap) {
         }
         rt_string_unref(text);
     }
+}
+
+int64_t remapMovedObjectIndex(int64_t index, int64_t from, int64_t to) {
+    if (index < 0)
+        return index;
+    if (index == from)
+        return to;
+    if (from < to && index > from && index <= to)
+        return index - 1;
+    if (from > to && index >= to && index < from)
+        return index + 1;
+    return index;
+}
+
+int64_t remapInsertedObjectIndex(int64_t index, int64_t insertion) {
+    return index >= insertion ? index + 1 : index;
 }
 
 } // namespace
@@ -2122,7 +2238,7 @@ if (static_cast<int64_t>(s.objects.size()) >= kMaxObjects) {
     addDiagnostic(s, "scene.edit.rejected", "warning", "too many scene objects");
     return -1;
 }
-s.objects.push_back(Object{toStd(type), toStd(id), x, y, {}});
+s.objects.push_back(Object{toStd(type), toStd(id), x, y, -1, {}});
 return static_cast<int64_t>(s.objects.size()) - 1;
 }
 SCENE_CATCH(-1)
@@ -2134,8 +2250,17 @@ int64_t rt_game_scene_object_count(void *scene) {
 
 void rt_game_scene_remove_object(void *scene, int64_t index) {
     SceneState &s = *requireScene(scene)->state;
-    if (validObjectIndex(s, index))
-        s.objects.erase(s.objects.begin() + index);
+    if (!validObjectIndex(s, index))
+        return;
+
+    const int64_t removedParent = s.objects[static_cast<size_t>(index)].parent;
+    for (Object &object : s.objects) {
+        if (object.parent == index)
+            object.parent = removedParent;
+        if (object.parent > index)
+            --object.parent;
+    }
+    s.objects.erase(s.objects.begin() + index);
 }
 
 rt_string rt_game_scene_object_type(void *scene, int64_t index){
@@ -2160,6 +2285,39 @@ int64_t rt_game_scene_object_x(void *scene, int64_t index) {
 int64_t rt_game_scene_object_y(void *scene, int64_t index) {
     SceneState &s = *requireScene(scene)->state;
     return validObjectIndex(s, index) ? s.objects[static_cast<size_t>(index)].y : 0;
+}
+
+int64_t rt_game_scene_object_parent(void *scene, int64_t index) {
+    SceneState &s = *requireScene(scene)->state;
+    return validObjectIndex(s, index) ? s.objects[static_cast<size_t>(index)].parent : -1;
+}
+
+int8_t rt_game_scene_try_set_object_parent(void *scene, int64_t index, int64_t parent) {
+    SceneState &s = *requireScene(scene)->state;
+    if (!validObjectIndex(s, index) || (parent != -1 && !validObjectIndex(s, parent)) ||
+        parent == index)
+        return 0;
+
+    Object &object = s.objects[static_cast<size_t>(index)];
+    if (parent >= 0 && object.properties.size() >= static_cast<size_t>(kMaxObjectProperties)) {
+        addDiagnostic(
+            s, "scene.edit.rejected", "warning", "object hierarchy requires one property slot");
+        return 0;
+    }
+
+    int64_t ancestor = parent;
+    for (size_t depth = 0; ancestor >= 0 && depth < s.objects.size(); ++depth) {
+        if (ancestor == index)
+            return 0;
+        if (!validObjectIndex(s, ancestor))
+            return 0;
+        ancestor = s.objects[static_cast<size_t>(ancestor)].parent;
+    }
+    if (ancestor >= 0)
+        return 0;
+
+    object.parent = parent;
+    return 1;
 }
 
 void rt_game_scene_set_object_metadata(void *scene, int64_t index, rt_string type, rt_string id) {
@@ -2199,6 +2357,9 @@ int64_t rt_game_scene_duplicate_object(void *scene, int64_t index, rt_string id)
         Object duplicate = s.objects[static_cast<size_t>(index)];
         duplicate.id = std::move(next_id);
         int64_t duplicate_index = index + 1;
+        for (Object &object : s.objects)
+            object.parent = remapInsertedObjectIndex(object.parent, duplicate_index);
+        duplicate.parent = remapInsertedObjectIndex(duplicate.parent, duplicate_index);
         s.objects.insert(s.objects.begin() + duplicate_index, std::move(duplicate));
         return duplicate_index;
     }
@@ -2315,8 +2476,11 @@ void *rt_game_scene_object_keys(void *scene, int64_t index) {
 void rt_game_scene_object_set_null(void *scene, int64_t index, rt_string key) {
     SCENE_TRY {
         SceneState &s = *requireScene(scene)->state;
-        if (validObjectIndex(s, index))
-            setScalar(s.objects[static_cast<size_t>(index)].properties, s, key, makeNullScalar());
+        if (validObjectIndex(s, index) && !isReservedObjectProperty(key)) {
+            Object &object = s.objects[static_cast<size_t>(index)];
+            setScalar(
+                object.properties, s, key, makeNullScalar(), maxPublicObjectProperties(object));
+        }
     }
     SCENE_CATCH_VOID
 }
@@ -2324,9 +2488,11 @@ void rt_game_scene_object_set_null(void *scene, int64_t index, rt_string key) {
 void rt_game_scene_object_set_int(void *scene, int64_t index, rt_string key, int64_t value) {
     SCENE_TRY {
         SceneState &s = *requireScene(scene)->state;
-        if (validObjectIndex(s, index))
+        if (validObjectIndex(s, index) && !isReservedObjectProperty(key)) {
+            Object &object = s.objects[static_cast<size_t>(index)];
             setScalar(
-                s.objects[static_cast<size_t>(index)].properties, s, key, makeIntScalar(value));
+                object.properties, s, key, makeIntScalar(value), maxPublicObjectProperties(object));
+        }
     }
     SCENE_CATCH_VOID
 }
@@ -2334,11 +2500,14 @@ void rt_game_scene_object_set_int(void *scene, int64_t index, rt_string key, int
 void rt_game_scene_object_set_str(void *scene, int64_t index, rt_string key, rt_string value) {
     SCENE_TRY {
         SceneState &s = *requireScene(scene)->state;
-        if (validObjectIndex(s, index))
-            setScalar(s.objects[static_cast<size_t>(index)].properties,
+        if (validObjectIndex(s, index) && !isReservedObjectProperty(key)) {
+            Object &object = s.objects[static_cast<size_t>(index)];
+            setScalar(object.properties,
                       s,
                       key,
-                      makeStringScalar(toStd(value)));
+                      makeStringScalar(toStd(value)),
+                      maxPublicObjectProperties(object));
+        }
     }
     SCENE_CATCH_VOID
 }
@@ -2346,9 +2515,14 @@ void rt_game_scene_object_set_str(void *scene, int64_t index, rt_string key, rt_
 void rt_game_scene_object_set_float(void *scene, int64_t index, rt_string key, double value) {
     SCENE_TRY {
         SceneState &s = *requireScene(scene)->state;
-        if (validObjectIndex(s, index) && std::isfinite(value))
-            setScalar(
-                s.objects[static_cast<size_t>(index)].properties, s, key, makeFloatScalar(value));
+        if (validObjectIndex(s, index) && !isReservedObjectProperty(key) && std::isfinite(value)) {
+            Object &object = s.objects[static_cast<size_t>(index)];
+            setScalar(object.properties,
+                      s,
+                      key,
+                      makeFloatScalar(value),
+                      maxPublicObjectProperties(object));
+        }
     }
     SCENE_CATCH_VOID
 }
@@ -2356,18 +2530,21 @@ void rt_game_scene_object_set_float(void *scene, int64_t index, rt_string key, d
 void rt_game_scene_object_set_bool(void *scene, int64_t index, rt_string key, int8_t value) {
     SCENE_TRY {
         SceneState &s = *requireScene(scene)->state;
-        if (validObjectIndex(s, index))
-            setScalar(s.objects[static_cast<size_t>(index)].properties,
+        if (validObjectIndex(s, index) && !isReservedObjectProperty(key)) {
+            Object &object = s.objects[static_cast<size_t>(index)];
+            setScalar(object.properties,
                       s,
                       key,
-                      makeBoolScalar(value != 0));
+                      makeBoolScalar(value != 0),
+                      maxPublicObjectProperties(object));
+        }
     }
     SCENE_CATCH_VOID
 }
 
 void rt_game_scene_object_remove(void *scene, int64_t index, rt_string key){
     SCENE_TRY{SceneState &s = *requireScene(scene) -> state;
-if (validObjectIndex(s, index))
+if (validObjectIndex(s, index) && !isReservedObjectProperty(key))
     s.objects[static_cast<size_t>(index)].properties.erase(toStd(key));
 }
 SCENE_CATCH_VOID
@@ -2431,6 +2608,8 @@ void rt_game_scene_move_object(void *scene, int64_t from, int64_t to) {
         SceneState &s = *requireScene(scene)->state;
         if (!validObjectIndex(s, from) || !validObjectIndex(s, to) || from == to)
             return;
+        for (Object &object : s.objects)
+            object.parent = remapMovedObjectIndex(object.parent, from, to);
         Object obj = std::move(s.objects[static_cast<size_t>(from)]);
         s.objects.erase(s.objects.begin() + from);
         s.objects.insert(s.objects.begin() + to, std::move(obj));
@@ -2491,17 +2670,46 @@ return scalar && scalar->kind == ScalarKind::Bool ? (scalar->boolValue ? 1 : 0) 
 SCENE_CATCH(def)
 }
 
-int8_t rt_game_scene_has(void *scene, rt_string key) {
+int8_t rt_game_scene_has(void *scene, rt_string key){
+    SCENE_TRY{return findScalar(requireScene(scene) -> state->properties, key) ? 1 : 0;
+}
+SCENE_CATCH(0)
+}
+
+rt_string rt_game_scene_property_kind(void *scene, rt_string key) {
     SCENE_TRY {
-        return findScalar(requireScene(scene)->state->properties, key) ? 1 : 0;
+        const SceneScalar *scalar = findScalar(requireScene(scene)->state->properties, key);
+        return makeString(scalar ? scalarKindName(scalar->kind) : "");
     }
-    SCENE_CATCH(0)
+    SCENE_CATCH(makeString(""))
+}
+
+void *rt_game_scene_keys(void *scene) {
+    SCENE_TRY {
+        SceneState &s = *requireScene(scene)->state;
+        void *seq = rt_seq_new_owned();
+        for (const auto &[key, _] : s.properties) {
+            rt_string item = makeString(key);
+            rt_seq_push(seq, item);
+            rt_string_unref(item);
+        }
+        return seq;
+    }
+    SCENE_CATCH(rt_seq_new_owned())
+}
+
+void rt_game_scene_set_null(void *scene, rt_string key) {
+    SCENE_TRY {
+        SceneState &s = *requireScene(scene)->state;
+        setScalar(s.properties, s, key, makeNullScalar(), kMaxSceneProperties);
+    }
+    SCENE_CATCH_VOID
 }
 
 void rt_game_scene_set_int(void *scene, rt_string key, int64_t value) {
     SCENE_TRY {
         SceneState &s = *requireScene(scene)->state;
-        setScalar(s.properties, s, key, makeIntScalar(value));
+        setScalar(s.properties, s, key, makeIntScalar(value), kMaxSceneProperties);
     }
     SCENE_CATCH_VOID
 }
@@ -2509,7 +2717,7 @@ void rt_game_scene_set_int(void *scene, rt_string key, int64_t value) {
 void rt_game_scene_set_str(void *scene, rt_string key, rt_string value) {
     SCENE_TRY {
         SceneState &s = *requireScene(scene)->state;
-        setScalar(s.properties, s, key, makeStringScalar(toStd(value)));
+        setScalar(s.properties, s, key, makeStringScalar(toStd(value)), kMaxSceneProperties);
     }
     SCENE_CATCH_VOID
 }
@@ -2518,7 +2726,7 @@ void rt_game_scene_set_float(void *scene, rt_string key, double value) {
     SCENE_TRY {
         SceneState &s = *requireScene(scene)->state;
         if (std::isfinite(value))
-            setScalar(s.properties, s, key, makeFloatScalar(value));
+            setScalar(s.properties, s, key, makeFloatScalar(value), kMaxSceneProperties);
     }
     SCENE_CATCH_VOID
 }
@@ -2526,7 +2734,7 @@ void rt_game_scene_set_float(void *scene, rt_string key, double value) {
 void rt_game_scene_set_bool(void *scene, rt_string key, int8_t value) {
     SCENE_TRY {
         SceneState &s = *requireScene(scene)->state;
-        setScalar(s.properties, s, key, makeBoolScalar(value != 0));
+        setScalar(s.properties, s, key, makeBoolScalar(value != 0), kMaxSceneProperties);
     }
     SCENE_CATCH_VOID
 }

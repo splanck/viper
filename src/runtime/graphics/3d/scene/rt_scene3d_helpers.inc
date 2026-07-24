@@ -11,10 +11,12 @@
 // Key invariants:
 //   - Owner propagation completes traversal allocation before mutating nodes.
 //   - Transform and bounds helpers sanitize non-finite private state.
+//   - Preserve-world hierarchy edits accept only exactly representable local TRS.
 // Ownership/Lifetime:
 //   - Traversal arrays are native allocations released in the same helper call.
 //   - Runtime object pointers are borrowed unless a helper explicitly retains them.
-// Links: rt_scene3d.c, rt_scene3d_internal.h, rt_scene3d_node.c
+// Links: rt_scene3d.c, rt_scene3d_internal.h, rt_scene3d_node.c,
+//   docs/adr/0166-exact-scenenode-world-matrix-assignment.md
 //
 //===----------------------------------------------------------------------===//
 /*==========================================================================
@@ -703,6 +705,155 @@ void recompute_world_matrix(rt_scene_node3d *node) {
     while (count > 0)
         recompute_world_matrix_single(stack[--count]);
     free(stack);
+}
+
+/// @brief Length of one affine basis column without overflowing intermediate squares.
+static double scene3d_preserve_basis_length(double x, double y, double z) {
+    double max_abs = fmax(fabs(x), fmax(fabs(y), fabs(z)));
+    if (!isfinite(max_abs) || max_abs <= 0.0)
+        return max_abs == 0.0 ? 0.0 : NAN;
+    x /= max_abs;
+    y /= max_abs;
+    z /= max_abs;
+    return max_abs * sqrt(x * x + y * y + z * z);
+}
+
+/// @brief Floating-point equality used to prove a TRS decomposition is lossless.
+/// @details The absolute floor handles values around zero. The scaled DBL_EPSILON
+///          term permits ordinary inversion/quaternion round-off without accepting
+///          visible shear or a materially different authored transform.
+int scene3d_preserve_matrix_equal(const double a[16], const double b[16]) {
+    if (!scene3d_matrix_is_finite(a) || !scene3d_matrix_is_finite(b))
+        return 0;
+    for (int i = 0; i < 16; ++i) {
+        double magnitude = fmax(1.0, fmax(fabs(a[i]), fabs(b[i])));
+        double tolerance = 1e-10 + 4096.0 * DBL_EPSILON * magnitude;
+        if (fabs(a[i] - b[i]) > tolerance)
+            return 0;
+    }
+    return 1;
+}
+
+/// @brief Derive an exact local TRS for one requested complete world matrix.
+/// @details SceneNode stores TRS rather than a general affine matrix. The inverse
+///          parent transform may therefore yield shear, which cannot be represented
+///          without changing the requested world pose. This helper rejects singular
+///          parents, projective matrices, degenerate bases, shear, and decomposition
+///          drift before callers mutate node state. A negative determinant is carried
+///          by the largest-magnitude scale axis so reflected transforms remain exact.
+int scene_node_compute_local_trs_for_world_matrix(rt_scene_node3d *parent,
+                                                  const double desired_world[16],
+                                                  double out_position[3],
+                                                  double out_rotation[4],
+                                                  double out_scale[3]) {
+    double inverse_parent[16];
+    double local[16];
+    double rebuilt_local[16];
+    double rebuilt_world[16];
+    double basis[9];
+    double lengths[3];
+    double dot_xy;
+    double dot_xz;
+    double dot_yz;
+    double determinant;
+    int reflected_axis = 0;
+
+    if (!desired_world || !out_position || !out_rotation || !out_scale ||
+        !scene3d_matrix_is_finite(desired_world))
+        return 0;
+    if (parent) {
+        recompute_world_matrix(parent);
+        if (!scene3d_matrix_is_finite(parent->world_matrix) ||
+            mat4d_invert(parent->world_matrix, inverse_parent) != 0)
+            return 0;
+        mat4d_mul(inverse_parent, desired_world, local);
+    } else {
+        memcpy(local, desired_world, sizeof(local));
+    }
+
+    if (fabs(local[12]) > 1e-10 || fabs(local[13]) > 1e-10 || fabs(local[14]) > 1e-10 ||
+        fabs(local[15] - 1.0) > 1e-10)
+        return 0;
+    lengths[0] = scene3d_preserve_basis_length(local[0], local[4], local[8]);
+    lengths[1] = scene3d_preserve_basis_length(local[1], local[5], local[9]);
+    lengths[2] = scene3d_preserve_basis_length(local[2], local[6], local[10]);
+    if (!isfinite(lengths[0]) || !isfinite(lengths[1]) || !isfinite(lengths[2]) ||
+        lengths[0] <= 1e-12 || lengths[1] <= 1e-12 || lengths[2] <= 1e-12)
+        return 0;
+
+    basis[0] = local[0] / lengths[0];
+    basis[1] = local[1] / lengths[1];
+    basis[2] = local[2] / lengths[2];
+    basis[3] = local[4] / lengths[0];
+    basis[4] = local[5] / lengths[1];
+    basis[5] = local[6] / lengths[2];
+    basis[6] = local[8] / lengths[0];
+    basis[7] = local[9] / lengths[1];
+    basis[8] = local[10] / lengths[2];
+    dot_xy = basis[0] * basis[1] + basis[3] * basis[4] + basis[6] * basis[7];
+    dot_xz = basis[0] * basis[2] + basis[3] * basis[5] + basis[6] * basis[8];
+    dot_yz = basis[1] * basis[2] + basis[4] * basis[5] + basis[7] * basis[8];
+    if (!isfinite(dot_xy) || !isfinite(dot_xz) || !isfinite(dot_yz) || fabs(dot_xy) > 1e-10 ||
+        fabs(dot_xz) > 1e-10 || fabs(dot_yz) > 1e-10)
+        return 0;
+
+    determinant = basis[0] * (basis[4] * basis[8] - basis[5] * basis[7]) -
+                  basis[1] * (basis[3] * basis[8] - basis[5] * basis[6]) +
+                  basis[2] * (basis[3] * basis[7] - basis[4] * basis[6]);
+    if (!isfinite(determinant) || fabs(fabs(determinant) - 1.0) > 1e-10)
+        return 0;
+    if (determinant < 0.0) {
+        if (lengths[1] > lengths[reflected_axis])
+            reflected_axis = 1;
+        if (lengths[2] > lengths[reflected_axis])
+            reflected_axis = 2;
+        lengths[reflected_axis] = -lengths[reflected_axis];
+        basis[reflected_axis] = -basis[reflected_axis];
+        basis[3 + reflected_axis] = -basis[3 + reflected_axis];
+        basis[6 + reflected_axis] = -basis[6 + reflected_axis];
+    }
+
+    out_position[0] = local[3];
+    out_position[1] = local[7];
+    out_position[2] = local[11];
+    out_scale[0] = lengths[0];
+    out_scale[1] = lengths[1];
+    out_scale[2] = lengths[2];
+    quat_from_matrix_rows(basis[0],
+                          basis[1],
+                          basis[2],
+                          basis[3],
+                          basis[4],
+                          basis[5],
+                          basis[6],
+                          basis[7],
+                          basis[8],
+                          out_rotation);
+    build_trs_matrix(out_position, out_rotation, out_scale, rebuilt_local);
+    if (!scene3d_preserve_matrix_equal(local, rebuilt_local))
+        return 0;
+    if (!parent)
+        return scene3d_preserve_matrix_equal(desired_world, rebuilt_local);
+    mat4d_mul(parent->world_matrix, rebuilt_local, rebuilt_world);
+    return scene3d_preserve_matrix_equal(desired_world, rebuilt_world);
+}
+
+/// @brief Derive the local TRS that preserves one child's complete world matrix.
+int scene_node_compute_preserved_local_trs(rt_scene_node3d *new_parent,
+                                           rt_scene_node3d *child,
+                                           double out_position[3],
+                                           double out_rotation[4],
+                                           double out_scale[3]) {
+    double desired_world[16];
+
+    if (!new_parent || !child || !out_position || !out_rotation || !out_scale)
+        return 0;
+    recompute_world_matrix(child);
+    if (!scene3d_matrix_is_finite(child->world_matrix))
+        return 0;
+    memcpy(desired_world, child->world_matrix, sizeof(desired_world));
+    return scene_node_compute_local_trs_for_world_matrix(
+        new_parent, desired_world, out_position, out_rotation, out_scale);
 }
 
 /// @brief Count nodes in a subtree (including the root).

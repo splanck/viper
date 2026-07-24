@@ -11,6 +11,8 @@
 //          mode for direct keyboard entry.
 // Key invariants:
 //   - value is always clamped to [min_value, max_value] after every change.
+//   - indeterminate retains value as an editing seed but presents "Mixed"
+//     until a concrete value is assigned or the user begins editing.
 //   - editing==true means the user is typing directly; text_buffer is a live
 //     edit buffer that may not yet represent a valid number.
 //   - spinner_commit_edit parses text_buffer via strtod and calls set_value;
@@ -21,7 +23,8 @@
 //   - spinner->text_buffer is heap-allocated and freed in spinner_destroy.
 // Links: lib/gui/include/vg_widgets.h,
 //        lib/gui/include/vg_theme.h,
-//        lib/gui/include/vg_event.h
+//        lib/gui/include/vg_event.h,
+//        docs/adr/0167-spinner-mixed-value-state.md
 //
 //===----------------------------------------------------------------------===//
 #include "../../../graphics/include/vgfx.h"
@@ -145,9 +148,11 @@ static void spinner_measure(vg_widget_t *widget, float available_width, float av
     float width = widget->constraints.min_width > 0.0f ? widget->constraints.min_width : 80.0f;
     float height = widget->constraints.min_height > 0.0f ? widget->constraints.min_height : 28.0f;
 
-    if (spinner->font && spinner->text_buffer) {
+    const char *display_text =
+        spinner->indeterminate && !spinner->editing ? "Mixed" : spinner->text_buffer;
+    if (spinner->font && display_text) {
         vg_text_metrics_t metrics = {0};
-        vg_font_measure_text(spinner->font, spinner->font_size, spinner->text_buffer, &metrics);
+        vg_font_measure_text(spinner->font, spinner->font_size, display_text, &metrics);
         width = metrics.width + spinner->button_width + 18.0f;
         if (width < widget->constraints.min_width)
             width = widget->constraints.min_width;
@@ -236,13 +241,14 @@ static void spinner_paint(vg_widget_t *widget, void *canvas) {
               y + half_h,
               spinner->border_color);
 
-    if (spinner->font && spinner->text_buffer) {
+    const char *display_text =
+        spinner->indeterminate && !spinner->editing ? "Mixed" : spinner->text_buffer;
+    if (spinner->font && display_text) {
         vg_font_metrics_t metrics;
         vg_font_get_metrics(spinner->font, spinner->font_size, &metrics);
 
         vg_text_metrics_t text_metrics = {0};
-        vg_font_measure_text(
-            spinner->font, spinner->font_size, spinner->text_buffer, &text_metrics);
+        vg_font_measure_text(spinner->font, spinner->font_size, display_text, &text_metrics);
 
         const float text_area_w = widget->width - spinner->button_width - 12.0f;
         const float text_x = spinner->editing
@@ -257,13 +263,8 @@ static void spinner_paint(vg_widget_t *widget, void *canvas) {
         int32_t clip_h = h - 4;
         if (clip_w > 0 && clip_h > 0)
             vgfx_set_clip((vgfx_window_t)canvas, clip_x, clip_y, clip_w, clip_h);
-        vg_font_draw_text(canvas,
-                          spinner->font,
-                          spinner->font_size,
-                          text_x,
-                          text_y,
-                          spinner->text_buffer,
-                          text_color);
+        vg_font_draw_text(
+            canvas, spinner->font, spinner->font_size, text_x, text_y, display_text, text_color);
         if ((widget->state & VG_STATE_FOCUSED) && spinner->editing) {
             size_t cursor_pos = spinner->cursor_pos;
             size_t text_len = strlen(spinner->text_buffer);
@@ -511,6 +512,8 @@ static void update_text_buffer(vg_spinner_t *spinner) {
 static void spinner_begin_edit(vg_spinner_t *spinner) {
     if (!spinner)
         return;
+    if (spinner->indeterminate)
+        vg_spinner_set_indeterminate(spinner, false);
     spinner->editing = true;
     if (!spinner->text_buffer)
         return;
@@ -600,14 +603,16 @@ void vg_spinner_set_value(vg_spinner_t *spinner, double value) {
         value = spinner->max_value;
 
     double old = spinner->value;
+    bool old_indeterminate = spinner->indeterminate;
     spinner->value = value;
+    spinner->indeterminate = false;
     update_text_buffer(spinner);
     spinner->editing = false;
     spinner->base.needs_paint = true;
 
-    if (old != value) {
+    if (old != value || old_indeterminate) {
         vg_widget_note_change(&spinner->base);
-        if (spinner->on_change)
+        if (old != value && spinner->on_change)
             spinner->on_change(&spinner->base, value, spinner->on_change_data);
     }
 }
@@ -618,6 +623,35 @@ void vg_spinner_set_value(vg_spinner_t *spinner, double value) {
 /// @return Current value, or 0 if spinner is NULL.
 double vg_spinner_get_value(vg_spinner_t *spinner) {
     return spinner ? spinner->value : 0;
+}
+
+/// @brief Enter or leave mixed-value presentation without discarding the numeric seed.
+///
+/// @details The mixed state is a value-state transition and therefore advances
+///          both the common change edge and monotonic revision. Entering it
+///          cancels an incomplete text edit. Leaving it reveals the retained
+///          numeric value. Assigning a concrete value through
+///          vg_spinner_set_value also leaves this state.
+///
+/// @param spinner Spinner widget to update.
+/// @param indeterminate true to display "Mixed"; false to display the retained
+///        numeric value.
+void vg_spinner_set_indeterminate(vg_spinner_t *spinner, bool indeterminate) {
+    if (!spinner || spinner->indeterminate == indeterminate)
+        return;
+    spinner->indeterminate = indeterminate;
+    if (indeterminate) {
+        spinner->editing = false;
+        update_text_buffer(spinner);
+    }
+    spinner->base.needs_layout = true;
+    spinner->base.needs_paint = true;
+    vg_widget_note_change(&spinner->base);
+}
+
+/// @brief Return whether a spinner currently presents a mixed group value.
+bool vg_spinner_is_indeterminate(const vg_spinner_t *spinner) {
+    return spinner ? spinner->indeterminate : false;
 }
 
 /// @brief Set the minimum and maximum bounds for the spinner value.
@@ -642,9 +676,12 @@ void vg_spinner_set_range(vg_spinner_t *spinner, double min_val, double max_val)
     double old_min = spinner->min_value;
     double old_max = spinner->max_value;
     uint64_t old_change_revision = spinner->base.change_revision;
+    bool was_indeterminate = spinner->indeterminate;
     spinner->min_value = min_val;
     spinner->max_value = max_val;
+    spinner->indeterminate = false;
     vg_spinner_set_value(spinner, spinner->value);
+    spinner->indeterminate = was_indeterminate;
     if ((old_min != min_val || old_max != max_val) &&
         old_change_revision == spinner->base.change_revision) {
         vg_widget_note_revision(&spinner->base);

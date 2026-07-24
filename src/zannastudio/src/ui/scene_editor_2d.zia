@@ -20,18 +20,43 @@
 //   - Multi-object property, layout, nudge, and selection commands commit once
 //     or restore the complete prior selection/content; inspector inputs never
 //     own scene keys.
+//   - Scene-level typed metadata follows the same canonical, no-op-safe history
+//     path as object properties.
+//   - Project components add only missing typed object properties across a
+//     selection, aborting atomically on every type conflict.
+//   - Project schema authoring has independent conflict-safe file history and
+//     never changes canonical scene content, revision, history, or dirty state.
+//   - Objects use a retained expandable hierarchy with stable multi-selection;
+//     direct child creation, parent choices, and row drops reorder complete
+//     subtrees through one rollback-safe snapshot.
+//   - Canvas point and marquee selection share conventional Shift-add and
+//     Control/Command-toggle semantics, remain workspace-only, and always
+//     release pointer capture on completion or cancellation.
+//   - Hierarchy Find keeps all bounded rows visible, wraps deterministically,
+//     reveals nested matches, and never changes canonical scene history.
 // Ownership/Lifetime:
 //   - Main owns one controller; WorkbenchShell owns its persistent host widgets.
 //   - The controller borrows the active Document and recreates its model on
 //     document/content changes.
 // Links: zannastudio/src/core/document.zia,
 //        zannastudio/src/ui/scene_clipboard.zia,
+//        zannastudio/src/ui/scene_component_authoring_controller.zia,
+//        zannastudio/src/ui/scene_component_palette.zia,
+//        zannastudio/src/ui/scene_component_schema.zia,
+//        zannastudio/src/ui/scene_hierarchy_search.zia,
 //        zannastudio/src/ui/scene_layout_2d.zia,
+//        zannastudio/src/ui/scene_property_inspector_2d.zia,
 //        zannastudio/src/ui/scene_tileset_2d.zia,
 //        zannastudio/src/ui/scene_tileset_inspector_2d.zia,
 //        docs/zannalib/game/scene.md,
 //        docs/adr/0155-scene-object-authoring-metadata-and-duplication.md,
-//        docs/adr/0156-listbox-selected-row-data.md
+//        docs/adr/0156-listbox-selected-row-data.md,
+//        docs/adr/0158-scene-level-property-authoring.md,
+//        docs/adr/0160-project-scene-component-schemas.md,
+//        docs/adr/0163-stable-multiselect-and-row-aware-treeview-editing.md,
+//        docs/adr/0164-backward-compatible-2d-scene-object-hierarchy.md,
+//        docs/adr/0165-scrollview-descendant-reveal.md,
+//        docs/adr/0170-studio-2d-canvas-marquee-selection.md
 //
 //===----------------------------------------------------------------------===//
 
@@ -42,7 +67,12 @@ bind "../core/project_manager";
 bind "../services/file_utils";
 bind "scene_asset_browser";
 bind "scene_clipboard";
+bind "scene_component_authoring_controller";
+bind "scene_component_palette";
+bind "scene_component_schema";
+bind "scene_hierarchy_search";
 bind "scene_layout_2d";
+bind "scene_property_inspector_2d";
 bind "scene_selection";
 bind "scene_tileset_2d";
 bind "scene_tileset_inspector_2d";
@@ -86,7 +116,11 @@ final MAX_RENDER_DIMENSION: Integer = 2048;
 final MAX_RENDER_CELLS_PER_AXIS: Integer = 256;
 final MAX_2D_SCENE_HISTORY: Integer = 100;
 final MAX_INSPECTOR_PROPERTIES: Integer = 512;
+final MAX_OBJECT_TREE_ROWS: Integer = 4096;
+final MAX_OBJECT_HIERARCHY_DEPTH: Integer = 256;
+final OBJECT_PARENT_TARGET_MIXED: Integer = -2;
 final COMPACT_SCENE_2D_WIDTH: Number = 640.0;
+final CANVAS_MARQUEE_COLOR: Integer = 0x70BEFF;
 
 final PROPERTY_TYPE_STRING: Integer = 0;
 final PROPERTY_TYPE_INT: Integer = 1;
@@ -192,16 +226,26 @@ class SceneEditor2D {
     expose GUI.TextInput layerAssetInput;
     expose GUI.Button chooseLayerAssetButton;
     expose scene_asset_browser.SceneAssetBrowser tiledAssetBrowser;
+    expose scene_property_inspector_2d.ScenePropertyInspector2D
+        sceneProperties;
     expose scene_tileset_inspector_2d.SceneTilesetInspector2D
         tilesetInspector;
-    expose GUI.ListBox objectList;
+    expose GUI.TextInput hierarchySearchInput;
+    expose GUI.Button hierarchySearchPreviousButton;
+    expose GUI.Button hierarchySearchNextButton;
+    expose GUI.Label hierarchySearchStatus;
+    expose GUI.TreeView objectTree;
+    expose GUI.Label objectHierarchyStatus;
     expose GUI.TextInput objectTypeInput;
     expose GUI.TextInput objectIdInput;
     expose GUI.Spinner objectXSpinner;
     expose GUI.Spinner objectYSpinner;
     expose GUI.Button addObjectButton;
+    expose GUI.Button addChildObjectButton;
     expose GUI.Button applyObjectButton;
     expose GUI.Button removeObjectButton;
+    expose GUI.Dropdown objectParentDropdown;
+    expose GUI.Button reparentObjectButton;
     expose GUI.Button duplicateObjectButton;
     expose GUI.Button objectUpButton;
     expose GUI.Button objectDownButton;
@@ -214,6 +258,9 @@ class SceneEditor2D {
     expose GUI.Button newObjectPropertyButton;
     expose GUI.Button setObjectPropertyButton;
     expose GUI.Button removeObjectPropertyButton;
+    expose scene_component_palette.SceneComponentPalette componentPalette;
+    expose scene_component_authoring_controller.SceneComponentAuthoringController
+        componentAuthoring;
     expose GUI.Label detailLabel;
 
     expose project_manager.ProjectManager projectManager;
@@ -228,8 +275,14 @@ class SceneEditor2D {
     expose Integer selectedObject;
     expose List[Integer] selectedObjects;
     expose Integer selectedObjectProperty;
+    expose Integer selectedSceneProperty;
     expose Integer selectedCellX;
     expose Integer selectedCellY;
+    expose Boolean canvasMarqueeActive;
+    expose Integer canvasMarqueeStartX;
+    expose Integer canvasMarqueeStartY;
+    expose Integer canvasMarqueeCurrentX;
+    expose Integer canvasMarqueeCurrentY;
     expose Integer displayCellSize;
     expose Integer renderedColumns;
     expose Integer renderedRows;
@@ -240,7 +293,13 @@ class SceneEditor2D {
     expose List[String] undoStack;
     expose List[String] redoStack;
     expose List[String] objectPropertyKeys;
+    expose List[Any] objectTreeNodes;
+    expose List[Integer] hierarchySearchMatches;
+    expose Integer hierarchySearchCursor;
+    expose List[Integer] objectParentTargetIndices;
+    expose Boolean objectHierarchyClipped;
     expose scene_tileset_2d.SceneTilesetLibrary2D tilesets;
+    expose scene_component_schema.SceneComponentSchema componentSchema;
     hide String cleanSerialized;
     hide Integer lastPaintX;
     hide Integer lastPaintY;
@@ -256,6 +315,8 @@ class SceneEditor2D {
     hide Integer objectDragIndex;
     hide Integer objectDragLastX;
     hide Integer objectDragLastY;
+    hide Boolean canvasMarqueeAdditive;
+    hide Boolean canvasMarqueeToggle;
     hide Integer lastCanvasViewportWidth;
     hide Integer lastCanvasViewportHeight;
     hide Boolean restoreScrollPending;
@@ -263,7 +324,15 @@ class SceneEditor2D {
     hide Number pendingCanvasScrollY;
     hide Number pendingInspectorScrollY;
     hide String tilesetDocumentPath;
+    hide String componentSchemaPath;
     hide Boolean editorControlsEnabled;
+    hide List[String] objectTreeIds;
+    hide List[String] objectTreePaths;
+    hide List[String] objectExpandedIds;
+    hide List[String] objectExpandedPaths;
+    hide document.Document objectTreeDocument;
+    hide Boolean objectTreeExpandByDefault;
+    hide String hierarchySearchQuery;
 
     expose func init() {
         guiApp = null;
@@ -302,16 +371,26 @@ class SceneEditor2D {
         layerAssetInput = null;
         chooseLayerAssetButton = null;
         tiledAssetBrowser = new scene_asset_browser.SceneAssetBrowser();
+        sceneProperties =
+            new scene_property_inspector_2d.ScenePropertyInspector2D();
         tilesetInspector =
             new scene_tileset_inspector_2d.SceneTilesetInspector2D();
-        objectList = null;
+        hierarchySearchInput = null;
+        hierarchySearchPreviousButton = null;
+        hierarchySearchNextButton = null;
+        hierarchySearchStatus = null;
+        objectTree = null;
+        objectHierarchyStatus = null;
         objectTypeInput = null;
         objectIdInput = null;
         objectXSpinner = null;
         objectYSpinner = null;
         addObjectButton = null;
+        addChildObjectButton = null;
         applyObjectButton = null;
         removeObjectButton = null;
+        objectParentDropdown = null;
+        reparentObjectButton = null;
         duplicateObjectButton = null;
         objectUpButton = null;
         objectDownButton = null;
@@ -324,6 +403,10 @@ class SceneEditor2D {
         newObjectPropertyButton = null;
         setObjectPropertyButton = null;
         removeObjectPropertyButton = null;
+        componentPalette =
+            new scene_component_palette.SceneComponentPalette();
+        componentAuthoring =
+            new scene_component_authoring_controller.SceneComponentAuthoringController();
         detailLabel = null;
         projectManager = null;
         currentDoc = null;
@@ -337,8 +420,14 @@ class SceneEditor2D {
         selectedObject = -1;
         selectedObjects = [];
         selectedObjectProperty = -1;
+        selectedSceneProperty = -1;
         selectedCellX = -1;
         selectedCellY = -1;
+        canvasMarqueeActive = false;
+        canvasMarqueeStartX = -1;
+        canvasMarqueeStartY = -1;
+        canvasMarqueeCurrentX = -1;
+        canvasMarqueeCurrentY = -1;
         displayCellSize = BASE_DISPLAY_CELL;
         renderedColumns = 0;
         renderedRows = 0;
@@ -349,7 +438,21 @@ class SceneEditor2D {
         undoStack = [];
         redoStack = [];
         objectPropertyKeys = [];
+        objectTreeNodes = [];
+        hierarchySearchMatches = [];
+        hierarchySearchCursor = -1;
+        objectParentTargetIndices = [];
+        objectHierarchyClipped = false;
         tilesets = new scene_tileset_2d.SceneTilesetLibrary2D();
+        componentSchema =
+            new scene_component_schema.SceneComponentSchema();
+        objectTreeIds = [];
+        objectTreePaths = [];
+        objectExpandedIds = [];
+        objectExpandedPaths = [];
+        objectTreeDocument = null;
+        objectTreeExpandByDefault = true;
+        hierarchySearchQuery = "";
         cleanSerialized = "";
         lastPaintX = -1;
         lastPaintY = -1;
@@ -365,8 +468,8 @@ class SceneEditor2D {
         objectDragIndex = -1;
         objectDragLastX = 0;
         objectDragLastY = 0;
-        objectDragLastX = 0;
-        objectDragLastY = 0;
+        canvasMarqueeAdditive = false;
+        canvasMarqueeToggle = false;
         lastCanvasViewportWidth = 0;
         lastCanvasViewportHeight = 0;
         restoreScrollPending = false;
@@ -374,6 +477,7 @@ class SceneEditor2D {
         pendingCanvasScrollY = 0.0;
         pendingInspectorScrollY = 0.0;
         tilesetDocumentPath = "";
+        componentSchemaPath = "";
         editorControlsEnabled = false;
     }
 
@@ -459,8 +563,9 @@ class SceneEditor2D {
         canvasImage.SetName("scene-2d-canvas");
         canvasImage.SetAccessibleName("2D scene canvas");
         canvasImage.SetTooltip(
-            "Paint/erase tiles, drag objects in Select mode, wheel to zoom, "
-            + "middle-drag to pan, or use Arrow keys for precise object nudges");
+            "Paint/erase tiles; in Select mode click or drag a box, Shift adds, "
+            + "Control/Command toggles, and object drags move the selection. "
+            + "Wheel zooms, middle-drag pans, and Arrow keys nudge.");
 
         inspectorScroll = GUI.ScrollView.New(bodySplit.Second);
         inspectorScroll.SetFlex(1.0);
@@ -495,6 +600,8 @@ class SceneEditor2D {
         sceneInfoLabel = GUI.Label.New(inspector, "No scene loaded");
         sceneInfoLabel.SetWordWrap(true);
 
+        sceneProperties.Setup(inspector);
+
         GUI.Label.New(inspector, "Layers");
         layerList = GUI.ListBox.New(inspector);
         layerList.SetAccessibleName("Scene layers");
@@ -518,12 +625,55 @@ class SceneEditor2D {
         tilesetInspector.Setup(inspector, guiApp);
 
         GUI.Label.New(inspector, "Objects");
-        objectList = GUI.ListBox.New(inspector);
-        objectList.SetAccessibleName("Scene objects");
-        objectList.SetPreferredSize(0.0, 132.0);
-        objectList.SetMultiSelect(true);
-        objectList.SetTooltip(
-            "Ctrl/Command-click to select several objects; Shift-click selects a range");
+        var hierarchySearchRow = GUI.HBox.New();
+        hierarchySearchRow.SetSpacing(4.0);
+        inspector.AddChild(hierarchySearchRow);
+        hierarchySearchInput = GUI.TextInput.New(hierarchySearchRow);
+        hierarchySearchInput.SetFlex(1.0);
+        hierarchySearchInput.SetPlaceholder("Find object id or type");
+        hierarchySearchInput.SetAccessibleName(
+            "Find 2D scene object by id or type");
+        hierarchySearchInput.SetTooltip(
+            "Keep the hierarchy intact and jump between matching visible rows");
+        hierarchySearchPreviousButton =
+            GUI.Button.New(hierarchySearchRow, "Prev");
+        hierarchySearchPreviousButton.SetAccessibleName(
+            "Previous matching 2D scene object");
+        hierarchySearchPreviousButton.SetTooltip(
+            "Select and reveal the previous matching object");
+        hierarchySearchNextButton =
+            GUI.Button.New(hierarchySearchRow, "Next");
+        hierarchySearchNextButton.SetAccessibleName(
+            "Next matching 2D scene object");
+        hierarchySearchNextButton.SetTooltip(
+            "Select and reveal the next matching object");
+        hierarchySearchStatus = GUI.Label.New(
+            inspector, "Find by object id or type");
+        hierarchySearchStatus.SetWordWrap(true);
+        objectTree = GUI.TreeView.New(inspector);
+        objectTree.SetAccessibleName("Scene object hierarchy");
+        objectTree.SetPreferredSize(0.0, 190.0);
+        objectTree.SetMultiSelect(true);
+        objectTree.SetDragDropMode(2);
+        objectTree.SetTooltip(
+            "Expand object groups; Ctrl/Command-click or Shift-click selects "
+            + "several rows; drag before, into, or after another row");
+        objectHierarchyStatus = GUI.Label.New(inspector, "");
+        objectHierarchyStatus.SetWordWrap(true);
+        var objectParentRow = GUI.HBox.New();
+        objectParentRow.SetSpacing(4.0);
+        inspector.AddChild(objectParentRow);
+        GUI.Label.New(objectParentRow, "Parent");
+        objectParentDropdown = GUI.Dropdown.New(objectParentRow);
+        objectParentDropdown.SetFlex(1.0);
+        objectParentDropdown.SetAccessibleName(
+            "Selected 2D object parent target");
+        objectParentDropdown.SetTooltip(
+            "Choose a cycle-safe parent; absolute object positions stay unchanged");
+        reparentObjectButton =
+            GUI.Button.New(objectParentRow, "Reparent");
+        reparentObjectButton.SetTooltip(
+            "Move selected object subtrees beneath this parent as one undoable edit");
         objectTypeInput = GUI.TextInput.New(inspector);
         objectTypeInput.SetPlaceholder("Object type");
         objectIdInput = GUI.TextInput.New(inspector);
@@ -544,7 +694,13 @@ class SceneEditor2D {
         var objectButtons = GUI.HBox.New();
         objectButtons.SetSpacing(4.0);
         inspector.AddChild(objectButtons);
-        addObjectButton = GUI.Button.New(objectButtons, "Add");
+        addObjectButton = GUI.Button.New(objectButtons, "Add Root");
+        addObjectButton.SetTooltip(
+            "Create a new root object at the selected canvas cell");
+        addChildObjectButton =
+            GUI.Button.New(objectButtons, "Add Child");
+        addChildObjectButton.SetTooltip(
+            "Create one child beneath the selected object in a single undo step");
         applyObjectButton = GUI.Button.New(objectButtons, "Apply");
         removeObjectButton = GUI.Button.New(objectButtons, "Remove");
         var objectOrderButtons = GUI.HBox.New();
@@ -554,9 +710,11 @@ class SceneEditor2D {
         duplicateObjectButton.SetTooltip(
             "Duplicate the selected object and all of its typed properties");
         objectUpButton = GUI.Button.New(objectOrderButtons, "Up");
-        objectUpButton.SetTooltip("Move the selected object earlier in draw order");
+        objectUpButton.SetTooltip(
+            "Move the selected object subtree before its previous sibling");
         objectDownButton = GUI.Button.New(objectOrderButtons, "Down");
-        objectDownButton.SetTooltip("Move the selected object later in draw order");
+        objectDownButton.SetTooltip(
+            "Move the selected object subtree after its next sibling");
         var objectArrangeRow = GUI.HBox.New();
         objectArrangeRow.SetSpacing(4.0);
         inspector.AddChild(objectArrangeRow);
@@ -608,6 +766,11 @@ class SceneEditor2D {
         removeObjectPropertyButton.SetTooltip(
             "Remove this property from the current selection");
 
+        componentPalette.Setup(
+            inspector,
+            "Project components",
+            "2D object component template");
+
         detailLabel = GUI.Label.New(inspector, "");
         detailLabel.SetWordWrap(true);
         SetEditorControlsEnabled(false);
@@ -617,6 +780,49 @@ class SceneEditor2D {
     expose func SetWorkspaceContext(
         nextProjectManager: project_manager.ProjectManager) {
         projectManager = nextProjectManager;
+        ReloadComponentSchema();
+    }
+
+    /// @brief Reload project component templates for the active document root.
+    expose func ReloadComponentSchema() {
+        var rootPath = ComponentSchemaRoot();
+        componentSchemaPath =
+            scene_component_schema.PathForRoot(rootPath);
+        if componentPalette != null and componentPalette.group != null
+           and componentAuthoring != null {
+            componentAuthoring.Load(
+                componentSchemaPath,
+                scene_component_schema.TARGET_2D_OBJECT,
+                componentPalette);
+            componentSchema = componentAuthoring.schema;
+            RefreshComponentPalette();
+        } else {
+            componentSchema =
+                scene_component_schema.LoadPath(componentSchemaPath);
+        }
+    }
+
+    /// @brief Keep multi-root schema ownership aligned with document ownership.
+    hide func EnsureComponentSchema(force: Boolean) {
+        var nextPath = scene_component_schema.PathForRoot(
+            ComponentSchemaRoot());
+        if force or nextPath != componentSchemaPath {
+            ReloadComponentSchema();
+        }
+    }
+
+    /// @brief Resolve the unambiguous workspace root for the current scene.
+    hide func ComponentSchemaRoot() -> String {
+        if projectManager == null { return ""; }
+        if currentDoc != null and currentDoc.filePath != "" {
+            var owner =
+                projectManager.WorkspaceRootPathForPath(currentDoc.filePath);
+            if owner != "" { return owner; }
+        }
+        if projectManager.RootCount() == 1 {
+            return projectManager.RootPathAt(0);
+        }
+        return "";
     }
 
     /// @brief Pump one active document and return true when scene JSON changed.
@@ -627,6 +833,7 @@ class SceneEditor2D {
         if activeDoc != currentDoc or activeDoc.content != currentSerialized {
             Activate(activeDoc);
         }
+        EnsureComponentSchema(false);
         if activeDoc == currentDoc and activeDoc.isModified == false
            and activeDoc.content == currentSerialized {
             cleanSerialized = currentSerialized;
@@ -699,8 +906,10 @@ class SceneEditor2D {
         }
         if tileSpinner.WasChanged() { RefreshTilesetPalette(); }
 
+        changed = PumpScenePropertyControls() or changed;
         changed = PumpLayerControls() or changed;
         changed = PumpObjectControls() or changed;
+        changed = PumpComponentControls() or changed;
         PumpTilesetPalette();
         changed = PumpCanvas() or changed;
         changed = PumpCanvasKeyboard() or changed;
@@ -779,8 +988,10 @@ class SceneEditor2D {
         }
         currentDoc = doc;
         currentSerialized = doc.content;
+        EnsureComponentSchema(false);
         loadError = "";
         RestoreWorkspaceState(doc);
+        ResetCanvasMarquee(true);
         lastPaintX = -1;
         lastPaintY = -1;
         paintStrokeActive = false;
@@ -824,6 +1035,7 @@ class SceneEditor2D {
         state.selectedObject = selectedObject;
         state.selectedObjects = selectedObjects;
         state.selectedObjectProperty = selectedObjectProperty;
+        state.selectedSceneProperty = selectedSceneProperty;
         state.selectedCellX = selectedCellX;
         state.selectedCellY = selectedCellY;
         var tileId = 1;
@@ -864,6 +1076,7 @@ class SceneEditor2D {
             selectedObject = -1;
             selectedObjects = [];
             selectedObjectProperty = -1;
+            selectedSceneProperty = -1;
             selectedCellX = -1;
             selectedCellY = -1;
             if tileSpinner != null { tileSpinner.SetValue(1.0); }
@@ -887,6 +1100,8 @@ class SceneEditor2D {
         selectedObjects = state.selectedObjects;
         selectedObjectProperty = ClampInt(
             state.selectedObjectProperty, -1, MAX_INSPECTOR_PROPERTIES - 1);
+        selectedSceneProperty = ClampInt(
+            state.selectedSceneProperty, -1, MAX_INSPECTOR_PROPERTIES - 1);
         selectedCellX = ClampInt(
             state.selectedCellX, -1, MAX_RENDER_CELLS_PER_AXIS - 1);
         selectedCellY = ClampInt(
@@ -1090,7 +1305,39 @@ class SceneEditor2D {
                                objectId: String,
                                x: Integer,
                                y: Integer) -> Integer {
+        return AddSceneObjectAtParent(-1, typeName, objectId, x, y);
+    }
+
+    /// @brief Add one object beneath an existing parent in one transaction.
+    /// @details The hierarchy link is established before serialization, so
+    ///          Undo never exposes an intermediate root object.
+    expose func AddSceneChildObject(parentIndex: Integer,
+                                    typeName: String,
+                                    objectId: String,
+                                    x: Integer,
+                                    y: Integer) -> Integer {
+        return AddSceneObjectAtParent(
+            parentIndex, typeName, objectId, x, y);
+    }
+
+    /// @brief Shared root/child creation path with exact selection rollback.
+    hide func AddSceneObjectAtParent(parentIndex: Integer,
+                                     typeName: String,
+                                     objectId: String,
+                                     x: Integer,
+                                     y: Integer) -> Integer {
         if scene == null { return -1; }
+        if parentIndex < -1 or parentIndex >= scene.ObjectCount() {
+            detailLabel.SetText("Choose an attached parent object.");
+            return -1;
+        }
+        if parentIndex >= 0
+           and ObjectHierarchyDepth(parentIndex)
+               >= MAX_OBJECT_HIERARCHY_DEPTH {
+            detailLabel.SetText(
+                "A child there would exceed Studio's hierarchy depth limit.");
+            return -1;
+        }
         var nextType = Str.Trim(typeName);
         var nextId = Str.Trim(objectId);
         if nextType == "" {
@@ -1105,16 +1352,29 @@ class SceneEditor2D {
             detailLabel.SetText("Object ID \"" + nextId + "\" is already in use.");
             return -1;
         }
+        var previousSelection = selectedObjects;
+        var previousPrimary = selectedObject;
+        var previousProperty = selectedObjectProperty;
         var objectIndex = scene.AddObject(nextType, nextId, x, y);
         if objectIndex < 0 { return -1; }
+        if parentIndex >= 0
+           and scene.TrySetObjectParent(
+                   objectIndex, parentIndex) == false {
+            scene.RemoveObject(objectIndex);
+            detailLabel.SetText(
+                "The scene model rejected the new child hierarchy link.");
+            return -1;
+        }
         selectedObject = objectIndex;
         selectedObjects = scene_selection.Single(
             objectIndex, scene.ObjectCount());
-        if CommitScene("Added object " + nextId) == false {
+        var action = "Added object " + nextId;
+        if parentIndex >= 0 { action = "Added child object " + nextId; }
+        if CommitScene(action) == false {
             scene.RemoveObject(objectIndex);
-            selectedObject = -1;
-            selectedObjects = [];
-            selectedObjectProperty = -1;
+            selectedObject = previousPrimary;
+            selectedObjects = previousSelection;
+            selectedObjectProperty = previousProperty;
             detailLabel.SetText("The object could not be committed to the document.");
             RefreshInspector();
             return -1;
@@ -1228,11 +1488,340 @@ class SceneEditor2D {
             }
         }
         selectedObjectProperty = -1;
-        if objectList != null { RestoreObjectListSelection(); }
+        if objectTree != null {
+            ExpandObjectTreeAncestors(selectedObject);
+            RestoreObjectTreeSelection();
+            if selectedObject >= 0
+               and selectedObject < objectTreeNodes.count()
+               and objectTreeNodes.get(selectedObject) != null {
+                objectTree.ScrollTo(objectTreeNodes.get(selectedObject));
+            }
+        }
         RefreshObjectFields();
         renderDirty = true;
         CaptureWorkspaceState();
         return selectedObjects.count() > 0;
+    }
+
+    /// @brief Apply one canvas point hit with conventional modifier semantics.
+    /// @details An unmodified hit on an already-selected object preserves the
+    ///          complete group so the same press can begin a group drag.
+    ///          Selection is workspace-only and never commits scene history.
+    /// @return True only when selection or primary identity changed.
+    expose func ApplyCanvasPointSelection(objectIndex: Integer,
+                                          additive: Boolean,
+                                          toggle: Boolean) -> Boolean {
+        if scene == null { return false; }
+        var current = scene_selection.Normalize(
+            selectedObjects, scene.ObjectCount(), selectedObject);
+        if objectIndex < 0 or objectIndex >= scene.ObjectCount() {
+            if additive or toggle or current.count() == 0 {
+                return false;
+            }
+            SelectSceneObjects([], -1);
+            return true;
+        }
+
+        var next: List[Integer] = [];
+        var nextPrimary = objectIndex;
+        if toggle {
+            var removing =
+                scene_selection.Contains(current, objectIndex);
+            var index = 0;
+            while index < current.count() {
+                var candidate = current.get(index);
+                if removing == false or candidate != objectIndex {
+                    next.add(candidate);
+                }
+                index = index + 1;
+            }
+            if removing == false { next.add(objectIndex); }
+            if removing {
+                if next.count() == 0 {
+                    nextPrimary = -1;
+                } else if selectedObject != objectIndex
+                          and scene_selection.Contains(
+                              next, selectedObject) {
+                    nextPrimary = selectedObject;
+                } else {
+                    nextPrimary = next.get(next.count() - 1);
+                }
+            }
+        } else if additive {
+            next = current;
+            if scene_selection.Contains(next, objectIndex) == false {
+                next.add(objectIndex);
+            }
+        } else if scene_selection.Contains(current, objectIndex) {
+            next = current;
+        } else {
+            next.add(objectIndex);
+        }
+
+        if nextPrimary == selectedObject
+           and IntegerListsEqual(next, current) {
+            return false;
+        }
+        SelectSceneObjects(next, nextPrimary);
+        return true;
+    }
+
+    /// @brief Return authored objects whose point occupies an inclusive cell box.
+    /// @details Results follow canonical object draw order, so the final item
+    ///          is the same topmost identity a point hit would prefer.
+    expose func CanvasObjectsInCellRect(startX: Integer,
+                                        startY: Integer,
+                                        endX: Integer,
+                                        endY: Integer)
+        -> List[Integer] {
+        var hits: List[Integer] = [];
+        if scene == null or scene.TileWidth <= 0 or scene.TileHeight <= 0 {
+            return hits;
+        }
+        var minimumX = startX;
+        var maximumX = endX;
+        if maximumX < minimumX {
+            minimumX = endX;
+            maximumX = startX;
+        }
+        var minimumY = startY;
+        var maximumY = endY;
+        if maximumY < minimumY {
+            minimumY = endY;
+            maximumY = startY;
+        }
+        var index = 0;
+        while index < scene.ObjectCount() {
+            var cellX = scene.ObjectX(index) / scene.TileWidth;
+            var cellY = scene.ObjectY(index) / scene.TileHeight;
+            if cellX >= minimumX and cellX <= maximumX
+               and cellY >= minimumY and cellY <= maximumY {
+                hits.add(index);
+            }
+            index = index + 1;
+        }
+        return hits;
+    }
+
+    /// @brief Apply one completed inclusive canvas marquee against selection.
+    /// @return True only when selection or primary identity changed.
+    expose func ApplyCanvasMarqueeSelection(startX: Integer,
+                                            startY: Integer,
+                                            endX: Integer,
+                                            endY: Integer,
+                                            additive: Boolean,
+                                            toggle: Boolean) -> Boolean {
+        if scene == null { return false; }
+        var current = scene_selection.Normalize(
+            selectedObjects, scene.ObjectCount(), selectedObject);
+        var hits = CanvasObjectsInCellRect(
+            startX, startY, endX, endY);
+        if hits.count() == 0 and (additive or toggle) {
+            return false;
+        }
+
+        var next: List[Integer] = [];
+        var nextPrimary = selectedObject;
+        if toggle {
+            var currentIndex = 0;
+            while currentIndex < current.count() {
+                var candidate = current.get(currentIndex);
+                if scene_selection.Contains(hits, candidate) == false {
+                    next.add(candidate);
+                }
+                currentIndex = currentIndex + 1;
+            }
+            var lastAdded = -1;
+            var hitIndex = 0;
+            while hitIndex < hits.count() {
+                var hit = hits.get(hitIndex);
+                if scene_selection.Contains(current, hit) == false {
+                    next.add(hit);
+                    lastAdded = hit;
+                }
+                hitIndex = hitIndex + 1;
+            }
+            if lastAdded >= 0 {
+                nextPrimary = lastAdded;
+            } else if scene_selection.Contains(next, selectedObject) {
+                nextPrimary = selectedObject;
+            } else if next.count() > 0 {
+                nextPrimary = next.get(next.count() - 1);
+            } else {
+                nextPrimary = -1;
+            }
+        } else if additive {
+            next = current;
+            var hitIndex = 0;
+            while hitIndex < hits.count() {
+                var hit = hits.get(hitIndex);
+                if scene_selection.Contains(next, hit) == false {
+                    next.add(hit);
+                }
+                hitIndex = hitIndex + 1;
+            }
+            if hits.count() > 0 {
+                nextPrimary = hits.get(hits.count() - 1);
+            }
+        } else {
+            next = hits;
+            nextPrimary = -1;
+            if hits.count() > 0 {
+                nextPrimary = hits.get(hits.count() - 1);
+            }
+        }
+
+        if nextPrimary == selectedObject
+           and IntegerListsEqual(next, current) {
+            return false;
+        }
+        SelectSceneObjects(next, nextPrimary);
+        return true;
+    }
+
+    /// @brief Reveal and focus the hierarchy Find field without editing scene data.
+    /// @return True when a loaded scene owns a usable search field.
+    expose func FocusHierarchySearch() -> Boolean {
+        if scene == null or hierarchySearchInput == null { return false; }
+        if compactLayout {
+            compactInspectorShown = true;
+        } else {
+            inspectorRequestedVisible = true;
+        }
+        ApplyInspectorLayout();
+        if inspectorScroll != null {
+            inspectorScroll.ScrollTo(hierarchySearchInput);
+        }
+        hierarchySearchInput.Focus();
+        CaptureWorkspaceState();
+        return true;
+    }
+
+    /// @brief Select and reveal one bounded id/type hierarchy match.
+    /// @param query Case-insensitive object id or type fragment.
+    /// @param direction Negative for previous; zero or positive for next.
+    /// @return True when a matching represented row was selected.
+    expose func FindHierarchy(query: String,
+                              direction: Integer) -> Boolean {
+        if scene == null or hierarchySearchInput == null { return false; }
+        var normalized = scene_hierarchy_search.Normalize(query);
+        var resetCursor = normalized != hierarchySearchQuery;
+        if hierarchySearchInput.Text != query {
+            hierarchySearchInput.SetText(query);
+        }
+        RefreshHierarchySearch(resetCursor);
+        return NavigateHierarchySearch(direction);
+    }
+
+    /// @brief Rebuild match indices from represented rows only.
+    /// @details Canonical objects hidden by hierarchy safety bounds remain
+    ///          untouched and are never offered as an impossible-to-reveal hit.
+    hide func RefreshHierarchySearch(resetCursor: Boolean) {
+        if hierarchySearchInput == null { return; }
+        hierarchySearchQuery = scene_hierarchy_search.Normalize(
+            hierarchySearchInput.Text);
+        hierarchySearchMatches = [];
+        if scene != null and hierarchySearchQuery != "" {
+            var index = 0;
+            while index < scene.ObjectCount()
+                  and index < objectTreeNodes.count() {
+                if objectTreeNodes.get(index) != null
+                   and scene_hierarchy_search.MatchesNormalized(
+                       hierarchySearchQuery,
+                       scene.ObjectId(index),
+                       scene.ObjectType(index)) {
+                    hierarchySearchMatches.add(index);
+                }
+                index = index + 1;
+            }
+        }
+
+        hierarchySearchCursor = -1;
+        if resetCursor == false {
+            var match = 0;
+            while match < hierarchySearchMatches.count() {
+                if hierarchySearchMatches.get(match) == selectedObject {
+                    hierarchySearchCursor = match;
+                    break;
+                }
+                match = match + 1;
+            }
+        }
+        UpdateHierarchySearchControls();
+    }
+
+    /// @brief Apply one previous/next hierarchy jump without scene mutation.
+    hide func NavigateHierarchySearch(direction: Integer) -> Boolean {
+        hierarchySearchCursor = scene_hierarchy_search.NextCursor(
+            hierarchySearchMatches.count(),
+            hierarchySearchCursor,
+            direction);
+        if hierarchySearchCursor < 0
+           or hierarchySearchCursor >= hierarchySearchMatches.count() {
+            UpdateHierarchySearchControls();
+            return false;
+        }
+        var target = hierarchySearchMatches.get(hierarchySearchCursor);
+        var selection = scene_selection.Single(
+            target, scene.ObjectCount());
+        var selected = SelectSceneObjects(selection, target);
+        UpdateHierarchySearchControls();
+        return selected;
+    }
+
+    /// @brief Pump search text and navigation controls without scene history.
+    hide func PumpHierarchySearchControls() {
+        if hierarchySearchInput == null { return; }
+        var query = scene_hierarchy_search.Normalize(
+            hierarchySearchInput.Text);
+        if query != hierarchySearchQuery {
+            RefreshHierarchySearch(true);
+        }
+        var direction = 0;
+        var requested = false;
+        if hierarchySearchPreviousButton.WasClicked() {
+            direction = -1;
+            requested = true;
+        }
+        if hierarchySearchNextButton.WasClicked()
+           or hierarchySearchInput.WasSubmitted() {
+            direction = 1;
+            requested = true;
+        }
+        if requested { NavigateHierarchySearch(direction); }
+    }
+
+    /// @brief Reflect query, match cursor, and safety bounds in compact UI.
+    hide func UpdateHierarchySearchControls() {
+        if hierarchySearchInput == null { return; }
+        var available = editorControlsEnabled and scene != null;
+        hierarchySearchInput.SetEnabled(available);
+        var canNavigate =
+            available and hierarchySearchMatches.count() > 0;
+        hierarchySearchPreviousButton.SetEnabled(canNavigate);
+        hierarchySearchNextButton.SetEnabled(canNavigate);
+
+        var suffix = "";
+        if objectHierarchyClipped {
+            suffix = " within the bounded visible hierarchy";
+        }
+        if hierarchySearchQuery == "" {
+            hierarchySearchStatus.SetText(
+                "Find by object id or type" + suffix);
+        } else if hierarchySearchMatches.count() == 0 {
+            hierarchySearchStatus.SetText(
+                "No matching objects" + suffix);
+        } else if hierarchySearchCursor < 0 {
+            hierarchySearchStatus.SetText(
+                hierarchySearchMatches.count()
+                + " matching object(s)" + suffix
+                + "; press Enter to jump");
+        } else {
+            hierarchySearchStatus.SetText(
+                "Match " + (hierarchySearchCursor + 1)
+                + " of " + hierarchySearchMatches.count()
+                + suffix);
+        }
     }
 
     /// @brief Return whether at least one valid object is selected.
@@ -1373,6 +1962,28 @@ class SceneEditor2D {
             if sourceIndex == payload.primary { pastedPrimary = destination; }
             index = index + 1;
         }
+        index = 0;
+        while index < sourceSelection.count() {
+            var sourceParent =
+                source.ObjectParent(sourceSelection.get(index));
+            var parentSelectionIndex =
+                IntegerIndexOf(sourceSelection, sourceParent);
+            if parentSelectionIndex >= 0
+               and scene.TrySetObjectParent(
+                      pasted.get(index),
+                      pasted.get(parentSelectionIndex)) == false {
+                RestoreSceneSnapshot(snapshot);
+                selectedObjects = previousSelection;
+                selectedObject = previousPrimary;
+                RefreshInspector();
+                toolbarStatus.SetText("Paste rolled back");
+                detailLabel.SetText(
+                    "Studio could not restore the copied object hierarchy. "
+                    + "No scene data was changed.");
+                return false;
+            }
+            index = index + 1;
+        }
         if pastedPrimary < 0 and pasted.count() > 0 {
             pastedPrimary = pasted.get(0);
         }
@@ -1462,11 +2073,22 @@ class SceneEditor2D {
         var snapshot = currentSerialized;
         var previousSelection = selectedObjects;
         var previousPrimary = selectedObject;
+        var sourceIndices = selectedObjects;
+        var sourceParents: List[Integer] = [];
         var duplicateIds: List[String] = [];
+        var sourceIndex = 0;
+        while sourceIndex < sourceIndices.count() {
+            sourceParents.add(
+                scene.ObjectParent(sourceIndices.get(sourceIndex)));
+            duplicateIds.add("");
+            sourceIndex = sourceIndex + 1;
+        }
         var primaryDuplicateId = "";
         var source = scene.ObjectCount() - 1;
         while source >= 0 {
             if scene_selection.Contains(selectedObjects, source) {
+                var selectionPosition =
+                    IntegerIndexOf(sourceIndices, source);
                 var nextId = UniqueObjectId(
                     scene.ObjectId(source) + "-copy");
                 var duplicate = scene.DuplicateObject(source, nextId);
@@ -1483,12 +2105,38 @@ class SceneEditor2D {
                     duplicate,
                     scene.ObjectX(source) + scene.TileWidth,
                     scene.ObjectY(source) + scene.TileHeight);
-                duplicateIds.add(nextId);
+                if selectionPosition >= 0 {
+                    duplicateIds.set(selectionPosition, nextId);
+                }
                 if source == previousPrimary {
                     primaryDuplicateId = nextId;
                 }
             }
             source = source - 1;
+        }
+
+        sourceIndex = 0;
+        while sourceIndex < sourceIndices.count() {
+            var parentPosition = IntegerIndexOf(
+                sourceIndices, sourceParents.get(sourceIndex));
+            if parentPosition >= 0 {
+                var duplicateIndex =
+                    ObjectIndexWithId(duplicateIds.get(sourceIndex));
+                var duplicateParent = ObjectIndexWithId(
+                    duplicateIds.get(parentPosition));
+                if duplicateIndex < 0 or duplicateParent < 0
+                   or scene.TrySetObjectParent(
+                          duplicateIndex, duplicateParent) == false {
+                    selectedObjects = previousSelection;
+                    selectedObject = previousPrimary;
+                    RestoreSceneSnapshot(snapshot);
+                    detailLabel.SetText(
+                        "The selected hierarchy could not be duplicated. "
+                        + "No objects were changed.");
+                    return 0;
+                }
+            }
+            sourceIndex = sourceIndex + 1;
         }
 
         var duplicates: List[Integer] = [];
@@ -1743,6 +2391,623 @@ class SceneEditor2D {
         detailLabel.SetText("");
         RefreshInspector();
         return true;
+    }
+
+    hide func IntegerIndexOf(values: List[Integer],
+                             value: Integer) -> Integer {
+        var index = 0;
+        while index < values.count() {
+            if values.get(index) == value { return index; }
+            index = index + 1;
+        }
+        return -1;
+    }
+
+    hide func IntegerListsEqual(left: List[Integer],
+                                right: List[Integer]) -> Boolean {
+        if left.count() != right.count() { return false; }
+        var index = 0;
+        while index < left.count() {
+            if left.get(index) != right.get(index) { return false; }
+            index = index + 1;
+        }
+        return true;
+    }
+
+    hide func SnapshotObjectParents() -> List[Integer] {
+        var parents: List[Integer] = [];
+        if scene == null { return parents; }
+        var index = 0;
+        while index < scene.ObjectCount() {
+            parents.add(scene.ObjectParent(index));
+            index = index + 1;
+        }
+        return parents;
+    }
+
+    /// @brief Classify every identity by the selected root that contains it.
+    /// @details Memoized parent walks keep hierarchy edits linear even near the
+    ///          SceneDocument object limit.
+    hide func SelectedRootOwners(parents: List[Integer],
+                                 roots: List[Integer])
+        -> List[Integer] {
+        var owners: List[Integer] = [];
+        var index = 0;
+        while index < parents.count() {
+            owners.add(-2);
+            index = index + 1;
+        }
+        index = 0;
+        while index < roots.count() {
+            var rootIdentity = roots.get(index);
+            if rootIdentity >= 0 and rootIdentity < owners.count() {
+                owners.set(rootIdentity, rootIdentity);
+            }
+            index = index + 1;
+        }
+
+        var start = 0;
+        while start < parents.count() {
+            if owners.get(start) == -2 {
+                var path: List[Integer] = [];
+                var current = start;
+                var steps = 0;
+                while current >= 0 and current < parents.count()
+                      and owners.get(current) == -2
+                      and steps <= parents.count() {
+                    path.add(current);
+                    current = parents.get(current);
+                    steps = steps + 1;
+                }
+                var owner = -1;
+                if current >= 0 and current < owners.count() {
+                    owner = owners.get(current);
+                }
+                var pathIndex = path.count() - 1;
+                while pathIndex >= 0 {
+                    owners.set(path.get(pathIndex), owner);
+                    pathIndex = pathIndex - 1;
+                }
+            }
+            start = start + 1;
+        }
+        return owners;
+    }
+
+    /// @brief Compute every absolute depth with memoized parent walks.
+    hide func IdentityDepths(parents: List[Integer]) -> List[Integer] {
+        var depths: List[Integer] = [];
+        var index = 0;
+        while index < parents.count() {
+            var depth = -1;
+            if parents.get(index) < 0 { depth = 0; }
+            depths.add(depth);
+            index = index + 1;
+        }
+        var start = 0;
+        while start < parents.count() {
+            if depths.get(start) < 0 {
+                var path: List[Integer] = [];
+                var current = start;
+                var steps = 0;
+                while current >= 0 and current < parents.count()
+                      and depths.get(current) < 0
+                      and steps <= parents.count() {
+                    path.add(current);
+                    current = parents.get(current);
+                    steps = steps + 1;
+                }
+                var depth = -1;
+                if current >= 0 and current < depths.count() {
+                    depth = depths.get(current);
+                }
+                var pathIndex = path.count() - 1;
+                while pathIndex >= 0 {
+                    depth = depth + 1;
+                    depths.set(path.get(pathIndex), depth);
+                    pathIndex = pathIndex - 1;
+                }
+            }
+            start = start + 1;
+        }
+        return depths;
+    }
+
+    /// @brief Normalize selected hierarchy roots into current draw order.
+    hide func TopLevelSelectedObjectRoots(
+        parents: List[Integer]) -> List[Integer] {
+        var roots: List[Integer] = [];
+        var candidate = 0;
+        while candidate < parents.count() {
+            if scene_selection.Contains(selectedObjects, candidate) {
+                var nested = false;
+                var ancestor = parents.get(candidate);
+                var steps = 0;
+                while ancestor >= 0 and steps <= parents.count() {
+                    if scene_selection.Contains(
+                           selectedObjects, ancestor) {
+                        nested = true;
+                        break;
+                    }
+                    ancestor = parents.get(ancestor);
+                    steps = steps + 1;
+                }
+                if nested == false { roots.add(candidate); }
+            }
+            candidate = candidate + 1;
+        }
+        return roots;
+    }
+
+    hide func MovingObjectIdentities(owners: List[Integer])
+        -> List[Integer] {
+        var moving: List[Integer] = [];
+        var candidate = 0;
+        while candidate < owners.count() {
+            if owners.get(candidate) >= 0 { moving.add(candidate); }
+            candidate = candidate + 1;
+        }
+        return moving;
+    }
+
+    hide func ObjectDropFitsDepth(destinationParent: Integer,
+                                  parents: List[Integer],
+                                  owners: List[Integer]) -> Boolean {
+        var depths = IdentityDepths(parents);
+        return ObjectDropFitsKnownDepths(
+            destinationParent, depths, owners);
+    }
+
+    /// @brief Check a target using one shared depth snapshot.
+    /// @details Parent-picker refresh calls this for many candidates and must
+    ///          not repeat a complete hierarchy walk for every dropdown row.
+    hide func ObjectDropFitsKnownDepths(
+        destinationParent: Integer,
+        depths: List[Integer],
+        owners: List[Integer]) -> Boolean {
+        var rootDepth = 0;
+        if destinationParent >= 0 {
+            rootDepth = depths.get(destinationParent) + 1;
+        }
+        var identity = 0;
+        while identity < owners.count() {
+            var owner = owners.get(identity);
+            if owner >= 0
+               and rootDepth + depths.get(identity) - depths.get(owner)
+                  > MAX_OBJECT_HIERARCHY_DEPTH {
+                return false;
+            }
+            identity = identity + 1;
+        }
+        return true;
+    }
+
+    /// @brief Move selected top-level subtrees beneath one explicit parent.
+    /// @param targetParent Object index, or -1 for the scene root.
+    /// @details This is the keyboard-accessible counterpart to an INTO row
+    ///          drop. Reparenting to the scene root appends after the last
+    ///          remaining root. Absolute object coordinates are unchanged.
+    expose func ReparentSelectedSceneObjects(
+        targetParent: Integer) -> Boolean {
+        if scene == null or targetParent < -1
+           or targetParent >= scene.ObjectCount() {
+            return false;
+        }
+        selectedObjects = scene_selection.Normalize(
+            selectedObjects, scene.ObjectCount(), selectedObject);
+        var parents = SnapshotObjectParents();
+        var roots = TopLevelSelectedObjectRoots(parents);
+        if roots.count() == 0 { return false; }
+        var owners = SelectedRootOwners(parents, roots);
+        var moving = MovingObjectIdentities(owners);
+        if targetParent >= 0
+           and scene_selection.Contains(moving, targetParent) {
+            detailLabel.SetText(
+                "An object cannot be parented to itself or one of its descendants.");
+            return false;
+        }
+        if ObjectDropFitsDepth(
+               targetParent, parents, owners) == false {
+            detailLabel.SetText(
+                "That parent would exceed Studio's hierarchy depth limit.");
+            return false;
+        }
+
+        var alreadyParented = true;
+        var rootIndex = 0;
+        while rootIndex < roots.count() {
+            if parents.get(roots.get(rootIndex)) != targetParent {
+                alreadyParented = false;
+            }
+            rootIndex = rootIndex + 1;
+        }
+        if alreadyParented {
+            detailLabel.SetText(
+                "The selected object subtrees already use that parent.");
+            return false;
+        }
+
+        var source = roots.get(0);
+        if targetParent >= 0 {
+            return ApplyObjectHierarchyDrop(source, targetParent, 1);
+        }
+
+        var lastRemainingRoot = -1;
+        var candidate = 0;
+        while candidate < parents.count() {
+            if parents.get(candidate) < 0
+               and scene_selection.Contains(moving, candidate) == false {
+                lastRemainingRoot = candidate;
+            }
+            candidate = candidate + 1;
+        }
+        if lastRemainingRoot < 0 {
+            detailLabel.SetText(
+                "Studio could not find an attached scene-root destination.");
+            return false;
+        }
+        var changed =
+            ApplyObjectHierarchyDrop(source, lastRemainingRoot, 2);
+        if changed {
+            toolbarStatus.SetText(
+                "Reparented " + roots.count()
+                + " object subtree(s) to scene root");
+        }
+        return changed;
+    }
+
+    /// @brief Apply one retained TreeView row drop as a canonical transaction.
+    /// @details Selected top-level roots carry their complete subtrees.
+    ///          BEFORE/AFTER use the target's parent; INTO appends beneath the
+    ///          target. Every identity and parent index is remapped exactly.
+    expose func ApplyObjectHierarchyDrop(sourceIndex: Integer,
+                                         targetIndex: Integer,
+                                         position: Integer) -> Boolean {
+        if scene == null or currentDoc == null
+           or sourceIndex < 0 or sourceIndex >= scene.ObjectCount()
+           or targetIndex < 0 or targetIndex >= scene.ObjectCount()
+           or position < 0 or position > 2 {
+            return false;
+        }
+        selectedObjects = scene_selection.Normalize(
+            selectedObjects, scene.ObjectCount(), selectedObject);
+        if scene_selection.Contains(selectedObjects, sourceIndex) == false {
+            var sourceOnly = scene_selection.Single(
+                sourceIndex, scene.ObjectCount());
+            SelectSceneObjects(sourceOnly, sourceIndex);
+        }
+
+        var parents = SnapshotObjectParents();
+        var roots = TopLevelSelectedObjectRoots(parents);
+        var owners = SelectedRootOwners(parents, roots);
+        var moving = MovingObjectIdentities(owners);
+        if roots.count() == 0
+           or scene_selection.Contains(moving, targetIndex) {
+            detailLabel.SetText(
+                "Drop onto a row outside the selected object subtrees.");
+            return false;
+        }
+
+        var destinationParent = parents.get(targetIndex);
+        if position == 1 {
+            destinationParent = targetIndex;
+        }
+        if ObjectDropFitsDepth(
+               destinationParent, parents, owners) == false {
+            detailLabel.SetText(
+                "That row drop would exceed Studio's hierarchy depth limit.");
+            return false;
+        }
+
+        var remaining: List[Integer] = [];
+        var identityOrder: List[Integer] = [];
+        var identity = 0;
+        while identity < parents.count() {
+            identityOrder.add(identity);
+            if scene_selection.Contains(moving, identity) == false {
+                remaining.add(identity);
+            }
+            identity = identity + 1;
+        }
+
+        var insertion = -1;
+        if position == 0 {
+            insertion = IntegerIndexOf(remaining, targetIndex);
+        } else {
+            var targetRoots: List[Integer] = [];
+            targetRoots.add(targetIndex);
+            var targetOwners =
+                SelectedRootOwners(parents, targetRoots);
+            var remainingIndex = 0;
+            while remainingIndex < remaining.count() {
+                if targetOwners.get(
+                       remaining.get(remainingIndex)) == targetIndex {
+                    insertion = remainingIndex + 1;
+                }
+                remainingIndex = remainingIndex + 1;
+            }
+        }
+        if insertion < 0 or insertion > remaining.count() {
+            detailLabel.SetText(
+                "The hierarchy drop target is no longer attached.");
+            return false;
+        }
+
+        var desired = remaining;
+        var movingIndex = 0;
+        while movingIndex < moving.count() {
+            desired.insert(
+                insertion + movingIndex, moving.get(movingIndex));
+            movingIndex = movingIndex + 1;
+        }
+
+        var parentAlreadyExact = true;
+        var rootIndex = 0;
+        while rootIndex < roots.count() {
+            if parents.get(roots.get(rootIndex)) != destinationParent {
+                parentAlreadyExact = false;
+            }
+            rootIndex = rootIndex + 1;
+        }
+        if parentAlreadyExact
+           and IntegerListsEqual(identityOrder, desired) {
+            detailLabel.SetText(
+                "The selected object subtrees already use that row position.");
+            return false;
+        }
+
+        var snapshot = currentSerialized;
+        var previousSelection = selectedObjects;
+        var previousPrimary = selectedObject;
+        var currentOrder = identityOrder;
+        var destination = 0;
+        while destination < desired.count() {
+            var desiredIdentity = desired.get(destination);
+            var current = IntegerIndexOf(
+                currentOrder, desiredIdentity);
+            if current < 0 {
+                RestoreSceneSnapshot(snapshot);
+                selectedObjects = previousSelection;
+                selectedObject = previousPrimary;
+                RefreshInspector();
+                detailLabel.SetText(
+                    "Studio lost an object identity while reordering.");
+                return false;
+            }
+            if current != destination {
+                scene.MoveObject(current, destination);
+                currentOrder.removeAt(current);
+                currentOrder.insert(destination, desiredIdentity);
+            }
+            destination = destination + 1;
+        }
+
+        var destinationParentIndex = -1;
+        if destinationParent >= 0 {
+            destinationParentIndex =
+                IntegerIndexOf(desired, destinationParent);
+        }
+        rootIndex = 0;
+        while rootIndex < roots.count() {
+            var nextRoot = IntegerIndexOf(
+                desired, roots.get(rootIndex));
+            if nextRoot < 0
+               or scene.TrySetObjectParent(
+                      nextRoot, destinationParentIndex) == false {
+                RestoreSceneSnapshot(snapshot);
+                selectedObjects = previousSelection;
+                selectedObject = previousPrimary;
+                RefreshInspector();
+                detailLabel.SetText(
+                    "The scene model rejected the hierarchy change.");
+                return false;
+            }
+            rootIndex = rootIndex + 1;
+        }
+
+        var nextSelection: List[Integer] = [];
+        var selectionIndex = 0;
+        while selectionIndex < previousSelection.count() {
+            var mapped = IntegerIndexOf(
+                desired, previousSelection.get(selectionIndex));
+            if mapped >= 0 { nextSelection.add(mapped); }
+            selectionIndex = selectionIndex + 1;
+        }
+        var nextPrimary = IntegerIndexOf(desired, previousPrimary);
+        if nextPrimary < 0 and nextSelection.count() > 0 {
+            nextPrimary = nextSelection.get(0);
+        }
+        selectedObjects = nextSelection;
+        selectedObject = nextPrimary;
+        selectedObjectProperty = -1;
+
+        var action = "Moved " + roots.count()
+            + " object subtree(s)";
+        if position == 1 {
+            action = "Reparented " + roots.count()
+                + " object subtree(s)";
+        }
+        if CommitScene(action) == false {
+            RestoreSceneSnapshot(snapshot);
+            selectedObjects = previousSelection;
+            selectedObject = previousPrimary;
+            RefreshInspector();
+            detailLabel.SetText(
+                "The hierarchy edit could not be committed.");
+            return false;
+        }
+        detailLabel.SetText("");
+        RefreshInspector();
+        CaptureWorkspaceState();
+        return true;
+    }
+
+    hide func PreviousObjectSibling(index: Integer) -> Integer {
+        if scene == null or index < 0 or index >= scene.ObjectCount() {
+            return -1;
+        }
+        var parent = scene.ObjectParent(index);
+        var sibling = -1;
+        var candidate = 0;
+        while candidate < index {
+            if scene.ObjectParent(candidate) == parent {
+                sibling = candidate;
+            }
+            candidate = candidate + 1;
+        }
+        return sibling;
+    }
+
+    hide func NextObjectSibling(index: Integer) -> Integer {
+        if scene == null or index < 0 or index >= scene.ObjectCount() {
+            return -1;
+        }
+        var parent = scene.ObjectParent(index);
+        var candidate = index + 1;
+        while candidate < scene.ObjectCount() {
+            if scene.ObjectParent(candidate) == parent { return candidate; }
+            candidate = candidate + 1;
+        }
+        return -1;
+    }
+
+    /// @brief Create, rename, or update one typed scene property transactionally.
+    expose func SetSceneProperty(previousKey: String,
+                                 key: String,
+                                 kind: String,
+                                 value: String) -> Boolean {
+        if scene == null { return false; }
+        var nextKey = Str.Trim(key);
+        if nextKey == "" {
+            detailLabel.SetText("Scene property key cannot be empty.");
+            return false;
+        }
+        if previousKey != "" and scene.Has(previousKey) == false {
+            detailLabel.SetText(
+                "The selected scene property no longer exists.");
+            return false;
+        }
+        if previousKey != nextKey and scene.Has(nextKey) {
+            detailLabel.SetText(
+                "Scene property \"" + nextKey + "\" already exists.");
+            return false;
+        }
+
+        var snapshot = scene.ToJson();
+        var intValue = 0;
+        var floatValue = 0.0;
+        var boolValue = false;
+        if kind == "string" {
+            scene.SetStr(nextKey, value);
+        } else if kind == "int" {
+            var parsedInt = Parse.TryInt(Str.Trim(value));
+            if parsedInt.IsNone {
+                detailLabel.SetText("Enter a valid whole number.");
+                return false;
+            }
+            intValue = parsedInt.UnwrapI64();
+            scene.SetInt(nextKey, intValue);
+        } else if kind == "float" {
+            var parsedFloat = Parse.TryDouble(Str.Trim(value));
+            if parsedFloat.IsNone {
+                detailLabel.SetText("Enter a valid finite number.");
+                return false;
+            }
+            floatValue = parsedFloat.UnwrapF64();
+            scene.SetFloat(nextKey, floatValue);
+        } else if kind == "bool" {
+            var parsedBool = Parse.TryBool(Str.Trim(value));
+            if parsedBool.IsNone {
+                detailLabel.SetText(
+                    "Enter true/false, yes/no, on/off, or 1/0.");
+                return false;
+            }
+            boolValue = parsedBool.UnwrapI1();
+            scene.SetBool(nextKey, boolValue);
+        } else if kind == "null" {
+            scene.SetNull(nextKey);
+        } else {
+            detailLabel.SetText("Choose a supported scene property type.");
+            return false;
+        }
+
+        if ScenePropertyMatches(
+               nextKey, kind, value, intValue, floatValue, boolValue) == false {
+            RestoreSceneSnapshot(snapshot);
+            detailLabel.SetText(
+                "The scene property was rejected. Keys are limited to "
+                + "128 bytes and string values to 64 KiB.");
+            return false;
+        }
+        if previousKey != "" and previousKey != nextKey {
+            scene.Remove(previousKey);
+        }
+        if scene.ToJson() == snapshot {
+            detailLabel.SetText("Scene property is already up to date.");
+            return false;
+        }
+        if CommitScene("Updated scene property " + nextKey) == false {
+            RestoreSceneSnapshot(snapshot);
+            detailLabel.SetText(
+                "The scene property update could not be committed.");
+            return false;
+        }
+
+        detailLabel.SetText("");
+        RefreshInspector();
+        sceneProperties.SelectByKey(scene, nextKey);
+        selectedSceneProperty = sceneProperties.selectedProperty;
+        return true;
+    }
+
+    /// @brief Remove one typed scene property through canonical history.
+    expose func RemoveSceneProperty(key: String) -> Boolean {
+        if scene == null { return false; }
+        var nextKey = Str.Trim(key);
+        if nextKey == "" or scene.Has(nextKey) == false { return false; }
+        var snapshot = scene.ToJson();
+        scene.Remove(nextKey);
+        if scene.Has(nextKey) {
+            RestoreSceneSnapshot(snapshot);
+            detailLabel.SetText(
+                "The scene model rejected the property removal.");
+            return false;
+        }
+        if CommitScene("Removed scene property " + nextKey) == false {
+            RestoreSceneSnapshot(snapshot);
+            detailLabel.SetText(
+                "The scene property removal could not be committed.");
+            return false;
+        }
+        detailLabel.SetText("");
+        selectedSceneProperty = -1;
+        RefreshInspector();
+        return true;
+    }
+
+    /// @brief Verify one just-written scene property without string coercion.
+    hide func ScenePropertyMatches(key: String,
+                                   kind: String,
+                                   stringValue: String,
+                                   intValue: Integer,
+                                   floatValue: Number,
+                                   boolValue: Boolean) -> Boolean {
+        if scene.Has(key) == false or scene.PropertyKind(key) != kind {
+            return false;
+        }
+        if kind == "string" {
+            return scene.GetStr(key, "") == stringValue;
+        }
+        if kind == "int" { return scene.GetInt(key, 0) == intValue; }
+        if kind == "float" {
+            var delta = scene.GetFloat(key, 0.0) - floatValue;
+            if delta < 0.0 { delta = 0.0 - delta; }
+            return delta < 0.000000000001;
+        }
+        if kind == "bool" {
+            return scene.GetBool(key, false) == boolValue;
+        }
+        return kind == "null";
     }
 
     /// @brief Create, rename, or update one typed object property transactionally.
@@ -2010,6 +3275,134 @@ class SceneEditor2D {
         return true;
     }
 
+    /// @brief Add every missing field from one project component transactionally.
+    /// @details Existing same-kind values are preserved. Any type conflict or
+    ///          rejected write restores the complete scene before returning.
+    expose func ApplySelectedComponent(
+        component: scene_component_schema.SceneComponentDefinition)
+        -> Boolean {
+        if scene == null or component == null
+           or component.SupportsTarget(
+               scene_component_schema.TARGET_2D_OBJECT) == false {
+            return false;
+        }
+        selectedObjects = scene_selection.Normalize(
+            selectedObjects, scene.ObjectCount(), selectedObject);
+        if selectedObjects.count() == 0 {
+            detailLabel.SetText(
+                "Select one or more objects before adding a component.");
+            return false;
+        }
+
+        var missing = 0;
+        var selectionIndex = 0;
+        while selectionIndex < selectedObjects.count() {
+            var objectIndex = selectedObjects.get(selectionIndex);
+            var fieldIndex = 0;
+            while fieldIndex < component.fields.count() {
+                var field = component.fields.get(fieldIndex);
+                if scene.ObjectHas(objectIndex, field.key) {
+                    if scene.ObjectPropertyKind(objectIndex, field.key)
+                       != field.kind {
+                        detailLabel.SetText(
+                            "Component \"" + component.label
+                            + "\" conflicts with property \"" + field.key
+                            + "\". No objects were changed.");
+                        RefreshComponentPalette();
+                        return false;
+                    }
+                } else {
+                    missing = missing + 1;
+                }
+                fieldIndex = fieldIndex + 1;
+            }
+            selectionIndex = selectionIndex + 1;
+        }
+        if missing == 0 {
+            detailLabel.SetText(
+                "Component \"" + component.label
+                + "\" is already complete on the selection.");
+            RefreshComponentPalette();
+            return false;
+        }
+
+        var snapshot = scene.ToJson();
+        selectionIndex = 0;
+        while selectionIndex < selectedObjects.count() {
+            var objectIndex = selectedObjects.get(selectionIndex);
+            var fieldIndex = 0;
+            while fieldIndex < component.fields.count() {
+                var field = component.fields.get(fieldIndex);
+                if scene.ObjectHas(objectIndex, field.key) == false
+                   and WriteObjectComponentField(objectIndex, field) == false {
+                    RestoreSceneSnapshot(snapshot);
+                    detailLabel.SetText(
+                        "Component \"" + component.label
+                        + "\" was rejected. No objects were changed.");
+                    RefreshComponentPalette();
+                    return false;
+                }
+                fieldIndex = fieldIndex + 1;
+            }
+            selectionIndex = selectionIndex + 1;
+        }
+
+        if CommitScene(
+               "Added " + component.label + " to "
+               + selectedObjects.count() + " object(s)") == false {
+            RestoreSceneSnapshot(snapshot);
+            detailLabel.SetText(
+                "The component could not be committed. No objects were changed.");
+            RefreshComponentPalette();
+            return false;
+        }
+        selectedObjectProperty = -1;
+        detailLabel.SetText(
+            "Added " + missing + " missing field(s) from "
+            + component.label + ".");
+        RefreshInspector();
+        return true;
+    }
+
+    /// @brief Write one already-validated schema default and verify exact kind.
+    hide func WriteObjectComponentField(
+        index: Integer,
+        field: scene_component_schema.SceneComponentField) -> Boolean {
+        var intValue = 0;
+        var floatValue = 0.0;
+        var boolValue = false;
+        if field.kind == "string" {
+            scene.ObjectSetStr(index, field.key, field.defaultText);
+        } else if field.kind == "int" {
+            var parsedInt = Parse.TryInt(field.defaultText);
+            if parsedInt.IsNone { return false; }
+            intValue = parsedInt.UnwrapI64();
+            scene.ObjectSetInt(index, field.key, intValue);
+        } else if field.kind == "float" {
+            var parsedFloat = Parse.TryDouble(field.defaultText);
+            if parsedFloat.IsNone { return false; }
+            floatValue = parsedFloat.UnwrapF64();
+            scene.ObjectSetFloat(index, field.key, floatValue);
+        } else if field.kind == "bool" {
+            var parsedBool = Parse.TryBool(field.defaultText);
+            if parsedBool.IsNone { return false; }
+            boolValue = parsedBool.UnwrapI1();
+            scene.ObjectSetBool(index, field.key, boolValue);
+        } else if field.kind == "null" {
+            scene.ObjectSetNull(index, field.key);
+        } else {
+            return false;
+        }
+        return BatchPropertyMatches(
+            index,
+            field.key,
+            field.kind,
+            field.defaultText,
+            intValue,
+            floatValue,
+            boolValue);
+    }
+
     /// @brief Verify one just-written typed property without string coercion.
     hide func BatchPropertyMatches(index: Integer,
                                    key: String,
@@ -2255,6 +3648,9 @@ class SceneEditor2D {
     }
 
     hide func SetMode(nextMode: Integer) {
+        if canvasMarqueeActive and nextMode != MODE_SELECT {
+            CancelCanvasMarquee();
+        }
         mode = nextMode;
         lastPaintX = -1;
         lastPaintY = -1;
@@ -2298,10 +3694,16 @@ class SceneEditor2D {
         layerNameInput.SetEnabled(enabled);
         layerAssetInput.SetEnabled(enabled);
         chooseLayerAssetButton.SetEnabled(enabled);
+        sceneProperties.SetEnabled(enabled);
         tilesetInspector.SetEnabled(enabled);
+        hierarchySearchInput.SetEnabled(enabled);
+        objectTree.SetEnabled(enabled);
         addObjectButton.SetEnabled(enabled);
+        addChildObjectButton.SetEnabled(enabled);
         applyObjectButton.SetEnabled(enabled);
         removeObjectButton.SetEnabled(enabled);
+        objectParentDropdown.SetEnabled(enabled);
+        reparentObjectButton.SetEnabled(enabled);
         duplicateObjectButton.SetEnabled(enabled);
         objectUpButton.SetEnabled(enabled);
         objectDownButton.SetEnabled(enabled);
@@ -2318,16 +3720,21 @@ class SceneEditor2D {
         objectIdInput.SetEnabled(enabled);
         objectXSpinner.SetEnabled(enabled);
         objectYSpinner.SetEnabled(enabled);
+        UpdateHierarchySearchControls();
     }
 
     /// @brief Rebuild bounded inspector rows from the active model.
     hide func RefreshInspector() {
         layerList.Clear();
-        objectList.Clear();
+        sceneProperties.Refresh(
+            scene, editorControlsEnabled, selectedSceneProperty);
+        selectedSceneProperty = sceneProperties.selectedProperty;
         if scene == null {
             selectedObject = -1;
             selectedObjects = [];
             selectedObjectProperty = -1;
+            selectedSceneProperty = -1;
+            RefreshObjectTree();
             RefreshObjectFields();
             sceneInfoLabel.SetText("Invalid 2D scene");
             toolbarStatus.SetText("Scene JSON needs attention");
@@ -2352,6 +3759,119 @@ class SceneEditor2D {
         if layerCount > 0 { layerList.SelectIndex(activeLayer); }
         RefreshLayerFields();
 
+        RefreshObjectTree();
+        RefreshObjectFields();
+    }
+
+    hide func StringListContains(values: List[String],
+                                 value: String) -> Boolean {
+        var index = 0;
+        while index < values.count() {
+            if values.get(index) == value { return true; }
+            index = index + 1;
+        }
+        return false;
+    }
+
+    /// @brief Snapshot expansion before replacing retained object rows.
+    hide func CaptureObjectTreeExpansion() {
+        objectExpandedIds = [];
+        objectExpandedPaths = [];
+        var sameDocument =
+            currentDoc != null and objectTreeDocument == currentDoc;
+        objectTreeExpandByDefault =
+            objectTreeNodes.count() == 0 or sameDocument == false;
+        if sameDocument == false { return; }
+        var index = 0;
+        while index < objectTreeNodes.count()
+              and index < objectTreeIds.count()
+              and index < objectTreePaths.count() {
+            var treeNode = objectTreeNodes.get(index);
+            if treeNode != null
+               and GUI.TreeView.Node.IsExpanded(treeNode) {
+                var objectId = objectTreeIds.get(index);
+                if objectId != "" { objectExpandedIds.add(objectId); }
+                objectExpandedPaths.add(objectTreePaths.get(index));
+            }
+            index = index + 1;
+        }
+    }
+
+    /// @brief Return a bounded structural depth, with roots at depth zero.
+    hide func ObjectHierarchyDepth(index: Integer) -> Integer {
+        if scene == null or index < 0 or index >= scene.ObjectCount() {
+            return MAX_OBJECT_HIERARCHY_DEPTH + 1;
+        }
+        var depth = 0;
+        var current = index;
+        var steps = 0;
+        while current >= 0 and steps <= MAX_OBJECT_HIERARCHY_DEPTH {
+            var parent = scene.ObjectParent(current);
+            if parent < 0 { return depth; }
+            depth = depth + 1;
+            steps = steps + 1;
+            current = parent;
+        }
+        return MAX_OBJECT_HIERARCHY_DEPTH + 1;
+    }
+
+    /// @brief Return whether ancestor contains candidate in the live hierarchy.
+    hide func ObjectHierarchyContains(ancestor: Integer,
+                                      candidate: Integer) -> Boolean {
+        if scene == null or ancestor < 0 or candidate < 0
+           or ancestor >= scene.ObjectCount()
+           or candidate >= scene.ObjectCount() {
+            return false;
+        }
+        var current = candidate;
+        var steps = 0;
+        while current >= 0 and steps <= scene.ObjectCount() {
+            if current == ancestor { return true; }
+            current = scene.ObjectParent(current);
+            steps = steps + 1;
+        }
+        return false;
+    }
+
+    hide func ShouldExpandObjectNode(index: Integer,
+                                     objectId: String,
+                                     path: String) -> Boolean {
+        var selectionIndex = 0;
+        while selectionIndex < selectedObjects.count() {
+            if ObjectHierarchyContains(
+                   index, selectedObjects.get(selectionIndex)) {
+                return true;
+            }
+            selectionIndex = selectionIndex + 1;
+        }
+        if objectTreeExpandByDefault { return true; }
+        if objectId != ""
+           and StringListContains(objectExpandedIds, objectId) {
+            return true;
+        }
+        return StringListContains(objectExpandedPaths, path);
+    }
+
+    /// @brief Rebuild a bounded retained parent/child presentation.
+    /// @details Depth and row limits protect the UI while preserving every
+    ///          object in canonical scene data.
+    hide func RefreshObjectTree() {
+        if objectTree == null { return; }
+        CaptureObjectTreeExpansion();
+        objectTreeNodes = [];
+        objectTreeIds = [];
+        objectTreePaths = [];
+        objectHierarchyClipped = false;
+        objectTree.Clear();
+        objectTree.PruneRetiredNodes();
+
+        if scene == null {
+            objectHierarchyStatus.SetText("");
+            objectTreeDocument = currentDoc;
+            RefreshHierarchySearch(false);
+            return;
+        }
+
         var objectCount = scene.ObjectCount();
         if selectedObject >= objectCount { selectedObject = -1; }
         selectedObjects = scene_selection.Normalize(
@@ -2359,29 +3879,352 @@ class SceneEditor2D {
         if selectedObject < 0 and selectedObjects.count() > 0 {
             selectedObject = selectedObjects.get(0);
         }
-        i = 0;
-        while i < objectCount {
-            var item = objectList.AddItem(
-                scene.ObjectId(i) + "  :  " + scene.ObjectType(i)
-                + "  @ " + scene.ObjectX(i) + ", " + scene.ObjectY(i));
-            objectList.ItemSetData(item, Fmt.Int(i));
-            i = i + 1;
+
+        var visibleCount = objectCount;
+        if visibleCount > MAX_OBJECT_TREE_ROWS {
+            visibleCount = MAX_OBJECT_TREE_ROWS;
+            objectHierarchyClipped = true;
         }
-        RestoreObjectListSelection();
-        RefreshObjectFields();
+        var depths: List[Integer] = [];
+        var hasChildren: List[Boolean] = [];
+        var index = 0;
+        while index < visibleCount {
+            objectTreeNodes.add(null);
+            objectTreeIds.add(scene.ObjectId(index));
+            objectTreePaths.add("");
+            depths.add(ObjectHierarchyDepth(index));
+            hasChildren.add(false);
+            index = index + 1;
+        }
+        index = 0;
+        while index < objectCount {
+            var parent = scene.ObjectParent(index);
+            if parent >= 0 and parent < visibleCount {
+                hasChildren.set(parent, true);
+            }
+            index = index + 1;
+        }
+
+        var rowCount = 0;
+        var depth = 0;
+        while depth <= MAX_OBJECT_HIERARCHY_DEPTH
+              and rowCount < MAX_OBJECT_TREE_ROWS {
+            index = 0;
+            while index < visibleCount
+                  and rowCount < MAX_OBJECT_TREE_ROWS {
+                if depths.get(index) == depth {
+                    var parentIndex = scene.ObjectParent(index);
+                    var parentTreeNode: Any = null;
+                    var path = Fmt.Int(index);
+                    var canAppend = parentIndex < 0;
+                    if parentIndex >= 0 and parentIndex < visibleCount
+                       and objectTreeNodes.get(parentIndex) != null {
+                        parentTreeNode = objectTreeNodes.get(parentIndex);
+                        path = objectTreePaths.get(parentIndex)
+                            + "/" + Fmt.Int(index);
+                        canAppend = true;
+                    }
+                    if canAppend {
+                        var objectId = scene.ObjectId(index);
+                        var displayId = objectId;
+                        if displayId == "" { displayId = "(unnamed)"; }
+                        var treeNode = objectTree.AddNode(
+                            parentTreeNode,
+                            displayId + "  :  " + scene.ObjectType(index)
+                            + "  @ " + scene.ObjectX(index)
+                            + ", " + scene.ObjectY(index));
+                        if treeNode == null {
+                            objectHierarchyClipped = true;
+                        } else {
+                            GUI.TreeView.Node.SetData(
+                                treeNode, Fmt.Int(index));
+                            GUI.TreeView.Node.SetStableId(
+                                treeNode, objectId + "|" + path);
+                            objectTreeNodes.set(index, treeNode);
+                            objectTreePaths.set(index, path);
+                            rowCount = rowCount + 1;
+                        }
+                    } else {
+                        objectHierarchyClipped = true;
+                    }
+                } else if depths.get(index)
+                          > MAX_OBJECT_HIERARCHY_DEPTH {
+                    objectHierarchyClipped = true;
+                }
+                index = index + 1;
+            }
+            depth = depth + 1;
+        }
+
+        index = 0;
+        while index < visibleCount {
+            var node = objectTreeNodes.get(index);
+            if node != null {
+                var icon = "◇";
+                if hasChildren.get(index) { icon = "◆"; }
+                GUI.TreeView.Node.SetIcon(node, icon);
+                if hasChildren.get(index)
+                   and ShouldExpandObjectNode(
+                       index,
+                       objectTreeIds.get(index),
+                       objectTreePaths.get(index)) {
+                    objectTree.Expand(node);
+                }
+            }
+            index = index + 1;
+        }
+
+        if rowCount < objectCount { objectHierarchyClipped = true; }
+        if objectHierarchyClipped {
+            objectHierarchyStatus.SetText(
+                "Hierarchy view is bounded to "
+                + MAX_OBJECT_TREE_ROWS + " rows and depth "
+                + MAX_OBJECT_HIERARCHY_DEPTH
+                + "; hidden objects remain preserved in the scene.");
+        } else {
+            objectHierarchyStatus.SetText("");
+        }
+        objectTreeDocument = currentDoc;
+        RestoreObjectTreeSelection();
+        RefreshHierarchySearch(false);
+        objectExpandedIds = [];
+        objectExpandedPaths = [];
     }
 
-    /// @brief Restore every validated object row while keeping one primary.
-    hide func RestoreObjectListSelection() {
-        if objectList == null { return; }
-        objectList.Select(null);
+    /// @brief Route scene-wide metadata drafts into canonical transactions.
+    hide func PumpScenePropertyControls() -> Boolean {
+        if scene == null { return false; }
+        sceneProperties.Pump(scene);
+        selectedSceneProperty = sceneProperties.selectedProperty;
+        var setRequested = sceneProperties.TakeSetRequested();
+        var removeRequested = sceneProperties.TakeRemoveRequested();
+        var changed = false;
+        if setRequested {
+            changed = SetSceneProperty(
+                sceneProperties.SelectedKey(),
+                sceneProperties.keyInput.Text,
+                sceneProperties.SelectedKind(),
+                sceneProperties.valueInput.Text);
+        }
+        if removeRequested {
+            changed = RemoveSceneProperty(
+                sceneProperties.SelectedKey()) or changed;
+        }
+        return changed;
+    }
+
+    /// @brief Reveal the retained ancestors of one programmatic selection.
+    hide func ExpandObjectTreeAncestors(index: Integer) {
+        if scene == null or objectTree == null
+           or index < 0 or index >= scene.ObjectCount() {
+            return;
+        }
+        var parent = scene.ObjectParent(index);
+        var steps = 0;
+        while parent >= 0 and steps <= scene.ObjectCount() {
+            if parent < objectTreeNodes.count()
+               and objectTreeNodes.get(parent) != null {
+                objectTree.Expand(objectTreeNodes.get(parent));
+            }
+            parent = scene.ObjectParent(parent);
+            steps = steps + 1;
+        }
+    }
+
+    /// @brief Restore every validated hierarchy row while keeping one primary.
+    hide func RestoreObjectTreeSelection() {
+        if objectTree == null { return; }
+        objectTree.Select(null);
         var index = 0;
         while index < selectedObjects.count() {
             var selected = selectedObjects.get(index);
-            if selected != selectedObject { objectList.SelectIndex(selected); }
+            if selected != selectedObject
+               and selected >= 0 and selected < objectTreeNodes.count()
+               and objectTreeNodes.get(selected) != null {
+                objectTree.Select(objectTreeNodes.get(selected));
+            }
             index = index + 1;
         }
-        if selectedObject >= 0 { objectList.SelectIndex(selectedObject); }
+        if selectedObject >= 0
+           and selectedObject < objectTreeNodes.count()
+           and objectTreeNodes.get(selectedObject) != null {
+            objectTree.Select(objectTreeNodes.get(selectedObject));
+        }
+    }
+
+    /// @brief Resolve the selected dropdown row to one object parent identity.
+    hide func SelectedObjectParentTargetIndex() -> Integer {
+        if objectParentDropdown == null
+           or objectParentDropdown.Selected < 0
+           or objectParentDropdown.Selected
+              >= objectParentTargetIndices.count() {
+            return OBJECT_PARENT_TARGET_MIXED;
+        }
+        return objectParentTargetIndices.get(
+            objectParentDropdown.Selected);
+    }
+
+    /// @brief Select one currently offered parent without changing scene data.
+    /// @details Probe and command callers use this instead of synthesizing a
+    ///          platform-specific native dropdown click.
+    expose func SelectObjectParentTarget(
+        targetIndex: Integer) -> Boolean {
+        if objectParentDropdown == null { return false; }
+        var option = 0;
+        while option < objectParentTargetIndices.count() {
+            if objectParentTargetIndices.get(option) == targetIndex {
+                objectParentDropdown.SetSelected(option);
+                UpdateObjectParentControlAvailability();
+                return true;
+            }
+            option = option + 1;
+        }
+        return false;
+    }
+
+    /// @brief Rebuild bounded, cycle-safe parent choices for the selection.
+    hide func RefreshObjectParentTargets() {
+        if objectParentDropdown == null
+           or reparentObjectButton == null {
+            return;
+        }
+        objectParentDropdown.Clear();
+        objectParentTargetIndices = [];
+        if scene == null or selectedObjects.count() == 0 {
+            objectParentDropdown.SetPlaceholder("Select an object");
+            objectParentDropdown.SetEnabled(false);
+            reparentObjectButton.SetEnabled(false);
+            reparentObjectButton.SetText("Reparent");
+            return;
+        }
+
+        var parents = SnapshotObjectParents();
+        var roots = TopLevelSelectedObjectRoots(parents);
+        if roots.count() == 0 {
+            objectParentDropdown.SetPlaceholder("Select an object");
+            objectParentDropdown.SetEnabled(false);
+            reparentObjectButton.SetEnabled(false);
+            return;
+        }
+        var owners = SelectedRootOwners(parents, roots);
+        var depths = IdentityDepths(parents);
+        var commonParent = parents.get(roots.get(0));
+        var mixedParents = false;
+        var rootIndex = 1;
+        while rootIndex < roots.count() {
+            if parents.get(roots.get(rootIndex)) != commonParent {
+                mixedParents = true;
+            }
+            rootIndex = rootIndex + 1;
+        }
+
+        var selectedOption = -1;
+        if mixedParents {
+            selectedOption = objectParentDropdown.AddItem(
+                "Multiple parents — choose target");
+            objectParentTargetIndices.add(
+                OBJECT_PARENT_TARGET_MIXED);
+        }
+        if ObjectDropFitsKnownDepths(-1, depths, owners) {
+            var rootOption =
+                objectParentDropdown.AddItem("Scene root");
+            objectParentTargetIndices.add(-1);
+            if mixedParents == false and commonParent < 0 {
+                selectedOption = rootOption;
+            }
+        }
+
+        var candidateLimit = scene.ObjectCount();
+        if candidateLimit > MAX_OBJECT_TREE_ROWS {
+            candidateLimit = MAX_OBJECT_TREE_ROWS;
+        }
+        var candidate = 0;
+        while candidate < candidateLimit {
+            if owners.get(candidate) < 0
+               and ObjectDropFitsKnownDepths(
+                       candidate, depths, owners) {
+                var prefix = "";
+                var depth = ObjectHierarchyDepth(candidate);
+                var indent = 0;
+                while indent < depth and indent < 16 {
+                    prefix = prefix + "  ";
+                    indent = indent + 1;
+                }
+                var displayId = scene.ObjectId(candidate);
+                if displayId == "" { displayId = "(unnamed)"; }
+                var option = objectParentDropdown.AddItem(
+                    prefix + displayId + " : "
+                    + scene.ObjectType(candidate));
+                objectParentTargetIndices.add(candidate);
+                if mixedParents == false
+                   and commonParent == candidate {
+                    selectedOption = option;
+                }
+            }
+            candidate = candidate + 1;
+        }
+
+        if selectedOption < 0
+           and objectParentTargetIndices.count() > 0 {
+            selectedOption = 0;
+        }
+        if selectedOption >= 0 {
+            objectParentDropdown.SetSelected(selectedOption);
+        }
+        var placeholder = "Choose parent";
+        if scene.ObjectCount() > candidateLimit {
+            placeholder = "Choose parent (bounded hierarchy view)";
+        }
+        objectParentDropdown.SetPlaceholder(placeholder);
+        UpdateObjectParentControlAvailability();
+    }
+
+    /// @brief Enable explicit reparenting only for a changed valid target.
+    hide func UpdateObjectParentControlAvailability() {
+        if objectParentDropdown == null
+           or reparentObjectButton == null {
+            return;
+        }
+        var available = false;
+        var rootCount = 0;
+        if scene != null and selectedObjects.count() > 0 {
+            var parents = SnapshotObjectParents();
+            var roots = TopLevelSelectedObjectRoots(parents);
+            rootCount = roots.count();
+            var owners = SelectedRootOwners(parents, roots);
+            var depths = IdentityDepths(parents);
+            var target = SelectedObjectParentTargetIndex();
+            var targetValid = target == -1
+                or (target >= 0 and target < scene.ObjectCount());
+            var targetOutsideSelection = target < 0
+                or owners.get(target) < 0;
+            var alreadyParented = roots.count() > 0;
+            var rootIndex = 0;
+            while rootIndex < roots.count() {
+                if parents.get(roots.get(rootIndex)) != target {
+                    alreadyParented = false;
+                }
+                rootIndex = rootIndex + 1;
+            }
+            available = roots.count() > 0
+                and targetValid
+                and targetOutsideSelection
+                and ObjectDropFitsKnownDepths(
+                        target, depths, owners)
+                and alreadyParented == false;
+        }
+        objectParentDropdown.SetEnabled(
+            rootCount > 0 and objectParentTargetIndices.count() > 0);
+        reparentObjectButton.SetEnabled(available);
+        reparentObjectButton.SetText("Reparent");
+        if rootCount > 1 {
+            reparentObjectButton.SetText(
+                "Reparent (" + rootCount + ")");
+        }
+        reparentObjectButton.SetTooltip(
+            "Move " + rootCount
+            + " selected top-level subtree(s) beneath the chosen parent; "
+            + "absolute positions stay unchanged");
     }
 
     hide func RefreshLayerFields() {
@@ -2437,16 +4280,19 @@ class SceneEditor2D {
             and selectedObject < objectCount
             and selectedObjects.count() > 0;
         var hasSingle = hasSelection and selectedObjects.count() == 1;
+        addChildObjectButton.SetEnabled(hasSingle);
         applyObjectButton.SetEnabled(hasSingle);
         removeObjectButton.SetEnabled(hasSelection);
         duplicateObjectButton.SetEnabled(hasSelection);
-        objectUpButton.SetEnabled(hasSingle and selectedObject > 0);
+        objectUpButton.SetEnabled(
+            hasSingle and PreviousObjectSibling(selectedObject) >= 0);
         objectDownButton.SetEnabled(
-            hasSingle and selectedObject + 1 < objectCount);
+            hasSingle and NextObjectSibling(selectedObject) >= 0);
         objectTypeInput.SetEnabled(hasSingle);
         objectIdInput.SetEnabled(hasSingle);
         objectXSpinner.SetEnabled(hasSingle);
         objectYSpinner.SetEnabled(hasSingle);
+        RefreshObjectParentTargets();
         RefreshObjectArrangeControls(hasSelection);
         removeObjectButton.SetText("Remove");
         duplicateObjectButton.SetText("Duplicate");
@@ -2469,6 +4315,7 @@ class SceneEditor2D {
                     "Single-object fields disabled for group selection");
             }
             RefreshObjectProperties();
+            RefreshComponentPalette();
             return;
         }
         objectTypeInput.SetText(scene.ObjectType(selectedObject));
@@ -2476,6 +4323,93 @@ class SceneEditor2D {
         objectXSpinner.SetValue(scene.ObjectX(selectedObject));
         objectYSpinner.SetValue(scene.ObjectY(selectedObject));
         RefreshObjectProperties();
+        RefreshComponentPalette();
+    }
+
+    /// @brief Summarize selected-object coverage for the active component.
+    hide func RefreshComponentPalette() {
+        if componentPalette == null or componentPalette.group == null {
+            return;
+        }
+        var objectCount = 0;
+        if scene != null { objectCount = scene.ObjectCount(); }
+        selectedObjects = scene_selection.Normalize(
+            selectedObjects, objectCount, selectedObject);
+        var component = componentPalette.SelectedComponent();
+        var enabled = scene != null and selectedObjects.count() > 0
+            and component != null;
+        var present = 0;
+        var missing = 0;
+        var conflicts = 0;
+        if enabled {
+            var selectionIndex = 0;
+            while selectionIndex < selectedObjects.count() {
+                var objectIndex = selectedObjects.get(selectionIndex);
+                var fieldIndex = 0;
+                while fieldIndex < component.fields.count() {
+                    var field = component.fields.get(fieldIndex);
+                    if scene.ObjectHas(objectIndex, field.key) == false {
+                        missing = missing + 1;
+                    } else if scene.ObjectPropertyKind(
+                                  objectIndex, field.key) == field.kind {
+                        present = present + 1;
+                    } else {
+                        conflicts = conflicts + 1;
+                    }
+                    fieldIndex = fieldIndex + 1;
+                }
+                selectionIndex = selectionIndex + 1;
+            }
+        }
+        componentPalette.SetContext(
+            enabled, present, missing, conflicts);
+    }
+
+    /// @brief Copy one schema field into the raw typed-property controls.
+    /// @details A matching single-object value is retained for editing;
+    ///          otherwise the schema default becomes the draft.
+    expose func EditSelectedComponentField() -> Boolean {
+        if scene == null or componentPalette == null { return false; }
+        selectedObjects = scene_selection.Normalize(
+            selectedObjects, scene.ObjectCount(), selectedObject);
+        var field = componentPalette.SelectedField();
+        if field == null or selectedObjects.count() == 0 { return false; }
+
+        var value = field.defaultText;
+        selectedObjectProperty = -1;
+        objectPropertyList.SelectIndex(-1);
+        if selectedObjects.count() == 1 and selectedObject >= 0
+           and selectedObject < scene.ObjectCount()
+           and scene.ObjectHas(selectedObject, field.key) {
+            var index = 0;
+            while index < objectPropertyKeys.count() {
+                if objectPropertyKeys.get(index) == field.key {
+                    selectedObjectProperty = index;
+                    objectPropertyList.SelectIndex(index);
+                    break;
+                }
+                index = index + 1;
+            }
+            if scene.ObjectPropertyKind(selectedObject, field.key)
+               == field.kind {
+                value = PropertyValueText(
+                    selectedObject, field.key, field.kind);
+            }
+        }
+
+        objectPropertyKeyInput.SetText(field.key);
+        SelectPropertyType(field.kind);
+        objectPropertyValueInput.SetText(value);
+        UpdatePropertyValueControl();
+        if field.kind == "null" {
+            objectPropertyKeyInput.Focus();
+        } else {
+            objectPropertyValueInput.Focus();
+        }
+        detailLabel.SetText(
+            "Editing " + field.label
+            + " in the raw typed-property controls.");
+        return true;
     }
 
     /// @brief Keep multi-object layout affordances selection-count truthful.
@@ -2804,16 +4738,42 @@ class SceneEditor2D {
 
     hide func PumpObjectControls() -> Boolean {
         if scene == null { return false; }
+        PumpHierarchySearchControls();
         var changed = false;
-        if objectList.WasSelectionChanged() {
-            selectedObject = objectList.SelectedIndex;
+        if objectTree.WasSelectionChanged() {
+            var primaryRow = objectTree.GetSelected();
+            selectedObject = -1;
+            if primaryRow != null {
+                selectedObject = Parse.IntOr(
+                    GUI.TreeView.Node.GetData(primaryRow), -1);
+            }
             selectedObjects = scene_selection.FromData(
-                objectList.GetSelectedData(),
+                objectTree.GetSelectedData(),
                 scene.ObjectCount(),
                 selectedObject);
+            if selectedObject < 0 and selectedObjects.count() > 0 {
+                selectedObject = selectedObjects.get(0);
+            }
             selectedObjectProperty = -1;
             RefreshObjectFields();
             renderDirty = true;
+        }
+        if objectTree.WasDropReceived() {
+            var sourceIndex = Parse.IntOr(
+                objectTree.GetDropSourceData(), -1);
+            var targetIndex = Parse.IntOr(
+                objectTree.GetDropTargetData(), -1);
+            var dropPosition = objectTree.GetDropPosition();
+            objectTree.ClearDrop();
+            changed = ApplyObjectHierarchyDrop(
+                sourceIndex, targetIndex, dropPosition) or changed;
+        }
+        if objectParentDropdown.WasChanged() {
+            UpdateObjectParentControlAvailability();
+        }
+        if reparentObjectButton.WasClicked() {
+            changed = ReparentSelectedSceneObjects(
+                SelectedObjectParentTargetIndex()) or changed;
         }
         if addObjectButton.WasClicked() {
             var x = 0;
@@ -2828,6 +4788,26 @@ class SceneEditor2D {
                 x,
                 y);
             if objectIndex >= 0 { changed = true; }
+        }
+        if addChildObjectButton.WasClicked()
+           and selectedObjects.count() == 1
+           and selectedObject >= 0
+           and selectedObject < scene.ObjectCount() {
+            var childParent = selectedObject;
+            var childX = scene.ObjectX(childParent);
+            var childY = scene.ObjectY(childParent);
+            if selectedCellX >= 0 and selectedCellY >= 0 {
+                childX = selectedCellX * scene.TileWidth;
+                childY = selectedCellY * scene.TileHeight;
+            }
+            var childIndex = AddSceneChildObject(
+                childParent,
+                "entity",
+                UniqueObjectId(
+                    "object-" + (scene.ObjectCount() + 1)),
+                childX,
+                childY);
+            if childIndex >= 0 { changed = true; }
         }
         var applyRequested = applyObjectButton.WasClicked();
         if objectTypeInput.WasSubmitted() { applyRequested = true; }
@@ -2852,15 +4832,26 @@ class SceneEditor2D {
             changed = ArrangeSelectedSceneObjects(
                 objectArrangeDropdown.Selected) or changed;
         }
-        if objectUpButton.WasClicked() and selectedObjects.count() == 1
-           and selectedObject > 0 {
-            changed = MoveSceneObject(
-                selectedObject, selectedObject - 1) or changed;
+        if objectUpButton.WasClicked()
+           and selectedObjects.count() == 1 {
+            var previousSibling =
+                PreviousObjectSibling(selectedObject);
+            if previousSibling >= 0 {
+                changed = ApplyObjectHierarchyDrop(
+                    selectedObject,
+                    previousSibling,
+                    0) or changed;
+            }
         }
-        if objectDownButton.WasClicked() and selectedObjects.count() == 1
-           and selectedObject + 1 < scene.ObjectCount() {
-            changed = MoveSceneObject(
-                selectedObject, selectedObject + 1) or changed;
+        if objectDownButton.WasClicked()
+           and selectedObjects.count() == 1 {
+            var nextSibling = NextObjectSibling(selectedObject);
+            if nextSibling >= 0 {
+                changed = ApplyObjectHierarchyDrop(
+                    selectedObject,
+                    nextSibling,
+                    2) or changed;
+            }
         }
         if removeObjectButton.WasClicked() and selectedObject >= 0 {
             changed = RemoveSelectedSceneObjects() or changed;
@@ -2926,6 +4917,34 @@ class SceneEditor2D {
         return changed;
     }
 
+    /// @brief Route project component-picker intent into editor transactions.
+    hide func PumpComponentControls() -> Boolean {
+        if componentPalette == null or componentPalette.group == null {
+            return false;
+        }
+        if componentPalette.Pump() { RefreshComponentPalette(); }
+        var schemaChanged = componentAuthoring.PollExternalChanges(
+            1000, componentPalette);
+        var schemaAuthored =
+            componentAuthoring.Pump(componentPalette);
+        if schemaChanged or schemaAuthored
+           or componentAuthoring.handled {
+            componentSchema = componentAuthoring.schema;
+            RefreshComponentPalette();
+            if componentAuthoring.message != "" {
+                detailLabel.SetText(componentAuthoring.message);
+            }
+        }
+        if componentPalette.TakeEditFieldRequested() {
+            EditSelectedComponentField();
+        }
+        if componentPalette.TakeApplyRequested() {
+            return ApplySelectedComponent(
+                componentPalette.SelectedComponent());
+        }
+        return false;
+    }
+
     hide func ObjectIdExists(objectId: String, exceptIndex: Integer) -> Boolean {
         if scene == null { return false; }
         var index = 0;
@@ -2936,6 +4955,16 @@ class SceneEditor2D {
             index = index + 1;
         }
         return false;
+    }
+
+    hide func ObjectIndexWithId(objectId: String) -> Integer {
+        if scene == null or objectId == "" { return -1; }
+        var index = 0;
+        while index < scene.ObjectCount() {
+            if scene.ObjectId(index) == objectId { return index; }
+            index = index + 1;
+        }
+        return -1;
     }
 
     hide func UniqueObjectId(base: String) -> String {
@@ -2951,8 +4980,100 @@ class SceneEditor2D {
         return stem + "-" + (scene.ObjectCount() + 3);
     }
 
+    /// @brief Return whether either side-specific Shift key is held.
+    hide func CanvasShiftDown() -> Boolean {
+        return Input.Keyboard.IsDown(Input.Key.LeftShift)
+            or Input.Keyboard.IsDown(Input.Key.RightShift);
+    }
+
+    /// @brief Return whether conventional Control/Command selection is held.
+    hide func CanvasPrimaryModifierDown() -> Boolean {
+        return Input.Keyboard.IsDown(Input.Key.LeftControl)
+            or Input.Keyboard.IsDown(Input.Key.RightControl)
+            or Input.Keyboard.IsDown(Input.Key.LeftSuper)
+            or Input.Keyboard.IsDown(Input.Key.RightSuper);
+    }
+
+    /// @brief Begin one blank-space marquee without changing selection yet.
+    hide func BeginCanvasMarquee(cellX: Integer,
+                                 cellY: Integer,
+                                 additive: Boolean,
+                                 toggle: Boolean) {
+        canvasMarqueeActive = true;
+        canvasMarqueeStartX = cellX;
+        canvasMarqueeStartY = cellY;
+        canvasMarqueeCurrentX = cellX;
+        canvasMarqueeCurrentY = cellY;
+        canvasMarqueeAdditive = additive;
+        canvasMarqueeToggle = toggle;
+        if Input.Mouse.IsCaptured() == false {
+            Input.Mouse.Capture();
+        }
+        renderDirty = true;
+        toolbarStatus.SetText(
+            "Drag a box around objects; Escape cancels");
+    }
+
+    /// @brief Clear transient marquee state and optionally release its capture.
+    hide func ResetCanvasMarquee(releaseCapture: Boolean) {
+        var wasActive = canvasMarqueeActive;
+        canvasMarqueeActive = false;
+        canvasMarqueeStartX = -1;
+        canvasMarqueeStartY = -1;
+        canvasMarqueeCurrentX = -1;
+        canvasMarqueeCurrentY = -1;
+        canvasMarqueeAdditive = false;
+        canvasMarqueeToggle = false;
+        if releaseCapture and wasActive and Input.Mouse.IsCaptured() {
+            Input.Mouse.Release();
+        }
+        if wasActive { renderDirty = true; }
+    }
+
+    /// @brief Cancel one active marquee and preserve its prior selection.
+    hide func CancelCanvasMarquee() {
+        if canvasMarqueeActive == false { return; }
+        ResetCanvasMarquee(true);
+        toolbarStatus.SetText("Box selection canceled");
+    }
+
+    /// @brief Apply one marquee exactly once when the left button is released.
+    hide func FinishCanvasMarquee() {
+        if canvasMarqueeActive == false { return; }
+        var startX = canvasMarqueeStartX;
+        var startY = canvasMarqueeStartY;
+        var endX = canvasMarqueeCurrentX;
+        var endY = canvasMarqueeCurrentY;
+        var additive = canvasMarqueeAdditive;
+        var toggle = canvasMarqueeToggle;
+        ResetCanvasMarquee(true);
+        var changed = ApplyCanvasMarqueeSelection(
+            startX, startY, endX, endY, additive, toggle);
+        if selectedObjects.count() == 0 {
+            toolbarStatus.SetText("No canvas objects selected");
+        } else if changed {
+            toolbarStatus.SetText(
+                "Selected " + selectedObjects.count()
+                + " canvas object(s)");
+        } else {
+            toolbarStatus.SetText(
+                "Canvas selection unchanged ("
+                + selectedObjects.count() + " object(s))");
+        }
+    }
+
     /// @brief Apply the current mouse tool to one bounded scene cell.
     hide func PumpCanvas() -> Boolean {
+        if canvasMarqueeActive {
+            if Input.Keyboard.WasPressed(Input.Key.Escape) {
+                CancelCanvasMarquee();
+                return false;
+            }
+            if !Input.Mouse.IsDown(Input.Mouse.ButtonLeft) {
+                FinishCanvasMarquee();
+                return false;
+            }
+        }
         if paintStrokeActive
            and !Input.Mouse.IsDown(Input.Mouse.ButtonLeft) {
             return FinishPaintStroke();
@@ -3014,6 +5135,15 @@ class SceneEditor2D {
         }
         selectedCellX = cellX;
         selectedCellY = cellY;
+        if canvasMarqueeActive {
+            if canvasMarqueeCurrentX != cellX
+               or canvasMarqueeCurrentY != cellY {
+                canvasMarqueeCurrentX = cellX;
+                canvasMarqueeCurrentY = cellY;
+                renderDirty = true;
+            }
+            return false;
+        }
         if mode == MODE_PAINT or mode == MODE_ERASE {
             if Input.Mouse.WasPressed(Input.Mouse.ButtonLeft) {
                 paintStrokeActive = true;
@@ -3049,36 +5179,47 @@ class SceneEditor2D {
 
         if Input.Mouse.WasPressed(Input.Mouse.ButtonLeft) {
             var hitObject = FindObjectAtCell(cellX, cellY);
+            var additive = CanvasShiftDown();
+            var toggle = CanvasPrimaryModifierDown();
             if hitObject >= 0 {
-                if scene_selection.Contains(selectedObjects, hitObject) == false {
-                    selectedObjects = scene_selection.Single(
-                        hitObject, scene.ObjectCount());
-                }
-                selectedObject = hitObject;
-                selectedObjects = scene_selection.Normalize(
-                    selectedObjects, scene.ObjectCount(), selectedObject);
+                ApplyCanvasPointSelection(
+                    hitObject, additive, toggle);
             } else {
-                selectedObject = -1;
-                selectedObjects = [];
+                objectDragActive = false;
+                objectDragChanged = false;
+                objectDragSnapshot = "";
+                objectDragIndex = -1;
+                BeginCanvasMarquee(
+                    cellX, cellY, additive, toggle);
+                RefreshInspector();
+                return false;
             }
-            selectedObjectProperty = -1;
-            objectDragActive = selectedObject >= 0;
+            objectDragActive = additive == false
+                and toggle == false
+                and scene_selection.Contains(
+                    selectedObjects, hitObject);
             objectDragChanged = false;
             objectDragSnapshot = currentSerialized;
-            objectDragIndex = selectedObject;
+            objectDragIndex = hitObject;
             if objectDragActive {
                 objectDragLastX = scene.ObjectX(objectDragIndex);
                 objectDragLastY = scene.ObjectY(objectDragIndex);
+            } else {
+                objectDragSnapshot = "";
+                objectDragIndex = -1;
             }
             RefreshInspector();
             renderDirty = true;
-            if selectedObject >= 0 {
+            if objectDragActive {
                 toolbarStatus.SetText(
                     "Drag " + selectedObjects.count()
                     + " selected object(s) together");
-            } else {
+            } else if selectedObjects.count() > 0 {
                 toolbarStatus.SetText(
-                    "Selected cell " + cellX + ", " + cellY);
+                    "Selected " + selectedObjects.count()
+                    + " canvas object(s)");
+            } else {
+                toolbarStatus.SetText("No canvas objects selected");
             }
         }
         if objectDragActive
@@ -3150,7 +5291,7 @@ class SceneEditor2D {
     ///          Canvas clicks focus the active mode button because Image is a
     ///          non-focusable presentation widget.
     expose func SceneSelectionCommandsOwnFocus() -> Boolean {
-        return (objectList != null and objectList.IsFocused())
+        return (objectTree != null and objectTree.IsFocused())
             or (selectButton != null and selectButton.IsFocused())
             or (paintButton != null and paintButton.IsFocused())
             or (eraseButton != null and eraseButton.IsFocused())
@@ -3516,6 +5657,31 @@ class SceneEditor2D {
                                   Color.RGB(255, 255, 255));
         }
 
+        if canvasMarqueeActive
+           and canvasMarqueeStartX >= 0
+           and canvasMarqueeStartY >= 0
+           and canvasMarqueeCurrentX >= 0
+           and canvasMarqueeCurrentY >= 0 {
+            var minimumX = canvasMarqueeStartX;
+            var maximumX = canvasMarqueeCurrentX;
+            if maximumX < minimumX {
+                minimumX = canvasMarqueeCurrentX;
+                maximumX = canvasMarqueeStartX;
+            }
+            var minimumY = canvasMarqueeStartY;
+            var maximumY = canvasMarqueeCurrentY;
+            if maximumY < minimumY {
+                minimumY = canvasMarqueeCurrentY;
+                maximumY = canvasMarqueeStartY;
+            }
+            framePixels.DrawFrame(
+                minimumX * displayCellSize,
+                minimumY * displayCellSize,
+                (maximumX - minimumX + 1) * displayCellSize + 1,
+                (maximumY - minimumY + 1) * displayCellSize + 1,
+                CANVAS_MARQUEE_COLOR);
+        }
+
         canvasImage.SetPixels(framePixels, pixelWidth, pixelHeight);
         canvasImage.SetSize(pixelWidth, pixelHeight);
         var stageWidth = pixelWidth;
@@ -3542,9 +5708,23 @@ class SceneEditor2D {
             cellStatus = "  |  cell "
                 + selectedCellX + ", " + selectedCellY;
         }
+        var marqueeStatus = "";
+        if canvasMarqueeActive {
+            marqueeStatus = "  |  box "
+                + (AbsInt2D(
+                    canvasMarqueeCurrentX - canvasMarqueeStartX) + 1)
+                + "x"
+                + (AbsInt2D(
+                    canvasMarqueeCurrentY - canvasMarqueeStartY) + 1);
+        }
         viewStatusLabel.SetText(
             "Layer " + (activeLayer + 1) + "/" + scene.LayerCount()
             + "  |  zoom " + zoomPercent + "%"
-            + cellStatus + suffix);
+            + cellStatus + marqueeStatus + suffix);
+        canvasImage.SetAccessibleDescription(
+            scene.ObjectCount() + " authored objects on a "
+            + renderedColumns + " by " + renderedRows
+            + " cell preview. In Select mode, click objects or drag blank "
+            + "space to box-select; Shift adds and Control or Command toggles.");
     }
 }

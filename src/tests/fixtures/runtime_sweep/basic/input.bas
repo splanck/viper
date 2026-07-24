@@ -73,6 +73,8 @@ END FUNCTION
 ' COVER: Zanna.Input.Key.RightControl
 ' COVER: Zanna.Input.Key.LeftAlt
 ' COVER: Zanna.Input.Key.RightAlt
+' COVER: Zanna.Input.Key.LeftSuper
+' COVER: Zanna.Input.Key.RightSuper
 ' COVER: Zanna.Input.Key.Minus
 ' COVER: Zanna.Input.Key.Equals
 ' COVER: Zanna.Input.Key.LeftBracket
@@ -254,6 +256,8 @@ keySum = keySum + Zanna.Input.Key.LeftControl
 keySum = keySum + Zanna.Input.Key.RightControl
 keySum = keySum + Zanna.Input.Key.LeftAlt
 keySum = keySum + Zanna.Input.Key.RightAlt
+keySum = keySum + Zanna.Input.Key.LeftSuper
+keySum = keySum + Zanna.Input.Key.RightSuper
 keySum = keySum + Zanna.Input.Key.Minus
 keySum = keySum + Zanna.Input.Key.Equals
 keySum = keySum + Zanna.Input.Key.LeftBracket

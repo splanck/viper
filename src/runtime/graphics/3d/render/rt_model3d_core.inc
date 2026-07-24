@@ -11,10 +11,13 @@
 // Key invariants:
 //   - Model component arrays contain retained, class-valid resource handles.
 //   - Scene-tree collection deduplicates shared meshes, materials, and skeletons.
+//   - Mutable instances own deep copies of bounded typed node metadata.
 // Ownership/Lifetime:
 //   - This implementation fragment is included by rt_model3d.c.
 //   - Model3D finalization releases every retained component and scene reference.
-// Links: rt_model3d.c, rt_model3d.h, rt_scene3d_internal.h, rt_canvas3d_internal.h
+// Links: rt_model3d.c, rt_model3d.h, rt_scene3d_internal.h,
+//   rt_canvas3d_internal.h,
+//   docs/adr/0159-typed-scenenode-metadata-and-vscn-v6.md
 //
 //===----------------------------------------------------------------------===//
 typedef struct {
@@ -580,11 +583,12 @@ static void model_set_root_name(rt_scene_node3d *root, const char *path_cstr) {
 /// @brief Recursive deep-copy of a scene-node subtree. Clones TRS, world-dirty flag,
 /// visibility, AABB / bounding sphere, and per-LOD entries; *retains* (does not clone)
 /// shared assets — `mesh`, `material`, `name`, and per-LOD meshes — so the cloned subtree
-/// shares static geometry with the template instead of duplicating GPU resources. When
-/// requested, morph-enabled meshes are cloned with independent MorphTarget3D state so
-/// blend-shape weights can diverge per instance. Children are cloned recursively and
-/// parented to the clone via `rt_scene_node3d_try_add_child`, then the caller's local reference
-/// is released so the parent owns the only retain.
+/// shares static geometry with the template instead of duplicating GPU resources. Typed node
+/// metadata is deep-copied so mutable gameplay state remains instance-local. When requested,
+/// morph-enabled meshes are cloned with independent MorphTarget3D state so blend-shape weights
+/// can diverge per instance. Children are cloned recursively and parented to the clone via
+/// `rt_scene_node3d_try_add_child`, then the caller's local reference is released so the parent
+/// owns the only retain.
 static int model_clone_mutable_mesh(void *mesh, void **out_mesh) {
     rt_mesh3d *src = (rt_mesh3d *)rt_g3d_checked_or_null(mesh, RT_G3D_MESH3D_CLASS_ID);
     void *mesh_clone;
@@ -644,6 +648,68 @@ static void model_clone_sanitize_bounds(rt_scene_node3d *dst, const rt_scene_nod
     }
     dst->bsphere_radius =
         (isfinite(src->bsphere_radius) && src->bsphere_radius >= 0.0f) ? src->bsphere_radius : 0.0f;
+}
+
+/// @brief Deep-copy one validated native gameplay-metadata table.
+static int model_clone_node_metadata(rt_scene_node3d *dst, const rt_scene_node3d *src) {
+    if (!dst || !src || src->metadata_count < 0 || src->metadata_capacity < 0 ||
+        src->metadata_count > src->metadata_capacity ||
+        src->metadata_capacity > RT_SCENE_NODE3D_MAX_METADATA_ENTRIES ||
+        (src->metadata_count > 0 && !src->metadata))
+        return 0;
+
+    for (int32_t index = 0; index < src->metadata_count; ++index) {
+        const rt_scene3d_metadata_entry *entry = &src->metadata[index];
+        rt_string key;
+        int8_t copied = 0;
+        if (!entry->key || entry->key_length <= 0 ||
+            entry->key_length > RT_SCENE_NODE3D_MAX_METADATA_KEY_BYTES ||
+            memchr(entry->key, '\0', (size_t)entry->key_length) != NULL ||
+            entry->key[entry->key_length] != '\0' ||
+            (index > 0 && strcmp(src->metadata[index - 1].key, entry->key) >= 0))
+            return 0;
+        key = rt_string_from_bytes(entry->key, (size_t)entry->key_length);
+        if (!key)
+            return 0;
+        switch (entry->kind) {
+            case RT_SCENE3D_METADATA_NULL:
+                copied = rt_scene_node3d_metadata_set_null(dst, key);
+                break;
+            case RT_SCENE3D_METADATA_BOOL:
+                copied = rt_scene_node3d_metadata_set_bool(dst, key, entry->value.bool_value);
+                break;
+            case RT_SCENE3D_METADATA_INT:
+                copied = rt_scene_node3d_metadata_set_int(dst, key, entry->value.int_value);
+                break;
+            case RT_SCENE3D_METADATA_FLOAT:
+                copied = rt_scene_node3d_metadata_set_float(dst, key, entry->value.float_value);
+                break;
+            case RT_SCENE3D_METADATA_STRING: {
+                rt_string value = NULL;
+                if (entry->value.string_value.data && entry->value.string_value.length >= 0 &&
+                    entry->value.string_value.length <= RT_SCENE_NODE3D_MAX_METADATA_STRING_BYTES &&
+                    memchr(entry->value.string_value.data,
+                           '\0',
+                           (size_t)entry->value.string_value.length) == NULL &&
+                    entry->value.string_value.data[entry->value.string_value.length] == '\0') {
+                    value = rt_string_from_bytes(entry->value.string_value.data,
+                                                 (size_t)entry->value.string_value.length);
+                }
+                if (value) {
+                    copied = rt_scene_node3d_metadata_set_string(dst, key, value);
+                    rt_string_unref(value);
+                }
+                break;
+            }
+            default:
+                copied = 0;
+                break;
+        }
+        rt_string_unref(key);
+        if (!copied)
+            return 0;
+    }
+    return 1;
 }
 
 /// @brief Clone one node without its children. Returns NULL and releases partial state on OOM.
@@ -732,6 +798,10 @@ static rt_scene_node3d *model_clone_node_shallow(const rt_scene_node3d *src,
     if (src->name && rt_string_is_handle(src->name)) {
         rt_obj_retain_maybe(src->name);
         dst->name = src->name;
+    }
+    if (!model_clone_node_metadata(dst, src)) {
+        model_release_local(dst);
+        return NULL;
     }
 
     {

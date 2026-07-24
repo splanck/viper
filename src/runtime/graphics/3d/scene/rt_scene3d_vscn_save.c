@@ -14,13 +14,15 @@
 // Key invariants:
 //   - .vscn is a JSON document with base64-encoded binary embeds.
 //   - Each unique mesh / material / texture / cubemap pointer appears once.
+//   - Typed node metadata promotes output to VSCN v6 and remains tagged.
 //
 // Ownership/Lifetime:
 //   - Operates on Scene3D / SceneNode3D objects defined in rt_scene3d.c;
 //     this TU owns no GC objects of its own.
 //
 // Links: rt_scene3d.h, rt_scene3d_internal.h, rt_scene3d_vscn_internal.h,
-//        rt_scene3d_vscn_load.c (inverse: load), rt_json.h
+//        rt_scene3d_vscn_load.c (inverse: load), rt_json.h,
+//        docs/adr/0159-typed-scenenode-metadata-and-vscn-v6.md
 //
 //===----------------------------------------------------------------------===//
 
@@ -46,6 +48,7 @@
 #include "rt_textureasset3d.h"
 #include "rt_trap.h"
 
+#include <inttypes.h>
 #include <math.h>
 #include <stdarg.h>
 #include <stdint.h>
@@ -79,6 +82,7 @@ typedef struct {
     int32_t output_version;
     int8_t asset_mode;
     int8_t requires_v5;
+    int8_t requires_v6;
 } vscn_save_context_t;
 
 /// @brief Base64 alphabet table used by the encoder.
@@ -514,6 +518,14 @@ static int vscn_collect_node_assets(rt_scene_node3d *node, vscn_save_context_t *
         }
         if (current->light)
             ctx->requires_v5 = 1;
+        if (current->metadata_count < 0 ||
+            current->metadata_count > RT_SCENE_NODE3D_MAX_METADATA_ENTRIES ||
+            (current->metadata_count > 0 && !current->metadata)) {
+            free(stack);
+            return 0;
+        }
+        if (current->metadata_count > 0)
+            ctx->requires_v6 = 1;
         if (!vscn_collect_mesh(mesh, ctx) || !vscn_collect_material(material, ctx)) {
             free(stack);
             return 0;
@@ -1077,6 +1089,82 @@ static int vscn_serialize_mesh(
     }
 }
 
+/// @brief Emit exact tagged gameplay metadata while preserving scalar kinds.
+static int vscn_serialize_node_metadata(
+    const rt_scene_node3d *node, char **buf, size_t *len, size_t *cap, const char *indent) {
+    if (!node || node->metadata_count <= 0)
+        return 1;
+    if (!node->metadata || node->metadata_count > RT_SCENE_NODE3D_MAX_METADATA_ENTRIES ||
+        !vscn_append(buf, len, cap, ",\n%s  \"metadata\": {\n", indent))
+        return 0;
+    for (int32_t index = 0; index < node->metadata_count; ++index) {
+        const rt_scene3d_metadata_entry *entry = &node->metadata[index];
+        const char *kind;
+        if (!entry->key || entry->key_length <= 0 ||
+            entry->key_length > RT_SCENE_NODE3D_MAX_METADATA_KEY_BYTES ||
+            strlen(entry->key) != (size_t)entry->key_length ||
+            (index > 0 && strcmp(node->metadata[index - 1].key, entry->key) >= 0))
+            return 0;
+        switch (entry->kind) {
+            case RT_SCENE3D_METADATA_NULL:
+                kind = "null";
+                break;
+            case RT_SCENE3D_METADATA_BOOL:
+                kind = "bool";
+                break;
+            case RT_SCENE3D_METADATA_INT:
+                kind = "int";
+                break;
+            case RT_SCENE3D_METADATA_FLOAT:
+                kind = "float";
+                break;
+            case RT_SCENE3D_METADATA_STRING:
+                kind = "string";
+                break;
+            default:
+                return 0;
+        }
+        if (!vscn_append(buf, len, cap, "%s    ", indent) ||
+            !vscn_append_json_string(buf, len, cap, entry->key) ||
+            !vscn_append(buf, len, cap, ": {\"kind\": \"%s\"", kind))
+            return 0;
+        switch (entry->kind) {
+            case RT_SCENE3D_METADATA_NULL:
+                break;
+            case RT_SCENE3D_METADATA_BOOL:
+                if (!vscn_append(buf,
+                                 len,
+                                 cap,
+                                 ", \"value\": %s",
+                                 entry->value.bool_value ? "true" : "false"))
+                    return 0;
+                break;
+            case RT_SCENE3D_METADATA_INT:
+                if (!vscn_append(
+                        buf, len, cap, ", \"value\": \"%" PRId64 "\"", entry->value.int_value))
+                    return 0;
+                break;
+            case RT_SCENE3D_METADATA_FLOAT:
+                if (!isfinite(entry->value.float_value) ||
+                    !vscn_append(buf, len, cap, ", \"value\": %.17g", entry->value.float_value))
+                    return 0;
+                break;
+            case RT_SCENE3D_METADATA_STRING:
+                if (!entry->value.string_value.data || entry->value.string_value.length < 0 ||
+                    entry->value.string_value.length > RT_SCENE_NODE3D_MAX_METADATA_STRING_BYTES ||
+                    strlen(entry->value.string_value.data) !=
+                        (size_t)entry->value.string_value.length ||
+                    !vscn_append(buf, len, cap, ", \"value\": ") ||
+                    !vscn_append_json_string(buf, len, cap, entry->value.string_value.data))
+                    return 0;
+                break;
+        }
+        if (!vscn_append(buf, len, cap, "}%s\n", index + 1 < node->metadata_count ? "," : ""))
+            return 0;
+    }
+    return vscn_append(buf, len, cap, "%s  }", indent);
+}
+
 /// @brief Emit the fields of one scene node, leaving its JSON object open for children.
 static int vscn_serialize_node_fields(rt_scene_node3d *node,
                                       vscn_save_context_t *ctx,
@@ -1292,7 +1380,7 @@ static int vscn_serialize_node_fields(rt_scene_node3d *node,
         }
     }
 
-    return 1;
+    return vscn_serialize_node_metadata(node, buf, len, cap, indent);
 }
 
 /// @brief Iteratively emit a scene-node subtree as nested JSON objects.
@@ -1850,9 +1938,10 @@ int64_t rt_vscn_save_asset_view(const rt_vscn_asset_save_view *view, rt_string p
         vscn_save_free_ctx(&ctx);
         return 0;
     }
+    ctx.output_version = ctx.requires_v6 ? 6 : 5;
     if (!vscn_append(&buf, &len, &cap, "{\n") ||
         !vscn_append(&buf, &len, &cap, "  \"format\": \"vscn\",\n") ||
-        !vscn_append(&buf, &len, &cap, "  \"version\": 5,\n") ||
+        !vscn_append(&buf, &len, &cap, "  \"version\": %d,\n", ctx.output_version) ||
         !vscn_save_emit_textures(&buf, &len, &cap, &ctx) ||
         !vscn_save_emit_cubemaps(&buf, &len, &cap, &ctx) ||
         !vscn_save_emit_materials(&buf, &len, &cap, &ctx) ||
@@ -1916,7 +2005,10 @@ int64_t rt_scene3d_save(void *scene_obj, rt_string path) {
         if (m->bone_map || m->extra_influences)
             has_rig = 1;
     }
-    version = (ctx.requires_v5 || vscn_save_has_source_texture(&ctx)) ? 5 : (has_rig ? 3 : 2);
+    version =
+        ctx.requires_v6
+            ? 6
+            : ((ctx.requires_v5 || vscn_save_has_source_texture(&ctx)) ? 5 : (has_rig ? 3 : 2));
     ctx.output_version = version;
     if (!vscn_append(&buf, &len, &cap, "{\n") ||
         !vscn_append(&buf, &len, &cap, "  \"format\": \"vscn\",\n") ||

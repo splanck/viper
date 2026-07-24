@@ -14,6 +14,7 @@
 // Key invariants:
 //   - Loader validates structure and clamps numeric values before use.
 //   - On any failure, all partially-loaded resources are released.
+//   - VSCN v6 node metadata is strictly tagged and bounded before publication.
 //
 // Ownership/Lifetime:
 //   - Produces Scene3D / SceneNode3D objects defined in rt_scene3d.c;
@@ -21,7 +22,8 @@
 //
 // Links: rt_scene3d.h, rt_scene3d_internal.h, rt_scene3d_vscn_internal.h,
 //        rt_scene3d_vscn_material_parse.inc (material parsers),
-//        rt_scene3d_vscn_save.c (inverse: save), rt_json.h
+//        rt_scene3d_vscn_save.c (inverse: save), rt_json.h,
+//        docs/adr/0159-typed-scenenode-metadata-and-vscn-v6.md
 //
 //===----------------------------------------------------------------------===//
 
@@ -573,6 +575,18 @@ static void *vjson_get(void *obj, const char *key) {
     value = rt_map_get(obj, runtime_key);
     rt_string_unref(runtime_key);
     return value;
+}
+
+/// @brief Distinguish an absent JSON member from a present explicit null.
+static int vjson_has(void *obj, const char *key) {
+    rt_string runtime_key;
+    int present;
+    if (!obj || !key || !vjson_is_map(obj))
+        return 0;
+    runtime_key = rt_const_cstr(key);
+    present = rt_map_has(obj, runtime_key) ? 1 : 0;
+    rt_string_unref(runtime_key);
+    return present;
 }
 
 /// @brief Length of a JSON array, or 0 for NULL.
@@ -1715,6 +1729,130 @@ fail:
     return NULL;
 }
 
+/// @brief Parse one canonical decimal i64 without JSON-number precision loss.
+static int vscn_parse_metadata_i64(rt_string value, int64_t *out) {
+    const char *text;
+    int64_t length;
+    int64_t index = 0;
+    uint64_t magnitude = 0;
+    uint64_t limit;
+    int negative = 0;
+    if (!value || !out || !rt_string_is_handle(value))
+        return 0;
+    text = rt_string_cstr(value);
+    length = rt_str_len(value);
+    if (!text || length <= 0 || memchr(text, '\0', (size_t)length) != NULL)
+        return 0;
+    if (text[index] == '-') {
+        negative = 1;
+        index++;
+        if (index >= length)
+            return 0;
+    }
+    if ((text[index] == '0' && index + 1 < length) ||
+        (negative && text[index] == '0' && index + 1 == length))
+        return 0;
+    limit = negative ? (uint64_t)INT64_MAX + UINT64_C(1) : (uint64_t)INT64_MAX;
+    for (; index < length; ++index) {
+        uint64_t digit;
+        if (text[index] < '0' || text[index] > '9')
+            return 0;
+        digit = (uint64_t)(text[index] - '0');
+        if (magnitude > (limit - digit) / UINT64_C(10))
+            return 0;
+        magnitude = magnitude * UINT64_C(10) + digit;
+    }
+    if (!negative)
+        *out = (int64_t)magnitude;
+    else if (magnitude == (uint64_t)INT64_MAX + UINT64_C(1))
+        *out = INT64_MIN;
+    else
+        *out = -(int64_t)magnitude;
+    return 1;
+}
+
+/// @brief Parse a bounded tagged metadata map onto one newly-created node.
+static int vscn_parse_node_metadata(rt_scene_node3d *node, void *node_obj, int64_t version) {
+    void *metadata;
+    void *keys;
+    int64_t count;
+    int ok = 0;
+    if (!node || !node_obj)
+        return 0;
+    if (!vjson_has(node_obj, "metadata"))
+        return 1;
+    if (version < 6)
+        return 0;
+    metadata = vjson_get(node_obj, "metadata");
+    if (!vjson_is_map(metadata))
+        return 0;
+    count = rt_map_len(metadata);
+    if (count < 0 || count > RT_SCENE_NODE3D_MAX_METADATA_ENTRIES)
+        return 0;
+    keys = rt_map_keys(metadata);
+    if (!keys)
+        return 0;
+    for (int64_t index = 0; index < count; ++index) {
+        rt_string key = rt_seq_get_str(keys, index);
+        void *tagged = key ? rt_map_get(metadata, key) : NULL;
+        rt_string kind_value;
+        const char *kind;
+        int64_t kind_length;
+        int has_value;
+        void *value;
+        int8_t set = 0;
+        if (!key || !vjson_is_map(tagged)) {
+            if (key)
+                rt_string_unref(key);
+            goto done;
+        }
+        kind_value = vjson_string_value(tagged, "kind");
+        kind = kind_value ? rt_string_cstr(kind_value) : NULL;
+        kind_length = kind_value ? rt_str_len(kind_value) : 0;
+        has_value = vjson_has(tagged, "value");
+        value = vjson_get(tagged, "value");
+        if (!kind || kind_length <= 0 || kind_length > 6 ||
+            memchr(kind, '\0', (size_t)kind_length) != NULL) {
+            rt_string_unref(key);
+            goto done;
+        }
+        if (kind_length == 4 && memcmp(kind, "null", 4) == 0) {
+            if (!has_value)
+                set = rt_scene_node3d_metadata_set_null(node, key);
+        } else if (kind_length == 4 && memcmp(kind, "bool", 4) == 0) {
+            if (has_value && value && rt_box_type(value) == RT_BOX_I1)
+                set = rt_scene_node3d_metadata_set_bool(node, key, rt_unbox_i1(value));
+        } else if (kind_length == 3 && memcmp(kind, "int", 3) == 0) {
+            int64_t parsed;
+            if (has_value && rt_string_is_handle(value) &&
+                vscn_parse_metadata_i64((rt_string)value, &parsed))
+                set = rt_scene_node3d_metadata_set_int(node, key, parsed);
+        } else if (kind_length == 5 && memcmp(kind, "float", 5) == 0) {
+            double parsed;
+            if (has_value && value) {
+                if (rt_box_type(value) == RT_BOX_I64)
+                    parsed = (double)rt_unbox_i64(value);
+                else if (rt_box_type(value) == RT_BOX_F64)
+                    parsed = rt_unbox_f64(value);
+                else
+                    parsed = NAN;
+                if (isfinite(parsed))
+                    set = rt_scene_node3d_metadata_set_float(node, key, parsed);
+            }
+        } else if (kind_length == 6 && memcmp(kind, "string", 6) == 0) {
+            if (has_value && rt_string_is_handle(value))
+                set = rt_scene_node3d_metadata_set_string(node, key, (rt_string)value);
+        }
+        rt_string_unref(key);
+        if (!set)
+            goto done;
+    }
+    ok = 1;
+done:
+    scene3d_release_ref(&keys);
+    return ok;
+}
+
 /// @brief Parse one scene node's fields, leaving child attachment to the iterative tree walker.
 static rt_scene_node3d *vscn_parse_node_fields(void *node_obj,
                                                rt_mesh3d **meshes,
@@ -1724,6 +1862,7 @@ static rt_scene_node3d *vscn_parse_node_fields(void *node_obj,
                                                int variant_count,
                                                void **cameras,
                                                int camera_count,
+                                               int64_t version,
                                                int *io_error) {
     rt_scene_node3d *node;
     void *arr;
@@ -1808,6 +1947,12 @@ static rt_scene_node3d *vscn_parse_node_fields(void *node_obj,
         node->import_index = (int32_t)import_index;
     }
     node->world_dirty = 1;
+    if (!vscn_parse_node_metadata(node, node_obj, version)) {
+        if (io_error)
+            *io_error = 1;
+        scene3d_release_ref((void **)&node);
+        return NULL;
+    }
 
     {
         int64_t mesh_index;
@@ -1943,6 +2088,7 @@ static rt_scene_node3d *vscn_parse_node(void *node_obj,
                                         int variant_count,
                                         void **cameras,
                                         int camera_count,
+                                        int64_t version,
                                         int *io_error) {
     typedef struct vscn_parse_node_frame {
         void *children;
@@ -1963,6 +2109,7 @@ static rt_scene_node3d *vscn_parse_node(void *node_obj,
                                   variant_count,
                                   cameras,
                                   camera_count,
+                                  version,
                                   io_error);
     if (!root)
         return NULL;
@@ -1996,6 +2143,7 @@ static rt_scene_node3d *vscn_parse_node(void *node_obj,
                                        variant_count,
                                        cameras,
                                        camera_count,
+                                       version,
                                        io_error);
         if (!child)
             goto fail;
@@ -2084,7 +2232,8 @@ static int vscn_load_nodes_into_root(rt_scene_node3d *target_root,
                                      int material_count,
                                      int variant_count,
                                      void **cameras,
-                                     int camera_count) {
+                                     int camera_count,
+                                     int64_t version) {
     if (!target_root)
         return 0;
     if (!nodes_arr)
@@ -2099,6 +2248,7 @@ static int vscn_load_nodes_into_root(rt_scene_node3d *target_root,
                                                 variant_count,
                                                 cameras,
                                                 camera_count,
+                                                version,
                                                 &parse_error);
         if (parse_error || !node) {
             scene3d_release_ref((void **)&node);
@@ -2227,7 +2377,7 @@ static void *rt_scene3d_load_impl_from_buffer(const char *filepath, char *json, 
         void *version_value = vjson_get(root, "version");
         if (version_value && !vjson_value_i64_exact(version_value, &version))
             goto fail;
-        if ((format && strcmp(format, "vscn") != 0) || version < 1 || version > 5)
+        if ((format && strcmp(format, "vscn") != 0) || version < 1 || version > 6)
             goto fail;
         if ((textures_arr && !vjson_is_seq(textures_arr)) ||
             (cubemaps_arr && !vjson_is_seq(cubemaps_arr)) ||
@@ -2242,7 +2392,7 @@ static void *rt_scene3d_load_impl_from_buffer(const char *filepath, char *json, 
             goto fail;
         asset_document = version >= 4 && scenes_arr && vjson_len(scenes_arr) > 0;
         if ((version == 4 && !asset_document) ||
-            (version == 5 && !asset_document && (!nodes_arr || !vjson_is_seq(nodes_arr))))
+            (version >= 5 && !asset_document && (!nodes_arr || !vjson_is_seq(nodes_arr))))
             goto fail;
     }
 
@@ -2423,7 +2573,8 @@ static void *rt_scene3d_load_impl_from_buffer(const char *filepath, char *json, 
                                            asset->material_count,
                                            asset->variant_count,
                                            asset->cameras,
-                                           asset->camera_count))
+                                           asset->camera_count,
+                                           version))
                 goto fail;
             asset->scenes[scene_index].camera_count = (int32_t)scene_camera_count;
             if (scene_camera_count > 0) {
@@ -2453,7 +2604,8 @@ static void *rt_scene3d_load_impl_from_buffer(const char *filepath, char *json, 
                                        material_count,
                                        0,
                                        cameras,
-                                       camera_count))
+                                       camera_count,
+                                       version))
             goto fail;
     }
     scene->node_count = scene3d_count_subtree(scene->root);

@@ -16,7 +16,8 @@
 // Ownership/Lifetime:
 //   - The Canvas3D frame owns queued command storage and all tracked resources
 //     until submission and frame cleanup complete.
-// Links: rt_canvas3d.c, rt_canvas3d_internal.h, rt_canvas3d_snapshot.c
+// Links: rt_canvas3d.c, rt_canvas3d_internal.h, rt_canvas3d_snapshot.c,
+//        docs/adr/0168-windowless-canvas3d-rendering.md
 //
 //===----------------------------------------------------------------------===//
 /*==========================================================================
@@ -1929,7 +1930,7 @@ static void canvas3d_build_ortho_camera(const rt_canvas3d *c, vgfx3d_camera_para
 int canvas3d_begin_overlay_frame(rt_canvas3d *c, int8_t preserve_existing_color) {
     vgfx3d_camera_params_t params;
 
-    if (!c || !c->backend || !c->gfx_win || c->in_frame)
+    if (!c || !c->backend || (!c->gfx_win && !c->render_target) || c->in_frame)
         return 0;
     if (c->backend->show_gpu_layer)
         c->backend->show_gpu_layer(c->backend_ctx);

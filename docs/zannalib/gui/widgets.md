@@ -283,6 +283,12 @@ Typing while the spinner is focused starts inline editing, `Enter` commits the t
 Programmatic values, ranges, steps, and decimal counts are clamped to finite supported ranges.
 Reversed ranges are normalized, non-finite input is rejected or clamped, and long formatted decimal values resize the internal display buffer instead of truncating at a fixed length.
 Spinners created after `App.SetFont()` inherit the app font and size for their value text.
+Property inspectors can call `SetIndeterminate(true)` when a spinner represents
+several different values. The control displays `Mixed` while retaining `Value`
+as the range-clamped editing seed. `SetValue`, typed entry, arrow buttons,
+`Up` / `Down`, and the mouse wheel resolve the mixed state; range and formatting
+changes do not. `IsIndeterminate()` distinguishes the editing seed from a value
+common to the complete selection.
 
 **Constructor:** `NEW Zanna.GUI.Spinner(parent)`
 
@@ -290,12 +296,14 @@ Spinners created after `App.SetFont()` inherit the app font and size for their v
 |----------|--------|--------|------------------------|
 | `Value`  | Double | Read   | Current spinner value  |
 
-| Method                     | Signature                  | Description                    |
-|----------------------------|----------------------------|--------------------------------|
-| `SetValue(value)`          | `Void(Double)`             | Set current value              |
-| `SetRange(min, max)`       | `Void(Double, Double)`     | Set value range                |
-| `SetStep(step)`            | `Void(Double)`             | Set step increment             |
-| `SetDecimals(decimals)`    | `Void(Integer)`            | Set decimal places             |
+| Method                          | Signature                  | Description                                      |
+|---------------------------------|----------------------------|--------------------------------------------------|
+| `SetValue(value)`               | `Void(Double)`             | Set a concrete value and resolve mixed state     |
+| `SetIndeterminate(mixed)`       | `Void(Boolean)`            | Present a mixed group value while retaining seed |
+| `IsIndeterminate()`             | `Boolean()`                | Return whether the group value remains mixed     |
+| `SetRange(min, max)`            | `Void(Double, Double)`     | Set value range                                  |
+| `SetStep(step)`                 | `Void(Double)`             | Set step increment                               |
+| `SetDecimals(decimals)`         | `Void(Integer)`            | Set decimal places                               |
 
 ```basic
 DIM quantity AS Zanna.GUI.Spinner
@@ -399,6 +407,41 @@ colorPicker.SetSize(150, 28)
 IF colorPicker.Selected >= 0 THEN
     PRINT "Selected: "; colorPicker.SelectedText
 END IF
+```
+
+---
+
+### ScrollView
+
+Scrollable container for arbitrary nested widget content.
+
+`ScrollTo(widget)` reveals a live descendant at any nesting depth. It changes
+only the scroll axes needed to make the target fully visible and accounts for
+the current scrollbar-reduced viewport before clamping to the content extent.
+The request is retained through the next layout pass, so it also works while an
+enclosing split pane is being restored from a collapsed zero-sized state.
+Null, stale, destroyed, detached, foreign, and non-descendant widget handles
+are safe no-ops.
+
+**Constructor:** `NEW Zanna.GUI.ScrollView(parent)`
+
+| Method                          | Signature                    | Description |
+|---------------------------------|------------------------------|-------------|
+| `SetScroll(x, y)`               | `Void(Double, Double)`       | Set clamped content offsets |
+| `SetContentSize(width, height)` | `Void(Double, Double)`       | Override the scrollable extent; non-positive axes return to measured content |
+| `ScrollTo(widget)`              | `Void(Zanna.GUI.Widget)`     | Reveal one live descendant without changing focus |
+| `GetScrollX()`                  | `Double()`                   | Read the horizontal content offset |
+| `GetScrollY()`                  | `Double()`                   | Read the vertical content offset |
+
+```zia
+var scroll = ScrollView.New(root);
+var content = VBox.New();
+scroll.AddChild(content);
+var validationField = TextInput.New(content);
+
+// Reveal first, then choose whether focus should move.
+scroll.ScrollTo(validationField);
+validationField.Focus();
 ```
 
 ---
@@ -544,6 +587,74 @@ fileList.SelectIndex(0);
 
 if fileList.WasSelectionChanged() && fileList.get_SelectedIndex() >= 0 {
     // fileList.GetSelectedText() is the selected row's text.
+}
+```
+
+### TreeView
+
+`TreeView` is the retained hierarchical control for project browsers, scene
+outliners, and other structured editors. `AddNode(parent, text)` accepts
+`null` for a top-level row or a live `TreeView.Node` for a real child; hierarchy
+is not encoded in display text. Nodes own copied text, icon text, stable IDs,
+and byte-exact string data until they are removed or the tree is destroyed.
+
+Retained trees are single-select by default. After `SetMultiSelect(true)`,
+Ctrl/Command-click toggles a row, Shift-click and Shift+Up/Down select an
+inclusive visible range, and ordinary navigation replaces the selection.
+Programmatic `Select(node)` is additive in multi-select mode so an editor can
+restore several rows after rebuilding; `Select(null)` always clears all rows.
+`GetSelected()` returns the primary row. `GetSelectedData()` returns the data
+of every selected retained node in complete structural preorder, including
+selected descendants hidden beneath a collapsed parent. Missing node data
+contributes an empty string. Virtual trees remain model-owned single-selection
+controls and return an empty selected-data sequence.
+
+Application-directed drag and drop has explicit modes:
+
+| Mode | Meaning |
+|------|---------|
+| `0` | Disabled |
+| `1` | Legacy container-only `INTO` drops |
+| `2` | Row-aware `BEFORE` / `INTO` / `AFTER` drops |
+
+`SetDragDropEnabled(true)` is retained as a mode-1 compatibility wrapper.
+Mode 2 accepts leaf targets and divides each row into top 30%, middle 40%, and
+bottom 30% regions. `GetDropPosition()` returns `0` for `BEFORE`, `1` for
+`INTO`, and `2` for `AFTER`. A completed drop is latched until `ClearDrop()`;
+the TreeView does not mutate its nodes, so the application can validate,
+commit, roll back, and refresh one transaction.
+
+| Method | Signature | Description |
+|--------|-----------|-------------|
+| `AddNode(parent, text)` | `Object(Object, String)` | Append a retained child; null parent means top level |
+| `RemoveNode(node)` / `Clear()` | `Void(Object)` / `Void()` | Retire a subtree or every row |
+| `Expand(node)` / `Collapse(node)` / `Toggle(node)` | `Void(Object)` | Change retained expansion |
+| `Select(node)` / `GetSelected()` | `Void(Object)` / `Object()` | Change/read the primary selection |
+| `SetMultiSelect(enabled)` | `Void(Boolean)` | Enable retained modifier and range selection |
+| `GetSelectedData()` | `Seq[String]()` | Copy selected node data in complete preorder |
+| `SetDragDropMode(mode)` | `Void(Integer)` | Select disabled, legacy INTO, or row-aware DnD |
+| `WasDropReceived()` / `ClearDrop()` | `Boolean()` / `Void()` | Poll and consume a completed drop |
+| `GetDropSourceData()` / `GetDropTargetData()` | `String()` | Read stable data from the latched rows |
+| `GetDropPosition()` | `Integer()` | Read 0=before, 1=into, or 2=after |
+| `WasSelectionChanged()` | `Boolean()` | Consume one coalesced selection-change edge |
+
+```zia
+var hierarchy = TreeView.New(panel);
+hierarchy.SetMultiSelect(true);
+hierarchy.SetDragDropMode(2);
+
+var world = hierarchy.AddNode(null, "World");
+TreeView.Node.SetData(world, "node:world");
+var player = hierarchy.AddNode(world, "Player");
+TreeView.Node.SetData(player, "node:player");
+hierarchy.Expand(world);
+
+if hierarchy.WasDropReceived() {
+    var sourceId = hierarchy.GetDropSourceData();
+    var targetId = hierarchy.GetDropTargetData();
+    var position = hierarchy.GetDropPosition();
+    // Validate and commit the model transaction, then rebuild the retained rows.
+    hierarchy.ClearDrop();
 }
 ```
 

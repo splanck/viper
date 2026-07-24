@@ -622,22 +622,22 @@ class ToolPanelShell {
                                    workspace_dock.TOOL_PANEL_DRAG_DATA);
 
         dockLeftButton = GUI.Button.New(dockHeader, "Left");
-        dockLeftButton.SetPreferredSize(48.0, 24.0);
+        dockLeftButton.SetSize(48, 24);
         dockLeftButton.SetTooltip("Move the selected tool to the left group");
         dockBottomButton = GUI.Button.New(dockHeader, "Bottom");
-        dockBottomButton.SetPreferredSize(58.0, 24.0);
+        dockBottomButton.SetSize(58, 24);
         dockBottomButton.SetTooltip(
             "Move the selected tool below the editor");
         dockRightButton = GUI.Button.New(dockHeader, "Right");
-        dockRightButton.SetPreferredSize(52.0, 24.0);
+        dockRightButton.SetSize(52, 24);
         dockRightButton.SetTooltip(
             "Move the selected tool to the right group");
         dockFloatButton = GUI.Button.New(dockHeader, "Float");
-        dockFloatButton.SetPreferredSize(48.0, 24.0);
+        dockFloatButton.SetSize(48, 24);
         dockFloatButton.SetTooltip(
             "Move the selected tool into a movable floating window");
         dockHideButton = GUI.Button.New(dockHeader, "Hide");
-        dockHideButton.SetPreferredSize(46.0, 24.0);
+        dockHideButton.SetSize(46, 24);
         dockHideButton.SetTooltip("Hide the panel area");
 
         toolTabBar = GUI.TabBar.New(panelRoot);
@@ -1884,6 +1884,7 @@ class ToolPanelShell {
             }
         }
         dockLocation = location;
+        ApplyResponsiveDockHeader();
         RebuildAllToolTabs();
         toolTabBar.SetVisible(false);
         leftToolTabBar.SetVisible(false);
@@ -2258,11 +2259,11 @@ class ToolPanelShell {
             dockFloatButton.SetText("◇");
             dockHideButton.SetText("");
             dockHideButton.SetIconName("close");
-            dockLeftButton.SetPreferredSize(24.0, 24.0);
-            dockBottomButton.SetPreferredSize(24.0, 24.0);
-            dockRightButton.SetPreferredSize(24.0, 24.0);
-            dockFloatButton.SetPreferredSize(24.0, 24.0);
-            dockHideButton.SetPreferredSize(24.0, 24.0);
+            dockLeftButton.SetSize(24, 24);
+            dockBottomButton.SetSize(24, 24);
+            dockRightButton.SetSize(24, 24);
+            dockFloatButton.SetSize(24, 24);
+            dockHideButton.SetSize(24, 24);
             dockLeftButton.SetVisible(
                 dockLocation != workspace_dock.DOCK_LEFT);
             dockBottomButton.SetVisible(
@@ -2281,11 +2282,11 @@ class ToolPanelShell {
             dockBottomButton.SetVisible(true);
             dockRightButton.SetVisible(true);
             dockFloatButton.SetVisible(true);
-            dockLeftButton.SetPreferredSize(48.0, 24.0);
-            dockBottomButton.SetPreferredSize(58.0, 24.0);
-            dockRightButton.SetPreferredSize(52.0, 24.0);
-            dockFloatButton.SetPreferredSize(48.0, 24.0);
-            dockHideButton.SetPreferredSize(46.0, 24.0);
+            dockLeftButton.SetSize(48, 24);
+            dockBottomButton.SetSize(58, 24);
+            dockRightButton.SetSize(52, 24);
+            dockFloatButton.SetSize(48, 24);
+            dockHideButton.SetSize(46, 24);
         }
     }
 

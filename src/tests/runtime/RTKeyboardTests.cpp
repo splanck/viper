@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: src/tests/runtime/RTKeyboardTests.cpp
-// Purpose: Tests for Zanna.Input.Keyboard static class.
+// Purpose: Tests for Zanna.Input.Key constants and Keyboard state/query APIs.
 //
 //===----------------------------------------------------------------------===//
 
@@ -60,6 +60,11 @@ static void test_key_constants() {
     assert(rt_keyboard_key_lshift() == 340);
     assert(rt_keyboard_key_lctrl() == 341);
     assert(rt_keyboard_key_lalt() == 342);
+    assert(rt_keyboard_key_lsuper() == 343);
+    assert(rt_keyboard_key_rshift() == 344);
+    assert(rt_keyboard_key_rctrl() == 345);
+    assert(rt_keyboard_key_ralt() == 346);
+    assert(rt_keyboard_key_rsuper() == 347);
     printf("test_key_constants: PASSED\n");
 }
 
@@ -84,6 +89,18 @@ static void test_vgfx_special_key_translation() {
     assert(rt_keyboard_was_released(rt_keyboard_key_tab()) == 1);
     rt_keyboard_on_vgfx_key_up(262);
     rt_keyboard_on_vgfx_key_up(263);
+
+    rt_keyboard_on_vgfx_key_down(343); // VG_KEY_LEFT_SUPER
+    assert(rt_keyboard_was_pressed(rt_keyboard_key_lsuper()) == 1);
+    assert(rt_keyboard_is_down(rt_keyboard_key_lsuper()) == 1);
+    rt_keyboard_on_vgfx_key_up(343);
+    assert(rt_keyboard_was_released(rt_keyboard_key_lsuper()) == 1);
+
+    rt_keyboard_on_vgfx_key_down(347); // VG_KEY_RIGHT_SUPER
+    assert(rt_keyboard_was_pressed(rt_keyboard_key_rsuper()) == 1);
+    assert(rt_keyboard_is_down(rt_keyboard_key_rsuper()) == 1);
+    rt_keyboard_on_vgfx_key_up(347);
+    assert(rt_keyboard_was_released(rt_keyboard_key_rsuper()) == 1);
 
     printf("test_vgfx_special_key_translation: PASSED\n");
 }
@@ -173,6 +190,14 @@ static void test_key_name() {
     assert(name_f1 != nullptr);
     // Should return "F1"
     assert(rt_str_len(name_f1) == 2);
+
+    rt_string name_left_super = rt_keyboard_key_name(rt_keyboard_key_lsuper());
+    assert(name_left_super != nullptr);
+    assert(std::strcmp(rt_string_cstr(name_left_super), "Left Super") == 0);
+
+    rt_string name_right_super = rt_keyboard_key_name(rt_keyboard_key_rsuper());
+    assert(name_right_super != nullptr);
+    assert(std::strcmp(rt_string_cstr(name_right_super), "Right Super") == 0);
 
     // Unknown key should return "Unknown"
     rt_string name_unknown = rt_keyboard_key_name(-999);

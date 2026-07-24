@@ -1,0 +1,323 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/probes/scene_viewport_picking_probe.zia
+// Purpose: Verify geometry-aware 3D picking, selection, and camera-plane pan.
+// Key invariants:
+//   - Visible mesh bounds, not only node origins, are selectable.
+//   - The nearest overlapping visible mesh wins in shaded and wireframe modes.
+//   - Meshless origin markers remain selectable after the mesh query misses.
+//   - Replace, additive, toggle, and blank selection are workspace-only.
+//   - Camera-plane pan follows pointer motion and never edits canonical VSCN.
+// Ownership/Lifetime:
+//   - The probe owns one hidden AppShell, document, editor, and input harness.
+// Links: zannastudio/src/ui/scene_editor_3d.zia,
+//        docs/adr/0169-super-modifier-keys-and-studio-viewport-picking.md
+//
+//===----------------------------------------------------------------------===//
+
+module scene_viewport_picking_probe;
+
+// ============================================================================
+// MODULE: scene_viewport_picking_probe
+// PURPOSE: Keep rendered-geometry selection and camera navigation focused.
+//
+// WHERE-THIS-FITS: The broad editor probe owns content transactions. This
+//          display probe owns the viewport's presentation-only hit behavior.
+//
+// TEACHING-NOTE: The fixture clicks away from every origin marker. A passing
+//          test therefore proves the production camera ray selected geometry.
+// ============================================================================
+
+bind "../core/document_manager";
+bind "../services/file_utils";
+bind "../ui/app_shell";
+bind "../ui/scene_editor_3d";
+bind "../ui/scene_selection";
+
+bind Convert = Zanna.Core.Convert;
+bind GUI = Zanna.GUI;
+bind Input = Zanna.Input;
+bind Terminal = Zanna.Terminal;
+
+func Near(actual: Number,
+          expected: Number,
+          tolerance: Number) -> Boolean {
+    var difference = actual - expected;
+    if difference < 0.0 { difference = 0.0 - difference; }
+    return difference <= tolerance;
+}
+
+func HarnessCoordinate(shell: app_shell.AppShell,
+                       logical: Number) -> Integer {
+    var scale = shell.app.GetEffectiveScale();
+    if scale <= 0.0 { scale = 1.0; }
+    return Convert.NumToInt(logical * scale);
+}
+
+func ClickWidget(shell: app_shell.AppShell,
+                 harness: GUI.TestHarness,
+                 widget: GUI.Widget) {
+    var x = HarnessCoordinate(
+        shell, widget.GetScreenX() + widget.GetScreenWidth() / 2.0);
+    var y = HarnessCoordinate(
+        shell, widget.GetScreenY() + widget.GetScreenHeight() / 2.0);
+    harness.SendMouse("move", x, y, 0);
+    harness.SendMouse("down", x, y, 0);
+    harness.SendMouse("up", x, y, 0);
+    harness.DispatchPending();
+}
+
+func ClickViewport(shell: app_shell.AppShell,
+                   harness: GUI.TestHarness,
+                   editor: scene_editor_3d.SceneEditor3D,
+                   localX: Integer,
+                   localY: Integer) {
+    var x = HarnessCoordinate(
+        shell, editor.viewportImage.GetScreenX() + localX);
+    var y = HarnessCoordinate(
+        shell, editor.viewportImage.GetScreenY() + localY);
+    harness.SendMouse("move", x, y, 0);
+    harness.SendMouse("down", x, y, 0);
+    harness.SendMouse("up", x, y, 0);
+    harness.DispatchPending();
+}
+
+func Fail(shell: app_shell.AppShell,
+          harness: GUI.TestHarness,
+          reason: String) {
+    if harness != null { harness.UnbindApp(); }
+    if shell != null { shell.Destroy(); }
+    Terminal.Say("RESULT: fail " + reason);
+}
+
+func main() {
+    if Input.Key.LeftSuper != 343 or Input.Key.RightSuper != 347
+       or Input.Keyboard.KeyName(Input.Key.LeftSuper) != "Left Super"
+       or Input.Keyboard.KeyName(Input.Key.RightSuper) != "Right Super" {
+        Terminal.Say("RESULT: fail public Super key constants");
+        return;
+    }
+
+    var shell = new app_shell.AppShell();
+    shell.Build("Zanna Studio Viewport Picking Probe", 1120, 760);
+
+    var editor = new scene_editor_3d.SceneEditor3D();
+    editor.Setup(shell.workbench.scene3DHost, shell.app);
+    var documents = new document_manager.DocumentManager();
+    var sceneDoc = documents.NewScene3DDocument();
+    shell.SelectSurface(file_utils.DOC_KIND_SCENE_3D);
+    editor.Activate(sceneDoc);
+    editor.Pump(sceneDoc);
+    shell.Poll();
+    shell.Render();
+    editor.Pump(sceneDoc);
+    shell.Render();
+
+    var harness = GUI.TestHarness.New();
+    if harness.BindApp(shell.app) == false {
+        Fail(shell, harness, "automation app binding");
+        return;
+    }
+
+    ClickWidget(shell, harness, editor.addBoxButton);
+    if editor.Pump(sceneDoc) == false {
+        Fail(shell, harness, "far box production action");
+        return;
+    }
+    shell.Render();
+    shell.Poll();
+    ClickWidget(shell, harness, editor.addBoxButton);
+    if editor.Pump(sceneDoc) == false {
+        Fail(shell, harness, "near box production action");
+        return;
+    }
+    shell.Render();
+    shell.Poll();
+    var emptyIndex = editor.AddEmptyNode("Meshless marker", -1);
+    if emptyIndex != 2 {
+        Fail(shell, harness, "meshless marker fixture");
+        return;
+    }
+
+    editor.viewYawDegrees = 0;
+    editor.viewPitchDegrees = 0;
+    editor.viewScale = 40;
+    editor.viewTargetX = 0.0;
+    editor.viewTargetY = 0.0;
+    editor.viewTargetZ = 0.0;
+    if editor.SetNodeTransform(0, 0.0, 0.0, 0.0, 4.0, 4.0, 4.0)
+          == false
+       or editor.SetNodeTransform(1, 0.0, 0.0, 2.0, 4.0, 4.0, 4.0)
+          == false
+       or editor.SetNodeTransform(
+              emptyIndex, 5.0, 0.0, 0.0, 1.0, 1.0, 1.0) == false {
+        Fail(shell, harness, "overlapping depth fixture transforms");
+        return;
+    }
+    editor.Pump(sceneDoc);
+    shell.Render();
+
+    var centerX = editor.renderedViewportWidth / 2;
+    var centerY = editor.renderedViewportHeight / 2;
+    var meshX = centerX + 30;
+    var firstHit = editor.ViewportNodeAt(meshX, centerY);
+    if editor.projectedX.count() != 3
+       or firstHit != 1 {
+        Fail(shell, harness,
+             "nearest visible mesh bounds did not win away from origins: hit="
+             + firstHit + " projected=" + editor.projectedX.count()
+             + "/" + editor.projectedY.count()
+             + " flat=" + editor.flatNodes.count()
+             + " viewport=" + editor.renderedViewportWidth
+             + "x" + editor.renderedViewportHeight
+             + " sample=" + meshX + "," + centerY
+             + " projected0=" + editor.projectedX.get(0)
+             + "," + editor.projectedY.get(0)
+             + " projected1=" + editor.projectedX.get(1)
+             + "," + editor.projectedY.get(1)
+             + " worldZ=" + editor.flatNodes.get(0).WorldPosition.Z
+             + "/" + editor.flatNodes.get(1).WorldPosition.Z);
+        return;
+    }
+
+    editor.SelectSceneNodes([], -1);
+    var canonical = sceneDoc.content;
+    var revision = editor.GetRevision();
+    var undoCount = editor.undoStack.count();
+    var redoCount = editor.redoStack.count();
+    var dirty = sceneDoc.isModified;
+    ClickViewport(shell, harness, editor, meshX, centerY);
+    if editor.Pump(sceneDoc)
+       or editor.selectedIndex != 1
+       or editor.selectedIndices.count() != 1
+       or sceneDoc.content != canonical
+       or editor.GetRevision() != revision
+       or editor.undoStack.count() != undoCount
+       or editor.redoStack.count() != redoCount
+       or sceneDoc.isModified != dirty {
+        Fail(shell, harness,
+             "production geometry click changed content or missed near box");
+        return;
+    }
+    shell.Render();
+    shell.Poll();
+
+    if editor.ApplyViewportSelection(0, true, false) == false
+       or editor.selectedIndex != 0
+       or editor.selectedIndices.count() != 2
+       or scene_selection.Contains(editor.selectedIndices, 0) == false
+       or scene_selection.Contains(editor.selectedIndices, 1) == false {
+        Fail(shell, harness, "additive viewport selection");
+        return;
+    }
+    if editor.ApplyViewportSelection(1, false, true) == false
+       or editor.selectedIndex != 0
+       or editor.selectedIndices.count() != 1
+       or scene_selection.Contains(editor.selectedIndices, 0) == false {
+        Fail(shell, harness, "primary-modifier selection toggle");
+        return;
+    }
+    if editor.ApplyViewportSelection(-1, true, false)
+       or editor.selectedIndices.count() != 1 {
+        Fail(shell, harness, "modified blank click did not preserve selection");
+        return;
+    }
+    if editor.ApplyViewportSelection(-1, false, false) == false
+       or editor.selectedIndex != -1
+       or editor.selectedIndices.count() != 0 {
+        Fail(shell, harness, "plain blank click did not clear selection");
+        return;
+    }
+
+    var markerX = editor.projectedX.get(emptyIndex);
+    var markerY = editor.projectedY.get(emptyIndex);
+    var markerHit = editor.ViewportNodeAt(markerX, markerY);
+    if markerHit != emptyIndex {
+        Fail(shell, harness,
+             "meshless marker fallback: hit=" + markerHit
+             + " expected=" + emptyIndex
+             + " marker=" + markerX + "," + markerY
+             + " target=" + editor.viewTargetX + ","
+             + editor.viewTargetY + "," + editor.viewTargetZ);
+        return;
+    }
+
+    editor.SetViewportMode(scene_editor_3d.VIEWPORT_MODE_WIREFRAME);
+    editor.Pump(sceneDoc);
+    shell.Render();
+    if editor.ViewportNodeAt(meshX, centerY) != 1 {
+        Fail(shell, harness, "wireframe picking diverged from shaded picking");
+        return;
+    }
+    editor.SetViewportMode(scene_editor_3d.VIEWPORT_MODE_SHADED);
+    editor.Pump(sceneDoc);
+    shell.Render();
+
+    var beforeX = editor.projectedX.get(1);
+    var beforeY = editor.projectedY.get(1);
+    canonical = sceneDoc.content;
+    revision = editor.GetRevision();
+    undoCount = editor.undoStack.count();
+    redoCount = editor.redoStack.count();
+    dirty = sceneDoc.isModified;
+    if editor.PanViewportByPixels(40.0, 20.0) == false {
+        Fail(shell, harness, "camera-plane pan rejected pointer delta");
+        return;
+    }
+    editor.Pump(sceneDoc);
+    shell.Render();
+    if Near(editor.viewTargetX, -1.0, 0.000001) == false
+       or Near(editor.viewTargetY, 0.5, 0.000001) == false
+       or Near(editor.viewTargetZ, 0.0, 0.000001) == false
+       or Near(editor.projectedX.get(1), beforeX + 40, 1.0) == false
+       or Near(editor.projectedY.get(1), beforeY + 20, 1.0) == false
+       or sceneDoc.content != canonical
+       or editor.GetRevision() != revision
+       or editor.undoStack.count() != undoCount
+       or editor.redoStack.count() != redoCount
+       or sceneDoc.isModified != dirty
+       or Near(sceneDoc.scene3DWorkspace.viewTargetX, -1.0, 0.000001)
+            == false
+       or Near(sceneDoc.scene3DWorkspace.viewTargetY, 0.5, 0.000001)
+            == false {
+        Fail(shell, harness,
+             "camera-plane pan drifted or mutated canonical document state: "
+             + "target=" + editor.viewTargetX + "," + editor.viewTargetY
+             + "," + editor.viewTargetZ
+             + " projected=" + editor.projectedX.get(1)
+             + "," + editor.projectedY.get(1)
+             + " expected=" + (beforeX + 40) + "," + (beforeY + 20)
+             + " workspace="
+             + sceneDoc.scene3DWorkspace.viewTargetX + ","
+             + sceneDoc.scene3DWorkspace.viewTargetY + ","
+             + sceneDoc.scene3DWorkspace.viewTargetZ
+             + " content=" + (sceneDoc.content == canonical)
+             + " revision=" + editor.GetRevision() + "/" + revision
+             + " history=" + editor.undoStack.count() + "/" + undoCount
+             + "," + editor.redoStack.count() + "/" + redoCount
+             + " dirty=" + sceneDoc.isModified + "/" + dirty);
+        return;
+    }
+    if editor.PanViewportByPixels(0.0, 0.0) {
+        Fail(shell, harness, "zero camera-plane pan was not a no-op");
+        return;
+    }
+
+    if sceneDoc.content != canonical
+       or editor.GetRevision() != revision
+       or editor.undoStack.count() != undoCount
+       or editor.redoStack.count() != redoCount
+       or sceneDoc.isModified != dirty {
+        Fail(shell, harness, "viewport interactions changed VSCN history");
+        return;
+    }
+
+    harness.UnbindApp();
+    shell.Destroy();
+    Terminal.Say("RESULT: ok");
+}

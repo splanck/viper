@@ -1,0 +1,231 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/probes/scene_rotation_ring_probe.zia
+// Purpose: Verify projected 3D rotation-ring geometry and real pointer input.
+// Key invariants:
+//   - Ring projection rejects edge-on bases and unwraps the ±180-degree seam.
+//   - X/Y/Z hit testing follows the same sampled ellipse used for rendering.
+//   - Hover and drag status changes never reflow the viewport beneath input.
+//   - A snapped angular gesture commits once and undo restores canonical bytes.
+// Ownership/Lifetime:
+//   - The probe owns one hidden AppShell, editor, document, and input harness.
+// Links: zannastudio/src/ui/scene_editor_3d.zia,
+//        zannastudio/src/ui/scene_transform_3d.zia,
+//        zannastudio/src/probes/scene_editor_3d_probe.zia
+//
+//===----------------------------------------------------------------------===//
+
+module scene_rotation_ring_probe;
+
+// ============================================================================
+// MODULE: scene_rotation_ring_probe
+// PURPOSE: Keep production rotation-ring input coverage focused enough to
+//          preserve the display-test timeout budget.
+//
+// WHERE-THIS-FITS: The broad SceneEditor3D probe covers hierarchy, inspector,
+//          materials, and world transform commands. This probe owns the full
+//          rendered-ring hover/down/move/up path and exact history boundary.
+//
+// TEACHING-NOTE: Pointer tests must derive coordinates from the production
+//          rounded ellipse. Repeating camera math would only test a replica.
+// ============================================================================
+
+bind "../core/document_manager";
+bind "../services/file_utils";
+bind "../ui/app_shell";
+bind "../ui/scene_editor_3d";
+bind "../ui/scene_transform_3d";
+
+bind GUI = Zanna.GUI;
+bind Quat = Zanna.Math.Quat;
+bind Convert = Zanna.Core.Convert;
+bind Terminal = Zanna.Terminal;
+
+func near(actual: Number, expected: Number) -> Boolean {
+    var difference = actual - expected;
+    if difference < 0.0 { difference = 0.0 - difference; }
+    return difference < 0.000001;
+}
+
+func fail(shell: app_shell.AppShell,
+          reason: String) {
+    shell.Destroy();
+    Terminal.Say("RESULT: fail " + reason);
+}
+
+func main() {
+    var shell = new app_shell.AppShell();
+    shell.Build("Zanna Studio Rotation Ring Probe", 1180, 780);
+
+    var editor = new scene_editor_3d.SceneEditor3D();
+    editor.Setup(shell.workbench.scene3DHost, shell.app);
+    var documents = new document_manager.DocumentManager();
+    var sceneDoc = documents.NewScene3DDocument();
+    shell.SelectSurface(file_utils.DOC_KIND_SCENE_3D);
+    editor.Activate(sceneDoc);
+    editor.Pump(sceneDoc);
+    shell.Poll();
+    shell.Render();
+
+    var ringAngle = scene_transform_3d.RotationRingAngle(
+        20.0, -20.0,
+        0.0, 0.0,
+        40.0, 0.0,
+        0.0, -40.0);
+    var edgeOnRingAngle = scene_transform_3d.RotationRingAngle(
+        20.0, 0.0,
+        0.0, 0.0,
+        40.0, 0.0,
+        20.0, 0.0);
+    if ringAngle.valid == false
+       or near(ringAngle.degrees, 45.0) == false
+       or edgeOnRingAngle.valid
+       or near(scene_transform_3d.SignedAngleDelta(
+                   170.0, -170.0), 20.0) == false
+       or near(scene_transform_3d.SignedAngleDelta(
+                   -170.0, 170.0), -20.0) == false {
+        fail(shell,
+             "rotation-ring angle decoding or wrap handling was unstable");
+        return;
+    }
+    if scene_editor_3d.ClosestGizmoRotationRing(
+           28.284271, 28.284271, 0.0, 0.0,
+           0.0, 0.0, 40.0, 0.0, 0.0, 40.0,
+           scene_editor_3d.GIZMO_RING_PICK_RADIUS)
+           != scene_editor_3d.GIZMO_AXIS_X
+       or scene_editor_3d.ClosestGizmoRotationRing(
+              28.284271, 28.284271, 0.0, 0.0,
+              0.0, 40.0, 0.0, 0.0, 40.0, 0.0,
+              scene_editor_3d.GIZMO_RING_PICK_RADIUS)
+           != scene_editor_3d.GIZMO_AXIS_Y
+       or scene_editor_3d.ClosestGizmoRotationRing(
+              28.284271, 28.284271, 0.0, 0.0,
+              40.0, 0.0, 0.0, 40.0, 0.0, 0.0,
+              scene_editor_3d.GIZMO_RING_PICK_RADIUS)
+           != scene_editor_3d.GIZMO_AXIS_Z
+       or scene_editor_3d.ClosestGizmoRotationRing(
+              20.0, 0.0, 0.0, 0.0,
+              40.0, 0.0, 30.0, 0.0, 20.0, 0.0,
+              scene_editor_3d.GIZMO_RING_PICK_RADIUS)
+           != scene_editor_3d.GIZMO_AXIS_NONE {
+        fail(shell,
+             "rotation-ring picking or edge-on rejection was unstable");
+        return;
+    }
+
+    if editor.AddEmptyNode("Ring Probe", -1) != 0 {
+        fail(shell, "could not create the rotation-ring fixture");
+        return;
+    }
+    editor.SetGizmoMode(scene_editor_3d.GIZMO_MODE_ROTATE);
+    editor.SetGizmoSnapEnabled(true);
+    editor.Pump(sceneDoc);
+    shell.Render();
+    editor.Pump(sceneDoc);
+    shell.Render();
+
+    var harness = GUI.TestHarness.New();
+    if harness.BindApp(shell.app) == false {
+        fail(shell, "rotation-ring input harness did not bind");
+        return;
+    }
+    var baseline = sceneDoc.content;
+    var revision = editor.GetRevision();
+    var uiScale = shell.app.GetEffectiveScale();
+    if uiScale <= 0.0 { uiScale = 1.0; }
+    var startLocal = editor.SelectedGizmoRotationRingPoint(
+        scene_editor_3d.GIZMO_AXIS_Z, 45.0);
+    var targetLocal = editor.SelectedGizmoRotationRingPoint(
+        scene_editor_3d.GIZMO_AXIS_Z, 135.0);
+    var startX = Convert.NumToInt(
+        (editor.viewportImage.GetScreenX() + startLocal.x)
+        * uiScale + 0.999999);
+    var startY = Convert.NumToInt(
+        (editor.viewportImage.GetScreenY() + startLocal.y)
+        * uiScale + 0.999999);
+    var targetX = Convert.NumToInt(
+        (editor.viewportImage.GetScreenX() + targetLocal.x)
+        * uiScale + 0.999999);
+    var targetY = Convert.NumToInt(
+        (editor.viewportImage.GetScreenY() + targetLocal.y)
+        * uiScale + 0.999999);
+    var viewportX = editor.viewportImage.GetScreenX();
+    var viewportY = editor.viewportImage.GetScreenY();
+    if editor.GizmoHandleAtViewportPoint(startLocal.x, startLocal.y)
+          != scene_editor_3d.GIZMO_AXIS_Z {
+        harness.UnbindApp();
+        fail(shell, "rounded Z-ring geometry was not self-consistent");
+        return;
+    }
+
+    harness.SendMouse("move", startX, startY, 0);
+    harness.DispatchPending();
+    editor.Pump(sceneDoc);
+    shell.Render();
+    if editor.HoveredGizmoHandle()
+          != scene_editor_3d.GIZMO_AXIS_Z
+       or near(editor.viewportImage.GetScreenX(), viewportX) == false
+       or near(editor.viewportImage.GetScreenY(), viewportY) == false {
+        harness.UnbindApp();
+        fail(shell,
+             "Z-ring hover changed picking or viewport layout");
+        return;
+    }
+    harness.SendMouse("down", startX, startY, 0);
+    harness.DispatchPending();
+    editor.Pump(sceneDoc);
+    shell.Render();
+    if near(editor.viewportImage.GetScreenX(), viewportX) == false
+       or near(editor.viewportImage.GetScreenY(), viewportY) == false {
+        harness.UnbindApp();
+        fail(shell, "Z-ring drag start shifted the viewport layout");
+        return;
+    }
+    harness.SendMouse("move", targetX, targetY, 0);
+    harness.DispatchPending();
+    editor.Pump(sceneDoc);
+    shell.Render();
+    var accumulated = editor.GizmoDragAccumulatedAmount();
+    harness.SendMouse("up", targetX, targetY, 0);
+    harness.DispatchPending();
+    editor.Pump(sceneDoc);
+    shell.Render();
+
+    var rotation = editor.flatNodes.get(0).Rotation;
+    var expected =
+        Quat.FromEuler(0.0, 0.0, 1.5707963267948966).Normalize();
+    var snappedAccumulated = scene_transform_3d.AxisTarget(
+        scene_transform_3d.TRANSFORM_ROTATE,
+        0.0,
+        accumulated,
+        true);
+    var revisionAfter = editor.GetRevision();
+    var undoAccepted = editor.Undo();
+    var undoRestored = sceneDoc.content == baseline;
+    harness.UnbindApp();
+    if revisionAfter != revision + 1
+       or near(snappedAccumulated, 90.0) == false
+       or near(rotation.X, expected.X) == false
+       or near(rotation.Y, expected.Y) == false
+       or near(rotation.Z, expected.Z) == false
+       or near(rotation.W, expected.W) == false
+       or undoAccepted == false
+       or undoRestored == false {
+        fail(shell,
+             "Z-ring drag was not one exact snapped transaction: "
+             + "revision=" + revisionAfter + "/" + (revision + 1)
+             + " accumulated=" + accumulated
+             + " rotation=" + rotation.X + "," + rotation.Y + ","
+             + rotation.Z + "," + rotation.W
+             + " undo=" + undoAccepted + "/" + undoRestored);
+        return;
+    }
+
+    shell.Destroy();
+    Terminal.Say("RESULT: ok");
+}

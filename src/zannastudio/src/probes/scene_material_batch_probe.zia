@@ -1,0 +1,237 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/probes/scene_material_batch_probe.zia
+// Purpose: Verify truthful mixed-state and transactional 3D material batches.
+// Key invariants:
+//   - Mixed scalar controls retain the primary value without presenting it as
+//     common to the complete selection.
+//   - Resolving one scalar applies only that field and preserves every other
+//     per-node PBR value, map, and boolean state.
+//   - Batch material creation, removal, assignment, and clearing each commit
+//     once, retain the complete selection, and undo to exact canonical bytes.
+//   - No-op material drafts and absent-map clears do not create history.
+// Ownership/Lifetime:
+//   - The probe owns one hidden AppShell, editor, document, and texture fixture.
+// Links: zannastudio/src/ui/scene_editor_3d.zia,
+//        zannastudio/src/ui/scene_material_3d.zia,
+//        zannastudio/src/ui/scene_material_inspector_3d.zia,
+//        docs/adr/0167-spinner-mixed-value-state.md
+//
+//===----------------------------------------------------------------------===//
+
+module scene_material_batch_probe;
+
+// ============================================================================
+// MODULE: scene_material_batch_probe
+// PURPOSE: Keep multi-node PBR and map transactions out of the broad 3D probe.
+//
+// WHERE-THIS-FITS: The broad SceneEditor3D probe owns single-node material
+//          authoring and VSCN round trips. This probe owns mixed presentation,
+//          sparse batch patches, selection retention, and exact undo.
+//
+// TEACHING-NOTE: A primary value is not a truthful group value. Mixed controls
+//          must remain unresolved until the user deliberately makes them
+//          concrete, so untouched fields survive on every selected node.
+// ============================================================================
+
+bind "../core/document_manager";
+bind "../services/file_utils";
+bind "../ui/app_shell";
+bind "../ui/scene_editor_3d";
+bind "../ui/scene_material_3d";
+
+bind Material3D = Zanna.Graphics3D.Material3D;
+bind Pixels = Zanna.Graphics.Pixels;
+bind Terminal = Zanna.Terminal;
+
+func near(actual: Number, expected: Number) -> Boolean {
+    var difference = actual - expected;
+    if difference < 0.0 { difference = 0.0 - difference; }
+    return difference < 0.000001;
+}
+
+func fail(shell: app_shell.AppShell,
+          reason: String) {
+    shell.Destroy();
+    Terminal.Say("RESULT: fail " + reason);
+}
+
+func main() {
+    var shell = new app_shell.AppShell();
+    shell.Build("Zanna Studio Material Batch Probe", 1120, 760);
+
+    var editor = new scene_editor_3d.SceneEditor3D();
+    editor.Setup(shell.workbench.scene3DHost, shell.app);
+    var documents = new document_manager.DocumentManager();
+    var sceneDoc = documents.NewScene3DDocument();
+    shell.SelectSurface(file_utils.DOC_KIND_SCENE_3D);
+    editor.Activate(sceneDoc);
+    editor.Pump(sceneDoc);
+    shell.Poll();
+    shell.Render();
+
+    var warm = editor.materialInspector.alpha;
+    warm.SetValue(0.25);
+    warm.SetIndeterminate(true);
+    if warm.IsIndeterminate() == false
+       or near(warm.Value, 0.25) == false {
+        fail(shell, "Spinner mixed state did not retain its numeric value");
+        return;
+    }
+    warm.SetValue(0.5);
+    if warm.IsIndeterminate()
+       or near(warm.Value, 0.5) == false {
+        fail(shell, "a concrete Spinner value did not resolve mixed state");
+        return;
+    }
+
+    var first = editor.AddEmptyNode("Batch Red", -1);
+    var second = editor.AddEmptyNode("Batch Blue", -1);
+    var third = editor.AddEmptyNode("Batch Missing", -1);
+    if first != 0 or second != 1 or third != 2
+       or editor.ApplyNodeMaterial(
+              first,
+              0.9, 0.1, 0.2, 0.2,
+              0.15, 0.3, 1.0,
+              scene_material_3d.ALPHA_OPAQUE, true, false) == false
+       or editor.ApplyNodeMaterial(
+              second,
+              0.1, 0.3, 0.9, 0.8,
+              0.7, 0.9, 1.0,
+              scene_material_3d.ALPHA_OPAQUE, false, false) == false {
+        fail(shell, "could not create the mixed-material fixture");
+        return;
+    }
+
+    var selection: List[Integer] = [];
+    selection.add(first);
+    selection.add(second);
+    selection.add(third);
+    editor.SelectSceneNodes(selection, first);
+    if editor.selectedIndices.count() != 3
+       or editor.materialInspector.alpha.IsIndeterminate() == false
+       or editor.materialInspector.metallic.IsIndeterminate() == false
+       or editor.materialInspector.roughness.IsIndeterminate() == false
+       or editor.materialInspector.ambientOcclusion.IsIndeterminate()
+       or editor.materialInspector.colorOverride.IsIndeterminate() == false
+       or editor.materialInspector.doubleSided.IsIndeterminate() == false
+       or editor.materialInspector.unlit.IsIndeterminate()
+       or editor.materialInspector.alphaMode.Selected
+            != scene_material_3d.ALPHA_OPAQUE
+       or editor.materialInspector.applyButton.IsEnabled() == false
+       or editor.materialInspector.removeButton.IsEnabled() == false {
+        fail(shell, "multi-selection material controls did not present mixed state");
+        return;
+    }
+
+    var patchBaseline = sceneDoc.content;
+    var patchRevision = editor.GetRevision();
+    editor.materialInspector.alpha.SetValue(0.6);
+    if editor.materialInspector.alpha.IsIndeterminate()
+       or editor.ApplySelectedMaterialFromControls() == false {
+        fail(shell, "resolved alpha draft was not accepted for the selection");
+        return;
+    }
+    var firstMaterial = editor.flatNodes.get(first).Material;
+    var secondMaterial = editor.flatNodes.get(second).Material;
+    var thirdMaterial = editor.flatNodes.get(third).Material;
+    if editor.GetRevision() != patchRevision + 1
+       or editor.selectedIndices.count() != 3
+       or editor.selectedIndex != first
+       or firstMaterial == null
+       or secondMaterial == null
+       or thirdMaterial == null
+       or near(firstMaterial.Alpha, 0.6) == false
+       or near(secondMaterial.Alpha, 0.6) == false
+       or near(thirdMaterial.Alpha, 0.6) == false
+       or near(firstMaterial.Color.X, 0.9) == false
+       or near(secondMaterial.Color.Z, 0.9) == false
+       or near(firstMaterial.Metallic, 0.15) == false
+       or near(secondMaterial.Metallic, 0.7) == false
+       or near(firstMaterial.Roughness, 0.3) == false
+       or near(secondMaterial.Roughness, 0.9) == false
+       or firstMaterial.DoubleSided == false
+       or secondMaterial.DoubleSided
+       or near(thirdMaterial.Color.X, 1.0) == false
+       or near(thirdMaterial.Roughness,
+               scene_material_3d.DEFAULT_ROUGHNESS) == false {
+        fail(shell, "sparse material patch overwrote unresolved per-node fields");
+        return;
+    }
+    var patchedContent = sceneDoc.content;
+    if editor.ApplySelectedMaterialFromControls()
+       or editor.GetRevision() != patchRevision + 1 {
+        fail(shell, "identical batch material draft created history");
+        return;
+    }
+    if editor.Undo() == false
+       or sceneDoc.content != patchBaseline
+       or editor.selectedIndices.count() != 3
+       or editor.flatNodes.get(third).Material != null
+       or editor.Redo() == false
+       or sceneDoc.content != patchedContent {
+        fail(shell, "batch material patch did not undo and redo exactly");
+        return;
+    }
+
+    var removeBaseline = sceneDoc.content;
+    var removeRevision = editor.GetRevision();
+    if editor.RemoveSelectedMaterials() == false
+       or editor.GetRevision() != removeRevision + 1
+       or editor.selectedIndices.count() != 3
+       or editor.flatNodes.get(first).Material != null
+       or editor.flatNodes.get(second).Material != null
+       or editor.flatNodes.get(third).Material != null
+       or editor.RemoveSelectedMaterials()
+       or editor.GetRevision() != removeRevision + 1
+       or editor.Undo() == false
+       or sceneDoc.content != removeBaseline {
+        fail(shell, "batch material removal lost atomic no-op or undo behavior");
+        return;
+    }
+
+    var texture = Pixels.New(2, 2);
+    if texture == null {
+        fail(shell, "could not allocate the batch map fixture");
+        return;
+    }
+    texture.FillRgba(0x4477CCFF);
+    var mapBaseline = sceneDoc.content;
+    var mapRevision = editor.GetRevision();
+    if editor.AssignSelectedMaterialMap(
+           scene_material_3d.MAP_ALBEDO, texture) == false
+       or editor.GetRevision() != mapRevision + 1
+       or editor.selectedIndices.count() != 3
+       or editor.flatNodes.get(first).Material.HasTexture == false
+       or editor.flatNodes.get(second).Material.HasTexture == false
+       or editor.flatNodes.get(third).Material.HasTexture == false {
+        fail(shell, "batch map assignment was not one retained-selection edit");
+        return;
+    }
+    var mappedContent = sceneDoc.content;
+    var clearRevision = editor.GetRevision();
+    if editor.ClearSelectedMaterialMap(
+           scene_material_3d.MAP_ALBEDO) == false
+       or editor.GetRevision() != clearRevision + 1
+       or editor.flatNodes.get(first).Material.HasTexture
+       or editor.flatNodes.get(second).Material.HasTexture
+       or editor.flatNodes.get(third).Material.HasTexture
+       or editor.ClearSelectedMaterialMap(
+              scene_material_3d.MAP_ALBEDO)
+       or editor.GetRevision() != clearRevision + 1
+       or editor.Undo() == false
+       or sceneDoc.content != mappedContent
+       or editor.Undo() == false
+       or sceneDoc.content != mapBaseline {
+        fail(shell, "batch map clear lost no-op detection or exact undo");
+        return;
+    }
+
+    shell.Destroy();
+    Terminal.Say("RESULT: ok");
+}

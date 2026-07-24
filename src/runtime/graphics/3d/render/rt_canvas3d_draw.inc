@@ -15,7 +15,8 @@
 // Ownership/Lifetime:
 //   - Draw-resource references and native geometry revisions remain owned by the
 //     Canvas3D frame until backend submission and cleanup finish.
-// Links: rt_canvas3d.c, rt_canvas3d_internal.h, rt_canvas3d_snapshot.c
+// Links: rt_canvas3d.c, rt_canvas3d_internal.h, rt_canvas3d_snapshot.c,
+//        docs/adr/0168-windowless-canvas3d-rendering.md
 //
 //===----------------------------------------------------------------------===//
 
@@ -41,7 +42,7 @@ void rt_canvas3d_clear(void *obj, double r, double g, double b) {
     rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
     if (!c)
         return;
-    if (!c->gfx_win || !c->backend)
+    if (!c->backend || (!c->gfx_win && !c->render_target))
         return;
     if (c->frame_finalized)
         canvas3d_reset_finalized_frame_state(c);
@@ -1531,7 +1532,7 @@ void rt_canvas3d_draw_mesh_matrix_keyed_bounds(void *obj,
         canvas3d_clear_pending_splat(c);
         return;
     }
-    if (!c->in_frame || !c->gfx_win || !c->backend || !mesh->resident) {
+    if (!c->in_frame || (!c->gfx_win && !c->render_target) || !c->backend || !mesh->resident) {
         canvas3d_clear_pending_splat(c);
         return;
     }

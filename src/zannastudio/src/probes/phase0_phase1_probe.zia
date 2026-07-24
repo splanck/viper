@@ -383,7 +383,7 @@ func TestCommandsAndModels() {
                   and registry.IsExecutable("minimap", ziaService) == false
                   and registry.IsExecutable("spliteditorright", ziaService) == false
                   and Str.IndexOf(registry.DisabledReason("find", ziaService),
-                                 "source and text editors") != 0,
+                                 "source, text, and scene surfaces") != 0,
                   "visual surfaces disable hidden code-editor commands") == false {
         return;
     }
@@ -395,9 +395,9 @@ func TestCommandsAndModels() {
                   and registry.IsExecutable("duplicateline", ziaService)
                   and registry.IsExecutable(
                       "deletesceneselection", ziaService)
-                  and registry.IsExecutable("find", ziaService) == false
+                  and registry.IsExecutable("find", ziaService)
                   and registry.IsExecutable("minimap", ziaService) == false,
-                  "visual scenes own selection edits but not source commands")
+                  "visual scenes own selection edits and hierarchy Find")
        == false {
         return;
     }

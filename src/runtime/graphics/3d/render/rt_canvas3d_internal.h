@@ -20,7 +20,8 @@
 //   - Immutable mesh geometry revisions use native atomic reference ownership
 //     shared by their source mesh and every Canvas3D frame that queues them.
 //
-// Links: rt_canvas3d.h, plans/3d/01-software-renderer.md
+// Links: rt_canvas3d.h, plans/3d/01-software-renderer.md,
+//        docs/adr/0168-windowless-canvas3d-rendering.md
 //
 //===----------------------------------------------------------------------===//
 #pragma once
@@ -1102,6 +1103,7 @@ typedef struct {
     int32_t height;             /* public/logical coordinate height */
     int32_t framebuffer_width;  /* physical backing-pixel width */
     int32_t framebuffer_height; /* physical backing-pixel height */
+    int8_t offscreen;           /* created windowless with an explicit render target */
 
     /* Backend dispatch */
     const vgfx3d_backend_t *backend;     /* vtable (software, metal, d3d11, opengl) */

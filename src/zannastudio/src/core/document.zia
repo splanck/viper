@@ -14,7 +14,9 @@
 //     shared widget controller that happens to display the active tab.
 // Ownership/Lifetime:
 //   - DocumentManager owns instances for the lifetime of their editor tabs.
-// Links: zannastudio/src/core/document_manager.zia
+// Links: zannastudio/src/core/document_manager.zia,
+//        docs/adr/0166-exact-scenenode-world-matrix-assignment.md,
+//        docs/adr/0168-windowless-canvas3d-rendering.md
 //
 //===----------------------------------------------------------------------===//
 
@@ -57,6 +59,7 @@ class Scene2DWorkspaceState {
     expose Integer selectedObject;
     expose List[Integer] selectedObjects;
     expose Integer selectedObjectProperty;
+    expose Integer selectedSceneProperty;
     expose Integer selectedCellX;
     expose Integer selectedCellY;
     expose Integer tileId;
@@ -79,6 +82,7 @@ class Scene2DWorkspaceState {
         selectedObject = -1;
         selectedObjects = [];
         selectedObjectProperty = -1;
+        selectedSceneProperty = -1;
         selectedCellX = -1;
         selectedCellY = -1;
         tileId = 1;
@@ -98,15 +102,19 @@ class Scene2DWorkspaceState {
 /// @brief Per-document 3D hierarchy, camera, inspector, and history state.
 /// @details Camera targets remain Numbers in memory; SessionManager stores them
 ///          as validated fixed-point integers to avoid locale-sensitive text.
+///          Viewport mode is presentation state and never enters VSCN content.
 class Scene3DWorkspaceState {
     expose Boolean initialized;
     expose Integer selectedIndex;
     expose List[Integer] selectedIndices;
+    expose Integer selectedNodeMetadata;
     expose Integer transformMode;
+    expose Integer transformSpace;
     expose Boolean transformSnapEnabled;
     expose Integer viewYawDegrees;
     expose Integer viewPitchDegrees;
     expose Integer viewScale;
+    expose Integer viewportMode;
     expose Number viewTargetX;
     expose Number viewTargetY;
     expose Number viewTargetZ;
@@ -123,11 +131,14 @@ class Scene3DWorkspaceState {
         initialized = false;
         selectedIndex = -1;
         selectedIndices = [];
+        selectedNodeMetadata = -1;
         transformMode = 0;
+        transformSpace = 0;
         transformSnapEnabled = false;
         viewYawDegrees = 35;
         viewPitchDegrees = -25;
         viewScale = 28;
+        viewportMode = 0;
         viewTargetX = 0.0;
         viewTargetY = 0.0;
         viewTargetZ = 0.0;

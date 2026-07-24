@@ -10,6 +10,8 @@
 // Key invariants:
 //   - This module owns persistent command chrome, not editor/workbench layout.
 //   - Menu items remain exposed so the dispatcher can poll stable handles.
+//   - Edit action enablement reflects the active source or visual-scene
+//     surface, including surface-owned Find.
 // Ownership/Lifetime:
 //   - AppShell owns one MenuChrome for the lifetime of the IDE window.
 //   - GUI widgets are created during BuildMainMenus/BuildToolbar/BuildContextMenus.
@@ -706,16 +708,24 @@ class MenuChrome {
                                                canPaste: Boolean,
                                                canSelectAll: Boolean,
                                                canDuplicate: Boolean,
-                                               canDeleteScene: Boolean) {
+                                               canDeleteScene: Boolean,
+                                               canFind: Boolean) {
         SetMenuEnabled(miCut, canCut);
         SetMenuEnabled(miCopy, canCopy);
         SetMenuEnabled(miPaste, canPaste);
         SetMenuEnabled(miSelectAll, canSelectAll);
         SetMenuEnabled(miDuplicateSelection, canDuplicate);
         SetMenuEnabled(miDeleteSceneSelection, canDeleteScene);
+        SetMenuEnabled(miFind, canFind);
         SetMenuEnabled(ecCut, canCut);
         SetMenuEnabled(ecCopy, canCopy);
         SetMenuEnabled(ecPaste, canPaste);
+        if tbFind != null {
+            SetToolbarItemState(
+                tbFind, canFind,
+                CommandTooltip("Find in Active Editor", "find", "Ctrl+F"),
+                "Open a searchable source, text, or scene editor");
+        }
     }
 
     /// @brief Reflect undo/redo history owned by the active editor surface.

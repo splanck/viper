@@ -900,7 +900,17 @@ func main() {
               + shell.toolPanels.IsDockHeaderCompact()
               + " drag=" + shell.toolPanels.dockDragHandle.GetScreenWidth()
               + " hideRight=" + sideHideRight
-              + " headerRight=" + sideHeaderRight);
+              + " headerRight=" + sideHeaderRight
+              + " root=" + shell.toolPanels.panelRoot.GetScreenWidth()
+              + " header=" + shell.toolPanels.dockHeader.GetScreenWidth()
+              + " left=" + shell.toolPanels.dockLeftButton.GetScreenWidth()
+              + " bottom="
+              + shell.toolPanels.dockBottomButton.GetScreenWidth()
+              + " right="
+              + shell.toolPanels.dockRightButton.GetScreenWidth()
+              + " float="
+              + shell.toolPanels.dockFloatButton.GetScreenWidth()
+              + " hide=" + shell.toolPanels.dockHideButton.GetScreenWidth());
         return;
     }
     if shell.toolPanels.TakeChangedDockLocation() != "left"

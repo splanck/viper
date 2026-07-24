@@ -285,6 +285,8 @@ RT_FUNC(InputKeyLeftControl, rt_keyboard_key_lctrl, "Zanna.Input.Key.get_LeftCon
 RT_FUNC(InputKeyRightControl, rt_keyboard_key_rctrl, "Zanna.Input.Key.get_RightControl", "i64()")
 RT_FUNC(InputKeyLeftAlt, rt_keyboard_key_lalt, "Zanna.Input.Key.get_LeftAlt", "i64()")
 RT_FUNC(InputKeyRightAlt, rt_keyboard_key_ralt, "Zanna.Input.Key.get_RightAlt", "i64()")
+RT_FUNC(InputKeyLeftSuper, rt_keyboard_key_lsuper, "Zanna.Input.Key.get_LeftSuper", "i64()")
+RT_FUNC(InputKeyRightSuper, rt_keyboard_key_rsuper, "Zanna.Input.Key.get_RightSuper", "i64()")
 RT_FUNC(InputKeyMinus, rt_keyboard_key_minus, "Zanna.Input.Key.get_Minus", "i64()")
 RT_FUNC(InputKeyEquals, rt_keyboard_key_equals, "Zanna.Input.Key.get_Equals", "i64()")
 RT_FUNC(InputKeyLeftBracket, rt_keyboard_key_lbracket, "Zanna.Input.Key.get_LeftBracket", "i64()")

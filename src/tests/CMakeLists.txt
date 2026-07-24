@@ -1296,13 +1296,61 @@ set_tests_properties(zia_zannastudio_scene_editor_2d PROPERTIES
         LABELS "zia;zannastudio;scene;requires_display"
         TIMEOUT 60)
 
+add_test(NAME zia_zannastudio_scene_canvas_selection
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes/scene_canvas_selection_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes")
+set_tests_properties(zia_zannastudio_scene_canvas_selection PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;zannastudio;scene;requires_display"
+        TIMEOUT 60)
+
 add_test(NAME zia_zannastudio_scene_editor_3d
         COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes/scene_editor_3d_probe.zia"
         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes")
 set_tests_properties(zia_zannastudio_scene_editor_3d PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
         LABELS "zia;zannastudio;scene;requires_display"
-        TIMEOUT 60)
+        TIMEOUT 150)
+
+add_test(NAME zia_zannastudio_scene_rotation_ring
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes/scene_rotation_ring_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes")
+set_tests_properties(zia_zannastudio_scene_rotation_ring PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;zannastudio;scene;requires_display"
+        TIMEOUT 150)
+
+add_test(NAME zia_zannastudio_scene_scale_plane
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes/scene_scale_plane_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes")
+set_tests_properties(zia_zannastudio_scene_scale_plane PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;zannastudio;scene;requires_display"
+        TIMEOUT 150)
+
+add_test(NAME zia_zannastudio_scene_material_batch
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes/scene_material_batch_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes")
+set_tests_properties(zia_zannastudio_scene_material_batch PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;zannastudio;scene;requires_display"
+        TIMEOUT 150)
+
+add_test(NAME zia_zannastudio_scene_shaded_viewport
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes/scene_shaded_viewport_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes")
+set_tests_properties(zia_zannastudio_scene_shaded_viewport PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;zannastudio;scene;requires_display"
+        TIMEOUT 150)
+
+add_test(NAME zia_zannastudio_scene_viewport_picking
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes/scene_viewport_picking_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes")
+set_tests_properties(zia_zannastudio_scene_viewport_picking PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;zannastudio;scene;requires_display"
+        TIMEOUT 150)
 
 add_test(NAME zia_zannastudio_scene_workspace_state
         COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes/scene_workspace_state_probe.zia"
@@ -1311,6 +1359,22 @@ set_tests_properties(zia_zannastudio_scene_workspace_state PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
         LABELS "zia;zannastudio;scene;persistence"
         TIMEOUT 60)
+
+add_test(NAME zia_zannastudio_scene_component_schema
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes/scene_component_schema_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes")
+set_tests_properties(zia_zannastudio_scene_component_schema PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;zannastudio;scene"
+        TIMEOUT 30)
+
+add_test(NAME zia_zannastudio_scene_component_authoring
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes/scene_component_authoring_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes")
+set_tests_properties(zia_zannastudio_scene_component_authoring PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;zannastudio;scene"
+        TIMEOUT 30)
 
 add_test(NAME zia_zannastudio_navigation_safety
         COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes/navigation_safety_probe.zia"
@@ -2316,7 +2380,13 @@ set(ZANNA_DISPLAY_TESTS
         zia_zannastudio_bottom_panel
         zia_zannastudio_tool_panel_toolbar
         zia_zannastudio_scene_editor_2d
+        zia_zannastudio_scene_canvas_selection
         zia_zannastudio_scene_editor_3d
+        zia_zannastudio_scene_rotation_ring
+        zia_zannastudio_scene_scale_plane
+        zia_zannastudio_scene_material_batch
+        zia_zannastudio_scene_shaded_viewport
+        zia_zannastudio_scene_viewport_picking
         zia_zannastudio_debug_watch_toolbar
         zia_zannastudio_debug_tool_surfaces
         zia_zannastudio_run_debug_view

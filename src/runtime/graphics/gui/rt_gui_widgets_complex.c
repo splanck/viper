@@ -37,7 +37,8 @@
 //
 // Links: src/runtime/graphics/rt_gui_internal.h (internal types/globals),
 //        src/lib/gui/include/vg.h (ZannaGUI C API),
-//        src/runtime/graphics/rt_gui_codeeditor.c (CodeEditor enhancements)
+//        src/runtime/graphics/rt_gui_codeeditor.c (CodeEditor enhancements),
+//        docs/adr/0167-spinner-mixed-value-state.md
 //
 //===----------------------------------------------------------------------===//
 
@@ -1579,6 +1580,27 @@ double rt_spinner_get_value(void *spinner) {
     return vg_spinner_get_value(sp);
 }
 
+/// @brief Set whether a spinner presents a mixed group value.
+/// @details Mixed retains the current numeric value as an editing seed.
+///          Assigning a concrete value or beginning user input clears it.
+/// @param spinner Spinner widget handle.
+/// @param indeterminate Non-zero to present mixed; zero to reveal the value.
+void rt_spinner_set_indeterminate(void *spinner, int64_t indeterminate) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_spinner_t *sp = rt_spinner_checked(spinner);
+    if (sp)
+        vg_spinner_set_indeterminate(sp, indeterminate != 0);
+}
+
+/// @brief Query whether a spinner presents a mixed group value.
+/// @param spinner Spinner widget handle.
+/// @return 1 while mixed, otherwise zero.
+int64_t rt_spinner_is_indeterminate(void *spinner) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_spinner_t *sp = rt_spinner_checked(spinner);
+    return sp && vg_spinner_is_indeterminate(sp) ? 1 : 0;
+}
+
 /// @brief Set the range of the spinner.
 void rt_spinner_set_range(void *spinner, double min_val, double max_val) {
     RT_ASSERT_MAIN_THREAD();
@@ -3022,6 +3044,18 @@ void rt_spinner_set_value(void *spinner, double value) {
 double rt_spinner_get_value(void *spinner) {
     (void)spinner;
     return 0.0;
+}
+
+/// @brief Stub: graphics disabled — no spinner can enter mixed state.
+void rt_spinner_set_indeterminate(void *spinner, int64_t indeterminate) {
+    (void)spinner;
+    (void)indeterminate;
+}
+
+/// @brief Stub: graphics disabled — no spinner is mixed.
+int64_t rt_spinner_is_indeterminate(void *spinner) {
+    (void)spinner;
+    return 0;
 }
 
 /// @brief Set the range of the spinner.

@@ -13,7 +13,8 @@
 // Ownership/Lifetime:
 //   - One bridge owns its GIO connection, registrations, loop, worker, and copied metadata.
 //   - The process list is protected independently from each bridge's worker lifecycle.
-// Links: https://gnome.pages.gitlab.gnome.org/at-spi2-core/devel-docs/
+// Links: https://gnome.pages.gitlab.gnome.org/at-spi2-core/devel-docs/,
+//        docs/adr/0167-spinner-mixed-value-state.md
 //
 //===----------------------------------------------------------------------===//
 
@@ -459,6 +460,8 @@ static void rt_gui_atspi_snapshot_interfaces(rt_gui_atspi_node_t *node,
     }
     if (node->has_value)
         (void)snprintf(node->value_text, sizeof(node->value_text), "%.17g", node->value);
+    if (widget->type == VG_WIDGET_SPINNER && ((const vg_spinner_t *)widget)->indeterminate)
+        (void)snprintf(node->value_text, sizeof(node->value_text), "mixed");
 }
 
 static void rt_gui_atspi_snapshot_node(rt_gui_atspi_node_t *node,

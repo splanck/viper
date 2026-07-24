@@ -1,0 +1,314 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/probes/scene_scale_plane_probe.zia
+// Purpose: Verify projected 3D scale-plane geometry and transactional input.
+// Key invariants:
+//   - XY/XZ/YZ scale planes share conditioned rendering and picking geometry.
+//   - One handle-width of planar pointer motion equals one scale unit per axis.
+//   - Local and exact World group scaling commit once and undo canonical bytes.
+//   - Plane edits preserve an untouched imported zero-scale component exactly.
+//   - Shear-producing World scale planes reject the complete selected group.
+//   - Hover and drag status changes never reflow the viewport beneath input.
+// Ownership/Lifetime:
+//   - The probe owns one hidden AppShell, editor, document, and input harness.
+// Links: zannastudio/src/ui/scene_editor_3d.zia,
+//        zannastudio/src/ui/scene_transform_3d.zia,
+//        zannastudio/src/probes/scene_editor_3d_probe.zia
+//
+//===----------------------------------------------------------------------===//
+
+module scene_scale_plane_probe;
+
+// ============================================================================
+// MODULE: scene_scale_plane_probe
+// PURPOSE: Keep production planar-scale input and exact-world coverage focused
+//          enough to preserve the broad 3D display-test timeout budget.
+//
+// WHERE-THIS-FITS: The broad SceneEditor3D probe owns the complete editor.
+//          This probe owns scale-plane math, pointer input, group history, and
+//          the exact-or-reject World matrix boundary.
+//
+// TEACHING-NOTE: Derive pointer coordinates from production-rounded endpoints.
+//          Repeating camera projection math would only test a second model.
+// ============================================================================
+
+bind "../core/document_manager";
+bind "../services/file_utils";
+bind "../ui/app_shell";
+bind "../ui/scene_editor_3d";
+bind "../ui/scene_transform_3d";
+
+bind GUI = Zanna.GUI;
+bind Convert = Zanna.Core.Convert;
+bind Terminal = Zanna.Terminal;
+
+func near(actual: Number, expected: Number) -> Boolean {
+    var difference = actual - expected;
+    if difference < 0.0 { difference = 0.0 - difference; }
+    return difference < 0.000001;
+}
+
+func fail(shell: app_shell.AppShell,
+          reason: String) {
+    shell.Destroy();
+    Terminal.Say("RESULT: fail " + reason);
+}
+
+func main() {
+    var shell = new app_shell.AppShell();
+    shell.Build("Zanna Studio Scale Plane Probe", 1180, 780);
+
+    var editor = new scene_editor_3d.SceneEditor3D();
+    editor.Setup(shell.workbench.scene3DHost, shell.app);
+    var documents = new document_manager.DocumentManager();
+    var sceneDoc = documents.NewScene3DDocument();
+    shell.SelectSurface(file_utils.DOC_KIND_SCENE_3D);
+    editor.Activate(sceneDoc);
+    editor.Pump(sceneDoc);
+    shell.Poll();
+    shell.Render();
+
+    var scaleDrag = scene_transform_3d.PlanarDragAmounts(
+        scene_transform_3d.TRANSFORM_SCALE,
+        20.0, -10.0,
+        40.0, 0.0,
+        0.0, -40.0,
+        9.0, 11.0);
+    var moveDrag = scene_transform_3d.PlanarDragAmounts(
+        scene_transform_3d.TRANSFORM_MOVE,
+        20.0, -10.0,
+        40.0, 0.0,
+        0.0, -40.0,
+        2.0, 4.0);
+    var edgeOnDrag = scene_transform_3d.PlanarDragAmounts(
+        scene_transform_3d.TRANSFORM_SCALE,
+        20.0, 0.0,
+        40.0, 0.0,
+        20.0, 0.0,
+        1.0, 1.0);
+    if scaleDrag.valid == false
+       or near(scaleDrag.amountA, 0.5) == false
+       or near(scaleDrag.amountB, 0.25) == false
+       or moveDrag.valid == false
+       or near(moveDrag.amountA, 1.0) == false
+       or near(moveDrag.amountB, 1.0) == false
+       or edgeOnDrag.valid {
+        fail(shell, "mode-aware scale-plane drag math was unstable");
+        return;
+    }
+
+    if editor.AddEmptyNode("Scale Plane", -1) != 0 {
+        fail(shell, "could not create the scale-plane fixture");
+        return;
+    }
+    editor.SetGizmoMode(scene_editor_3d.GIZMO_MODE_SCALE);
+    editor.SetGizmoSnapEnabled(true);
+    editor.Pump(sceneDoc);
+    shell.Render();
+    editor.Pump(sceneDoc);
+    shell.Render();
+
+    var harness = GUI.TestHarness.New();
+    if harness.BindApp(shell.app) == false {
+        fail(shell, "scale-plane input harness did not bind");
+        return;
+    }
+    var baseline = sceneDoc.content;
+    var revision = editor.GetRevision();
+    var uiScale = shell.app.GetEffectiveScale();
+    if uiScale <= 0.0 { uiScale = 1.0; }
+    var originX = editor.projectedX.get(0);
+    var originY = editor.projectedY.get(0);
+    var xEnd = editor.SelectedGizmoAxisEndpoint(
+        scene_editor_3d.GIZMO_AXIS_X);
+    var yEnd = editor.SelectedGizmoAxisEndpoint(
+        scene_editor_3d.GIZMO_AXIS_Y);
+    var axisXX = xEnd.x - originX;
+    var axisXY = xEnd.y - originY;
+    var axisYX = yEnd.x - originX;
+    var axisYY = yEnd.y - originY;
+    var centerFraction =
+        (scene_editor_3d.GIZMO_PLANE_INNER_FRACTION
+         + scene_editor_3d.GIZMO_PLANE_OUTER_FRACTION) * 0.5;
+    var startLocalX = originX + Convert.NumToInt(
+        centerFraction * (axisXX + axisYX));
+    var startLocalY = originY + Convert.NumToInt(
+        centerFraction * (axisXY + axisYY));
+    var startX = Convert.NumToInt(
+        (editor.viewportImage.GetScreenX() + startLocalX)
+        * uiScale + 0.999999);
+    var startY = Convert.NumToInt(
+        (editor.viewportImage.GetScreenY() + startLocalY)
+        * uiScale + 0.999999);
+    var targetX = Convert.NumToInt(
+        startX + 0.5 * (axisXX + axisYX) * uiScale);
+    var targetY = Convert.NumToInt(
+        startY + 0.5 * (axisXY + axisYY) * uiScale);
+    var viewportX = editor.viewportImage.GetScreenX();
+    var viewportY = editor.viewportImage.GetScreenY();
+    if editor.GizmoHandleAtViewportPoint(startLocalX, startLocalY)
+          != scene_editor_3d.GIZMO_PLANE_XY {
+        harness.UnbindApp();
+        fail(shell, "rounded XY scale-plane geometry was not self-consistent");
+        return;
+    }
+
+    harness.SendMouse("move", startX, startY, 0);
+    harness.DispatchPending();
+    editor.Pump(sceneDoc);
+    shell.Render();
+    if editor.HoveredGizmoHandle()
+          != scene_editor_3d.GIZMO_PLANE_XY
+       or near(editor.viewportImage.GetScreenX(), viewportX) == false
+       or near(editor.viewportImage.GetScreenY(), viewportY) == false {
+        harness.UnbindApp();
+        fail(shell, "XY scale-plane hover changed picking or viewport layout");
+        return;
+    }
+    harness.SendMouse("down", startX, startY, 0);
+    harness.DispatchPending();
+    editor.Pump(sceneDoc);
+    shell.Render();
+    if near(editor.viewportImage.GetScreenX(), viewportX) == false
+       or near(editor.viewportImage.GetScreenY(), viewportY) == false {
+        harness.UnbindApp();
+        fail(shell, "XY scale-plane drag start shifted the viewport layout");
+        return;
+    }
+    harness.SendMouse("move", targetX, targetY, 0);
+    harness.DispatchPending();
+    editor.Pump(sceneDoc);
+    shell.Render();
+    harness.SendMouse("up", targetX, targetY, 0);
+    harness.DispatchPending();
+    editor.Pump(sceneDoc);
+    shell.Render();
+
+    var pointerScale = editor.flatNodes.get(0).Scale;
+    var revisionAfter = editor.GetRevision();
+    var undoAccepted = editor.Undo();
+    var undoRestored = sceneDoc.content == baseline;
+    if revisionAfter != revision + 1
+       or near(pointerScale.X, 1.5) == false
+       or near(pointerScale.Y, 1.5) == false
+       or near(pointerScale.Z, 1.0) == false
+       or undoAccepted == false
+       or undoRestored == false {
+        harness.UnbindApp();
+        fail(shell,
+             "XY scale-plane pointer drag was not one snapped transaction: "
+             + "revision=" + revisionAfter + "/" + (revision + 1)
+             + " scale=" + pointerScale.X + ","
+             + pointerScale.Y + "," + pointerScale.Z
+             + " undo=" + undoAccepted + "/" + undoRestored);
+        return;
+    }
+
+    var childIndex = editor.AddEmptyNode("Scale Child", 0);
+    if childIndex != 1
+       or editor.SetNodeTransform(
+              childIndex, 1.0, 0.0, 0.0, 2.0, 0.0, 4.0) == false {
+        harness.UnbindApp();
+        fail(shell, "could not configure the planar-scale group fixture");
+        return;
+    }
+    var groupSelection: List[Integer] = [];
+    groupSelection.add(0);
+    groupSelection.add(childIndex);
+    editor.SelectSceneNodes(groupSelection, 0);
+    editor.SetGizmoTransformSpace(
+        scene_transform_3d.TRANSFORM_SPACE_LOCAL);
+    var localBaseline = sceneDoc.content;
+    var localRevision = editor.GetRevision();
+    var localAccepted = editor.ScaleSelectedInGizmoPlane(
+        scene_editor_3d.GIZMO_PLANE_XZ, 0.4, -0.2, true);
+    var localRootScale = editor.flatNodes.get(0).Scale;
+    var localChildScale = editor.flatNodes.get(childIndex).Scale;
+    var localRevisionAfter = editor.GetRevision();
+    var localUndo = editor.Undo();
+    if localAccepted == false
+       or localRevisionAfter != localRevision + 1
+       or near(localRootScale.X, 1.4) == false
+       or near(localRootScale.Y, 1.0) == false
+       or near(localRootScale.Z, 0.8) == false
+       or near(localChildScale.X, 2.4) == false
+       or near(localChildScale.Y, 0.0) == false
+       or near(localChildScale.Z, 3.8) == false
+       or localUndo == false
+       or sceneDoc.content != localBaseline {
+        harness.UnbindApp();
+        fail(shell, "Local XZ group scaling lost delta, history, or exact undo");
+        return;
+    }
+
+    if editor.SetNodeTransform(
+           childIndex, 1.0, 0.0, 0.0, 1.0, 1.0, 1.0) == false {
+        harness.UnbindApp();
+        fail(shell, "could not normalize the exact World scale fixture");
+        return;
+    }
+    editor.SelectSceneNodes(groupSelection, 0);
+    editor.SetGizmoTransformSpace(
+        scene_transform_3d.TRANSFORM_SPACE_WORLD);
+    var rootWorldBefore = editor.flatNodes.get(0).WorldPosition;
+    var childWorldBefore = editor.flatNodes.get(childIndex).WorldPosition;
+    var worldBaseline = sceneDoc.content;
+    var worldRevision = editor.GetRevision();
+    var worldAccepted = editor.ScaleSelectedInGizmoPlane(
+        scene_editor_3d.GIZMO_PLANE_XY, 0.5, 0.5, true);
+    var rootWorldScale = editor.flatNodes.get(0).WorldScale;
+    var childWorldScale = editor.flatNodes.get(childIndex).WorldScale;
+    var rootWorldAfter = editor.flatNodes.get(0).WorldPosition;
+    var childWorldAfter = editor.flatNodes.get(childIndex).WorldPosition;
+    var worldRevisionAfter = editor.GetRevision();
+    var worldUndo = editor.Undo();
+    if worldAccepted == false
+       or worldRevisionAfter != worldRevision + 1
+       or near(rootWorldScale.X, 1.5) == false
+       or near(rootWorldScale.Y, 1.5) == false
+       or near(rootWorldScale.Z, 1.0) == false
+       or near(childWorldScale.X, 1.5) == false
+       or near(childWorldScale.Y, 1.5) == false
+       or near(childWorldScale.Z, 1.0) == false
+       or near(rootWorldAfter.X, rootWorldBefore.X) == false
+       or near(rootWorldAfter.Y, rootWorldBefore.Y) == false
+       or near(rootWorldAfter.Z, rootWorldBefore.Z) == false
+       or near(childWorldAfter.X, childWorldBefore.X) == false
+       or near(childWorldAfter.Y, childWorldBefore.Y) == false
+       or near(childWorldAfter.Z, childWorldBefore.Z) == false
+       or worldUndo == false
+       or sceneDoc.content != worldBaseline {
+        harness.UnbindApp();
+        fail(shell,
+             "World XY group scaling double-applied hierarchy or lost undo");
+        return;
+    }
+
+    if editor.SetNodeEulerRotation(0, 0.0, 0.0, 45.0) == false {
+        harness.UnbindApp();
+        fail(shell, "could not configure World scale shear rejection");
+        return;
+    }
+    var rootOnly: List[Integer] = [];
+    rootOnly.add(0);
+    editor.SelectSceneNodes(rootOnly, 0);
+    var rejectBaseline = sceneDoc.content;
+    var rejectRevision = editor.GetRevision();
+    var rejected = editor.ScaleSelectedInGizmoPlane(
+        scene_editor_3d.GIZMO_PLANE_XY, 0.5, 0.2, false);
+    harness.UnbindApp();
+    if rejected
+       or editor.GetRevision() != rejectRevision
+       or sceneDoc.content != rejectBaseline {
+        fail(shell, "shear-producing World scale plane was not atomic");
+        return;
+    }
+
+    shell.Destroy();
+    Terminal.Say("RESULT: ok");
+}

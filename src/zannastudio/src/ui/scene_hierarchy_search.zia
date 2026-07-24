@@ -1,0 +1,76 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/ui/scene_hierarchy_search.zia
+// Purpose: Share bounded, case-insensitive hierarchy-search semantics.
+// Key invariants:
+//   - Empty or whitespace-only queries never match a hierarchy row.
+//   - Matching is case-insensitive and does not mutate candidate text.
+//   - Previous/next navigation wraps deterministically for every valid count.
+// Ownership/Lifetime: Pure helpers; no widget or scene state is retained.
+// Links: zannastudio/src/ui/scene_editor_2d.zia,
+//        zannastudio/src/ui/scene_editor_3d.zia
+//
+//===----------------------------------------------------------------------===//
+
+module scene_hierarchy_search;
+
+bind Str = Zanna.String;
+
+// ============================================================================
+// MODULE: scene_hierarchy_search
+// PURPOSE: Keep 2D and 3D hierarchy Find behavior identical.
+//
+// WHERE-THIS-FITS: Scene editors build their own bounded match-index lists,
+//          then use these helpers for normalization, matching, and navigation.
+//
+// TEACHING-NOTE: The visible hierarchy remains intact while searching. Hiding
+//          unmatched rows can conceal a live multi-selection and make the next
+//          destructive command surprising.
+// ============================================================================
+
+/// @brief Trim and case-fold one user-entered hierarchy query.
+expose func Normalize(query: String) -> String {
+    return Str.ToLower(Str.Trim(query));
+}
+
+/// @brief Match a normalized query against two visible row identities.
+/// @param query Result of Normalize; empty never matches.
+/// @param primary Primary row identity such as object id or node name.
+/// @param secondary Optional secondary identity such as object type.
+expose func MatchesNormalized(query: String,
+                              primary: String,
+                              secondary: String) -> Boolean {
+    if query == "" { return false; }
+    if Str.Contains(Str.ToLower(primary), query) { return true; }
+    return secondary != ""
+        and Str.Contains(Str.ToLower(secondary), query);
+}
+
+/// @brief Advance a match cursor with deterministic previous/next wrapping.
+/// @param count Number of current matches.
+/// @param current Current match-list cursor, or -1 before the first jump.
+/// @param direction Negative for previous; zero or positive for next.
+/// @return Wrapped match-list cursor, or -1 when count is empty.
+expose func NextCursor(count: Integer,
+                       current: Integer,
+                       direction: Integer) -> Integer {
+    if count <= 0 { return -1; }
+    if current < 0 or current >= count {
+        if direction < 0 { return count - 1; }
+        return 0;
+    }
+    var next = current;
+    if direction < 0 {
+        next = next - 1;
+        if next < 0 { next = count - 1; }
+        return next;
+    }
+    next = next + 1;
+    if next >= count { next = 0; }
+    return next;
+}

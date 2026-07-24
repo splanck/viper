@@ -1,0 +1,873 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/ui/scene_component_authoring.zia
+// Purpose: Apply validated structured edits to project scene-component schemas.
+// Key invariants:
+//   - Every candidate is reparsed by scene_component_schema before publication.
+//   - Known-member edits preserve unknown version-1 JSON members.
+//   - Existing files are replaced through expected-metadata workspace edits;
+//     new files use a no-overwrite same-directory atomic create.
+//   - Bounded file snapshots make each accepted edit exactly undoable/redoable.
+// Ownership/Lifetime: One scene editor owns one authoring session; snapshots
+//                     own text only and never own GUI or scene objects.
+// Links: zannastudio/src/ui/scene_component_schema.zia,
+//        zannastudio/src/ui/scene_component_palette.zia,
+//        zannastudio/src/services/safe_io.zia,
+//        docs/adr/0160-project-scene-component-schemas.md
+//
+//===----------------------------------------------------------------------===//
+
+module scene_component_authoring;
+
+bind "../services/safe_io";
+bind "scene_component_schema";
+
+bind File = Zanna.IO.File;
+bind Path = Zanna.IO.Path;
+bind Json = Zanna.Data.Json;
+bind Map = Zanna.Collections.Map;
+bind Seq = Zanna.Collections.Seq;
+bind Str = Zanna.String;
+bind Parse = Zanna.Core.Parse;
+bind Fmt = Zanna.Text.Fmt;
+bind Obj = Zanna.Core.Object;
+bind WorkspaceEdit = Zanna.Workspace.Edit;
+
+final MAX_SCHEMA_HISTORY: Integer = 20;
+
+/// @brief Result of one pure structured schema mutation.
+class SceneComponentEditResult {
+    expose Boolean ok;
+    expose Boolean changed;
+    expose String error;
+    expose String content;
+    expose String componentName;
+    expose String fieldKey;
+
+    expose func init() {
+        ok = false;
+        changed = false;
+        error = "";
+        content = "";
+        componentName = "";
+        fieldKey = "";
+    }
+}
+
+/// @brief One exact on-disk state used by schema file undo/redo.
+class SceneComponentFileSnapshot {
+    expose Boolean found;
+    expose String text;
+
+    expose func init() {
+        found = false;
+        text = "";
+    }
+}
+
+/// @brief Canonical valid text for a missing project component schema.
+expose func EmptySchemaText() -> String {
+    return "{\n  \"version\": 1,\n  \"components\": []\n}\n";
+}
+
+/// @brief Create one valid starter component with one Boolean field.
+expose func AddStarterComponent(
+    text: String,
+    target: String) -> SceneComponentEditResult {
+    var result = BeginEdit(text);
+    var root = ValidRoot(text, result);
+    if root == null { return result; }
+    var components = Map.Get(root, "components");
+    var schema =
+        scene_component_schema.ParseText(text, "authoring");
+
+    var name = UniqueComponentName(schema, "component");
+    if name == "" {
+        return Fail(
+            result, "The component limit has been reached.");
+    }
+    var nextTarget = Str.ToLower(Str.Trim(target));
+    if nextTarget != scene_component_schema.TARGET_2D_OBJECT
+       and nextTarget != scene_component_schema.TARGET_3D_NODE
+       and nextTarget != scene_component_schema.TARGET_BOTH {
+        nextTarget = scene_component_schema.TARGET_BOTH;
+    }
+
+    var component = Map.New();
+    Map.SetStr(component, "name", name);
+    Map.SetStr(component, "label", "New Component");
+    Map.SetStr(component, "target", nextTarget);
+    var fields = Seq.New();
+    var field = Map.New();
+    Map.SetStr(field, "key", name + ".enabled");
+    Map.SetStr(field, "label", "Enabled");
+    Map.SetStr(field, "type", "bool");
+    Map.SetBool(field, "default", true);
+    Seq.Push(fields, field);
+    Map.Set(component, "fields", fields);
+    Seq.Push(components, component);
+
+    result.componentName = name;
+    result.fieldKey = name + ".enabled";
+    return FinishEdit(root, text, result);
+}
+
+/// @brief Update one component's stable identity and presentation.
+expose func UpdateComponent(
+    text: String,
+    previousName: String,
+    name: String,
+    label: String,
+    target: String,
+    description: String) -> SceneComponentEditResult {
+    var result = BeginEdit(text);
+    var root = ValidRoot(text, result);
+    if root == null { return result; }
+    var schema =
+        scene_component_schema.ParseText(text, "authoring");
+    var previous = schema.Find(
+        previousName, scene_component_schema.TARGET_2D_OBJECT);
+    if previous == null {
+        previous = schema.Find(
+            previousName, scene_component_schema.TARGET_3D_NODE);
+    }
+    if previous == null {
+        return Fail(result, "The selected component no longer exists.");
+    }
+
+    var nextName = Str.Trim(name);
+    var nextLabel = Str.Trim(label);
+    if nextLabel == "" { nextLabel = nextName; }
+    var nextTarget = Str.ToLower(Str.Trim(target));
+    var nextDescription = description;
+    if previous.name == nextName
+       and previous.label == nextLabel
+       and previous.target == nextTarget
+       and previous.description == nextDescription {
+        return NoChange(result);
+    }
+
+    var components = Map.Get(root, "components");
+    var index = RawComponentIndex(components, previous.name);
+    if index < 0 {
+        return Fail(result, "The selected component is detached.");
+    }
+    var raw = Seq.Get(components, index);
+    Map.SetStr(raw, "name", nextName);
+    if previous.label != nextLabel {
+        SetOptionalTrimmed(raw, "label", label);
+    }
+    Map.SetStr(raw, "target", nextTarget);
+    SetOptionalText(raw, "description", description);
+    result.componentName = nextName;
+    return FinishEdit(root, text, result);
+}
+
+/// @brief Remove one component definition without touching scene data.
+expose func RemoveComponent(
+    text: String,
+    name: String) -> SceneComponentEditResult {
+    var result = BeginEdit(text);
+    var root = ValidRoot(text, result);
+    if root == null { return result; }
+    var components = Map.Get(root, "components");
+    var index = RawComponentIndex(components, name);
+    if index < 0 {
+        return Fail(result, "The selected component no longer exists.");
+    }
+    var removed = Seq.RemoveAt(components, index);
+    if removed == null {
+        return Fail(result, "The selected component could not be removed.");
+    }
+    return FinishEdit(root, text, result);
+}
+
+/// @brief Move one component one stable position earlier or later.
+expose func MoveComponent(
+    text: String,
+    name: String,
+    direction: Integer) -> SceneComponentEditResult {
+    var result = BeginEdit(text);
+    var root = ValidRoot(text, result);
+    if root == null { return result; }
+    if direction != -1 and direction != 1 {
+        return Fail(result, "Component move direction must be -1 or 1.");
+    }
+    var components = Map.Get(root, "components");
+    var index = RawComponentIndex(components, name);
+    if index < 0 {
+        return Fail(result, "The selected component no longer exists.");
+    }
+    var destination = index + direction;
+    if destination < 0 or destination >= Seq.get_Count(components) {
+        return NoChange(result);
+    }
+    var moved = Seq.RemoveAt(components, index);
+    Seq.Insert(components, destination, moved);
+    result.componentName = name;
+    return FinishEdit(root, text, result);
+}
+
+/// @brief Add one valid string field with a unique portable key.
+expose func AddStarterField(
+    text: String,
+    componentName: String) -> SceneComponentEditResult {
+    var result = BeginEdit(text);
+    var root = ValidRoot(text, result);
+    if root == null { return result; }
+    var components = Map.Get(root, "components");
+    var componentIndex =
+        RawComponentIndex(components, componentName);
+    if componentIndex < 0 {
+        return Fail(result, "The selected component no longer exists.");
+    }
+    var component = Seq.Get(components, componentIndex);
+    var fields = Map.Get(component, "fields");
+    if Seq.get_Count(fields)
+       >= scene_component_schema.MAX_FIELDS_PER_COMPONENT {
+        return Fail(result, "The component already has 64 fields.");
+    }
+    var key = UniqueFieldKey(
+        fields, componentName + ".value");
+    if key == "" {
+        return Fail(result, "A unique starter field key was not available.");
+    }
+    var field = Map.New();
+    Map.SetStr(field, "key", key);
+    Map.SetStr(field, "label", "Value");
+    Map.SetStr(field, "type", "string");
+    Map.SetStr(field, "default", "");
+    Seq.Push(fields, field);
+    result.componentName = componentName;
+    result.fieldKey = key;
+    return FinishEdit(root, text, result);
+}
+
+/// @brief Update one component field and its exact typed default.
+expose func UpdateField(
+    text: String,
+    componentName: String,
+    previousKey: String,
+    key: String,
+    label: String,
+    kind: String,
+    defaultText: String,
+    description: String) -> SceneComponentEditResult {
+    var result = BeginEdit(text);
+    var root = ValidRoot(text, result);
+    if root == null { return result; }
+    var schema =
+        scene_component_schema.ParseText(text, "authoring");
+    var component = FindAnyTarget(schema, componentName);
+    if component == null {
+        return Fail(result, "The selected component no longer exists.");
+    }
+    var previous = component.FieldNamed(previousKey);
+    if previous == null {
+        return Fail(result, "The selected field no longer exists.");
+    }
+
+    var nextKey = Str.Trim(key);
+    var nextLabel = Str.Trim(label);
+    if nextLabel == "" { nextLabel = nextKey; }
+    var nextKind = Str.ToLower(Str.Trim(kind));
+    var canonicalDefault = CanonicalDefaultText(
+        nextKind, defaultText, result);
+    if result.error != "" { return result; }
+    var defaultChanged = previous.kind != nextKind
+        or previous.defaultText != canonicalDefault;
+    if previous.key == nextKey
+       and previous.label == nextLabel
+       and previous.kind == nextKind
+       and previous.defaultText == canonicalDefault
+       and previous.description == description {
+        return NoChange(result);
+    }
+
+    var components = Map.Get(root, "components");
+    var componentIndex =
+        RawComponentIndex(components, component.name);
+    if componentIndex < 0 {
+        return Fail(result, "The selected component is detached.");
+    }
+    var rawComponent = Seq.Get(components, componentIndex);
+    var fields = Map.Get(rawComponent, "fields");
+    var fieldIndex = RawFieldIndex(fields, previous.key);
+    if fieldIndex < 0 {
+        return Fail(result, "The selected field is detached.");
+    }
+    var raw = Seq.Get(fields, fieldIndex);
+    Map.SetStr(raw, "key", nextKey);
+    if previous.label != nextLabel {
+        SetOptionalTrimmed(raw, "label", label);
+    }
+    Map.SetStr(raw, "type", nextKind);
+    if defaultChanged
+       and ApplyRawDefault(
+               raw, nextKind, defaultText, result) == false {
+        return result;
+    }
+    SetOptionalText(raw, "description", description);
+    result.componentName = component.name;
+    result.fieldKey = nextKey;
+    return FinishEdit(root, text, result);
+}
+
+/// @brief Remove one field while retaining the version-1 non-empty contract.
+expose func RemoveField(
+    text: String,
+    componentName: String,
+    key: String) -> SceneComponentEditResult {
+    var result = BeginEdit(text);
+    var root = ValidRoot(text, result);
+    if root == null { return result; }
+    var components = Map.Get(root, "components");
+    var componentIndex =
+        RawComponentIndex(components, componentName);
+    if componentIndex < 0 {
+        return Fail(result, "The selected component no longer exists.");
+    }
+    var component = Seq.Get(components, componentIndex);
+    var fields = Map.Get(component, "fields");
+    if Seq.get_Count(fields) <= 1 {
+        return Fail(
+            result, "A component must retain at least one field.");
+    }
+    var index = RawFieldIndex(fields, key);
+    if index < 0 {
+        return Fail(result, "The selected field no longer exists.");
+    }
+    var removed = Seq.RemoveAt(fields, index);
+    if removed == null {
+        return Fail(result, "The selected field could not be removed.");
+    }
+    result.componentName = componentName;
+    return FinishEdit(root, text, result);
+}
+
+/// @brief Move one field one stable position earlier or later.
+expose func MoveField(
+    text: String,
+    componentName: String,
+    key: String,
+    direction: Integer) -> SceneComponentEditResult {
+    var result = BeginEdit(text);
+    var root = ValidRoot(text, result);
+    if root == null { return result; }
+    if direction != -1 and direction != 1 {
+        return Fail(result, "Field move direction must be -1 or 1.");
+    }
+    var components = Map.Get(root, "components");
+    var componentIndex =
+        RawComponentIndex(components, componentName);
+    if componentIndex < 0 {
+        return Fail(result, "The selected component no longer exists.");
+    }
+    var component = Seq.Get(components, componentIndex);
+    var fields = Map.Get(component, "fields");
+    var index = RawFieldIndex(fields, key);
+    if index < 0 {
+        return Fail(result, "The selected field no longer exists.");
+    }
+    var destination = index + direction;
+    if destination < 0 or destination >= Seq.get_Count(fields) {
+        return NoChange(result);
+    }
+    var moved = Seq.RemoveAt(fields, index);
+    Seq.Insert(fields, destination, moved);
+    result.componentName = componentName;
+    result.fieldKey = key;
+    return FinishEdit(root, text, result);
+}
+
+/// @brief Bounded conflict-aware owner of one schema file's edit history.
+class SceneComponentAuthoringSession {
+    expose String path;
+    expose Boolean found;
+    expose String currentText;
+    expose String error;
+    expose List[SceneComponentFileSnapshot] undoStack;
+    expose List[SceneComponentFileSnapshot] redoStack;
+
+    expose func init() {
+        path = "";
+        found = false;
+        currentText = EmptySchemaText();
+        error = "";
+        undoStack = [];
+        redoStack = [];
+    }
+
+    /// @brief Load one path and discard history from a different disk state.
+    expose func Load(nextPath: String) -> Boolean {
+        path = nextPath;
+        undoStack = [];
+        redoStack = [];
+        return LoadCurrent();
+    }
+
+    /// @brief Reload after an external change and discard stale history.
+    expose func Reload() -> Boolean {
+        undoStack = [];
+        redoStack = [];
+        return LoadCurrent();
+    }
+
+    expose func CanUndo() -> Boolean {
+        return undoStack.count() > 0;
+    }
+
+    expose func CanRedo() -> Boolean {
+        return redoStack.count() > 0;
+    }
+
+    /// @brief Return whether current disk bytes differ from the owned snapshot.
+    expose func HasExternalChange() -> Boolean {
+        return DiskMatchesCurrent() == false;
+    }
+
+    /// @brief Persist one validated candidate and add one bounded undo state.
+    expose func Apply(nextText: String) -> Boolean {
+        error = "";
+        var parsed =
+            scene_component_schema.ParseText(nextText, path);
+        if parsed.valid == false {
+            error = "Schema edit was rejected: " + parsed.error;
+            return false;
+        }
+        if found and nextText == currentText {
+            error = "The project component schema is already up to date.";
+            return false;
+        }
+        if DiskMatchesCurrent() == false {
+            error =
+                "scene-components.json changed outside this editor. "
+                + "Reload before saving.";
+            return false;
+        }
+        var previous = Snapshot(found, currentText);
+        if Persist(true, nextText) == false { return false; }
+        PushSnapshot(undoStack, previous);
+        redoStack = [];
+        found = true;
+        currentText = nextText;
+        error = "";
+        return true;
+    }
+
+    /// @brief Restore the preceding exact file-presence/text snapshot.
+    expose func Undo() -> Boolean {
+        if undoStack.count() == 0 { return false; }
+        error = "";
+        if DiskMatchesCurrent() == false {
+            error =
+                "scene-components.json changed outside this editor. "
+                + "Reload before undoing.";
+            return false;
+        }
+        var index = undoStack.count() - 1;
+        var target = undoStack.get(index);
+        var current = Snapshot(found, currentText);
+        if Persist(target.found, target.text) == false {
+            return false;
+        }
+        undoStack.removeAt(index);
+        PushSnapshot(redoStack, current);
+        found = target.found;
+        currentText = target.text;
+        error = "";
+        return true;
+    }
+
+    /// @brief Reapply the next exact file-presence/text snapshot.
+    expose func Redo() -> Boolean {
+        if redoStack.count() == 0 { return false; }
+        error = "";
+        if DiskMatchesCurrent() == false {
+            error =
+                "scene-components.json changed outside this editor. "
+                + "Reload before redoing.";
+            return false;
+        }
+        var index = redoStack.count() - 1;
+        var target = redoStack.get(index);
+        var current = Snapshot(found, currentText);
+        if Persist(target.found, target.text) == false {
+            return false;
+        }
+        redoStack.removeAt(index);
+        PushSnapshot(undoStack, current);
+        found = target.found;
+        currentText = target.text;
+        error = "";
+        return true;
+    }
+
+    hide func LoadCurrent() -> Boolean {
+        error = "";
+        if path == "" {
+            found = false;
+            currentText = EmptySchemaText();
+            error =
+                "Open an unambiguous workspace root to author components.";
+            return false;
+        }
+        var exists = false;
+        try {
+            exists = File.Exists(path);
+        } catch {
+            error = "Could not inspect scene-components.json.";
+            return false;
+        }
+        if exists == false {
+            found = false;
+            currentText = EmptySchemaText();
+            return true;
+        }
+        var read = safe_io.ReadAllTextBounded(
+            path, scene_component_schema.MAX_SCHEMA_BYTES);
+        if read.ok == false {
+            found = true;
+            error =
+                "Could not read scene-components.json within the 1 MB limit.";
+            return false;
+        }
+        found = true;
+        currentText = read.text;
+        var parsed =
+            scene_component_schema.ParseText(currentText, path);
+        if parsed.valid == false {
+            error = "Component schema error: " + parsed.error;
+            return false;
+        }
+        return true;
+    }
+
+    hide func DiskMatchesCurrent() -> Boolean {
+        if path == "" { return false; }
+        var exists = false;
+        try {
+            exists = File.Exists(path);
+        } catch {
+            return false;
+        }
+        if found == false { return exists == false; }
+        if exists == false { return false; }
+        var read = safe_io.ReadAllTextBounded(
+            path, scene_component_schema.MAX_SCHEMA_BYTES);
+        return read.ok and read.text == currentText;
+    }
+
+    hide func Persist(nextFound: Boolean,
+                      nextText: String) -> Boolean {
+        if path == "" {
+            error = "No project component schema path is available.";
+            return false;
+        }
+        if nextFound == false {
+            if found == false { return true; }
+            if safe_io.DeleteFile(path) == false {
+                error =
+                    "Could not remove the newly created component schema.";
+                return false;
+            }
+            return true;
+        }
+        if Str.get_Length(nextText)
+           > scene_component_schema.MAX_SCHEMA_BYTES {
+            error = "Component schema exceeds the 1 MB limit.";
+            return false;
+        }
+        if found == false {
+            if safe_io.CreateTextFile(path, nextText) == false {
+                error =
+                    "Could not atomically create scene-components.json.";
+                return false;
+            }
+            return true;
+        }
+        if WriteExistingText(nextText) == false {
+            error =
+                "Could not atomically replace scene-components.json; "
+                + "the file may have changed.";
+            return false;
+        }
+        return true;
+    }
+
+    /// @brief Replace the exact current file through the rooted edit runtime.
+    hide func WriteExistingText(nextText: String) -> Boolean {
+        var beforeMtime = safe_io.Modified(path);
+        var beforeSize = safe_io.SizeBytes(path);
+        if beforeMtime < 0 or beforeSize < 0 { return false; }
+        var read = safe_io.ReadAllTextBounded(
+            path, scene_component_schema.MAX_SCHEMA_BYTES);
+        if read.ok == false or read.text != currentText
+           or safe_io.Modified(path) != beforeMtime
+           or safe_io.SizeBytes(path) != beforeSize {
+            return false;
+        }
+
+        var edit = Map.New();
+        Map.SetStr(edit, "file", Path.Name(path));
+        Map.SetInt(edit, "startLine", 1);
+        Map.SetInt(edit, "startColumn", 1);
+        Map.SetInt(edit, "endLine", EndLineForText(currentText));
+        Map.SetInt(edit, "endColumn", EndColumnForText(currentText));
+        Map.SetStr(edit, "newText", nextText);
+        Map.SetInt(edit, "expectedMtime", beforeMtime);
+        Map.SetInt(edit, "expectedSize", beforeSize);
+        var edits = Seq.New();
+        Seq.Push(edits, edit);
+        var applied =
+            WorkspaceEdit.ApplyInRoot(edits, Path.Directory(path));
+        return Map.GetBool(applied, "success");
+    }
+}
+
+func BeginEdit(text: String) -> SceneComponentEditResult {
+    var result = new SceneComponentEditResult();
+    result.content = text;
+    return result;
+}
+
+func Fail(result: SceneComponentEditResult,
+          message: String) -> SceneComponentEditResult {
+    result.ok = false;
+    result.changed = false;
+    result.error = message;
+    return result;
+}
+
+func NoChange(
+    result: SceneComponentEditResult) -> SceneComponentEditResult {
+    result.ok = true;
+    result.changed = false;
+    result.error = "";
+    return result;
+}
+
+func ValidRoot(text: String,
+               result: SceneComponentEditResult) -> Any {
+    var schema =
+        scene_component_schema.ParseText(text, "authoring");
+    if schema.valid == false {
+        result.error = "Component schema error: " + schema.error;
+        return null;
+    }
+    var root = Json.Parse(text);
+    if root == null or Json.TypeOf(root) != "object" {
+        result.error = "Component schema root is unavailable.";
+        return null;
+    }
+    return root;
+}
+
+func FinishEdit(root: Any,
+                original: String,
+                result: SceneComponentEditResult)
+    -> SceneComponentEditResult {
+    var content = Json.FormatPretty(root, 2) + "\n";
+    var parsed =
+        scene_component_schema.ParseText(content, "authoring");
+    if parsed.valid == false {
+        return Fail(result, parsed.error);
+    }
+    result.ok = true;
+    result.changed = content != original;
+    result.error = "";
+    result.content = content;
+    return result;
+}
+
+func FindAnyTarget(
+    schema: scene_component_schema.SceneComponentSchema,
+    name: String)
+    -> scene_component_schema.SceneComponentDefinition {
+    var component = schema.Find(
+        name, scene_component_schema.TARGET_2D_OBJECT);
+    if component == null {
+        component = schema.Find(
+            name, scene_component_schema.TARGET_3D_NODE);
+    }
+    return component;
+}
+
+func RawComponentIndex(components: Any,
+                       name: String) -> Integer {
+    var folded = Str.ToLower(Str.Trim(name));
+    var index = 0;
+    while index < Seq.get_Count(components) {
+        var component = Seq.Get(components, index);
+        if component != null
+           and Str.ToLower(Map.GetStr(component, "name"))
+              == folded {
+            return index;
+        }
+        index = index + 1;
+    }
+    return -1;
+}
+
+func RawFieldIndex(fields: Any,
+                   key: String) -> Integer {
+    var index = 0;
+    while index < Seq.get_Count(fields) {
+        var field = Seq.Get(fields, index);
+        if field != null and Map.GetStr(field, "key") == key {
+            return index;
+        }
+        index = index + 1;
+    }
+    return -1;
+}
+
+func UniqueComponentName(
+    schema: scene_component_schema.SceneComponentSchema,
+    base: String) -> String {
+    var candidate = base;
+    var suffix = 2;
+    while FindAnyTarget(schema, candidate) != null
+          and suffix <= scene_component_schema.MAX_COMPONENTS + 1 {
+        candidate = base + "-" + suffix;
+        suffix = suffix + 1;
+    }
+    if FindAnyTarget(schema, candidate) != null { return ""; }
+    return candidate;
+}
+
+func UniqueFieldKey(fields: Any,
+                    base: String) -> String {
+    var candidate = base;
+    var suffix = 2;
+    while RawFieldIndex(fields, candidate) >= 0
+          and suffix
+              <= scene_component_schema.MAX_FIELDS_PER_COMPONENT + 1 {
+        candidate = base + "-" + suffix;
+        suffix = suffix + 1;
+    }
+    if RawFieldIndex(fields, candidate) >= 0 { return ""; }
+    return candidate;
+}
+
+func SetOptionalTrimmed(raw: Any,
+                        key: String,
+                        value: String) {
+    var next = Str.Trim(value);
+    if next == "" {
+        if Map.Has(raw, key) { Map.Remove(raw, key); }
+    } else {
+        Map.SetStr(raw, key, next);
+    }
+}
+
+func SetOptionalText(raw: Any,
+                     key: String,
+                     value: String) {
+    if value == "" {
+        if Map.Has(raw, key) { Map.Remove(raw, key); }
+    } else {
+        Map.SetStr(raw, key, value);
+    }
+}
+
+func CanonicalDefaultText(
+    kind: String,
+    text: String,
+    result: SceneComponentEditResult) -> String {
+    if kind == "string" { return text; }
+    if kind == "int" {
+        var parsedInt = Parse.TryInt(Str.Trim(text));
+        if parsedInt.IsNone {
+            result.error = "Enter a valid whole-number default.";
+            return "";
+        }
+        return Fmt.Int(parsedInt.UnwrapI64());
+    }
+    if kind == "float" {
+        var parsedFloat = Parse.TryDouble(Str.Trim(text));
+        if parsedFloat.IsNone {
+            result.error = "Enter a valid finite-number default.";
+            return "";
+        }
+        return Fmt.Num(parsedFloat.UnwrapF64());
+    }
+    if kind == "bool" {
+        var parsedBool = Parse.TryBool(Str.Trim(text));
+        if parsedBool.IsNone {
+            result.error = "Enter a valid Boolean default.";
+            return "";
+        }
+        return Fmt.Bool(parsedBool.UnwrapI1());
+    }
+    if kind == "null" { return ""; }
+    result.error =
+        "Field type must be string, int, float, bool, or null.";
+    return "";
+}
+
+func ApplyRawDefault(raw: Any,
+                     kind: String,
+                     text: String,
+                     result: SceneComponentEditResult) -> Boolean {
+    var canonical = CanonicalDefaultText(kind, text, result);
+    if result.error != "" { return false; }
+    if kind == "string" {
+        Map.SetStr(raw, "default", text);
+        return true;
+    }
+    if kind == "int" {
+        var parsedInt = Parse.TryInt(canonical);
+        Map.SetInt(raw, "default", parsedInt.UnwrapI64());
+        return true;
+    }
+    if kind == "float" {
+        var parsedFloat = Parse.TryDouble(canonical);
+        Map.SetFloat(raw, "default", parsedFloat.UnwrapF64());
+        return true;
+    }
+    if kind == "bool" {
+        var parsedBool = Parse.TryBool(canonical);
+        Map.SetBool(raw, "default", parsedBool.UnwrapI1());
+        return true;
+    }
+    Map.Set(raw, "default", null);
+    return true;
+}
+
+func Snapshot(found: Boolean,
+              text: String) -> SceneComponentFileSnapshot {
+    var snapshot = new SceneComponentFileSnapshot();
+    snapshot.found = found;
+    snapshot.text = text;
+    return snapshot;
+}
+
+func PushSnapshot(
+    stack: List[SceneComponentFileSnapshot],
+    snapshot: SceneComponentFileSnapshot) {
+    stack.add(snapshot);
+    if stack.count() > MAX_SCHEMA_HISTORY {
+        stack.removeAt(0);
+    }
+}
+
+func EndLineForText(text: String) -> Integer {
+    var lines = Str.Split(text, "\n");
+    var count = Seq.get_Count(lines);
+    if count <= 0 { return 1; }
+    return count;
+}
+
+func EndColumnForText(text: String) -> Integer {
+    var lines = Str.Split(text, "\n");
+    var count = Seq.get_Count(lines);
+    if count <= 0 { return 1; }
+    var last = Obj.ToString(Seq.Get(lines, count - 1));
+    return Str.get_Length(last) + 1;
+}

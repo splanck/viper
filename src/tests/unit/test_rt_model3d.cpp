@@ -10,10 +10,12 @@
 // Key invariants:
 //   - Imported asset handles expose stable meshes/materials/animations/scenes.
 //   - Recoverable content failures return NULL with asset diagnostics.
+//   - SceneAsset templates and instances preserve independent typed node metadata.
 // Ownership/Lifetime:
 //   - Tests release GC-managed runtime objects they allocate or load.
 //   - Temporary fixture files are removed by their owning tests.
-// Links: rt_model3d.h, rt_fbx_loader.h, rt_gltf.h, rt_asset_error.h
+// Links: rt_model3d.h, rt_fbx_loader.h, rt_gltf.h, rt_asset_error.h,
+//   docs/adr/0159-typed-scenenode-metadata-and-vscn-v6.md
 //
 //===----------------------------------------------------------------------===//
 
@@ -3705,6 +3707,11 @@ static bool write_scene_fixture(const char *path) {
     rt_scene_node3d_set_name(child, rt_const_cstr("child"));
     rt_scene_node3d_set_position(parent, 1.0, 2.0, 3.0);
     rt_scene_node3d_set_position(child, 0.0, 5.0, 0.0);
+    rt_scene_node3d_metadata_set_string(child, rt_const_cstr("game.role"), rt_const_cstr("enemy"));
+    rt_scene_node3d_metadata_set_int(child, rt_const_cstr("health"), 125);
+    rt_scene_node3d_metadata_set_float(child, rt_const_cstr("radius"), 4.0);
+    rt_scene_node3d_metadata_set_bool(child, rt_const_cstr("active"), 1);
+    rt_scene_node3d_metadata_set_null(child, rt_const_cstr("target"));
     rt_scene_node3d_set_mesh(parent, mesh);
     rt_scene_node3d_set_material(parent, material);
     rt_scene_node3d_set_mesh(child, mesh);
@@ -3852,6 +3859,19 @@ static void test_model3d_roundtrips_vscn_assets() {
                 5.0,
                 0.001,
                 "SceneAsset preserves child node translation");
+    EXPECT_TRUE(
+        std::strcmp(rt_string_cstr(rt_scene_node3d_metadata_get_string(
+                        template_child, rt_const_cstr("game.role"), rt_const_cstr(""))),
+                    "enemy") == 0 &&
+            rt_scene_node3d_metadata_get_int(template_child, rt_const_cstr("health"), -1) == 125 &&
+            std::strcmp(rt_string_cstr(
+                            rt_scene_node3d_metadata_kind(template_child, rt_const_cstr("radius"))),
+                        "float") == 0 &&
+            rt_scene_node3d_metadata_get_bool(template_child, rt_const_cstr("active"), 0) != 0 &&
+            std::strcmp(rt_string_cstr(
+                            rt_scene_node3d_metadata_kind(template_child, rt_const_cstr("target"))),
+                        "null") == 0,
+        "SceneAsset template loading preserves every typed node metadata kind");
 
     void *inst_root = rt_model3d_instantiate(model);
     EXPECT_TRUE(inst_root != nullptr, "SceneAsset.Instantiate clones a scene-node subtree");
@@ -3907,6 +3927,16 @@ static void test_model3d_roundtrips_vscn_assets() {
                 "Instantiated nodes reuse shared mesh objects");
     EXPECT_TRUE(rt_scene_node3d_get_material(inst_parent) == rt_model3d_get_material(model, 0),
                 "Instantiated nodes reuse shared material objects");
+    EXPECT_TRUE(rt_scene_node3d_metadata_get_int(inst_child, rt_const_cstr("health"), -1) == 125 &&
+                    std::strcmp(rt_string_cstr(rt_scene_node3d_metadata_kind(
+                                    inst_child, rt_const_cstr("target"))),
+                                "null") == 0,
+                "SceneAsset.Instantiate deep-copies typed node metadata");
+    rt_scene_node3d_metadata_set_int(inst_child, rt_const_cstr("health"), 80);
+    EXPECT_TRUE(rt_scene_node3d_metadata_get_int(inst_child, rt_const_cstr("health"), -1) == 80 &&
+                    rt_scene_node3d_metadata_get_int(template_child, rt_const_cstr("health"), -1) ==
+                        125,
+                "Instantiated metadata mutates independently from the asset template");
 
     void *inst_scene = rt_model3d_instantiate_scene(model);
     EXPECT_TRUE(inst_scene != nullptr, "SceneAsset.InstantiateScene creates a live SceneGraph");
@@ -3919,6 +3949,15 @@ static void test_model3d_roundtrips_vscn_assets() {
                 "InstantiateScene preserves top-level node grouping");
     EXPECT_TRUE(rt_scene3d_find(inst_scene, rt_const_cstr("child")) != nullptr,
                 "InstantiateScene preserves node searchability");
+    void *scene_child = rt_scene3d_find(inst_scene, rt_const_cstr("child"));
+    EXPECT_TRUE(scene_child != nullptr &&
+                    std::strcmp(rt_string_cstr(rt_scene_node3d_metadata_get_string(
+                                    scene_child, rt_const_cstr("game.role"), rt_const_cstr(""))),
+                                "enemy") == 0 &&
+                    std::strcmp(rt_string_cstr(rt_scene_node3d_metadata_kind(
+                                    scene_child, rt_const_cstr("radius"))),
+                                "float") == 0,
+                "SceneAsset.InstantiateScene preserves typed gameplay metadata");
 
     auto *name_node = static_cast<rt_scene_node3d *>(rt_scene_node3d_new());
     const char *long_name_text = "SceneNode retained public name result beyond inline storage";

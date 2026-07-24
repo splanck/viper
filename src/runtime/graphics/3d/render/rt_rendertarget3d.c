@@ -25,7 +25,8 @@
 //   - Canvas3D retains a reference when the target is bound and releases it
 //     on unbind / canvas destruction.
 //
-// Links: rt_canvas3d.h, rt_canvas3d_internal.h, plans/3d/08-render-to-texture.md
+// Links: rt_canvas3d.h, rt_canvas3d_internal.h, plans/3d/08-render-to-texture.md,
+//        docs/adr/0168-windowless-canvas3d-rendering.md
 //
 //===----------------------------------------------------------------------===//
 
@@ -521,6 +522,10 @@ void rt_canvas3d_reset_render_target(void *canvas) {
     rt_canvas3d *c = rt_canvas3d_checked_or_stack(canvas);
     if (!c)
         return;
+    if (c->offscreen) {
+        rt_trap("Canvas3D.ResetRenderTarget: offscreen canvas requires a render target");
+        return;
+    }
     if (c->in_frame) {
         rt_trap("Canvas3D.ResetRenderTarget: cannot change render targets during a frame");
         return;

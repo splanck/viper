@@ -3,7 +3,7 @@
 // Part of the Zanna project, under the GNU GPL v3.
 // See LICENSE for license information.
 //
-// File: src/runtime/graphics/rt_gui.h
+// File: src/runtime/graphics/gui/rt_gui.h
 // Purpose: Runtime bridge functions for the ZannaGUI widget library, providing widget creation,
 // layout, event handling, and rendering for GUI application development.
 //
@@ -17,8 +17,12 @@
 //   - Widget objects must be destroyed with their respective destroy functions.
 //   - The root widget is owned by the GUI application; leaf widgets are owned by their parents.
 //
-// Links: src/runtime/graphics/rt_gui.c (implementation), src/lib/gui/include/vg_widget.h,
-// src/lib/gui/include/vg_widgets.h
+// Links: src/runtime/graphics/gui/rt_gui_widgets.c,
+//        src/lib/gui/include/vg_widget.h,
+//        src/lib/gui/include/vg_widgets.h,
+//        docs/adr/0163-stable-multiselect-and-row-aware-treeview-editing.md,
+//        docs/adr/0165-scrollview-descendant-reveal.md,
+//        docs/adr/0167-spinner-mixed-value-state.md
 //
 //===----------------------------------------------------------------------===//
 #pragma once
@@ -1023,6 +1027,14 @@ void rt_scrollview_set_scroll(void *scroll, double x, double y);
 /// @param height Content height (0 = auto).
 void rt_scrollview_set_content_size(void *scroll, double width, double height);
 
+/// @brief Scroll until one descendant widget is fully visible.
+/// @details Invalid handles and widgets outside this ScrollView are inert. One
+///          live-ID-guarded request survives the next layout pass so a
+///          collapsed ancestor may be restored by the same command.
+/// @param scroll ScrollView widget handle.
+/// @param widget Descendant GUI widget handle to reveal.
+void rt_scrollview_scroll_to(void *scroll, void *widget);
+
 /// @brief Get the current horizontal scroll offset.
 /// @param scroll ScrollView widget handle.
 /// @return Horizontal scroll position in pixels (0 at the left edge).
@@ -1081,9 +1093,17 @@ void rt_treeview_collapse(void *tree, void *node);
 void rt_treeview_toggle(void *tree, void *node);
 
 /// @brief Select a tree node.
+/// @details Adds @p node when retained multi-selection is enabled. Passing NULL always clears all
+///          retained selection.
 /// @param tree TreeView widget handle.
 /// @param node Node handle.
 void rt_treeview_select(void *tree, void *node);
+
+/// @brief Enable or disable retained-node multi-selection.
+/// @details Disabling preserves only the primary node. Virtual TreeViews remain single-select.
+/// @param tree TreeView widget handle.
+/// @param enabled Non-zero to enable additive, toggle, and visible range selection.
+void rt_treeview_set_multi_select(void *tree, int64_t enabled);
 
 /// @brief Scroll the minimum distance required to make a tree node visible.
 /// @details Coordinates remain internal to the TreeView; callers provide only a live node owned by
@@ -1103,6 +1123,13 @@ void rt_treeview_set_font(void *tree, void *font, double size);
 /// @return Selected node handle or NULL if none selected.
 void *rt_treeview_get_selected(void *tree);
 
+/// @brief Copy stable data for every selected retained node in complete preorder.
+/// @details Collapsed descendants remain represented. Nodes without data contribute empty strings;
+///          invalid, empty, and virtual TreeViews return a valid empty owned sequence.
+/// @param tree TreeView widget handle.
+/// @return Owned `Seq[String]`.
+void *rt_treeview_get_selected_data(void *tree);
+
 /// @brief Get the visible tree node under a window-space point.
 /// @param tree TreeView widget handle.
 /// @param x Window-space X coordinate.
@@ -1111,9 +1138,18 @@ void *rt_treeview_get_selected(void *tree);
 void *rt_treeview_get_node_at(void *tree, int64_t x, int64_t y);
 
 /// @brief Enable application-directed (poll-model) drag-and-drop on the tree.
+/// @details Compatibility wrapper selecting mode 1 (legacy container-only INTO) when enabled and
+///          mode 0 when disabled.
 /// @param tree TreeView widget handle.
 /// @param enabled Non-zero to enable INTO-only latched drops.
 void rt_treeview_set_drag_drop_enabled(void *tree, int64_t enabled);
+
+/// @brief Select the application-directed drag-and-drop mode.
+/// @details `0` disables; `1` preserves container-only INTO drops; `2` latches row-aware
+///          BEFORE/INTO/AFTER drops. Other values are ignored.
+/// @param tree TreeView widget handle.
+/// @param mode Drag-and-drop mode.
+void rt_treeview_set_drag_drop_mode(void *tree, int64_t mode);
 
 /// @brief True while a completed drop is waiting to be consumed.
 int64_t rt_treeview_was_drop_received(void *tree);
@@ -2216,6 +2252,18 @@ void rt_spinner_set_value(void *spinner, double value);
 /// @param spinner Spinner widget handle.
 /// @return Current value.
 double rt_spinner_get_value(void *spinner);
+
+/// @brief Set whether a spinner represents a mixed group value.
+/// @details The retained numeric value remains available as the editing seed.
+///          Assigning a concrete value or beginning user input clears mixed.
+/// @param spinner Spinner widget handle.
+/// @param indeterminate Non-zero to present mixed; zero to reveal the value.
+void rt_spinner_set_indeterminate(void *spinner, int64_t indeterminate);
+
+/// @brief Query whether a spinner represents a mixed group value.
+/// @param spinner Spinner widget handle.
+/// @return 1 when mixed, otherwise zero.
+int64_t rt_spinner_is_indeterminate(void *spinner);
 
 /// @brief Set spinner range.
 /// @param spinner Spinner widget handle.

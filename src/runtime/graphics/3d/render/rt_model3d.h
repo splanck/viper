@@ -13,6 +13,7 @@
 //   - Model3D.Load routes by file extension: .vscn, .fbx, .gltf, .glb, .obj, .stl.
 //   - Imported resources are shared, except morph-enabled meshes are cloned per
 //     instantiation so mutable blend-shape weights do not leak across instances.
+//   - Typed SceneNode metadata is deep-copied for every mutable instance.
 //   - InstantiateScene() creates a fresh Scene3D and attaches cloned top-level
 //     nodes below the scene root.
 //
@@ -21,7 +22,8 @@
 //   - Instantiation returns independent scene/node graphs with shared immutable resources and
 //     instance-local mutable morph state.
 //
-// Links: rt_scene3d.h, rt_fbx_loader.h, rt_gltf.h
+// Links: rt_scene3d.h, rt_fbx_loader.h, rt_gltf.h,
+//   docs/adr/0159-typed-scenenode-metadata-and-vscn-v6.md
 //
 //===----------------------------------------------------------------------===//
 
@@ -58,10 +60,10 @@ void *rt_model3d_load_asset(rt_string path);
 /// @details Failure diagnostics are returned in the Result instead of requiring
 /// `AssetDiagnostics3D.LastLoadError`.
 void *rt_model3d_load_asset_result(rt_string path);
-/// @brief Save the complete imported scene asset as a VSCN v5 file.
+/// @brief Save the complete imported scene asset as VSCN v5, or v6 when node metadata exists.
 /// @details Unlike SceneGraph.Save, this preserves every immutable scene, camera association,
 /// animation class, material variant, morph target, enumerable shared resource, and exact
-/// supported texture source container.
+/// supported texture source container. Typed SceneNode metadata is preserved exactly.
 /// @return One after atomic publication, otherwise zero.
 int64_t rt_model3d_save(void *obj, rt_string path);
 /// @brief Internal async path: build a glTF/GLB model from preloaded root bytes.

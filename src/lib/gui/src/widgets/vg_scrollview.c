@@ -12,17 +12,20 @@
 // Key invariants:
 //   - scroll_x and scroll_y are always clamped by clamp_scroll to [0, content-viewport].
 //   - Scrollbar visibility (show_h/v_scrollbar) is updated on every layout pass.
+//   - Descendant reveal requests survive zero-sized intermediate layouts and
+//     are guarded by the target's immutable live-widget ID.
 // Ownership/Lifetime:
 //   - Children are owned by the base widget's child list; destroyed with the parent.
 // Links: lib/gui/include/vg_widgets.h,
 //        lib/gui/include/vg_theme.h,
-//        lib/gui/include/vg_event.h
+//        lib/gui/include/vg_event.h,
+//        docs/adr/0165-scrollview-descendant-reveal.md
 //
 //===----------------------------------------------------------------------===//
 #include "../../../graphics/include/vgfx.h"
+#include "../../include/vg_draw.h"
 #include "../../include/vg_event.h"
 #include "../../include/vg_theme.h"
-#include "../../include/vg_draw.h"
 #include "../../include/vg_widgets.h"
 #include <stdlib.h>
 #include <string.h>
@@ -50,6 +53,11 @@ static void scrollview_recompute_content_size(vg_scrollview_t *scroll,
 static void scrollview_get_viewport_size(const vg_scrollview_t *scroll,
                                          float *out_width,
                                          float *out_height);
+static void scrollview_arrange_children(vg_scrollview_t *scroll, float content_area_width);
+static bool scrollview_is_live_descendant(const vg_scrollview_t *scroll,
+                                          const vg_widget_t *child,
+                                          uint64_t child_id);
+static bool scrollview_apply_descendant_reveal(vg_scrollview_t *scroll, vg_widget_t *child);
 
 //=============================================================================
 // ScrollView VTable
@@ -234,6 +242,85 @@ static void scrollview_recompute_content_size(vg_scrollview_t *scroll,
     calculate_content_size(scroll, available_width, available_height);
 }
 
+/// @brief Arrange direct content children using the current scroll offsets.
+static void scrollview_arrange_children(vg_scrollview_t *scroll, float content_area_width) {
+    if (!scroll)
+        return;
+
+    vg_widget_t *widget = &scroll->base;
+    float flow_y = 0.0f;
+    VG_FOREACH_VISIBLE_CHILD(widget, child) {
+        float child_x = child->layout.margin_left - scroll->scroll_x;
+        float child_y = flow_y + child->layout.margin_top - scroll->scroll_y;
+        float child_w = child->measured_width;
+        float child_h = child->measured_height;
+        // Stretch content to AT LEAST the viewport width so vertical-scroll
+        // content fills across (settings panels, lists); content that is
+        // intrinsically wider keeps its width so it can scroll horizontally.
+        // This MUST match the width used when the content was measured in
+        // calculate_content_size() (= content_area_width), otherwise
+        // word-wrapped children wrap to a different line count between measure
+        // and arrange, producing overlapping text and a wrong content height.
+        float fill_w = content_area_width - child->layout.margin_left - child->layout.margin_right;
+        if (fill_w < 0.0f)
+            fill_w = 0.0f;
+        if (child_w < fill_w)
+            child_w = fill_w;
+        vg_widget_arrange(child, child_x, child_y, child_w, child_h);
+        flow_y += child->layout.margin_top + child_h + child->layout.margin_bottom;
+    }
+}
+
+/// @brief Validate a pending non-owning descendant pointer against liveness and ID reuse.
+static bool scrollview_is_live_descendant(const vg_scrollview_t *scroll,
+                                          const vg_widget_t *child,
+                                          uint64_t child_id) {
+    if (!scroll || !child || child_id == 0 || !vg_widget_is_live(child) || child->id != child_id)
+        return false;
+
+    const vg_widget_t *base = &scroll->base;
+    const vg_widget_t *parent = child->parent;
+    while (parent && parent != base) {
+        if (!vg_widget_is_live(parent))
+            return false;
+        parent = parent->parent;
+    }
+    return parent == base;
+}
+
+/// @brief Resolve one validated descendant against the current content viewport.
+/// @return True when either scroll offset changed.
+static bool scrollview_apply_descendant_reveal(vg_scrollview_t *scroll, vg_widget_t *child) {
+    float viewport_width = 0.0f;
+    float viewport_height = 0.0f;
+    scrollview_get_viewport_size(scroll, &viewport_width, &viewport_height);
+
+    float child_x = 0.0f;
+    float child_y = 0.0f;
+    for (vg_widget_t *widget = child; widget && widget != &scroll->base; widget = widget->parent) {
+        child_x += widget->x;
+        child_y += widget->y;
+    }
+    child_x += scroll->scroll_x;
+    child_y += scroll->scroll_y;
+
+    float old_x = scroll->scroll_x;
+    float old_y = scroll->scroll_y;
+    if (child_x < scroll->scroll_x) {
+        scroll->scroll_x = child_x;
+    } else if (child_x + child->width > scroll->scroll_x + viewport_width) {
+        scroll->scroll_x = child_x + child->width - viewport_width;
+    }
+    if (child_y < scroll->scroll_y) {
+        scroll->scroll_y = child_y;
+    } else if (child_y + child->height > scroll->scroll_y + viewport_height) {
+        scroll->scroll_y = child_y + child->height - viewport_height;
+    }
+
+    clamp_scroll(scroll);
+    return scroll->scroll_x != old_x || scroll->scroll_y != old_y;
+}
+
 //=============================================================================
 // ScrollView Implementation
 //=============================================================================
@@ -284,6 +371,8 @@ vg_scrollview_t *vg_scrollview_create(vg_widget_t *parent) {
     scroll->h_scrollbar_dragging = false;
     scroll->v_scrollbar_dragging = false;
     scroll->drag_offset = 0;
+    scroll->scroll_to_widget = NULL;
+    scroll->scroll_to_widget_id = 0;
 
     // Add to parent
     if (parent) {
@@ -367,27 +456,18 @@ static void scrollview_arrange(vg_widget_t *widget, float x, float y, float widt
     // Clamp scroll position
     clamp_scroll(scroll);
 
-    // Arrange direct children as stacked content items inside the scroll area.
-    float flow_y = 0.0f;
-    VG_FOREACH_VISIBLE_CHILD(widget, child) {
-        float child_x = child->layout.margin_left - scroll->scroll_x;
-        float child_y = flow_y + child->layout.margin_top - scroll->scroll_y;
-        float child_w = child->measured_width;
-        float child_h = child->measured_height;
-        // Stretch content to AT LEAST the viewport width so vertical-scroll
-        // content fills across (settings panels, lists); content that is
-        // intrinsically wider keeps its width so it can scroll horizontally.
-        // This MUST match the width used when the content was measured in
-        // calculate_content_size() (= content_area_width), otherwise
-        // word-wrapped children wrap to a different line count between measure
-        // and arrange, producing overlapping text and a wrong content height.
-        float fill_w = content_area_width - child->layout.margin_left - child->layout.margin_right;
-        if (fill_w < 0.0f)
-            fill_w = 0.0f;
-        if (child_w < fill_w)
-            child_w = fill_w;
-        vg_widget_arrange(child, child_x, child_y, child_w, child_h);
-        flow_y += child->layout.margin_top + child_h + child->layout.margin_bottom;
+    scrollview_arrange_children(scroll, content_area_width);
+
+    // ScrollTo can be issued while an enclosing split pane is collapsed. The
+    // immediate best effort preserves existing synchronous behavior; this
+    // second resolution uses settled descendant and viewport geometry.
+    vg_widget_t *reveal_target = scroll->scroll_to_widget;
+    uint64_t reveal_target_id = scroll->scroll_to_widget_id;
+    scroll->scroll_to_widget = NULL;
+    scroll->scroll_to_widget_id = 0;
+    if (scrollview_is_live_descendant(scroll, reveal_target, reveal_target_id) &&
+        scrollview_apply_descendant_reveal(scroll, reveal_target)) {
+        scrollview_arrange_children(scroll, content_area_width);
     }
 }
 
@@ -455,8 +535,8 @@ static void scrollview_paint(vg_widget_t *widget, void *canvas) {
                                    ? scroll->thumb_hover_color
                                    : scroll->thumb_color;
         float thumb_w = scroll->scrollbar_width - inset * 2.0f;
-        vg_draw_round_rect_fill(win, track_x + inset, thumb_y, thumb_w, thumb_height,
-                                thumb_w * 0.5f, thumb_color);
+        vg_draw_round_rect_fill(
+            win, track_x + inset, thumb_y, thumb_w, thumb_height, thumb_w * 0.5f, thumb_color);
     }
 
     // Horizontal scrollbar
@@ -492,8 +572,8 @@ static void scrollview_paint(vg_widget_t *widget, void *canvas) {
                                    ? scroll->thumb_hover_color
                                    : scroll->thumb_color;
         float thumb_h = scroll->scrollbar_width - inset * 2.0f;
-        vg_draw_round_rect_fill(win_h, thumb_x, track_y + inset, thumb_width, thumb_h,
-                                thumb_h * 0.5f, thumb_color);
+        vg_draw_round_rect_fill(
+            win_h, thumb_x, track_y + inset, thumb_width, thumb_h, thumb_h * 0.5f, thumb_color);
     }
 }
 
@@ -778,10 +858,8 @@ void vg_scrollview_set_scroll(vg_scrollview_t *scroll, float x, float y) {
 bool vg_scrollview_tick(vg_scrollview_t *scroll, float delta_ms) {
     if (!scroll || !scroll->smooth_animating)
         return false;
-    bool moving_x =
-        vg_smooth_scroll_step(&scroll->scroll_x, scroll->smooth_target_x, delta_ms);
-    bool moving_y =
-        vg_smooth_scroll_step(&scroll->scroll_y, scroll->smooth_target_y, delta_ms);
+    bool moving_x = vg_smooth_scroll_step(&scroll->scroll_x, scroll->smooth_target_x, delta_ms);
+    bool moving_y = vg_smooth_scroll_step(&scroll->scroll_y, scroll->smooth_target_y, delta_ms);
     clamp_scroll(scroll);
     scroll->base.needs_layout = true;
     scroll->base.needs_paint = true;
@@ -838,48 +916,17 @@ void vg_scrollview_set_content_size(vg_scrollview_t *scroll, float width, float 
 /// @param scroll The scroll view to scroll.
 /// @param child  Descendant widget to bring into view; no-op if not a descendant.
 void vg_scrollview_scroll_to_widget(vg_scrollview_t *scroll, vg_widget_t *child) {
-    if (!scroll || !child)
+    if (!scroll || !child || !vg_widget_is_live(&scroll->base) ||
+        scroll->base.type != VG_WIDGET_SCROLLVIEW || !vg_widget_is_live(child))
+        return;
+    if (!scrollview_is_live_descendant(scroll, child, child->id))
         return;
 
-    vg_widget_t *base = &scroll->base;
-
-    // Check if child is descendant
-    vg_widget_t *p = child->parent;
-    while (p && p != base)
-        p = p->parent;
-    if (p != base)
-        return; // Not a descendant
-
-    float content_area_width =
-        base->width - (scroll->show_v_scrollbar ? scroll->scrollbar_width : 0);
-    float content_area_height =
-        base->height - (scroll->show_h_scrollbar ? scroll->scrollbar_width : 0);
-
-    float child_x = 0.0f;
-    float child_y = 0.0f;
-    for (vg_widget_t *w = child; w && w != base; w = w->parent) {
-        child_x += w->x;
-        child_y += w->y;
-    }
-    child_x += scroll->scroll_x;
-    child_y += scroll->scroll_y;
-
-    // Scroll to make child visible
-    if (child_x < scroll->scroll_x) {
-        scroll->scroll_x = child_x;
-    } else if (child_x + child->width > scroll->scroll_x + content_area_width) {
-        scroll->scroll_x = child_x + child->width - content_area_width;
-    }
-
-    if (child_y < scroll->scroll_y) {
-        scroll->scroll_y = child_y;
-    } else if (child_y + child->height > scroll->scroll_y + content_area_height) {
-        scroll->scroll_y = child_y + child->height - content_area_height;
-    }
-
-    clamp_scroll(scroll);
-    base->needs_layout = true;
-    base->needs_paint = true;
+    scroll->scroll_to_widget = child;
+    scroll->scroll_to_widget_id = child->id;
+    scrollview_apply_descendant_reveal(scroll, child);
+    scroll->base.needs_layout = true;
+    scroll->base.needs_paint = true;
 }
 
 /// @brief Set which scroll axes are enabled.

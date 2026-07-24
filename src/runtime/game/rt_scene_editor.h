@@ -18,7 +18,8 @@
 //
 // Links: rt_scene_editor.cpp, rt_tiled_import.cpp,
 //   docs/adr/0140-tiled-map-and-scene-import.md,
-//   docs/adr/0155-scene-object-authoring-metadata-and-duplication.md
+//   docs/adr/0155-scene-object-authoring-metadata-and-duplication.md,
+//   docs/adr/0164-backward-compatible-2d-scene-object-hierarchy.md
 //
 //===----------------------------------------------------------------------===//
 
@@ -95,6 +96,15 @@ rt_string rt_game_scene_object_type(void *scene, int64_t index);
 rt_string rt_game_scene_object_id(void *scene, int64_t index);
 int64_t rt_game_scene_object_x(void *scene, int64_t index);
 int64_t rt_game_scene_object_y(void *scene, int64_t index);
+/// @brief Return an object's organizational parent index, or -1 for a root.
+/// @details Invalid object indices also return -1. Positions remain absolute
+///          scene-space coordinates and do not inherit from this parent.
+int64_t rt_game_scene_object_parent(void *scene, int64_t index);
+/// @brief Set an object's organizational parent when the hierarchy stays valid.
+/// @details Accepts -1 for a root. Invalid indices, self-parenting, and cycles
+///          return false without mutation. Parenting also returns false when
+///          all 256 serialized property slots are already public properties.
+int8_t rt_game_scene_try_set_object_parent(void *scene, int64_t index, int64_t parent);
 void rt_game_scene_set_object_metadata(void *scene, int64_t index, rt_string type, rt_string id);
 void rt_game_scene_set_object_position(void *scene, int64_t index, int64_t x, int64_t y);
 int64_t rt_game_scene_duplicate_object(void *scene, int64_t index, rt_string id);
@@ -134,6 +144,14 @@ rt_string rt_game_scene_get_str(void *scene, rt_string key, rt_string def);
 double rt_game_scene_get_float(void *scene, rt_string key, double def);
 int8_t rt_game_scene_get_bool(void *scene, rt_string key, int8_t def);
 int8_t rt_game_scene_has(void *scene, rt_string key);
+/// @brief Return the exact scalar-kind token for one scene-level property.
+/// @return Owned string containing null, bool, int, float, string, or empty.
+rt_string rt_game_scene_property_kind(void *scene, rt_string key);
+/// @brief Return scene-level property keys in lexicographic order.
+/// @return Caller-owned Zanna.Collections.Seq of owned string values.
+void *rt_game_scene_keys(void *scene);
+/// @brief Create or replace one scene-level property with the null kind.
+void rt_game_scene_set_null(void *scene, rt_string key);
 void rt_game_scene_set_int(void *scene, rt_string key, int64_t value);
 void rt_game_scene_set_str(void *scene, rt_string key, rt_string value);
 void rt_game_scene_set_float(void *scene, rt_string key, double value);

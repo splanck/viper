@@ -14,6 +14,8 @@
 //   - Split commands describe the live pane topology and never advertise a
 //     visual, preview, missing-companion, or already-split operation.
 //   - Scene-only commands are unavailable outside an active visual scene.
+//   - Find is surface-owned: it remains available for source and visual scene
+//     documents instead of being gated as a text-editor-only command.
 //   - Runtime context is permissive until the application explicitly supplies
 //     its first snapshot, preserving standalone registry use in tooling/tests.
 // Ownership/Lifetime:
@@ -422,7 +424,7 @@ class CommandRegistry {
         }
     }
 
-    /// @brief Gate standard edit shortcuts on an active 2D/3D scene surface.
+    /// @brief Gate standard edit and Find shortcuts on a visual scene surface.
     /// @details This is distinct from textEditorAvailable so visual scenes may
     ///          own Cut/Copy/Paste/Select All without enabling source-only
     ///          navigation or allowing hidden edits in read-only previews.
@@ -682,7 +684,7 @@ class CommandRegistry {
         if cmd.capability != "" { return true; }
         var id = cmd.id;
         return id == "comparewithsaved"
-               or id == "find" or id == "goto" or id == "minimap"
+               or id == "goto" or id == "minimap"
                or id == "spliteditorright" or id == "focusotherpane"
                or id == "closesplit"
                or id == "addnextoccurrence" or id == "skipoccurrence"
@@ -702,7 +704,8 @@ class CommandRegistry {
     hide func IsSurfaceEditCommand(cmd: CommandEntry) -> Boolean {
         var id = cmd.id;
         return id == "cut" or id == "copy" or id == "paste"
-               or id == "selectall" or id == "duplicateline";
+               or id == "selectall" or id == "duplicateline"
+               or id == "find";
     }
 
     /// @brief Whether a command is meaningful only on a visual scene surface.

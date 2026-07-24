@@ -264,19 +264,42 @@ the sole owner of dirty state, save paths, session tabs, and recovery.
 
 Scene workspace state lives on `core/document.zia` records. Camera/canvas
 position, the process-local selection set, inspector layout, 3D transform mode,
-and snap preference follow their scene tab; `core/session.zia` persists only
-bounded scalar view state, including the primary selected row. Undo/redo
+Local/World space, and snap preference follow their scene tab;
+`core/session.zia` persists only bounded scalar view state, including the
+primary selected row. Undo/redo
 snapshots remain process-local and are valid only while their recorded
 canonical content still matches the document.
 
 `ui/scene_selection.zia` is the stable retained-row selection boundary shared by
-both scene controllers. Each hierarchy row stores its current bounded model
-index in ListBox item data. The helper consumes the byte-exact
-`GetSelectedData()` sequence defined by ADR 0156, discards invalid/duplicate
+both scene controllers. Each retained TreeView hierarchy row stores its current
+bounded model index in node data. The helper consumes the byte-exact
+`GetSelectedData()` sequence defined by ADR 0163, discards invalid/duplicate
 indices, and preserves an explicit primary row. Display labels never determine
-which scene objects a batch action mutates. Group transform, duplicate, and
-delete operations serialize once, roll back atomically on failure, and create
-one history entry.
+which scene objects a batch action mutates. Group transform, hierarchy drop,
+duplicate, and delete operations serialize once, roll back atomically on
+failure, and create one history entry. ADR 0156 remains the equivalent
+ListBox-row identity contract for non-hierarchy consumers.
+
+`ui/scene_hierarchy_search.zia` is the shared pure Find boundary. It normalizes
+case-insensitive queries, matches one or two row identities, and computes
+deterministic wrapping cursors without owning widgets or scenes. Each scene
+controller builds match indices only from its bounded represented rows, keeps
+the retained hierarchy intact, expands ancestors, restores selection through
+stable row identity, and scrolls the target into view. Standard Find routing
+reveals the inspector and calls the runtime's live-descendant
+`ScrollView.ScrollTo`; ADR 0165 retains that request through settled layout
+when a split pane was previously collapsed. No search path enters canonical
+content, scene history, dirty state, or camera mutation.
+
+`SceneEditor2D` also owns point and marquee selection on the canvas. It reads
+the runtime's public Shift, Control, and Super key states, captures blank-space
+drags, and retains the inclusive start/current authored-cell rectangle only as
+transient controller state. Point, union, and toggle results are normalized in
+canonical object order with an explicit primary index. Cancelation, selection,
+and marquee rendering cannot enter `SceneDocument`, `Document.content`,
+revision, history, or dirty state; only a later accepted object move uses the
+selected identities in a canonical transaction. The current hit model is the
+authored object point cell rather than visual sprite or collider bounds.
 
 `ui/scene_layout_2d.zia` is the stateless precision-layout boundary. It defines
 the supported align/distribute operations, minimum selection sizes, stable
@@ -303,6 +326,18 @@ chosen asset. The same module derives a portable saved-scene-relative spelling
 for external 2D references. Native pickers remain controller-owned for assets
 outside the workspace.
 
+Project scene components keep three distinct boundaries.
+`ui/scene_component_schema.zia` is the only fail-closed parser and publishes
+complete value records. `ui/scene_component_palette.zia` owns both the
+target-filtered application picker and the unfiltered structured authoring
+widgets, but returns intent only. `ui/scene_component_authoring.zia` mutates raw
+version-1 JSON while retaining unknown members and owns a bounded exact
+project-file history; `ui/scene_component_authoring_controller.zia` performs
+atomic, expected-state writes and external reloads for either scene editor.
+Schema-file transitions never enter `Document.content`, scene revision, dirty
+state, or scene undo/redo. The scene controllers remain responsible for
+preflighting and committing Add Missing through their typed runtime APIs.
+
 `ui/scene_tileset_2d.zia` is the 2D image-preview boundary. It resolves relative
 references beside a saved scene, safely decodes PNG/JPEG/BMP/GIF sources under
 per-source, per-image, aggregate-scene, and scaled-cache limits, and renders
@@ -328,12 +363,59 @@ preview pixels only. The controller also owns typed multi-object property
 set/remove transactions: every selected row is verified before one canonical
 commit, and any rejection reloads the complete pre-edit snapshot.
 
+The 2D object outliner is a bounded retained `TreeView`, not a flat draw-order
+ListBox. `SceneDocument.ObjectParent` provides the structural model while
+absolute `x`/`y` positions remain unchanged. Refresh snapshots expanded object
+IDs and structural paths, rebuilds actual parent/child rows, reveals ancestors
+of the primary selection, and realizes at most 4,096 rows and depth 256 without
+discarding hidden scene data. Row-aware before/into/after drops classify
+selected top-level roots, move their complete subtrees as one stable draw-order
+block, update formal parents, remap selection, serialize once, and reload the
+canonical pre-edit snapshot on any rejection. Duplicate and cross-document
+paste restore parent links whose endpoints are both selected; external
+clipboard parents become roots. **Add Child** establishes its parent before
+the first serialization, so history never exposes an intermediate root.
+The explicit Parent chooser computes one depth/ownership snapshot, offers at
+most the same 4,096-object horizon as the outliner, omits selected subtrees and
+depth-invalid destinations, and routes accepted single- or multi-root requests
+through the same drop transaction. Reparenting to Scene root appends after the
+last remaining root; every path preserves absolute object coordinates.
+
 `ui/scene_transform_3d.zia` is the stateless transform-math boundary. It maps
 projected pointer motion into Move, Rotate, or Scale amounts and snaps the final
-axis target. `SceneEditor3D` owns pointer capture, live SceneNode mutation,
-Escape rollback, inspector synchronization, and the single serialization
-commit performed when a drag finishes. Transform-only edits do not rebuild the
-hierarchy, preserving node identity and selection while the viewport moves.
+axis target, performs one conditioned two-axis solve for Move/Scale planes, and
+validates persisted Local/World state. Scale-plane projection deliberately maps
+one complete handle width to one scale unit on each axis, independent of the
+local lengths needed to keep parent-aware handles pixel-stable.
+`SceneEditor3D` owns pointer capture, live SceneNode mutation, Escape rollback,
+inspector synchronization, and the single serialization commit performed when
+a drag finishes. Local mode applies the established parent-relative TRS path.
+World mode captures immutable local TRS and world matrices, composes an
+absolute-axis delta around each selected node's own pivot, and calls the
+runtime's exact `SceneNode.TrySetWorldMatrix` boundary. It derives a
+parent-before-child work list from the hierarchy preorder so a selected
+descendant cannot inherit the same ancestor delta twice even if restored
+selection state arrived child-first. Any rejected member restores the full
+local group before return; accepted command and drag paths serialize once.
+Transform-only edits do not rebuild the hierarchy, preserving node identity and
+selection while the viewport moves.
+The 3D viewport is a retained runtime render, not an editor-side mesh
+approximation. ADR 0168 gives `SceneEditor3D` a windowless software
+`Canvas3D` bound to an explicit `RenderTarget3D`. A matching orthographic
+`Camera3D` maps one world unit to the same `viewScale` pixels used by retained
+markers and gizmos. Shaded and triangle-wireframe modes both traverse the live
+`SceneGraph`; Studio adds grid, hierarchy, selection, and manipulation overlays
+to the readback copy. The target is recreated only when viewport dimensions
+change, rendering occurs only when dirty, and mode preference belongs to the
+document workspace rather than canonical VSCN.
+ADR 0169 uses that same configured camera for selection: Studio unprojects the
+pointer with `ScreenToRayOrigin`/`ScreenToRay`, asks `SceneGraph.RaycastNodes`
+for the closest visible transformed mesh bounds, and only then tests bounded
+origin markers for meshless nodes. Gizmo handles retain first priority.
+Replace, Shift-add, Control/Command-toggle, and blank-clear selection all remain
+workspace-only. Shift plus middle/right drag moves the camera target along its
+exact right/up basis, so pan follows the pointer at every orbit angle without
+entering canonical VSCN history.
 The active transform button is also the viewport's keyboard-focus proxy:
 W/E/R mode switching is accepted only while one of those buttons owns native
 focus, so scene shortcuts cannot consume text intended for another workbench
@@ -342,21 +424,43 @@ position/rotation fields add local deltas and scale fields multiply each
 selected local scale before one rollback-safe commit. Duplicate Selection and
 Delete use the same hierarchy/viewport focus boundary; command-palette
 invocation remains explicit after the palette moves focus.
+The node visibility checkbox uses the GUI's native indeterminate state for a
+mixed selection. Resolving it writes and verifies every selected live node,
+serializes once, and reloads the canonical pre-edit scene on failure.
 
 `ui/scene_hierarchy_3d.zia` is the stateless existing-node reparent validation
 boundary. It rejects destinations inside a moved subtree, detects unchanged
 common parents, and exposes the containment checks needed by the Parent
 chooser. `SceneEditor3D` adds bounded depth validation, collapses descendants
 beneath selected roots, moves each root once, resolves the post-move preorder
-selection by node identity, and performs one canonical commit. Local transforms
-are intentionally unchanged; drag-to-reparent, sibling ordering, and
-preserve-world conversion remain outside this v1 control.
+selection by node identity, and performs one canonical commit. The default
+**Keep world transform** path calls the runtime's exact
+`SceneNode.TryAddChildPreserveWorld` primitive. Singular or shear-producing
+conversions fail before that node changes; if an earlier root in the group
+already moved, the controller reloads the canonical pre-edit VSCN and restores
+the complete selection. Clearing the option uses `TryAddChild` and deliberately
+keeps local TRS instead. The adjacent Earlier/Later controls use the runtime's
+allocation-free `SceneNode.TryMoveChild` primitive to move one contiguous
+same-parent selection as a stable block, then remap selection and commit once.
+Mixed-parent, gapped, and boundary selections are no-ops.
+
+The visible 3D hierarchy is a retained `TreeView`, not a text-indented flat list.
+Every scene parent owns its actual child rows; expansion survives live refresh
+by node identity and canonical reload by structural path. Runtime
+multi-selection returns stable flattened indices from node data. Row-aware
+drag/drop classifies before/into/after without mutating the control:
+`SceneEditor3D` applies the latched intent to selected top-level roots, combines
+exact reparenting with stable destination ordering, serializes once, and
+restores canonical bytes plus selection if any stage fails.
 
 `ui/scene_material_3d.zia` is the material value and file-decoding boundary. It
 clamps compact-inspector PBR values, normalizes scalar and editable-map slots,
 loads common images under a decoded-pixel ceiling or strictly validated KTX2
-assets, recognizes no-op drafts, and always clones an existing `Material3D`
-before applying visible fields or replacing a map. That copy-on-edit rule
+assets, recognizes full and sparse no-op drafts, and clones an existing
+`Material3D` before applying resolved fields or replacing a map. Sparse patches
+preserve each unresolved field independently. Selected nodes sharing one source
+material reuse one staged edited clone, while unselected users retain the
+original. That copy-on-edit rule
 prevents one imported node from mutating siblings that share the same material
 identity while preserving maps, shading extensions, and custom parameters the
 inspector does not expose. Its bounded thumbnail helper reads the selected
@@ -364,14 +468,17 @@ slot's canonical decoded `Material3D` pixels through ADR 0157, so previews
 follow load, history, paste, import, and VSCN round trips without retaining an
 editor-only source path.
 
-`ui/scene_material_inspector_3d.zia` owns only the material widgets, summaries,
-enablement rules, and one disposable 128-pixel map thumbnail; it never mutates
-a `SceneNode` or `Document`.
+`ui/scene_material_inspector_3d.zia` owns only the material widgets,
+common/mixed-state calculation, sparse-patch intent, summaries, enablement
+rules, and one disposable 128-pixel map thumbnail; it never mutates a
+`SceneNode` or `Document`. Spinner mixed state comes from ADR 0167; checkbox
+indeterminate state and a Dropdown placeholder cover Boolean and enum fields.
 `SceneEditor3D` retains selection, the 16 MB source-size boundary, native and
 project-browser selection, node assignment, and canonical history ownership.
-Scalar apply and remove plus map replace and clear each produce at most one
-history transaction; material-only refreshes avoid rebuilding hierarchy
-identity.
+Sparse scalar apply, material removal, and map replace/clear operate across the
+complete selection, preallocate before mutation, preserve selection, and each
+produce at most one history transaction. Material-only refreshes avoid
+rebuilding hierarchy identity.
 
 ### Build, Run, And Debug
 

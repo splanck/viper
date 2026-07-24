@@ -1,0 +1,257 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/probes/scene_canvas_selection_probe.zia
+// Purpose: Verify modifier and drag-marquee selection in Studio's 2D canvas.
+// Key invariants:
+//   - Point selection preserves group dragging and supports add/toggle/clear.
+//   - Inclusive forward and reverse cell rectangles select in draw order.
+//   - A real blank-space drag renders an overlay and applies once on release.
+//   - Escape cancels a captured marquee without changing the prior selection.
+//   - Selection never changes scene JSON, revision, dirty state, or history.
+// Ownership/Lifetime:
+//   - The probe owns one hidden AppShell, document, editor, and input harness.
+// Links: zannastudio/src/ui/scene_editor_2d.zia,
+//        docs/adr/0170-studio-2d-canvas-marquee-selection.md
+//
+//===----------------------------------------------------------------------===//
+
+module scene_canvas_selection_probe;
+
+// ============================================================================
+// MODULE: scene_canvas_selection_probe
+// PURPOSE: Pin the 2D canvas's spatial multi-selection contract.
+//
+// WHERE-THIS-FITS: The broad 2D editor probe owns scene transactions. This
+//          focused display probe owns workspace-only point and marquee input.
+//
+// TEACHING-NOTE: Objects are placed away from both drag endpoints. A passing
+//          real-input test therefore proves rectangle membership, not a click.
+// ============================================================================
+
+bind "../core/document_manager";
+bind "../services/file_utils";
+bind "../ui/app_shell";
+bind "../ui/scene_editor_2d";
+bind "../ui/scene_selection";
+
+bind Color = Zanna.Graphics.Color;
+bind Convert = Zanna.Core.Convert;
+bind GUI = Zanna.GUI;
+bind Input = Zanna.Input;
+bind Terminal = Zanna.Terminal;
+
+func HarnessCoordinate(shell: app_shell.AppShell,
+                       logical: Number) -> Integer {
+    var scale = shell.app.GetEffectiveScale();
+    if scale <= 0.0 { scale = 1.0; }
+    return Convert.NumToInt(logical * scale + 0.999999);
+}
+
+func CanvasCoordinate(shell: app_shell.AppShell,
+                      editor: scene_editor_2d.SceneEditor2D,
+                      cell: Integer,
+                      horizontal: Boolean) -> Integer {
+    var origin = editor.canvasImage.GetScreenY();
+    if horizontal { origin = editor.canvasImage.GetScreenX(); }
+    return HarnessCoordinate(
+        shell, origin + cell * editor.displayCellSize
+            + editor.displayCellSize / 2.0);
+}
+
+func Fail(shell: app_shell.AppShell,
+          harness: GUI.TestHarness,
+          reason: String) {
+    if harness != null { harness.UnbindApp(); }
+    if shell != null { shell.Destroy(); }
+    Terminal.Say("RESULT: fail " + reason);
+}
+
+func main() {
+    var shell = new app_shell.AppShell();
+    shell.Build("Zanna Studio 2D Canvas Selection Probe", 1120, 760);
+
+    var editor = new scene_editor_2d.SceneEditor2D();
+    editor.Setup(shell.workbench.scene2DHost, shell.app);
+    var documents = new document_manager.DocumentManager();
+    var sceneDoc = documents.NewScene2DDocument();
+    shell.SelectSurface(file_utils.DOC_KIND_SCENE_2D);
+    editor.Activate(sceneDoc);
+    editor.Pump(sceneDoc);
+    shell.Poll();
+    shell.Render();
+    editor.Pump(sceneDoc);
+    shell.Render();
+
+    var tileWidth = editor.scene.TileWidth;
+    var tileHeight = editor.scene.TileHeight;
+    if editor.AddSceneObject(
+           "enemy", "left", 2 * tileWidth, 2 * tileHeight) != 0
+       or editor.AddSceneObject(
+           "enemy", "right", 4 * tileWidth, 3 * tileHeight) != 1
+       or editor.AddSceneObject(
+           "spawn", "outside", 8 * tileWidth, 8 * tileHeight) != 2 {
+        Fail(shell, null, "object fixture");
+        return;
+    }
+    editor.Pump(sceneDoc);
+    shell.Render();
+
+    var canonical = sceneDoc.content;
+    var revision = editor.GetRevision();
+    var undoCount = editor.undoStack.count();
+    var redoCount = editor.redoStack.count();
+    var dirty = sceneDoc.isModified;
+
+    editor.SelectSceneObjects([], -1);
+    if editor.ApplyCanvasPointSelection(0, false, false) == false
+       or editor.ApplyCanvasPointSelection(1, true, false) == false
+       or editor.selectedObjects.count() != 2
+       or editor.selectedObject != 1
+       or scene_selection.Contains(editor.selectedObjects, 0) == false
+       or scene_selection.Contains(editor.selectedObjects, 1) == false {
+        Fail(shell, null, "point replace/add selection");
+        return;
+    }
+    if editor.ApplyCanvasPointSelection(0, false, false) == false
+       or editor.selectedObjects.count() != 2
+       or editor.selectedObject != 0 {
+        Fail(shell, null, "selected point did not preserve the draggable group");
+        return;
+    }
+    if editor.ApplyCanvasPointSelection(0, false, true) == false
+       or editor.selectedObjects.count() != 1
+       or editor.selectedObject != 1
+       or editor.ApplyCanvasPointSelection(-1, true, false)
+       or editor.selectedObjects.count() != 1
+       or editor.ApplyCanvasPointSelection(-1, false, false) == false
+       or editor.selectedObjects.count() != 0
+       or editor.selectedObject != -1 {
+        Fail(shell, null, "point toggle or blank selection policy");
+        return;
+    }
+
+    var hits = editor.CanvasObjectsInCellRect(4, 3, 1, 1);
+    if hits.count() != 2 or hits.get(0) != 0 or hits.get(1) != 1 {
+        Fail(shell, null, "reverse inclusive marquee query");
+        return;
+    }
+    editor.SelectSceneObjects([2], 2);
+    if editor.ApplyCanvasMarqueeSelection(1, 1, 4, 3, true, false)
+          == false
+       or editor.selectedObjects.count() != 3
+       or editor.selectedObject != 1
+       or editor.ApplyCanvasMarqueeSelection(4, 3, 1, 1, false, true)
+          == false
+       or editor.selectedObjects.count() != 1
+       or editor.selectedObject != 2
+       or editor.ApplyCanvasMarqueeSelection(6, 6, 7, 7, true, false)
+       or editor.selectedObjects.count() != 1
+       or editor.ApplyCanvasMarqueeSelection(6, 6, 7, 7, false, false)
+          == false
+       or editor.selectedObjects.count() != 0 {
+        Fail(shell, null, "marquee add/toggle/blank policy");
+        return;
+    }
+
+    var harness = GUI.TestHarness.New();
+    if harness.BindApp(shell.app) == false {
+        Fail(shell, harness, "automation app binding");
+        return;
+    }
+    var startX = CanvasCoordinate(shell, editor, 1, true);
+    var startY = CanvasCoordinate(shell, editor, 1, false);
+    var endX = CanvasCoordinate(shell, editor, 5, true);
+    var endY = CanvasCoordinate(shell, editor, 4, false);
+
+    harness.SendMouse("move", startX, startY, 0);
+    harness.SendMouse("down", startX, startY, 0);
+    harness.DispatchPending();
+    editor.Pump(sceneDoc);
+    shell.Render();
+    harness.SendMouse("move", endX, endY, 0);
+    harness.DispatchPending();
+    editor.Pump(sceneDoc);
+    shell.Render();
+    var overlay = editor.framePixels.GetColor(
+        editor.canvasMarqueeStartX * editor.displayCellSize,
+        editor.canvasMarqueeStartY * editor.displayCellSize);
+    if editor.canvasMarqueeActive == false
+       or Input.Mouse.IsCaptured() == false
+       or editor.canvasMarqueeStartX != 1
+       or editor.canvasMarqueeStartY != 1
+       or editor.canvasMarqueeCurrentX != 5
+       or editor.canvasMarqueeCurrentY != 4
+       or overlay % 16777216
+          != scene_editor_2d.CANVAS_MARQUEE_COLOR {
+        Fail(shell, harness,
+             "real marquee did not capture and render its cell rectangle: "
+             + "active=" + editor.canvasMarqueeActive
+             + " captured=" + Input.Mouse.IsCaptured()
+             + " start=" + editor.canvasMarqueeStartX + ","
+             + editor.canvasMarqueeStartY
+             + " current=" + editor.canvasMarqueeCurrentX + ","
+             + editor.canvasMarqueeCurrentY
+             + " color=" + overlay + "/"
+             + scene_editor_2d.CANVAS_MARQUEE_COLOR
+             + " cell=" + editor.displayCellSize
+             + " pointer=" + startX + "," + startY
+             + "->" + endX + "," + endY
+             + " image=" + editor.canvasImage.GetScreenX() + ","
+             + editor.canvasImage.GetScreenY());
+        return;
+    }
+    harness.SendMouse("up", endX, endY, 0);
+    harness.DispatchPending();
+    if editor.Pump(sceneDoc)
+       or editor.canvasMarqueeActive
+       or Input.Mouse.IsCaptured()
+       or editor.selectedObjects.count() != 2
+       or editor.selectedObjects.get(0) != 0
+       or editor.selectedObjects.get(1) != 1
+       or editor.selectedObject != 1 {
+        Fail(shell, harness, "real marquee release selection");
+        return;
+    }
+    shell.Render();
+
+    editor.SelectSceneObjects([2], 2);
+    harness.SendMouse("move", startX, startY, 0);
+    harness.SendMouse("down", startX, startY, 0);
+    harness.DispatchPending();
+    editor.Pump(sceneDoc);
+    harness.SendMouse("move", endX, endY, 0);
+    harness.DispatchPending();
+    editor.Pump(sceneDoc);
+    harness.SendKey("escape", 0);
+    harness.DispatchPending();
+    editor.Pump(sceneDoc);
+    if editor.canvasMarqueeActive
+       or Input.Mouse.IsCaptured()
+       or editor.selectedObjects.count() != 1
+       or editor.selectedObject != 2 {
+        Fail(shell, harness, "Escape did not cancel the captured marquee");
+        return;
+    }
+    harness.SendMouse("up", endX, endY, 0);
+    harness.DispatchPending();
+    editor.Pump(sceneDoc);
+
+    if sceneDoc.content != canonical
+       or editor.GetRevision() != revision
+       or editor.undoStack.count() != undoCount
+       or editor.redoStack.count() != redoCount
+       or sceneDoc.isModified != dirty {
+        Fail(shell, harness,
+             "canvas selection changed canonical document or history");
+        return;
+    }
+
+    harness.UnbindApp();
+    shell.Destroy();
+    Terminal.Say("RESULT: ok");
+}

@@ -1,0 +1,363 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/ui/scene_metadata_inspector_3d.zia
+// Purpose: Present bounded typed gameplay metadata controls for a 3D node.
+// Key invariants:
+//   - This presentation object never mutates SceneNode or Document state.
+//   - Rows preserve exact keys and scalar kinds from the runtime node.
+//   - Button and submission events return intent to SceneEditor3D for history.
+// Ownership/Lifetime: SceneEditor3D owns one inspector; GUI owns its widgets.
+// Links: zannastudio/src/ui/scene_editor_3d.zia,
+//        docs/adr/0159-typed-scenenode-metadata-and-vscn-v6.md
+//
+//===----------------------------------------------------------------------===//
+
+module scene_metadata_inspector_3d;
+
+bind GUI = Zanna.GUI;
+bind SceneNode = Zanna.Graphics3D.SceneNode;
+bind Seq = Zanna.Collections.Seq;
+bind Fmt = Zanna.Text.Fmt;
+bind Str = Zanna.String;
+
+// ============================================================================
+// MODULE: scene_metadata_inspector_3d
+// PURPOSE: Keep node-gameplay metadata widgets outside the large SceneEditor3D
+//          document coordinator.
+//
+// WHERE-THIS-FITS: SceneNode owns typed metadata truth. SceneEditor3D owns
+//          validation, mutation, dirty state, and canonical VSCN history.
+//
+// TEACHING-NOTE: Widget text is a draft. Refresh reconstructs every row and
+//          selected value from the live runtime node after each transaction.
+// ============================================================================
+
+final NODE_METADATA_TYPE_STRING: Integer = 0;
+final NODE_METADATA_TYPE_INT: Integer = 1;
+final NODE_METADATA_TYPE_FLOAT: Integer = 2;
+final NODE_METADATA_TYPE_BOOL: Integer = 3;
+final NODE_METADATA_TYPE_NULL: Integer = 4;
+final MAX_VISIBLE_NODE_METADATA: Integer = 256;
+
+/// @brief Presentation-only typed metadata editor embedded in the 3D inspector.
+class SceneMetadataInspector3D {
+    expose GUI.GroupBox group;
+    expose GUI.Label summary;
+    expose GUI.ListBox list;
+    expose GUI.TextInput keyInput;
+    expose GUI.Dropdown typeDropdown;
+    expose GUI.TextInput valueInput;
+    expose GUI.Button newButton;
+    expose GUI.Button setButton;
+    expose GUI.Button removeButton;
+    expose List[String] keys;
+    expose Integer selectedProperty;
+    hide Boolean editorEnabled;
+
+    expose func init() {
+        group = null;
+        summary = null;
+        list = null;
+        keyInput = null;
+        typeDropdown = null;
+        valueInput = null;
+        newButton = null;
+        setButton = null;
+        removeButton = null;
+        keys = [];
+        selectedProperty = -1;
+        editorEnabled = false;
+    }
+
+    /// @brief Build the bounded gameplay-metadata authoring surface.
+    expose func Setup(parent: GUI.VBox) {
+        group = GUI.GroupBox.New(parent, "Gameplay metadata");
+        summary = GUI.Label.New(
+            group,
+            "Typed node data for roles, IDs, triggers, spawns, and components.");
+        summary.SetWordWrap(true);
+
+        list = GUI.ListBox.New(group);
+        list.SetAccessibleName("3D node gameplay metadata");
+        list.SetPreferredSize(0.0, 112.0);
+
+        keyInput = GUI.TextInput.New(group);
+        keyInput.SetAccessibleName("Node metadata key");
+        keyInput.SetPlaceholder("Metadata key");
+
+        var valueRow = GUI.HBox.New();
+        valueRow.SetSpacing(4.0);
+        group.AddChild(valueRow);
+        typeDropdown = GUI.Dropdown.New(valueRow);
+        typeDropdown.SetAccessibleName("Node metadata type");
+        typeDropdown.AddItem("String");
+        typeDropdown.AddItem("Integer");
+        typeDropdown.AddItem("Float");
+        typeDropdown.AddItem("Boolean");
+        typeDropdown.AddItem("Null");
+        typeDropdown.SetSelected(NODE_METADATA_TYPE_STRING);
+        valueInput = GUI.TextInput.New(valueRow);
+        valueInput.SetAccessibleName("Node metadata value");
+        valueInput.SetPlaceholder("Metadata value");
+        valueInput.SetFlex(1.0);
+
+        var actions = GUI.HBox.New();
+        actions.SetSpacing(4.0);
+        group.AddChild(actions);
+        newButton = GUI.Button.New(actions, "New");
+        newButton.SetTooltip("Clear the fields to add node metadata");
+        setButton = GUI.Button.New(actions, "Set");
+        setButton.SetTooltip(
+            "Create or update one typed metadata value as one undoable edit");
+        removeButton = GUI.Button.New(actions, "Remove");
+        removeButton.SetTooltip(
+            "Remove the selected metadata value as one undoable edit");
+
+        SetEnabled(false);
+    }
+
+    /// @brief Rebuild bounded rows and values from canonical runtime state.
+    expose func Refresh(node: SceneNode,
+                        enabled: Boolean,
+                        selectedIndex: Integer) {
+        list.Clear();
+        keys = [];
+        selectedProperty = -1;
+        editorEnabled = enabled and node != null;
+        if node == null {
+            summary.SetText("Select one node to author gameplay metadata.");
+            RefreshFields(node);
+            return;
+        }
+
+        var metadataKeys = node.MetadataKeys();
+        var total = Seq.get_Count(metadataKeys);
+        var visible = total;
+        if visible > MAX_VISIBLE_NODE_METADATA {
+            visible = MAX_VISIBLE_NODE_METADATA;
+        }
+        var index = 0;
+        while index < visible {
+            var key = Seq.GetStr(metadataKeys, index);
+            var kind = node.MetadataKind(key);
+            keys.add(key);
+            list.AddItem(
+                key + "  [" + kind + "] = "
+                + PropertyPreview(ValueText(node, key, kind), kind));
+            index = index + 1;
+        }
+        if total > visible {
+            list.AddItem(
+                "… " + (total - visible) + " more values not shown");
+        }
+
+        if enabled == false {
+            summary.SetText(
+                "Select exactly one node to edit its gameplay metadata.");
+        } else if total == 0 {
+            summary.SetText(
+                "No gameplay metadata. Add roles, IDs, triggers, or components.");
+        } else if total == 1 {
+            summary.SetText("1 gameplay metadata value");
+        } else {
+            summary.SetText(total + " gameplay metadata values");
+        }
+        if selectedIndex >= 0 and selectedIndex < keys.count() {
+            selectedProperty = selectedIndex;
+            list.SelectIndex(selectedIndex);
+        }
+        RefreshFields(node);
+    }
+
+    /// @brief Consume presentation-only selection, New, and type changes.
+    expose func Pump(node: SceneNode) {
+        if node == null { return; }
+        if list.WasSelectionChanged() {
+            var selected = list.SelectedIndex;
+            if selected >= 0 and selected < keys.count() {
+                selectedProperty = selected;
+            } else {
+                selectedProperty = -1;
+            }
+            RefreshFields(node);
+        }
+        if newButton.WasClicked() {
+            selectedProperty = -1;
+            list.SelectIndex(-1);
+            RefreshFields(node);
+            keyInput.Focus();
+        }
+        if typeDropdown.WasChanged() { UpdateValueControl(); }
+    }
+
+    /// @brief Consume Set button or field-submit intent.
+    expose func TakeSetRequested() -> Boolean {
+        var requested = setButton.WasClicked();
+        if keyInput.WasSubmitted() { requested = true; }
+        if valueInput.WasSubmitted() { requested = true; }
+        return requested;
+    }
+
+    /// @brief Consume Remove button intent.
+    expose func TakeRemoveRequested() -> Boolean {
+        return removeButton.WasClicked();
+    }
+
+    /// @brief Return the exact selected key, or empty without a metadata row.
+    expose func SelectedKey() -> String {
+        if selectedProperty < 0 or selectedProperty >= keys.count() {
+            return "";
+        }
+        return keys.get(selectedProperty);
+    }
+
+    /// @brief Return the scalar kind selected by the draft dropdown.
+    expose func SelectedKind() -> String {
+        if typeDropdown.Selected == NODE_METADATA_TYPE_INT { return "int"; }
+        if typeDropdown.Selected == NODE_METADATA_TYPE_FLOAT { return "float"; }
+        if typeDropdown.Selected == NODE_METADATA_TYPE_BOOL { return "bool"; }
+        if typeDropdown.Selected == NODE_METADATA_TYPE_NULL { return "null"; }
+        return "string";
+    }
+
+    /// @brief Select one live metadata value by exact key and refresh its draft.
+    expose func SelectByKey(node: SceneNode, key: String) {
+        selectedProperty = -1;
+        if key != "" {
+            var index = 0;
+            while index < keys.count() {
+                if keys.get(index) == key {
+                    selectedProperty = index;
+                    list.SelectIndex(index);
+                    RefreshFields(node);
+                    return;
+                }
+                index = index + 1;
+            }
+        }
+        list.SelectIndex(-1);
+        RefreshFields(node);
+    }
+
+    /// @brief Copy one typed schema field into the raw metadata draft.
+    /// @details A same-kind live value wins over the supplied default. An
+    ///          existing wrong-kind key remains selected so an explicit raw
+    ///          edit can replace it.
+    expose func SetDraft(node: SceneNode,
+                         key: String,
+                         kind: String,
+                         defaultValue: String) -> Boolean {
+        if editorEnabled == false or node == null or key == "" {
+            return false;
+        }
+        SelectByKey(node, key);
+        var value = defaultValue;
+        if node.MetadataHas(key) and node.MetadataKind(key) == kind {
+            value = ValueText(node, key, kind);
+        }
+        keyInput.SetText(key);
+        SelectPropertyType(kind);
+        valueInput.SetText(value);
+        UpdateValueControl();
+        if kind == "null" { keyInput.Focus(); }
+        else { valueInput.Focus(); }
+        return true;
+    }
+
+    /// @brief Reconcile all controls with scene and single-selection validity.
+    expose func SetEnabled(enabled: Boolean) {
+        editorEnabled = enabled;
+        if list == null { return; }
+        list.SetEnabled(enabled);
+        keyInput.SetEnabled(enabled);
+        typeDropdown.SetEnabled(enabled);
+        valueInput.SetEnabled(enabled);
+        newButton.SetEnabled(enabled);
+        setButton.SetEnabled(enabled);
+        removeButton.SetEnabled(false);
+        UpdateValueControl();
+    }
+
+    /// @brief Refresh selected or empty draft fields from the live node.
+    hide func RefreshFields(node: SceneNode) {
+        var hasProperty = editorEnabled and node != null
+            and selectedProperty >= 0
+            and selectedProperty < keys.count();
+        list.SetEnabled(editorEnabled);
+        keyInput.SetEnabled(editorEnabled);
+        typeDropdown.SetEnabled(editorEnabled);
+        newButton.SetEnabled(editorEnabled);
+        setButton.SetEnabled(editorEnabled);
+        removeButton.SetEnabled(hasProperty);
+        if hasProperty == false {
+            keyInput.SetText("");
+            typeDropdown.SetSelected(NODE_METADATA_TYPE_STRING);
+            valueInput.SetText("");
+            valueInput.SetPlaceholder("Metadata value");
+            UpdateValueControl();
+            return;
+        }
+
+        var key = keys.get(selectedProperty);
+        var kind = node.MetadataKind(key);
+        keyInput.SetText(key);
+        SelectPropertyType(kind);
+        valueInput.SetText(ValueText(node, key, kind));
+        UpdateValueControl();
+    }
+
+    /// @brief Select the dropdown row for one stable scalar-kind token.
+    hide func SelectPropertyType(kind: String) {
+        var selected = NODE_METADATA_TYPE_STRING;
+        if kind == "int" { selected = NODE_METADATA_TYPE_INT; }
+        if kind == "float" { selected = NODE_METADATA_TYPE_FLOAT; }
+        if kind == "bool" { selected = NODE_METADATA_TYPE_BOOL; }
+        if kind == "null" { selected = NODE_METADATA_TYPE_NULL; }
+        typeDropdown.SetSelected(selected);
+    }
+
+    /// @brief Keep the value field truthful for null and disabled drafts.
+    hide func UpdateValueControl() {
+        if valueInput == null or typeDropdown == null { return; }
+        var isNull = SelectedKind() == "null";
+        valueInput.SetEnabled(editorEnabled and isNull == false);
+        if isNull {
+            valueInput.SetText("");
+            valueInput.SetPlaceholder("Null has no value");
+        } else {
+            valueInput.SetPlaceholder("Metadata value");
+        }
+    }
+
+    /// @brief Format one live scalar value without changing its kind.
+    hide func ValueText(node: SceneNode,
+                        key: String,
+                        kind: String) -> String {
+        if kind == "string" { return node.MetadataGetString(key, ""); }
+        if kind == "int" { return Fmt.Int(node.MetadataGetInt(key, 0)); }
+        if kind == "float" {
+            return Fmt.Num(node.MetadataGetFloat(key, 0.0));
+        }
+        if kind == "bool" {
+            return Fmt.Bool(node.MetadataGetBool(key, false));
+        }
+        return "";
+    }
+
+    /// @brief Bound and escape one scalar for a compact inspector row.
+    hide func PropertyPreview(value: String, kind: String) -> String {
+        if kind == "null" { return "null"; }
+        var preview = Str.Replace(
+            Str.Replace(value, "\r", "\\r"), "\n", "\\n");
+        if Str.get_Length(preview) > 72 {
+            preview = Str.Left(preview, 69) + "...";
+        }
+        if kind == "string" { return "\"" + preview + "\""; }
+        return preview;
+    }
+}
