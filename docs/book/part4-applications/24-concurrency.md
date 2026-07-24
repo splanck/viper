@@ -20,7 +20,7 @@ This chapter teaches you to write programs that do many things at once. This is 
 
 Consider a program that downloads 100 images:
 
-```rust
+```zia
 // Sequential: ~100 seconds (1 second per image)
 bind Http = Zanna.Network.Http;
 
@@ -51,7 +51,7 @@ Zanna provides threads through the `Zanna.Threads.Thread` class.
 
 ### Starting a Thread
 
-```rust
+```zia
 bind Thread = Zanna.Threads.Thread;
 bind Zanna.Terminal as Terminal;
 
@@ -82,7 +82,7 @@ Every thread handle exposes useful properties:
 | `HasError` | `Boolean` | Whether the thread terminated with an error |
 | `Error` | `String` | Error message (if `HasError` is true) |
 
-```rust
+```zia
 bind Thread = Zanna.Threads.Thread;
 bind Fmt = Zanna.Text.Fmt;
 bind Zanna.Terminal as Terminal;
@@ -106,7 +106,7 @@ func start() {
 
 `Join()` blocks the calling thread until the target thread finishes. Without joining, the main thread might exit before worker threads complete.
 
-```rust
+```zia
 bind Thread = Zanna.Threads.Thread;
 
 func slowWorker(arg: Any) {
@@ -129,7 +129,7 @@ func start() {
 
 `StartSafe` wraps the thread body in error handling, so unhandled errors don't crash the program:
 
-```rust
+```zia
 bind Thread = Zanna.Threads.Thread;
 bind Box = Zanna.Core.Box;
 bind Zanna.Terminal as Terminal;
@@ -168,7 +168,7 @@ When threads share data, they can corrupt it. Two threads incrementing a counter
 
 A `Monitor` provides mutual exclusion: only one thread can hold the monitor at a time. Other threads that try to enter will block until it's released.
 
-```rust
+```zia
 bind Thread = Zanna.Threads.Thread;
 bind Monitor = Zanna.Threads.Monitor;
 bind Map = Zanna.Collections.Map;
@@ -216,7 +216,7 @@ func start() {
 
 ### Producer-Consumer with Monitor
 
-```rust
+```zia
 bind Thread = Zanna.Threads.Thread;
 bind Monitor = Zanna.Threads.Monitor;
 bind Fmt = Zanna.Text.Fmt;
@@ -264,7 +264,7 @@ func consumer(id: Integer) {
 
 For simple numeric shared state, `SafeI64` provides lock-free atomic operations:
 
-```rust
+```zia
 bind Thread = Zanna.Threads.Thread;
 bind SafeI64 = Zanna.Threads.SafeI64;
 bind Fmt = Zanna.Text.Fmt;
@@ -301,7 +301,7 @@ func start() {
 
 The `CompareExchange` operation (CAS) is the building block for lock-free algorithms:
 
-```rust
+```zia
 bind SafeI64 = Zanna.Threads.SafeI64;
 
 // Lock-free maximum update
@@ -326,7 +326,7 @@ Beyond monitors, Zanna provides specialized synchronization tools for different 
 
 A `Gate` controls access to a limited resource. It maintains a count of available permits. Threads enter (consuming a permit) and leave (releasing a permit).
 
-```rust
+```zia
 bind Thread = Zanna.Threads.Thread;
 bind Gate = Zanna.Threads.Gate;
 bind Box = Zanna.Core.Box;
@@ -370,7 +370,7 @@ func start() {
 
 A `Barrier` makes multiple threads wait until all of them have arrived at a synchronization point before any can proceed. Useful for phased algorithms.
 
-```rust
+```zia
 bind Thread = Zanna.Threads.Thread;
 bind Barrier = Zanna.Threads.Barrier;
 bind Box = Zanna.Core.Box;
@@ -409,7 +409,7 @@ func start() {
 
 A `RwLock` allows multiple simultaneous readers *or* one exclusive writer. This is more efficient than a Monitor when reads vastly outnumber writes.
 
-```rust
+```zia
 bind Thread = Zanna.Threads.Thread;
 bind RwLock = Zanna.Threads.RwLock;
 
@@ -448,7 +448,7 @@ Read-to-write upgrades are rejected to avoid self-deadlock. A thread that alread
 
 Channels provide safe communication between threads without shared mutable state. One thread *sends* data into the channel; another thread *receives* it. This is the "communicate by sharing" approach to concurrency.
 
-```rust
+```zia
 bind Thread = Zanna.Threads.Thread;
 bind Channel = Zanna.Threads.Channel;
 bind Box = Zanna.Core.Box;
@@ -512,7 +512,7 @@ At the C ABI layer, `rt_channel_try_recv(channel, NULL)` checks availability wit
 
 Channels naturally compose into pipelines where each stage processes data and passes results to the next:
 
-```rust
+```zia
 bind Thread = Zanna.Threads.Thread;
 bind Channel = Zanna.Threads.Channel;
 bind Box = Zanna.Core.Box;
@@ -563,7 +563,7 @@ func start() {
 
 Creating a new OS thread for every task is expensive. A *thread pool* maintains a set of reusable worker threads. You submit tasks; the pool assigns them to available workers.
 
-```rust
+```zia
 bind Pool = Zanna.Threads.Pool;
 bind Thread = Zanna.Threads.Thread;
 bind Box = Zanna.Core.Box;
@@ -620,7 +620,7 @@ Pool waits remain correct when a task traps: the worker still marks the task com
 
 A `Promise` represents a value that will be provided later. A `Future` is the read-side of a promise — it lets another thread wait for and retrieve the result.
 
-```rust
+```zia
 bind Thread = Zanna.Threads.Thread;
 bind Promise = Zanna.Threads.Promise;
 bind Future = Zanna.Threads.Future;
@@ -651,7 +651,7 @@ func start() {
 
 Promises can propagate errors to futures:
 
-```rust
+```zia
 bind Thread = Zanna.Threads.Thread;
 bind Promise = Zanna.Threads.Promise;
 bind Future = Zanna.Threads.Future;
@@ -695,7 +695,7 @@ func start() {
 
 The `Async` class provides higher-level operations built on futures:
 
-```rust
+```zia
 bind Async = Zanna.Threads.Async;
 bind Box = Zanna.Core.Box;
 bind Seq = Zanna.Collections.Seq;
@@ -744,7 +744,7 @@ Regular collections (`List`, `Map`) are **not** thread-safe. Accessing them from
 
 A thread-safe FIFO queue, ideal for producer-consumer patterns:
 
-```rust
+```zia
 bind Thread = Zanna.Threads.Thread;
 bind ConcurrentQueue = Zanna.Threads.ConcurrentQueue;
 bind Box = Zanna.Core.Box;
@@ -755,14 +755,14 @@ var queue = ConcurrentQueue.New();
 
 func queueProducer(arg: Any) {
     for i in 1..=10 {
-        queue.Enqueue(Box.I64(i));
+        queue.Push(Box.I64(i));
         Thread.Sleep(50);
     }
 }
 
 func queueConsumer(arg: Any) {
     for i in 0..10 {
-        var item = queue.Dequeue();  // Blocks if empty
+        var item = queue.Pop();  // Blocks if empty
         Terminal.Say("Got: " + Fmt.Int(Box.ToI64(item)));
     }
 }
@@ -779,8 +779,8 @@ func start() {
 | Method | Description |
 |--------|-------------|
 | `ConcurrentQueue.New()` | Create an empty queue |
-| `.Enqueue(item)` | Add to the back |
-| `.Dequeue()` | Remove from front (blocks if empty) |
+| `.Push(item)` | Add to the back |
+| `.Pop()` | Remove from front (blocks if empty) |
 | `.TryDequeue()` | Non-blocking dequeue (returns null if empty) |
 | `.DequeueTimeout(ms)` | Dequeue with timeout |
 | `.Peek()` | Look at front without removing |
@@ -792,7 +792,7 @@ func start() {
 
 A thread-safe key-value store with string keys:
 
-```rust
+```zia
 bind Thread = Zanna.Threads.Thread;
 bind ConcurrentMap = Zanna.Threads.ConcurrentMap;
 bind Box = Zanna.Core.Box;
@@ -840,7 +840,7 @@ func start() {
 
 The `Parallel` class provides high-level utilities for common parallel patterns without manual thread management:
 
-```rust
+```zia
 bind Parallel = Zanna.Threads.Parallel;
 bind Box = Zanna.Core.Box;
 bind Seq = Zanna.Collections.Seq;
@@ -879,7 +879,7 @@ func start() {
 
 By default, `Parallel` uses a shared default pool. You can provide your own:
 
-```rust
+```zia
 bind Parallel = Zanna.Threads.Parallel;
 bind Pool = Zanna.Threads.Pool;
 
@@ -921,7 +921,7 @@ Parallel operations wake the caller and trap with a `Parallel.*: task trapped` m
 
 Long-running tasks should be cancellable. The `CancelToken` provides cooperative cancellation — a way for one part of the program to signal "stop" and for the running task to check periodically and comply.
 
-```rust
+```zia
 bind Thread = Zanna.Threads.Thread;
 bind CancelToken = Zanna.Threads.CancelToken;
 bind Fmt = Zanna.Text.Fmt;
@@ -932,7 +932,7 @@ var token = CancelToken.New();
 func cancellableWorker(arg: Any) {
     for i in 0..1000000 {
         // Periodically check for cancellation
-        if token.Check() {
+        if token.IsCancelled {
             Terminal.Say("Cancelled at iteration " + Fmt.Int(i));
             return;
         }
@@ -953,7 +953,7 @@ func start() {
 
 Create a child token that cancels when the parent does:
 
-```rust
+```zia
 bind CancelToken = Zanna.Threads.CancelToken;
 
 var parentToken = CancelToken.New();
@@ -967,7 +967,7 @@ parentToken.Cancel();  // Both parent and child are now cancelled
 | `CancelToken.New()` | Create a new token |
 | `.Cancel()` | Request cancellation |
 | `.Reset()` | Reset to non-cancelled state |
-| `.Check()` | Returns true if cancelled |
+| `.IsCancelled` | Returns true if cancelled |
 | `.ThrowIfCancelled()` | Throws if cancelled |
 | `CancelToken.Linked(parent)` | Create a child linked to parent |
 
@@ -979,7 +979,7 @@ parentToken.Cancel();  // Both parent and child are now cancelled
 
 A `Debouncer` suppresses repeated signals that arrive within a quiet period. Only after the signals stop for the configured delay does the debouncer become "ready". This is useful for UI events like search-as-you-type, where you want to wait until the user stops typing.
 
-```rust
+```zia
 bind Thread = Zanna.Threads.Thread;
 bind Debouncer = Zanna.Threads.Debouncer;
 bind Zanna.Terminal as Terminal;
@@ -1016,7 +1016,7 @@ func start() {
 
 A `Throttler` limits how often an action can occur. At most one action per interval.
 
-```rust
+```zia
 bind Thread = Zanna.Threads.Thread;
 bind Throttler = Zanna.Threads.Throttler;
 bind Fmt = Zanna.Text.Fmt;
@@ -1052,7 +1052,7 @@ func start() {
 
 The `Scheduler` manages named tasks that should execute at scheduled times:
 
-```rust
+```zia
 bind Thread = Zanna.Threads.Thread;
 bind Scheduler = Zanna.Threads.Scheduler;
 bind Box = Zanna.Core.Box;
@@ -1105,7 +1105,7 @@ The primary source of concurrency bugs is shared mutable state. Prefer:
 
 Unjoined threads can outlive the main function, leading to undefined behavior or resource leaks:
 
-```rust
+```zia
 bind Thread = Zanna.Threads.Thread;
 
 func doWork(arg: Any) {
@@ -1126,7 +1126,7 @@ func start() {
 
 `Thread.StartSafe` catches errors in the thread body, preventing crashes and allowing error inspection:
 
-```rust
+```zia
 bind Thread = Zanna.Threads.Thread;
 bind Box = Zanna.Core.Box;
 bind Zanna.Terminal as Terminal;
@@ -1149,7 +1149,7 @@ func start() {
 
 Thread pools reuse threads, avoiding the overhead of creating and destroying OS threads:
 
-```rust
+```zia
 bind Thread = Zanna.Threads.Thread;
 bind Pool = Zanna.Threads.Pool;
 bind Box = Zanna.Core.Box;
@@ -1187,7 +1187,7 @@ A *deadlock* occurs when two threads each wait for something the other holds. Ru
 
 Cooperative cancellation via `CancelToken` lets you cleanly stop long-running work:
 
-```rust
+```zia
 bind CancelToken = Zanna.Threads.CancelToken;
 
 var token = CancelToken.New();
@@ -1197,7 +1197,7 @@ func processNextBatch() {
 }
 
 func processUntilCancelled(arg: Any) {
-    while !token.Check() {
+    while !token.IsCancelled {
         processNextBatch();
     }
 }
@@ -1231,7 +1231,7 @@ token.Cancel();
 
 All concurrency types live under `Zanna.Threads`. Import them with:
 
-```rust
+```zia
 bind Thread = Zanna.Threads.Thread;
 bind Monitor = Zanna.Threads.Monitor;
 bind Channel = Zanna.Threads.Channel;

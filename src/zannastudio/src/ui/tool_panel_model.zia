@@ -1,15 +1,34 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/ui/tool_panel_model.zia
+// Purpose: Define stable identities and bounded row models for tool panels.
+// Key invariants:
+//   - Live panel routing uses stable tab IDs, never mutable visual indices.
+//   - Default tab indices describe construction order only.
+//   - Retained row collections remain bounded and identity-stable.
+// Ownership/Lifetime: Value constants and ToolPanelRows own no GUI containers.
+// Links: zannastudio/src/ui/tool_panel_shell.zia
+//
+//===----------------------------------------------------------------------===//
+
 module tool_panel_model;
 
 // ============================================================================
 // MODULE: tool_panel_model
-// PURPOSE: Shared identifiers for the bottom tool-panel strip.
+// PURPOSE: Shared identifiers for the dockable tool-panel strip.
 //
 // WHERE-THIS-FITS: ui/app_shell.zia owns the actual widgets. This module owns
-//          the stable numeric ids and tab indexes so AppShell logic reads like
-//          panel state rather than unexplained integers.
+//          stable panel IDs, stable tab IDs, default construction indexes, and
+//          bounded row state so shell logic reads like panel state rather than
+//          unexplained integers.
 //
-// TEACHING-NOTE: Keep ids and tab indexes separate. The ids are state values
-//          stored in AppShell; the tab indexes mirror GUI.TabBar insertion order.
+// TEACHING-NOTE: Keep panel IDs, tab IDs, and default indexes separate. Users
+//          can reorder the GUI.TabBar, so runtime routing must use TAB_ID_*.
 // ============================================================================
 
 final PANEL_NONE = 0;
@@ -31,23 +50,72 @@ final TAB_CALL_STACK = 5;
 final TAB_DEBUG = 6;
 final TAB_TERMINAL = 7;
 
+// Stable tab identities survive user reordering. Controllers must never infer
+// panel identity from a mutable visual index.
+final TAB_ID_NONE = "none";
+final TAB_ID_PROBLEMS = "problems";
+final TAB_ID_OUTPUT = "output";
+final TAB_ID_SEARCH = "search";
+final TAB_ID_REFERENCES = "references";
+final TAB_ID_VARIABLES = "variables";
+final TAB_ID_CALL_STACK = "call-stack";
+final TAB_ID_DEBUG = "debug-console";
+final TAB_ID_TERMINAL = "terminal";
+final DEFAULT_TAB_ORDER =
+    "problems,output,search,references,variables,call-stack,debug-console,terminal";
+
 final DEFAULT_MAX_ROWS = 5000;
 final DEFAULT_TRIM_BATCH_ROWS = 128;
 
-/// @brief One realized row in a bottom tool panel.
+/// @brief One structured diagnostic retained independently of ListBox rows.
+/// @details Filtering rebuilds concrete rows, so navigation/action metadata must
+///          live in this durable record rather than in a retired item handle.
+class ProblemRecord {
+    expose String severity;
+    expose String source;
+    expose String filePath;
+    expose Integer line;
+    expose Integer column;
+    expose String code;
+    expose String message;
+    expose String action;
+    expose String locationData;
+
+    expose func init() {
+        severity = "";
+        source = "";
+        filePath = "";
+        line = 0;
+        column = 0;
+        code = "";
+        message = "";
+        action = "";
+        locationData = "";
+    }
+}
+
+/// @brief One durable row in a dockable tool panel.
 /// @details `id` is stable for the lifetime of the row even when earlier rows
-///          are trimmed. `item` stores the concrete ListBox row handle so the
-///          shell can remove old rows without rebuilding the full panel.
+///          are trimmed. `item` optionally stores its current concrete ListBox
+///          handle; filtering can retire and later recreate that presentation.
 class ToolPanelRow {
     expose String id;
     expose String text;
+    expose String searchText;
     expose Integer color;
+    expose String data;
+    expose Boolean isGroupHeader;
+    expose String groupId;
     expose Any item;
 
     expose func init() {
         id = "";
         text = "";
+        searchText = "";
         color = 0;
+        data = "";
+        isGroupHeader = false;
+        groupId = "";
         item = null;
     }
 }
@@ -81,6 +149,7 @@ class ToolPanelRows {
         var row = new ToolPanelRow();
         row.id = "tool:" + nextId;
         row.text = text;
+        row.searchText = text;
         row.color = color;
         row.item = null;
         nextId = nextId + 1;
@@ -115,9 +184,10 @@ expose func PanelName(kind: Integer) -> String {
     return "None";
 }
 
-/// @brief Map a tab-bar index to the corresponding panel id.
-/// @param tabIndex Zero-based GUI.TabBar active index.
+/// @brief Map a default construction index to the corresponding panel id.
+/// @param tabIndex Zero-based GUI.TabBar insertion index before user reordering.
 /// @return Matching `PANEL_*` id, or `PANEL_NONE` for unknown indexes.
+/// @note Live tab routing must use PanelKindForTabId after tabs become movable.
 expose func PanelKindForTabIndex(tabIndex: Integer) -> Integer {
     if tabIndex == TAB_PROBLEMS { return PANEL_PROBLEMS; }
     if tabIndex == TAB_OUTPUT { return PANEL_OUTPUT; }
@@ -128,4 +198,40 @@ expose func PanelKindForTabIndex(tabIndex: Integer) -> Integer {
     if tabIndex == TAB_DEBUG { return PANEL_DEBUG; }
     if tabIndex == TAB_TERMINAL { return PANEL_TERMINAL; }
     return PANEL_NONE;
+}
+
+/// @brief Map one stable movable-tab ID to its panel state ID.
+/// @param tabId Copied GUI.Tab stable ID.
+/// @return Matching `PANEL_*` ID, or `PANEL_NONE` for unknown IDs.
+expose func PanelKindForTabId(tabId: String) -> Integer {
+    if tabId == TAB_ID_PROBLEMS { return PANEL_PROBLEMS; }
+    if tabId == TAB_ID_OUTPUT { return PANEL_OUTPUT; }
+    if tabId == TAB_ID_SEARCH { return PANEL_SEARCH; }
+    if tabId == TAB_ID_REFERENCES { return PANEL_REFERENCES; }
+    if tabId == TAB_ID_VARIABLES { return PANEL_VARIABLES; }
+    if tabId == TAB_ID_CALL_STACK { return PANEL_CALL_STACK; }
+    if tabId == TAB_ID_DEBUG { return PANEL_DEBUG; }
+    if tabId == TAB_ID_TERMINAL { return PANEL_TERMINAL; }
+    return PANEL_NONE;
+}
+
+/// @brief Map one panel state ID to its durable stable tab ID.
+/// @param kind One of the `PANEL_*` constants.
+/// @return Stable ID, or "none" when hidden/unknown.
+expose func TabIdForPanelKind(kind: Integer) -> String {
+    if kind == PANEL_PROBLEMS { return TAB_ID_PROBLEMS; }
+    if kind == PANEL_OUTPUT { return TAB_ID_OUTPUT; }
+    if kind == PANEL_SEARCH { return TAB_ID_SEARCH; }
+    if kind == PANEL_REFERENCES { return TAB_ID_REFERENCES; }
+    if kind == PANEL_VARIABLES { return TAB_ID_VARIABLES; }
+    if kind == PANEL_CALL_STACK { return TAB_ID_CALL_STACK; }
+    if kind == PANEL_DEBUG { return TAB_ID_DEBUG; }
+    if kind == PANEL_TERMINAL { return TAB_ID_TERMINAL; }
+    return TAB_ID_NONE;
+}
+
+/// @brief Return whether an ID is a durable visible or hidden panel state.
+expose func IsPanelStateId(tabId: String) -> Boolean {
+    return tabId == TAB_ID_NONE
+        or PanelKindForTabId(tabId) != PANEL_NONE;
 }

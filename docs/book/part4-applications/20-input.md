@@ -106,16 +106,16 @@ A key press event occurs once, at the instant a key goes from up to down. A key 
 
 This distinction matters enormously:
 
-```rust
+```zia
 bind Keyboard = Zanna.Input.Keyboard;
 
 // This fires continuously while the key is held
-if Keyboard.IsDown(Keyboard.KeySpace) {
+if Keyboard.IsDown(Key.Space) {
     // This code runs 60 times per second while space is held!
 }
 
 // This fires exactly once when the key is first pressed
-if Keyboard.WasPressed(Keyboard.KeySpace) {
+if Keyboard.WasPressed(Key.Space) {
     // This code runs once, when space goes from up to down
 }
 ```
@@ -142,7 +142,7 @@ Games typically use key codes (like `KeyA`), but text input is more complex. Whe
 
 For text input (like typing a player's name), Zanna provides text input events that handle all this complexity:
 
-```rust
+```zia
 bind Keyboard = Zanna.Input.Keyboard;
 
 var playerName = "";
@@ -166,11 +166,11 @@ Let's trace exactly what happens when a player presses the Space bar to jump. Un
 - Sets the internal state of Space to "down"
 - Sets a flag indicating Space was "just pressed" this frame
 
-Your game loop runs. When it calls `Keyboard.WasPressed(Keyboard.KeySpace)`, the function returns `true` because the "just pressed" flag is set. Your code calls `player.jump()`, and the character begins rising into the air.
+Your game loop runs. When it calls `Keyboard.WasPressed(Key.Space)`, the function returns `true` because the "just pressed" flag is set. Your code calls `player.jump()`, and the character begins rising into the air.
 
 **Frame 2:** No new Space events (the player is still holding the key). At the start of this frame, Zanna clears all the "just pressed" flags from the previous frame. The state of Space is still "down", but it's no longer "just pressed."
 
-Your game loop runs. `Keyboard.WasPressed(Keyboard.KeySpace)` now returns `false` because the flag was cleared. But `Keyboard.IsDown(Keyboard.KeySpace)` still returns `true` because the key is still being held. Your physics code continues the jump — the character rises and then falls.
+Your game loop runs. `Keyboard.WasPressed(Key.Space)` now returns `false` because the flag was cleared. But `Keyboard.IsDown(Key.Space)` still returns `true` because the key is still being held. Your physics code continues the jump — the character rises and then falls.
 
 **Frame 10:** The player releases the Space bar. The OS creates a key-up event. Zanna reads it and:
 - Sets the internal state of Space to "up"
@@ -190,20 +190,20 @@ Now let's write some code. We'll start with the keyboard, the most common input 
 
 To check if a key is currently held down, use `Keyboard.IsDown`:
 
-```rust
+```zia
 bind Keyboard = Zanna.Input.Keyboard;
 
 while gameRunning {
-    if Keyboard.IsDown(Keyboard.KeyLeft) {
+    if Keyboard.IsDown(Key.Left) {
         player.x -= speed * dt;
     }
-    if Keyboard.IsDown(Keyboard.KeyRight) {
+    if Keyboard.IsDown(Key.Right) {
         player.x += speed * dt;
     }
-    if Keyboard.IsDown(Keyboard.KeyUp) {
+    if Keyboard.IsDown(Key.Up) {
         player.y -= speed * dt;
     }
-    if Keyboard.IsDown(Keyboard.KeyDown) {
+    if Keyboard.IsDown(Key.Down) {
         player.y += speed * dt;
     }
 }
@@ -211,7 +211,7 @@ while gameRunning {
 
 Let's trace through this code:
 
-- `Keyboard.IsDown(Keyboard.KeyLeft)` returns `true` if the left arrow key is currently pressed, `false` otherwise.
+- `Keyboard.IsDown(Key.Left)` returns `true` if the left arrow key is currently pressed, `false` otherwise.
 - If it's pressed, we subtract from `player.x`, moving the player leftward.
 - We multiply by `speed` (how fast to move) and `dt` (delta time — how many seconds passed since the last frame). This makes movement consistent regardless of frame rate.
 - We check each direction independently, so the player can move diagonally by holding two arrows.
@@ -222,18 +222,18 @@ Notice we're checking every frame. This is polling in action — we're constantl
 
 For one-time actions, use `Keyboard.WasPressed`:
 
-```rust
+```zia
 bind Keyboard = Zanna.Input.Keyboard;
 
-if Keyboard.WasPressed(Keyboard.KeySpace) {
+if Keyboard.WasPressed(Key.Space) {
     player.jump();
 }
 
-if Keyboard.WasPressed(Keyboard.KeyEscape) {
+if Keyboard.WasPressed(Key.Escape) {
     pauseGame();
 }
 
-if Keyboard.WasPressed(Keyboard.KeyR) {
+if Keyboard.WasPressed(Key.R) {
     restartLevel();
 }
 ```
@@ -249,10 +249,10 @@ For jumping, you want one jump per button press. If you used `IsDown`, the chara
 
 Sometimes you need to know when a key is released:
 
-```rust
+```zia
 bind Keyboard = Zanna.Input.Keyboard;
 
-if Keyboard.WasReleased(Keyboard.KeyLeftControl) {
+if Keyboard.WasReleased(Key.LeftControl) {
     // Player released the aim button
     releaseArrow();  // Fire the arrow they were aiming
 }
@@ -264,7 +264,7 @@ This is common in "charge and release" mechanics. The player holds a button to c
 
 Zanna provides named constants for all standard keys:
 
-```rust
+```zia
 // Arrow keys
 KeyLeft, KeyRight, KeyUp, KeyDown
 
@@ -296,14 +296,14 @@ KeyLeft_ALT, KeyRight_ALT
 
 Modifier keys (Shift, Ctrl, Alt) are often used in combination with other keys:
 
-```rust
+```zia
 bind Keyboard = Zanna.Input.Keyboard;
 
-if Keyboard.WasPressed(Keyboard.KeyS) && Keyboard.IsDown(Keyboard.KeyLeftControl) {
+if Keyboard.WasPressed(Key.S) && Keyboard.IsDown(Key.LeftControl) {
     saveGame();  // Ctrl+S to save
 }
 
-if Keyboard.IsDown(Keyboard.KeyLeftShift) {
+if Keyboard.IsDown(Key.LeftShift) {
     speed = runSpeed;  // Hold shift to run
 } else {
     speed = walkSpeed;
@@ -320,7 +320,7 @@ The mouse provides position and button information. Let's explore both.
 
 ### Reading Mouse Position
 
-```rust
+```zia
 bind Mouse = Zanna.Input.Mouse;
 
 var mouseX = Mouse.X();
@@ -331,7 +331,7 @@ These return the mouse position in canvas coordinates. The top-left corner of yo
 
 You can use mouse position for many things:
 
-```rust
+```zia
 bind Mouse = Zanna.Input.Mouse;
 bind Zanna.Math as Math;
 
@@ -358,7 +358,7 @@ turret.angle = Math.Atan2(dy, dx);
 
 Mouse buttons work like keyboard keys:
 
-```rust
+```zia
 bind Mouse = Zanna.Input.Mouse;
 
 // Check if button is currently held (0 = left, 1 = right, 2 = middle)
@@ -379,7 +379,7 @@ if Mouse.WasReleased(1) {
 
 The button indices are:
 
-```rust
+```zia
 0  // Left button (primary click)
 1  // Right button (secondary click / context menus)
 2  // Middle button (usually clicking the scroll wheel)
@@ -389,7 +389,7 @@ The button indices are:
 
 The scroll wheel reports how much it moved:
 
-```rust
+```zia
 bind Mouse = Zanna.Input.Mouse;
 
 var zoomLevel = 1.0;
@@ -405,7 +405,7 @@ Note that scroll values are typically small integers (-1, 0, or 1), though some 
 
 Let's put mouse input together in a practical example:
 
-```rust
+```zia
 module MouseDraw;
 
 bind Zanna.Graphics;
@@ -459,7 +459,7 @@ Game controllers (gamepads) offer a different experience from keyboard and mouse
 
 Before reading from a controller, check if one is connected:
 
-```rust
+```zia
 if Input.isControllerConnected(0) {  // Controller 0 (first controller)
     // Safe to read controller input
 }
@@ -471,7 +471,7 @@ Controllers are numbered starting from 0. Most games support at least 4 controll
 
 Analog sticks report their position as two values (x and y), each ranging from -1.0 to 1.0:
 
-```rust
+```zia
 if Input.isControllerConnected(0) {
     var leftX = Input.controllerAxis(0, Axis.LEFT_X);
     var leftY = Input.controllerAxis(0, Axis.LEFT_Y);
@@ -493,7 +493,7 @@ Values in between give you proportional control. Pushing the stick halfway right
 
 Controller buttons work like keyboard keys:
 
-```rust
+```zia
 if Input.isControllerButtonDown(0, ControllerButton.A) {
     // A button is held
 }
@@ -505,7 +505,7 @@ if Input.wasControllerButtonPressed(0, ControllerButton.A) {
 
 ### Controller Button Names
 
-```rust
+```zia
 // Face buttons
 ControllerButton.A, ControllerButton.B
 ControllerButton.X, ControllerButton.Y
@@ -526,7 +526,7 @@ ControllerButton.DButtonLeft, ControllerButton.DButtonRight
 
 ### Controller Axes
 
-```rust
+```zia
 Axis.LEFT_X, Axis.LEFT_Y    // Left stick (-1 to 1)
 Axis.RIGHT_X, Axis.RIGHT_Y  // Right stick (-1 to 1)
 Axis.LEFT_TRIGGER           // Left trigger (0 to 1)
@@ -545,7 +545,7 @@ Now that we understand the basics, let's explore patterns that make input handli
 
 Remember that analog sticks rarely rest exactly at (0, 0). A dead zone ignores small values near the center:
 
-```rust
+```zia
 bind Zanna.Math as Math;
 
 func applyDeadZone(value: Number, threshold: Number) -> Number {
@@ -564,7 +564,7 @@ A threshold of 0.15 is typical. Too low, and the character drifts. Too high, and
 
 A more sophisticated dead zone smoothly scales the value to avoid a "jump" when crossing the threshold:
 
-```rust
+```zia
 bind Zanna.Math as Math;
 
 func applyDeadZoneSmooth(value: Number, threshold: Number) -> Number {
@@ -584,17 +584,17 @@ This makes the transition from dead zone to movement smooth rather than abrupt.
 
 Games should abstract input so the same action can come from different sources. This lets players use their preferred input device and makes your code cleaner:
 
-```rust
+```zia
 bind Keyboard = Zanna.Input.Keyboard;
 bind Zanna.Math as Math;
 
 class InputManager {
     func getMoveX() -> Number {
         // Check keyboard first
-        if Keyboard.IsDown(Keyboard.KeyLeft) || Keyboard.IsDown(Keyboard.KeyA) {
+        if Keyboard.IsDown(Key.Left) || Keyboard.IsDown(Key.A) {
             return -1.0;
         }
-        if Keyboard.IsDown(Keyboard.KeyRight) || Keyboard.IsDown(Keyboard.KeyD) {
+        if Keyboard.IsDown(Key.Right) || Keyboard.IsDown(Key.D) {
             return 1.0;
         }
 
@@ -610,10 +610,10 @@ class InputManager {
     }
 
     func getMoveY() -> Number {
-        if Keyboard.IsDown(Keyboard.KeyUp) || Keyboard.IsDown(Keyboard.KeyW) {
+        if Keyboard.IsDown(Key.Up) || Keyboard.IsDown(Key.W) {
             return -1.0;
         }
-        if Keyboard.IsDown(Keyboard.KeyDown) || Keyboard.IsDown(Keyboard.KeyS) {
+        if Keyboard.IsDown(Key.Down) || Keyboard.IsDown(Key.S) {
             return 1.0;
         }
 
@@ -628,14 +628,14 @@ class InputManager {
     }
 
     func isJumpPressed() -> Boolean {
-        return Keyboard.WasPressed(Keyboard.KeySpace) ||
-               Keyboard.WasPressed(Keyboard.KeyW) ||
+        return Keyboard.WasPressed(Key.Space) ||
+               Keyboard.WasPressed(Key.W) ||
                Input.wasControllerButtonPressed(0, ControllerButton.A);
     }
 
     func isActionPressed() -> Boolean {
-        return Keyboard.WasPressed(Keyboard.KeyE) ||
-               Keyboard.WasPressed(Keyboard.KeyEnter) ||
+        return Keyboard.WasPressed(Key.E) ||
+               Keyboard.WasPressed(Key.Enter) ||
                Input.wasControllerButtonPressed(0, ControllerButton.X);
     }
 }
@@ -643,7 +643,7 @@ class InputManager {
 
 Now your game code becomes clean and device-agnostic:
 
-```rust
+```zia
 var input = InputManager();
 
 while gameRunning {
@@ -665,7 +665,7 @@ while gameRunning {
 
 Players appreciate customizable controls. A key map stores the current bindings:
 
-```rust
+```zia
 bind Keyboard = Zanna.Input.Keyboard;
 
 class KeyMap {
@@ -674,22 +674,22 @@ class KeyMap {
     expose func init() {
         self.bindings = new Map();
         // Default bindings
-        self.bindings.Set("jump", Keyboard.KeySpace);
-        self.bindings.Set("left", Keyboard.KeyLeft);
-        self.bindings.Set("right", Keyboard.KeyRight);
-        self.bindings.Set("up", Keyboard.KeyUp);
-        self.bindings.Set("down", Keyboard.KeyDown);
-        self.bindings.Set("fire", Keyboard.KeyLeftControl);
-        self.bindings.Set("pause", Keyboard.KeyEscape);
+        self.bindings.Set("jump", Key.Space);
+        self.bindings.Set("left", Key.Left);
+        self.bindings.Set("right", Key.Right);
+        self.bindings.Set("up", Key.Up);
+        self.bindings.Set("down", Key.Down);
+        self.bindings.Set("fire", Key.LeftControl);
+        self.bindings.Set("pause", Key.Escape);
     }
 
     func isActionDown(action: String) -> Boolean {
-        var key = self.bindings.Get(action) ?? Keyboard.KeyUnknown;
+        var key = self.bindings.Get(action) ?? Key.Unknown;
         return Keyboard.IsDown(key);
     }
 
     func wasActionPressed(action: String) -> Boolean {
-        var key = self.bindings.Get(action) ?? Keyboard.KeyUnknown;
+        var key = self.bindings.Get(action) ?? Key.Unknown;
         return Keyboard.WasPressed(key);
     }
 
@@ -698,14 +698,14 @@ class KeyMap {
     }
 
     func getBinding(action: String) -> Integer {
-        return self.bindings.Get(action) ?? Keyboard.KeyUnknown;
+        return self.bindings.Get(action) ?? Key.Unknown;
     }
 }
 ```
 
 To let the player rebind a key:
 
-```rust
+```zia
 bind Keyboard = Zanna.Input.Keyboard;
 bind Zanna.Time;
 
@@ -729,7 +729,7 @@ Professional games use *input buffering* to feel responsive. The idea: remember 
 
 Imagine you're playing a platformer. Your character is falling toward the ground. You press jump slightly before landing. Without buffering, the jump is ignored because you weren't on the ground yet. With buffering, the game remembers you pressed jump and executes it the moment you land.
 
-```rust
+```zia
 class InputBuffer {
     hide jumpBufferTime: Number;
     hide jumpBufferDuration: Number = 0.1;  // 100ms buffer window
@@ -741,7 +741,7 @@ class InputBuffer {
         }
 
         // When jump is pressed, start the buffer timer
-        if Keyboard.WasPressed(Keyboard.KeySpace) {
+        if Keyboard.WasPressed(Key.Space) {
             self.jumpBufferTime = self.jumpBufferDuration;
         }
     }
@@ -759,7 +759,7 @@ class InputBuffer {
 
 Usage in your game:
 
-```rust
+```zia
 var inputBuffer = InputBuffer();
 
 while gameRunning {
@@ -778,7 +778,7 @@ This small addition makes games feel much more responsive. Players don't realize
 
 A related technique is *coyote time* (named after cartoon coyotes who don't fall until they look down). It's the opposite of input buffering: instead of remembering inputs, you remember when the player was last grounded.
 
-```rust
+```zia
 class CoyoteTime {
     hide timeLeftGrounded: Number;
     hide coyoteDuration: Number = 0.1;  // 100ms grace period
@@ -809,7 +809,7 @@ Now the player can jump for a brief moment after walking off a ledge, which feel
 
 Some inputs shouldn't repeat too quickly. *Debouncing* prevents rapid-fire activation:
 
-```rust
+```zia
 class Debouncer {
     hide cooldowns: Map[String, Number];
 
@@ -839,16 +839,16 @@ class Debouncer {
 
 Use it for things like menu navigation:
 
-```rust
+```zia
 var debouncer = Debouncer();
 
 while inMenu {
     debouncer.update(dt);
 
-    if Keyboard.IsDown(Keyboard.KeyDown) && debouncer.canActivate("menuDown", 0.2) {
+    if Keyboard.IsDown(Key.Down) && debouncer.canActivate("menuDown", 0.2) {
         selectedIndex += 1;
     }
-    if Keyboard.IsDown(Keyboard.KeyUp) && debouncer.canActivate("menuUp", 0.2) {
+    if Keyboard.IsDown(Key.Up) && debouncer.canActivate("menuUp", 0.2) {
         selectedIndex -= 1;
     }
 }
@@ -862,11 +862,12 @@ This lets the player hold the key to scroll through menu items at a reasonable p
 
 Let's put everything together in a complete, playable example:
 
-```rust
+```zia
 module CharacterDemo;
 
 bind Zanna.Graphics;
 bind Keyboard = Zanna.Input.Keyboard;
+bind Key = Zanna.Input.Key;
 bind Zanna.Time.Clock as Clock;
 bind Convert = Zanna.Core.Convert;
 
@@ -896,28 +897,28 @@ func start() {
 
     var player = new Player(400.0, GROUND_Y, 0.0, 0.0, true);
 
-    var lastTime = Clock.Ticks();
+    var lastTime = Clock.NowMs();
 
     while !canvas.ShouldClose {
         canvas.Poll();
 
         // Calculate delta time
-        var now = Clock.Ticks();
+        var now = Clock.NowMs();
         var dt = (now - lastTime) / 1000.0;
         lastTime = now;
 
         // --- INPUT ---
         // Horizontal movement (continuous - use IsDown)
         player.vx = 0.0;
-        if Keyboard.IsDown(Keyboard.KeyLeft) || Keyboard.IsDown(Keyboard.KeyA) {
+        if Keyboard.IsDown(Key.Left) || Keyboard.IsDown(Key.A) {
             player.vx = -MOVE_SPEED;
         }
-        if Keyboard.IsDown(Keyboard.KeyRight) || Keyboard.IsDown(Keyboard.KeyD) {
+        if Keyboard.IsDown(Key.Right) || Keyboard.IsDown(Key.D) {
             player.vx = MOVE_SPEED;
         }
 
         // Jump (one-time action - use WasPressed)
-        if Keyboard.WasPressed(Keyboard.KeySpace) && player.onGround {
+        if Keyboard.WasPressed(Key.Space) && player.onGround {
             player.vy = JUMP_SPEED;
             player.onGround = false;
         }
@@ -995,15 +996,15 @@ Learning from mistakes is efficient. Here are problems beginners often encounter
 ### Mistake 1: Using IsDown for One-Time Actions
 
 **Wrong:**
-```rust
-if Keyboard.IsDown(Keyboard.KeySpace) {
+```zia
+if Keyboard.IsDown(Key.Space) {
     fireBullet();  // Fires 60 bullets per second!
 }
 ```
 
 **Right:**
-```rust
-if Keyboard.WasPressed(Keyboard.KeySpace) {
+```zia
+if Keyboard.WasPressed(Key.Space) {
     fireBullet();  // Fires once per button press
 }
 ```
@@ -1013,21 +1014,21 @@ When you hold the Space bar, `IsDown` returns `true` every frame. For actions th
 ### Mistake 2: Forgetting to Handle Key Release
 
 **Problem:**
-```rust
-if Keyboard.WasPressed(Keyboard.KeyLeftShift) {
+```zia
+if Keyboard.WasPressed(Key.LeftShift) {
     player.isRunning = true;
 }
 // Player runs forever after pressing shift once!
 ```
 
 **Fix:**
-```rust
-player.isRunning = Keyboard.IsDown(Keyboard.KeyLeftShift);
+```zia
+player.isRunning = Keyboard.IsDown(Key.LeftShift);
 // Or:
-if Keyboard.WasPressed(Keyboard.KeyLeftShift) {
+if Keyboard.WasPressed(Key.LeftShift) {
     player.isRunning = true;
 }
-if Keyboard.WasReleased(Keyboard.KeyLeftShift) {
+if Keyboard.WasReleased(Key.LeftShift) {
     player.isRunning = false;
 }
 ```
@@ -1037,10 +1038,10 @@ For "hold to activate" mechanics, check the key state continuously, or handle bo
 ### Mistake 3: Checking Input Outside the Game Loop
 
 **Wrong:**
-```rust
+```zia
 func checkJump() {
     // This might miss the key press!
-    if Keyboard.WasPressed(Keyboard.KeySpace) {
+    if Keyboard.WasPressed(Key.Space) {
         player.jump();
     }
 }
@@ -1049,10 +1050,10 @@ func checkJump() {
 ```
 
 **Right:**
-```rust
+```zia
 // In main game loop, called every frame
 while gameRunning {
-    if Keyboard.WasPressed(Keyboard.KeySpace) {
+    if Keyboard.WasPressed(Key.Space) {
         player.jump();
     }
     // ...
@@ -1064,13 +1065,13 @@ while gameRunning {
 ### Mistake 4: Not Applying Dead Zones
 
 **Wrong:**
-```rust
+```zia
 var stickX = Input.controllerAxis(0, Axis.LEFT_X);
 player.x += stickX * speed * dt;  // Character slowly drifts even with stick centered
 ```
 
 **Right:**
-```rust
+```zia
 bind Zanna.Math as Math;
 
 var stickX = Input.controllerAxis(0, Axis.LEFT_X);
@@ -1085,15 +1086,15 @@ Physical analog sticks almost never rest at exactly (0, 0). Always apply a dead 
 ### Mistake 5: Hardcoding Controls
 
 **Problematic:**
-```rust
+```zia
 // Scattered throughout your code
-if Keyboard.IsDown(Keyboard.KeyW) { moveUp(); }
-if Keyboard.IsDown(Keyboard.KeyA) { moveLeft(); }
-if Keyboard.WasPressed(Keyboard.KeySpace) { jump(); }
+if Keyboard.IsDown(Key.W) { moveUp(); }
+if Keyboard.IsDown(Key.A) { moveLeft(); }
+if Keyboard.WasPressed(Key.Space) { jump(); }
 ```
 
 **Better:**
-```rust
+```zia
 // Centralized input handling
 class InputManager {
     func getMoveDirection() -> Vec2 { ... }
@@ -1111,7 +1112,7 @@ Centralizing input handling makes it easy to add controller support, rebindable 
 
 When your game window isn't focused (the player clicked on another window), you might still receive input events in some situations, or the input state might be stale. Good practice:
 
-```rust
+```zia
 bind Zanna.Time;
 
 while !canvas.ShouldClose {
@@ -1133,11 +1134,11 @@ while !canvas.ShouldClose {
 
 When transitioning between game states (menu to gameplay, for example), leftover input can cause problems:
 
-```rust
+```zia
 func startGame() {
     // The player pressed Enter to start, but Enter might still register
     // as a "just pressed" key this frame
-    if Keyboard.WasPressed(Keyboard.KeyEnter) {
+    if Keyboard.WasPressed(Key.Enter) {
         // This triggers immediately, maybe pausing the game!
         togglePause();
     }
@@ -1145,7 +1146,7 @@ func startGame() {
 ```
 
 **Fix:**
-```rust
+```zia
 func startGame() {
     Keyboard.ClearPressed();  // Clear the "just pressed" flags
     // Now Enter won't trigger anything this frame
@@ -1164,10 +1165,10 @@ When input doesn't work as expected, here's how to find the problem.
 
 The simplest debugging technique — see what the input system is actually reporting:
 
-```rust
+```zia
 // Add to your game loop temporarily
-canvas.Text(10, 50, "Space down: " + Keyboard.IsDown(Keyboard.KeySpace), Color.White);
-canvas.Text(10, 70, "Space pressed: " + Keyboard.WasPressed(Keyboard.KeySpace), Color.White);
+canvas.Text(10, 50, "Space down: " + Keyboard.IsDown(Key.Space), Color.White);
+canvas.Text(10, 70, "Space pressed: " + Keyboard.WasPressed(Key.Space), Color.White);
 canvas.Text(10, 90, "Mouse: " + Mouse.X() + ", " + Mouse.Y(), Color.White);
 ```
 
@@ -1177,10 +1178,10 @@ If the display shows the input is detected but your game doesn't respond, the bu
 
 Sometimes the order of operations matters:
 
-```rust
+```zia
 // Bug: wasKeyPressed is checked after the action already happened
 player.update();  // This might call Input functions internally
-if Keyboard.WasPressed(Keyboard.KeySpace) {
+if Keyboard.WasPressed(Key.Space) {
     // This never triggers because WasPressed was already
     // consumed (or cleared) during player.update()
 }
@@ -1192,7 +1193,7 @@ Make sure input is checked before it's used anywhere else in the frame.
 
 Is your game window actually focused?
 
-```rust
+```zia
 canvas.Text(10, 110, "Has focus: " + canvas.HasFocus(), Color.White);
 ```
 
@@ -1209,17 +1210,17 @@ If keyboard works but controller doesn't:
 
 For input buffering and timing-sensitive code:
 
-```rust
+```zia
 bind Keyboard = Zanna.Input.Keyboard;
 bind Zanna.Terminal;
 bind Zanna.Time;
 
-if Keyboard.WasPressed(Keyboard.KeySpace) {
-    Say("Jump pressed at time: " + Time.Clock.Ticks());
+if Keyboard.WasPressed(Key.Space) {
+    Say("Jump pressed at time: " + Time.Clock.NowMs());
 }
 
 if player.onGround {
-    Say("On ground at time: " + Time.Clock.Ticks());
+    Say("On ground at time: " + Time.Clock.NowMs());
     if inputBuffer.consumeJump() {
         Say("Jump executed!");
     }
@@ -1233,15 +1234,15 @@ This helps you see if inputs are arriving at the right times.
 ## The Two Languages
 
 **Zia**
-```rust
+```zia
 bind Keyboard = Zanna.Input.Keyboard;
 bind Mouse = Zanna.Input.Mouse;
 
 // Keyboard
-if Keyboard.IsDown(Keyboard.KeySpace) {
+if Keyboard.IsDown(Key.Space) {
     player.charging = true;
 }
-if Keyboard.WasPressed(Keyboard.KeyEscape) {
+if Keyboard.WasPressed(Key.Escape) {
     pauseGame();
 }
 

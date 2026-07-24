@@ -11,6 +11,7 @@
 //   - Starting a project scan returns before results are available.
 //   - A changed caret cancels delayed navigation instead of applying it elsewhere.
 //   - Reference rows are published in bounded per-frame batches.
+//   - Rename results open review UI without mutating the workspace.
 // Ownership/Lifetime: The probe owns one shell/controller and drains its worker.
 // Links: zannastudio/src/commands/basic_workspace_commands.zia
 //
@@ -27,6 +28,7 @@ bind "../editor/editor_engine";
 bind "../editor/editor_tabs";
 bind "../services/locations";
 bind "../ui/app_shell";
+bind "../ui/workspace_edit_preview";
 
 bind Clock = Zanna.Time.Clock;
 bind File = Zanna.IO.File;
@@ -58,6 +60,10 @@ func main() {
     var locStore = new locations.LocationStore();
     var controller =
         new basic_workspace_commands.BasicWorkspaceCommandController();
+    var renamePreview =
+        new workspace_edit_preview.WorkspaceEditPreview();
+    renamePreview.Setup(shell);
+    controller.renamePreview = renamePreview;
 
     var root = TempFile.CreateDirWithPrefix("zannastudio_basic_command_");
     var activePath = Path.Join(root, "main.bas");
@@ -94,6 +100,7 @@ func main() {
         fail(shell, controller, "reference query did not return pending");
         return;
     }
+    shell.toolPanels.ShowTerminalPanel();
 
     var tick = 0;
     while controller.renderItems == null and tick < WAIT_TICKS {
@@ -117,10 +124,36 @@ func main() {
     if controller.IsBusy()
        or shell.toolPanels.referencesListBox.Count != 224
        or locStore.items.count() != 222
+       or shell.toolPanels.IsTerminalPanelVisible() == false
        or Str.IndexOf(shell.statusShell.lastLeftStatus, "Found 222 references") == 0 {
         fail(shell, controller, "incremental reference publication");
         return;
     }
+
+    // Rename computation is asynchronous, but completion must stop at the
+    // shared review surface instead of opening a native modal or changing text.
+    engine.editor.SetCursor(1, 4);
+    if controller.StartRename("RenamedTarget", shell, docMgr, projMgr,
+                              engine) == false {
+        fail(shell, controller, "rename preview did not start");
+        return;
+    }
+    while renamePreview.HasPendingRename() == false
+          and tick < WAIT_TICKS {
+        controller.Pump(shell, docMgr, projMgr, engine, tabs, locStore);
+        Clock.Sleep(1);
+        tick = tick + 1;
+    }
+    if renamePreview.IsVisible() == false
+       or renamePreview.HasPendingRename() == false
+       or engine.GetTextSnapshot() != activeSource
+       or File.ReadAllText(activePath) != "PRINT \"stale disk\"\n"
+       or File.ReadAllText(targetPath) != "SUB Target()\nEND SUB\n" {
+        fail(shell, controller, "rename result bypassed non-modal review");
+        return;
+    }
+    renamePreview.Cancel();
+    renamePreview.Finish();
 
     // Moving the caret before completion must cancel the exact editor anchor.
     engine.editor.SetCursor(1, 4);

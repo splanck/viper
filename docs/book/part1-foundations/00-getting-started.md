@@ -464,7 +464,7 @@ cd ~/zanna-projects
 
 Open your text editor (VS Code or whichever you installed). Create a new file and type:
 
-```rust
+```zia
 module Test;
 
 func start() {
@@ -710,7 +710,7 @@ Let's create one more file to make sure everything is ready for Chapter 1.
 2. Create a new file
 3. Type this exactly:
 
-```rust
+```zia
 module Hello;
 
 func start() {

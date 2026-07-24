@@ -284,7 +284,7 @@ All multi-byte integers and floats use **little-endian** byte order, independent
 
 ### Zia Example
 
-```rust
+```zia
 module MemStreamDemo;
 
 bind Zanna.Terminal;
@@ -314,7 +314,7 @@ func start() {
 }
 ```
 
-> **Note:** MemStream properties (`Pos`, `Length`, `Capacity`) use the get_/set_ pattern; access them as `ms.get_Length()`, `ms.get_Pos()`, `ms.set_Pos(n)` in Zia.
+> **Note:** MemStream properties (`Pos`, `Length`, `Capacity`) use the get_/set_ pattern; access them as `ms.get_Length()`, `ms.get_Position()`, `ms.set_Position(n)` in Zia.
 
 ### BASIC Example
 
@@ -477,7 +477,7 @@ Open keeps cleanup ownership of the native file until the managed LineReader is 
 
 ### Zia Example
 
-```rust
+```zia
 module LineReaderDemo;
 
 bind Zanna.Terminal;
@@ -599,7 +599,7 @@ Open and Append close the native file and release the default newline if managed
 
 ### Zia Example
 
-```rust
+```zia
 module LineWriterDemo;
 
 bind Zanna.Terminal;
@@ -758,7 +758,7 @@ Positioned binary read/write buffer for constructing and parsing binary data in 
 
 ### Zia Example
 
-```rust
+```zia
 module BinaryBufferDemo;
 
 bind Zanna.Terminal;
@@ -778,7 +778,7 @@ func start() {
     Say("Length: " + Fmt.Int(buf.get_Length()));
 
     // Seek back to start and read
-    buf.set_Pos(0);
+    buf.set_Position(0);
     Say("Byte: " + Fmt.Int(buf.ReadByte()));        // 255
     Say("I32LE: " + Fmt.Int(buf.ReadI32LittleEndian()));       // 12345
     Say("I32BE: " + Fmt.Int(buf.ReadI32BigEndian()));       // 67890
@@ -789,7 +789,7 @@ func start() {
 }
 ```
 
-> **Note:** BinaryBuffer properties (`Pos`, `Length`) use the get_/set_ pattern in Zia; access them as `buf.get_Length()`, `buf.get_Pos()`, `buf.set_Pos(n)`.
+> **Note:** BinaryBuffer properties (`Pos`, `Length`) use the get_/set_ pattern in Zia; access them as `buf.get_Length()`, `buf.get_Position()`, `buf.set_Position(n)`.
 
 ### BASIC Example
 

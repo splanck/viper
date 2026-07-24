@@ -48,58 +48,6 @@ bind Text = Zanna.Text;
 
 final QUICK_OPEN_ID_PREFIX = "quickopen:";
 
-/// @brief Prompt for a file query and open the best matching project file.
-/// @param shell Workbench shell used for prompts and status.
-/// @param projMgr Project manager with the warmed file cache.
-/// @param docMgr Open document manager.
-/// @param engine Active editor engine.
-/// @param tabs Editor tab controller.
-func handleQuickOpen(shell: app_shell.AppShell,
-                     projMgr: project_manager.ProjectManager,
-                     docMgr: document_manager.DocumentManager,
-                     engine: editor_engine.EditorEngine,
-                     tabs: editor_tabs.EditorTabs) {
-    if projMgr.IsOpen() == false {
-        GUI.Toast.Warning("Open a project folder first");
-        return;
-    }
-    var query = Str.Trim(GUI.MessageBox.Prompt("Quick Open", "File name or path:"));
-    if query == "" { return; }
-
-    var bestPath = "";
-    var bestScore = 999;
-    projMgr.WarmFileCache(256);
-    var cachedCount = projMgr.CachedFileCount();
-    var i = 0;
-    while i < cachedCount {
-        var filePath = projMgr.CachedFileAt(i);
-        var score = QuickOpenScore(projMgr.RelativePath(filePath), query);
-        if score >= 0 and score < bestScore {
-            bestScore = score;
-            bestPath = filePath;
-        }
-        i = i + 1;
-    }
-
-    if bestPath == "" and cachedCount == 0 {
-        GUI.Toast.Info(projMgr.FileCacheStatusText());
-        return;
-    }
-
-    if bestPath == "" {
-        var suffix = "";
-        if projMgr.fileCacheComplete == false {
-            suffix = " (still indexing project files)";
-        }
-        GUI.Toast.Info("No project file matched '" + query + "'" + suffix);
-        return;
-    }
-
-    if file_commands.OpenFileAtPath(shell, docMgr, engine, tabs, bestPath) {
-        shell.SetStatusLeft("Opened: " + projMgr.RelativePath(bestPath));
-    }
-}
-
 /// @brief Populate and show the command palette with project file rows.
 /// @param shell Workbench shell containing the command palette.
 /// @param projMgr Project manager with the warmed file cache.
@@ -114,7 +62,7 @@ expose func ShowQuickOpenPalette(shell: app_shell.AppShell,
     projMgr.WarmFileCache(128);
     var cachedCount = projMgr.PeekCachedFileCount();
     if cachedCount == 0 and projMgr.IsFileCacheComplete() {
-        GUI.Toast.Info(projMgr.FileCacheStatusText());
+        shell.SetStatusLeft(projMgr.FileCacheStatusText());
         return false;
     }
 

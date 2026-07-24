@@ -127,9 +127,12 @@ from [0000-template.md](0000-template.md) and take the next unused number.
 - [ADR 0152](0152-stable-file-identity-for-editor-documents.md) — Use Stable File Identity for Editor Document De-duplication
 - [ADR 0153](0153-non-following-path-link-inspection.md) — Reject Linked Descendants at Explorer Boundaries
 - [ADR 0154](0154-single-owner-split-editor-documents.md) — Give Split-Editor Documents One Live Buffer Owner
+- [ADR 0156](0156-listbox-selected-row-data.md) — Expose Selected ListBox Row Data
 
 ## Graphics3D & Game Systems
 
+- [ADR 0155](0155-scene-object-authoring-metadata-and-duplication.md) — Make Scene Object Metadata and Duplication Authorable
+- [ADR 0157](0157-material-texture-pixel-inspection.md) — Expose Read-Only Material Texture Pixels for Authoring Tools
 - [ADR 0004](0004-graphics3d-runtime-surface-expansion.md) — Graphics3D Runtime Surface Expansion Uses Registry-Only Semantics
 - [ADR 0046](0046-game3d-prefab-loading-api.md) — Game3D Prefab Loading API
 - [ADR 0059](0059-graphics3d-lookup-option-apis.md) — Graphics3D Lookup Option APIs

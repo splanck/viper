@@ -12,6 +12,7 @@
 //   - Terminal child process streams are never throttled by editor background
 //     work budgeting.
 //   - Hidden terminal startup preserves output until the panel is shown.
+//   - Session actions restore PTY focus and expose only currently valid actions.
 //
 //===----------------------------------------------------------------------===//
 
@@ -95,6 +96,7 @@ class TerminalController {
     expose func SetupButtons(newArg: GUI.Button, nextArg: GUI.Button) {
         newBtn = newArg;
         nextBtn = nextArg;
+        UpdateButtonStates();
     }
 
     /// @brief Wire the shell-owned widgets and put the pane in interactive terminal mode.
@@ -106,6 +108,31 @@ class TerminalController {
         restartBtn = restartArg;
         if pane != null { pane.SetTerminalMode(true); }
         ready = true;
+        UpdateButtonStates();
+    }
+
+    /// @brief Reflect live session capabilities in the terminal action strip.
+    hide func UpdateButtonStates() {
+        var canStop = false;
+        if sess != null { canStop = sess.IsActive(); }
+        var canCycle = false;
+        if ready { canCycle = sessions.count() > 1; }
+        if killBtn != null {
+            killBtn.SetEnabled(canStop);
+        }
+        if restartBtn != null { restartBtn.SetEnabled(ready); }
+        if newBtn != null { newBtn.SetEnabled(ready); }
+        if nextBtn != null { nextBtn.SetEnabled(canCycle); }
+    }
+
+    /// @brief Return keyboard ownership to the interactive pane after an action.
+    /// @details Pointer activation focuses buttons in the GUI toolkit. Without
+    ///          this handoff, the controller's one-time focus latch would leave
+    ///          subsequent typing outside the PTY until Terminal was reopened.
+    hide func RestorePaneFocusAfterAction() {
+        if pane == null { return; }
+        pane.Focus();
+        didFocus = true;
     }
 
     /// @brief Working directory for newly spawned shells.
@@ -365,6 +392,7 @@ class TerminalController {
                 sess.replayBuffer = "";
             }
         }
+        UpdateButtonStates();
     }
 
     /// @brief Per-frame pump for the integrated terminal.
@@ -398,24 +426,31 @@ class TerminalController {
             sess.Send(keys);
         }
 
-        if killBtn.WasClicked() {
+        var actionUsed = false;
+        if killBtn != null and killBtn.WasClicked() {
             sess.Stop();
             manualStop = true;
             pane.Append("\n[stopped]\n");
+            actionUsed = true;
         }
-        if restartBtn.WasClicked() {
+        if restartBtn != null and restartBtn.WasClicked() {
             pane.Append("\n[restarting]\n");
             RestartSession();
+            actionUsed = true;
         }
 
         // Multiple-terminal controls (optional; wired via SetupButtons).
         DrainInactiveSessions();
         if newBtn != null and newBtn.WasClicked() {
             NewSession();
+            actionUsed = true;
         }
         if nextBtn != null and nextBtn.WasClicked() and sessions.count() > 1 {
             SwitchTo((activeIdx + 1) % sessions.count());
+            actionUsed = true;
         }
+        UpdateButtonStates();
+        if actionUsed { RestorePaneFocusAfterAction(); }
     }
 
     /// @brief Explicitly stop every terminal session during IDE shutdown.
@@ -428,5 +463,6 @@ class TerminalController {
             i = i + 1;
         }
         manualStop = true;
+        UpdateButtonStates();
     }
 }

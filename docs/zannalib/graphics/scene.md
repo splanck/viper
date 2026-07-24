@@ -55,7 +55,7 @@ when you need the world coordinate currently centered in the view. `Follow` and
 
 ### Zia Example
 
-```rust
+```zia
 module CameraDemo;
 
 bind Zanna.Terminal;
@@ -216,8 +216,7 @@ Local scale values are normalized to at least `1` before being stored; use `100`
 | `Detach()`                        | `Void()`                       | Remove this node from its parent               |
 | `Draw(canvas)`                    | `Void(Canvas)`                 | Draw this node and all children to a canvas    |
 | `DrawWithCamera(canvas, camera)`  | `Void(Canvas, Camera)`         | Draw with camera transform applied             |
-| `Find(name)`                      | `SceneNode(String)`            | Find a descendant node by name                 |
-| `FindOption(name)`                | `Option[SceneNode](String)`    | Find a descendant node as `Some(node)`, or `None` |
+| `Find(name)`                      | `Option[SceneNode](String)`            | Find a descendant node as `Some(node)`, or `None`                 |
 | `GetChild(index)`                 | `SceneNode(Integer)`           | Get child by index                             |
 | `Move(dx, dy)`                    | `Void(Integer, Integer)`       | Move the node by delta amounts                 |
 | `RemoveChild(child)`              | `Void(SceneNode)`              | Remove a child node                            |
@@ -227,10 +226,11 @@ Local scale values are normalized to at least `1` before being stored; use `100`
 
 ### Zia Example
 
-```rust
+```zia
 module SceneNodeDemo;
 
 bind Zanna.Graphics;
+bind Zanna.Graphics2D;
 bind Zanna.Terminal;
 
 func start() {
@@ -257,7 +257,7 @@ func start() {
     SayInt(child1.WorldY);  // 220
 
     // Find by name
-    var found = root.FindOption("child2");
+    var found = root.Find("child2");
     if found.IsSome {
         Say(SceneNode.get_Name(found.Unwrap()));  // child2
     }
@@ -310,7 +310,7 @@ PRINT "Arm world position: "; arm.WorldX; ", "; arm.WorldY
 
 ' Find a descendant by name
 DIM found AS OBJECT
-found = body.FindOption("arm")
+found = body.Find("arm")
 IF found.IsSome THEN
     PRINT found.Unwrap()
 END IF
@@ -349,16 +349,16 @@ Scene APIs validate `SceneGraph`, `SceneNode`, and `Camera` handles before trave
 | `Draw(canvas)`                   | `Void(Canvas)`                 | Render all visible nodes to canvas (depth-sorted; equal depths stay stable) |
 | `DrawWithCamera(canvas, camera)` | `Void(Canvas, Camera)`         | Render all visible nodes with camera transform (depth-sorted; equal depths stay stable) |
 | `Find(name)`                     | `SceneNode(String)`            | Find a node by name                            |
-| `FindOption(name)`               | `Option[SceneNode](String)`    | Find a node as `Some(node)`, or `None`         |
 | `Remove(node)`                   | `Void(SceneNode)`              | Remove a node from the scene                   |
 | `Update()`                       | `Void()`                       | Update all nodes (advances animations)         |
 
 ### Zia Example
 
-```rust
+```zia
 module SceneDemo;
 
 bind Zanna.Graphics;
+bind Zanna.Graphics2D;
 bind Zanna.Terminal;
 
 func start() {
@@ -382,7 +382,7 @@ func start() {
     SayInt(SceneNode.get_ChildCount(root));  // 2
 
     // Find by name
-    var found = scene.FindOption("player");
+    var found = scene.Find("player");
     if found.IsSome {
         SayInt(SceneNode.get_X(found.Unwrap()));  // 100
     }
@@ -519,10 +519,11 @@ SpriteBatch methods validate the batch receiver before recording or flushing; in
 
 ### Zia Example
 
-```rust
+```zia
 module SpriteBatchDemo;
 
 bind Zanna.Graphics;
+bind Zanna.Graphics2D;
 bind Zanna.Terminal;
 
 func start() {
@@ -699,9 +700,10 @@ atlas through `SpriteBatch` is a no-op.
 
 ### Zia Example
 
-```rust
+```zia
 module AtlasDemo;
 bind Zanna.Graphics;
+bind Zanna.Graphics2D;
 
 func start() {
     var canvas = Canvas.New("Atlas Demo", 640, 480);
@@ -775,7 +777,7 @@ Frame-based sprite animation controller. Use alongside `Zanna.Graphics.Sprite` t
 
 ### Zia Example
 
-```rust
+```zia
 module AnimDemo;
 
 bind Zanna.Terminal;

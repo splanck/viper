@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-07-20
+last-verified: 2026-07-23
 ---
 
 # Editable Scene Documents
@@ -32,6 +32,18 @@ loads a scene and maps objects/properties into game-owned entities.
 Canonical scene files use the `.scene` extension. The loader also accepts legacy
 unversioned JSON with `layers[].data` and LevelData-shaped scalar properties for
 import compatibility.
+
+Zanna Studio opens `.scene` and `.level` files in its built-in 2D authoring
+surface. A layer image reference can point to a PNG, JPEG, BMP, or GIF atlas;
+relative paths resolve beside a saved scene. Studio shows the first 512 frames
+in a clickable palette and renders real atlas frames across visible layers.
+These references remain external and are not embedded in scene JSON. Replacing
+or clearing a reference is one undoable document edit, while Reload Image
+refreshes external pixels without dirtying the scene. Studio limits a source to
+16 MB, a decoded image to 4,194,304 pixels, and aggregate decoded/cached scene
+imagery to 8,388,608 pixels. Advanced Tiled margin/spacing, image-collection,
+animation, collision, and tile-metadata authoring remain outside this v1
+surface.
 
 ## Tiled JSON And TMX Import
 
@@ -142,7 +154,13 @@ load/save/schema error is also retained.
 | `SetLayerAsset(layer, path)` / `LayerAsset(layer)` | Store a layer tileset/source asset path. |
 
 Tile ID `0` means empty/not drawn. Tile ID `N > 0` maps to tileset frame
-`N - 1` when rendered by `Tilemap`.
+`N - 1` when rendered by `Tilemap` or by Zanna Studio's layer-atlas preview.
+For saved scene documents, Studio can choose supported layer images from a
+bounded searchable view of every open workspace root and stores a portable
+scene-relative path when possible. External image metadata changes refresh the
+canvas and palette without changing scene JSON or undo history; Reload Image
+forces a reread when the filesystem's timestamp/size metadata is too coarse to
+identify a rewrite.
 
 ## Objects And Properties
 
@@ -154,9 +172,12 @@ lives in typed scalar properties: `null`, bool, int, float, or string.
 | `AddObject(type, id, x, y)` | Add a placed object and return its index. |
 | `ObjectCount()` / `RemoveObject(index)` | Count or remove objects. |
 | `ObjectType(index)` / `ObjectId(index)` | Read object metadata. |
+| `SetObjectMetadata(index, type, id)` | Update the reserved type and ID together. |
 | `ObjectX(index)` / `ObjectY(index)` / `SetObjectPosition(index, x, y)` | Read or update position. |
+| `DuplicateObject(index, id)` | Deep-copy an object and its typed properties immediately after the source, replacing the copied ID. Returns the new index or `-1`. |
 | `ObjectGetInt/Str/Float/Bool(index, key, default)` | Typed property reads; incompatible kinds return the supplied default. |
-| `ObjectSetInt/Str/Float/Bool(index, key, value)` | Typed property writes. |
+| `ObjectPropertyKind(index, key)` | Return `null`, `bool`, `int`, `float`, or `string`; return an empty string when absent. |
+| `ObjectSetNull(index, key)` / `ObjectSetInt/Str/Float/Bool(index, key, value)` | Typed property writes. |
 | `ObjectHas(index, key)` / `ObjectKeys(index)` / `ObjectRemove(index, key)` | Inspect or remove object properties. |
 | `CountOfType(type)` / `ObjectOfType(type, n)` / `FindObjectOption(id)` | Search helpers returning counts, indexes, or `Option[Integer]`. |
 | `MoveObject(from, to)` | Reorder objects. |

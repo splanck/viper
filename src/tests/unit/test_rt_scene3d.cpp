@@ -605,9 +605,11 @@ static void test_scene_node_names_reject_wrong_string_handles() {
                 "SceneNode.Find rejects wrong-class query string handles");
 
     rt_scene_node3d_set_name(parent, fake_name);
+    rt_string returned_name = rt_scene_node3d_get_name(parent);
     EXPECT_TRUE(
-        std::strcmp(rt_string_cstr(rt_scene_node3d_get_name(parent)), "parent") == 0,
+        std::strcmp(rt_string_cstr(returned_name), "parent") == 0,
         "SceneNode.SetName rejects wrong-class string handles without clearing a valid name");
+    rt_string_unref(returned_name);
     EXPECT_TRUE(rt_scene3d_find(scene, parent_name) == parent,
                 "SceneGraph.Find still locates a node after a rejected wrong-class name");
 
@@ -623,8 +625,10 @@ static void test_scene_node_names_reject_wrong_string_handles() {
     parent_view->name = saved_name;
 
     parent_view->name = fake_name;
-    EXPECT_TRUE(std::strcmp(rt_string_cstr(rt_scene_node3d_get_name(parent)), "") == 0,
+    returned_name = rt_scene_node3d_get_name(parent);
+    EXPECT_TRUE(std::strcmp(rt_string_cstr(returned_name), "") == 0,
                 "SceneNode.GetName returns empty for corrupt private node name slots");
+    rt_string_unref(returned_name);
     EXPECT_TRUE(parent_view->name == nullptr,
                 "SceneNode.GetName repairs corrupt private node name slots");
     parent_view->name = saved_name;

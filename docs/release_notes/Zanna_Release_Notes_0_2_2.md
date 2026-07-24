@@ -35,7 +35,7 @@ Seven feature-parity batches close all remaining gaps between Zia and the BASIC 
 
 Entity properties with custom getter/setter logic:
 
-```rust
+```zia
 class Counter {
     Integer _count;
 
@@ -48,7 +48,7 @@ class Counter {
 
 Deterministic cleanup via `deinit` blocks, lowered to `__dtor_TypeName` IL functions:
 
-```rust
+```zia
 class FileHandle {
     deinit {
         IO.File.Close(self.handle);
@@ -60,7 +60,7 @@ class FileHandle {
 
 Full structured exception handling via IL EH opcodes:
 
-```rust
+```zia
 try {
     var result = riskyOperation();
 } catch (e: Error) {
@@ -74,7 +74,7 @@ try {
 
 `+=`, `-=`, `*=`, `/=`, `%=` operators for concise mutation:
 
-```rust
+```zia
 score += 100;
 health -= damage;
 ```
@@ -90,7 +90,7 @@ health -= damage;
 
 Three new language constructs improve expressiveness:
 
-```rust
+```zia
 // Struct literals (ZIA-001)
 var pos = Position { x = 10, y = 20 };
 
@@ -148,7 +148,7 @@ Includes 40 Zia + 10 BASIC type soundness regression tests.
 `seq<str>` is now a first-class typed sequence type enabling for-in iteration over string
 sequences returned by runtime methods:
 
-```rust
+```zia
 bind Zanna.IO;
 
 func start() {

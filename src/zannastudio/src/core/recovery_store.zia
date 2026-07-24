@@ -34,6 +34,7 @@ module recovery_store;
 bind "../core/document";
 bind "../core/document_manager";
 bind "../editor/editor_engine";
+bind "../services/file_utils";
 bind "../services/safe_io";
 
 bind File = Zanna.IO.File;
@@ -333,7 +334,8 @@ class RecoveryStore {
             var d = docMgr.GetDocument(i);
             if d != null and d!.isModified and d!.isReadOnlyPreview == false {
                 var content = d!.content;
-                if i == docMgr.activeIndex and engine != null {
+                if i == docMgr.activeIndex and engine != null
+                   and file_utils.IsVisualKind(d!.kind) == false {
                     content = engine.GetTextSnapshot();
                 }
                 var base = SwapBase(d!);
@@ -435,7 +437,8 @@ class RecoveryStore {
                 snapshot.basePath = SwapBase(doc!);
                 snapshot.originPath = doc!.filePath;
                 snapshot.content = doc!.content;
-                if i == docMgr.activeIndex and engine != null {
+                if i == docMgr.activeIndex and engine != null
+                   and file_utils.IsVisualKind(doc!.kind) == false {
                     snapshot.content = engine.GetTextSnapshot();
                 }
                 var unique = ".recovery-" + request.generation + "-" + i;

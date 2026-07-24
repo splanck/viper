@@ -31,7 +31,7 @@ reference into the parsed JSON tree (VDOC-236).
 
 ## Example
 
-```rust
+```zia
 module ConfigExample;
 
 func start() {

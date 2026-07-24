@@ -486,7 +486,6 @@ class CompletionController {
         }
         isVisible = true;
         popup.SetVisible(true);
-        editor.Focus();
     }
 
     hide func PollPendingJob() -> Boolean {
@@ -859,7 +858,9 @@ class CompletionController {
         }
     }
 
-    /// @brief Show the popup and focus the listbox for keyboard navigation.
+    /// @brief Show the popup without changing the workbench's input owner.
+    /// @details Completion is a non-focusable editor adornment. Callers that
+    ///          explicitly want editor focus must establish it before showing.
     expose func Show() {
         isVisible = true;
         if engine != null {
@@ -869,27 +870,18 @@ class CompletionController {
         }
         PositionPopupNearCursor();
         popup.SetVisible(true);
-        editor.Focus();
     }
 
-    /// @brief Keep keyboard focus on the editor while completions are open.
-    expose func EnsureFocus() {
-        if isVisible and editor != null {
-            if !editor.IsFocused() {
-                editor.Focus();
-            }
-        }
-    }
-
-    /// @brief Hide the popup and return focus to the editor.
+    /// @brief Hide the popup without changing the workbench's input owner.
+    /// @details The popup never takes native focus, so hiding it has no focus to
+    ///          restore. Re-focusing the editor here stole Enter, Backspace, and
+    ///          other keys from the integrated terminal or any control selected
+    ///          while a completion request was visible.
     expose func Hide() {
         CancelPendingJob();
         CancelWorkspaceSymbolJob();
         isVisible = false;
         popup.SetVisible(false);
-        if editor != null {
-            editor.Focus();
-        }
     }
 
     /// @brief Per-frame update. Runs pending debounced queries and filters
@@ -899,6 +891,17 @@ class CompletionController {
     expose func Update(typed: String) -> Boolean {
         if Input.Keyboard.IsDown(Zanna.Input.Key.Tab) == false {
             tabAcceptKeyDown = false;
+        }
+
+        // Input.Keyboard is application-global, while completion is editor-local.
+        // Once another widget owns focus, cancel this interaction before polling
+        // jobs or interpreting that widget's keystrokes as editor input.
+        if editor == null or editor.IsFocused() == false {
+            if isVisible or pendingQuery or pendingJob != null
+               or pendingBasicGeneration != 0 {
+                Hide();
+            }
+            return false;
         }
 
         if PollPendingBasicJob() {
@@ -929,7 +932,6 @@ class CompletionController {
             return false;
         }
 
-        EnsureFocus();
         PositionPopupNearCursor();
         if typed != "" {
             RebuildVisibleItems(CurrentPrefix());

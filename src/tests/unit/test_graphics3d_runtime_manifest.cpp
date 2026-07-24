@@ -13,7 +13,8 @@
 //   - The deterministic manifest fingerprint changes for any ABI surface drift.
 // Ownership/Lifetime:
 //   - Reads immutable process-lifetime runtime registries without retaining data.
-// Links: docs/adr/0102-graphics3d-runtime-boundary-and-contract-manifest.md
+// Links: docs/adr/0102-graphics3d-runtime-boundary-and-contract-manifest.md,
+//        docs/adr/0157-material-texture-pixel-inspection.md
 //
 //===----------------------------------------------------------------------===//
 
@@ -27,9 +28,9 @@
 
 namespace {
 
-constexpr std::size_t kExpectedFunctionCount = 2002;
+constexpr std::size_t kExpectedFunctionCount = 2009;
 constexpr std::size_t kExpectedClassCount = 125;
-constexpr std::size_t kExpectedPropertyCount = 668;
+constexpr std::size_t kExpectedPropertyCount = 675;
 constexpr std::size_t kExpectedMethodCount = 1111;
 
 bool is3DName(std::string_view name) {
@@ -112,6 +113,18 @@ int main() {
         hash.addString(descriptor.signatureText);
         hash.addString(descriptor.cSymbol);
     }
+    for (std::string_view textureGetter :
+         {"Zanna.Graphics3D.Material3D.get_TexturePixels",
+          "Zanna.Graphics3D.Material3D.get_NormalMapPixels",
+          "Zanna.Graphics3D.Material3D.get_SpecularMapPixels",
+          "Zanna.Graphics3D.Material3D.get_EmissiveMapPixels",
+          "Zanna.Graphics3D.Material3D.get_MetallicRoughnessMapPixels",
+          "Zanna.Graphics3D.Material3D.get_AmbientOcclusionMapPixels",
+          "Zanna.Graphics3D.Material3D.get_LightmapPixels"}) {
+        ok = require(functionNames.contains(textureGetter),
+                     "reviewed material texture inspection getter is missing") &&
+             ok;
+    }
 
     std::size_t classCount = 0;
     std::size_t propertyCount = 0;
@@ -176,7 +189,7 @@ int main() {
 
     // Filled from the canonical registry after deliberate ABI review. This one value
     // covers every function name/signature/C symbol and every class member binding.
-    constexpr std::uint64_t kExpectedManifestHash = UINT64_C(0x85a33a8642d42107);
+    constexpr std::uint64_t kExpectedManifestHash = UINT64_C(0x99bbc96c9e878348);
     if (hash.value() != kExpectedManifestHash) {
         std::cerr << "FAIL: 3D ABI manifest changed; reviewed hash is 0x" << std::hex
                   << hash.value() << '\n';

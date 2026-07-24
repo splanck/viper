@@ -1,3 +1,22 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/probes/debug_probe.zia
+// Purpose: Exercise the real VM debug-adapter client end to end.
+// Key invariants:
+//   - Adapter requests and replies remain asynchronous and bounded.
+//   - Paused locals, frames, evaluation, and watches match the active stop.
+//   - Program-output clearing never erases debugger session status.
+// Ownership/Lifetime: The probe owns temporary programs and debug sessions.
+// Links: zannastudio/src/build/debug_session.zia,
+//        zannastudio/src/commands/debug_commands.zia
+//
+//===----------------------------------------------------------------------===//
+
 module debug_probe;
 
 // ============================================================================
@@ -264,6 +283,14 @@ func main() {
     }
     if Str.IndexOf(session.programOutput, "c=30") == 0 {
         fail("program output missing 'c=30': " + session.programOutput);
+        return;
+    }
+    var terminatedStatus = session.FormatConsole();
+    session.ClearProgramOutput();
+    if session.programOutput != ""
+       or Str.IndexOf(terminatedStatus, "terminated") == 0
+       or session.FormatConsole() != terminatedStatus {
+        fail("clearing program output changed debugger termination status");
         return;
     }
 

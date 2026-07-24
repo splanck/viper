@@ -6,9 +6,12 @@
 //===----------------------------------------------------------------------===//
 //
 // File: zannastudio/src/ui/workbench_shell.zia
-// Purpose: Central workbench layout construction for Zanna Studio.
+// Purpose: Central dockable workbench layout construction for Zanna Studio.
 // Key invariants:
-//   - This module owns the persistent editor/sidebar layout only.
+//   - This module owns persistent editor/sidebar and tool-dock hosts only.
+//   - Explorer, Source Control, and Run/Debug use stable sibling view hosts.
+//   - One primary-sidebar tree reparents between nested left/right splitters.
+//   - Typed header drags reveal bounded targets and publish one durable edge.
 //   - Tool-panel behavior remains delegated to ToolPanelShell.
 //   - A requested minimap is suppressed while its editor lane is too narrow.
 // Ownership/Lifetime:
@@ -22,6 +25,8 @@
 module workbench_shell;
 
 bind "../ui/tool_panel_shell";
+bind "../ui/primary_sidebar_dock";
+bind "../services/file_utils";
 
 bind Zanna.GUI as GUI;
 
@@ -32,12 +37,21 @@ final MINIMAP_EDITOR_LANE_THRESHOLD: Number = 620.0;
 
 /// @brief Owns the IDE's sidebar/editor layout widgets.
 class WorkbenchShell {
+    expose GUI.HBox workbenchHost;
     expose GUI.SplitPane splitPane;
+    expose GUI.SplitPane rightSidebarSplit;
     expose GUI.SplitPane editorSplit;
+    expose GUI.SplitPane leftDockSplit;
+    expose GUI.SplitPane rightDockSplit;
     expose GUI.HBox workbenchRow;
+    expose GUI.HBox centerRow;
     expose GUI.VBox editorArea;
     expose GUI.VBox bottomPanelHost;
+    expose GUI.VBox leftPanelHost;
+    expose GUI.VBox rightPanelHost;
     expose GUI.HBox editorRow;
+    expose GUI.VBox scene2DHost;
+    expose GUI.VBox scene3DHost;
     expose GUI.VBox welcomeHost;
     expose GUI.VBox preferencesPanel;
     expose GUI.TabBar tabBar;
@@ -46,24 +60,37 @@ class WorkbenchShell {
     expose GUI.Toolbar activityBar;
     expose GUI.ToolbarItem abExplorer;
     expose GUI.ToolbarItem abSourceControl;
+    expose GUI.ToolbarItem abRunDebug;
     expose GUI.VBox leftViewStack;
+    expose GUI.VBox leftSidebarHost;
+    expose GUI.VBox rightSidebarHost;
+    expose primary_sidebar_dock.PrimarySidebarDock primarySidebar;
     expose GUI.VBox explorerView;
     expose GUI.VBox scmViewHost;
+    expose GUI.VBox runDebugViewHost;
     expose GUI.FindBar findBar;
     expose GUI.Minimap minimap;
-    expose Boolean sidebarVisible;
     expose Boolean minimapRequestedVisible;
     expose Integer activeSurfaceKind;
     expose Integer activeDocumentSurfaceKind;
 
     /// @brief Initialize detached workbench state.
     expose func init() {
+        workbenchHost = null;
         splitPane = null;
+        rightSidebarSplit = null;
         editorSplit = null;
+        leftDockSplit = null;
+        rightDockSplit = null;
         workbenchRow = null;
+        centerRow = null;
         editorArea = null;
         bottomPanelHost = null;
+        leftPanelHost = null;
+        rightPanelHost = null;
         editorRow = null;
+        scene2DHost = null;
+        scene3DHost = null;
         welcomeHost = null;
         preferencesPanel = null;
         tabBar = null;
@@ -72,12 +99,16 @@ class WorkbenchShell {
         activityBar = null;
         abExplorer = null;
         abSourceControl = null;
+        abRunDebug = null;
         leftViewStack = null;
+        leftSidebarHost = null;
+        rightSidebarHost = null;
+        primarySidebar = new primary_sidebar_dock.PrimarySidebarDock();
         explorerView = null;
         scmViewHost = null;
+        runDebugViewHost = null;
         findBar = null;
         minimap = null;
-        sidebarVisible = true;
         minimapRequestedVisible = true;
         activeSurfaceKind = 0;
         activeDocumentSurfaceKind = 0;
@@ -90,7 +121,7 @@ class WorkbenchShell {
     expose func Build(parent: GUI.VBox,
                       toolPanels: tool_panel_shell.ToolPanelShell,
                       app: GUI.App) {
-        var workbenchHost: GUI.HBox = GUI.HBox.New();
+        workbenchHost = GUI.HBox.New();
         workbenchHost.SetSpacing(0.0);
         workbenchHost.SetPadding(0.0);
         workbenchHost.SetFlex(1.0);
@@ -99,17 +130,26 @@ class WorkbenchShell {
         activityBar = GUI.Toolbar.NewVertical(workbenchHost);
         abExplorer = activityBar.AddNamedButton("explorer", "Explorer");
         abSourceControl = activityBar.AddNamedButton("source-control", "Source Control");
+        abRunDebug = activityBar.AddNamedButton("debug", "Run and Debug");
 
         splitPane = GUI.SplitPane.New(workbenchHost, 1);
         splitPane.SetFlex(1.0);
-        splitPane.SetPosition(0.24);
+        splitPane.SetPosition(primarySidebar.sidebarWidthFraction);
+        splitPane.SetMinFirst(140.0);
+        splitPane.SetMinSecond(320.0);
 
-        var leftPanel: GUI.Widget = splitPane.First;
+        leftSidebarHost = GUI.VBox.New();
+        leftSidebarHost.SetSpacing(0.0);
+        leftSidebarHost.SetPadding(0.0);
+        leftSidebarHost.SetFlex(1.0);
+        splitPane.First.AddChild(leftSidebarHost);
+
         leftViewStack = GUI.VBox.New();
         leftViewStack.SetSpacing(0.0);
         leftViewStack.SetPadding(0.0);
         leftViewStack.SetFlex(1.0);
-        leftPanel.AddChild(leftViewStack);
+        leftSidebarHost.AddChild(leftViewStack);
+        primarySidebar.BuildHeader(leftViewStack);
 
         explorerView = GUI.VBox.New();
         explorerView.SetSpacing(0.0);
@@ -126,25 +166,80 @@ class WorkbenchShell {
         scmViewHost.SetVisible(false);
         leftViewStack.AddChild(scmViewHost);
 
-        var rightPanel: GUI.Widget = splitPane.Second;
+        runDebugViewHost = GUI.VBox.New();
+        runDebugViewHost.SetSpacing(0.0);
+        runDebugViewHost.SetPadding(0.0);
+        runDebugViewHost.SetFlex(1.0);
+        runDebugViewHost.SetVisible(false);
+        leftViewStack.AddChild(runDebugViewHost);
+
+        // The editor/workbench stays mounted in the first pane of a nested
+        // right-sidebar splitter. Moving the sidebar reparents only its own
+        // stable view tree, so editor and terminal focus are never disturbed.
+        rightSidebarSplit = GUI.SplitPane.New(splitPane.Second, 1);
+        rightSidebarSplit.SetFlex(1.0);
+        rightSidebarSplit.SetPosition(
+            1.0 - primarySidebar.sidebarWidthFraction);
+        rightSidebarSplit.SetMinFirst(320.0);
+        rightSidebarSplit.SetMinSecond(140.0);
+
         workbenchRow = GUI.HBox.New();
         workbenchRow.SetSpacing(0.0);
         workbenchRow.SetPadding(0.0);
         workbenchRow.SetFlex(1.0);
-        rightPanel.AddChild(workbenchRow);
+        rightSidebarSplit.First.AddChild(workbenchRow);
+
+        rightSidebarHost = GUI.VBox.New();
+        rightSidebarHost.SetSpacing(0.0);
+        rightSidebarHost.SetPadding(0.0);
+        rightSidebarHost.SetFlex(1.0);
+        rightSidebarSplit.Second.AddChild(rightSidebarHost);
+
+        // Nested horizontal splitters provide stable left/right tool-panel
+        // targets without special-case platform windows. Both side panes start
+        // explicitly collapsed and are restored only when the panel is docked.
+        leftDockSplit = GUI.SplitPane.New(workbenchRow, 1);
+        leftDockSplit.SetFlex(1.0);
+        leftDockSplit.SetPosition(0.30);
+        leftDockSplit.SetMinFirst(180.0);
+        leftDockSplit.SetMinSecond(300.0);
+
+        leftPanelHost = GUI.VBox.New();
+        leftPanelHost.SetSpacing(0.0);
+        leftPanelHost.SetPadding(0.0);
+        leftPanelHost.SetFlex(1.0);
+        leftDockSplit.First.AddChild(leftPanelHost);
+
+        rightDockSplit = GUI.SplitPane.New(leftDockSplit.Second, 1);
+        rightDockSplit.SetFlex(1.0);
+        rightDockSplit.SetPosition(0.70);
+        rightDockSplit.SetMinFirst(300.0);
+        rightDockSplit.SetMinSecond(180.0);
+
+        centerRow = GUI.HBox.New();
+        centerRow.SetSpacing(0.0);
+        centerRow.SetPadding(0.0);
+        centerRow.SetFlex(1.0);
+        rightDockSplit.First.AddChild(centerRow);
+
+        rightPanelHost = GUI.VBox.New();
+        rightPanelHost.SetSpacing(0.0);
+        rightPanelHost.SetPadding(0.0);
+        rightPanelHost.SetFlex(1.0);
+        rightDockSplit.Second.AddChild(rightPanelHost);
 
         editorArea = GUI.VBox.New();
         editorArea.SetSpacing(0.0);
         editorArea.SetPadding(0.0);
         editorArea.SetFlex(1.0);
-        workbenchRow.AddChild(editorArea);
+        centerRow.AddChild(editorArea);
 
         preferencesPanel = GUI.VBox.New();
         preferencesPanel.SetSpacing(0.0);
         preferencesPanel.SetPadding(0.0);
         preferencesPanel.SetSize(420, 0);
         preferencesPanel.SetVisible(false);
-        workbenchRow.AddChild(preferencesPanel);
+        centerRow.AddChild(preferencesPanel);
 
         tabBar = GUI.TabBar.New(editorArea);
         // An empty strip reads as a broken editor above the welcome card and
@@ -174,6 +269,20 @@ class WorkbenchShell {
         editorRow.SetFlex(1.0);
         editorHost.AddChild(editorRow);
 
+        scene2DHost = GUI.VBox.New();
+        scene2DHost.SetSpacing(0.0);
+        scene2DHost.SetPadding(0.0);
+        scene2DHost.SetFlex(1.0);
+        scene2DHost.SetVisible(false);
+        editorHost.AddChild(scene2DHost);
+
+        scene3DHost = GUI.VBox.New();
+        scene3DHost.SetSpacing(0.0);
+        scene3DHost.SetPadding(0.0);
+        scene3DHost.SetFlex(1.0);
+        scene3DHost.SetVisible(false);
+        editorHost.AddChild(scene3DHost);
+
         // Welcome / start surface, shown in place of the editor when no
         // documents are open. Built empty here; WelcomeView fills it.
         welcomeHost = GUI.VBox.New();
@@ -191,31 +300,85 @@ class WorkbenchShell {
 
         if toolPanels != null {
             toolPanels.Build(bottomPanelHost, app, editorSplit);
+            toolPanels.ConfigureDocking(workbenchRow,
+                                        leftPanelHost,
+                                        rightPanelHost,
+                                        leftDockSplit,
+                                        rightDockSplit);
         }
+        primarySidebar.Configure(
+            workbenchHost, activityBar, splitPane, rightSidebarSplit,
+            leftSidebarHost, rightSidebarHost, leftViewStack, sidebarTree,
+            workbenchRow);
         // A divider position of 1.0 is still subject to the second pane's
         // measured minimum height. Use the splitter's explicit collapsed state
         // so a hidden tool area consumes no editor viewport space or divider.
         editorSplit.CollapseSecond();
+        leftDockSplit.CollapseFirst();
+        rightDockSplit.CollapseSecond();
     }
 
     /// @brief Toggle the sidebar by collapsing or restoring the split position.
     expose func ToggleSidebar() {
-        SetSidebarVisible(sidebarVisible == false);
+        primarySidebar.ToggleVisible();
     }
 
     /// @brief Explicitly show or fully collapse the sidebar content pane.
-    /// @details The activity bar remains outside the split and therefore stays
-    ///          available when an empty startup sidebar is collapsed. Restore()
-    ///          preserves the user's last non-collapsed divider position.
+    /// @details The activity rail remains reachable on the configured edge.
     /// @param visible True to restore the pane, false to reclaim its full width.
     expose func SetSidebarVisible(visible: Boolean) {
-        if visible == sidebarVisible { return; }
-        sidebarVisible = visible;
-        if sidebarVisible {
-            splitPane.Restore();
-        } else {
-            splitPane.CollapseFirst();
-        }
+        primarySidebar.SetVisible(visible);
+    }
+
+    /// @brief Return the current effective sidebar visibility.
+    expose func IsSidebarVisible() -> Boolean {
+        return primarySidebar.sidebarVisible;
+    }
+
+    /// @brief Apply a persisted sidebar width percentage.
+    expose func SetSidebarWidthPct(pct: Integer) {
+        primarySidebar.SetWidthPercent(pct);
+    }
+
+    /// @brief Consume one user-authored sidebar-divider change.
+    /// @return Rounded sidebar width percentage, or -1 when unchanged.
+    expose func TakeChangedSidebarWidthPercent() -> Integer {
+        return primarySidebar.TakeChangedWidthPercent();
+    }
+
+    /// @brief Apply persisted primary-sidebar placement without a dirty edge.
+    expose func SetSidebarPositionName(name: String) {
+        primarySidebar.SetLocationName(name);
+    }
+
+    /// @brief Move the primary sidebar and publish one durable position edge.
+    expose func MoveSidebarTo(location: Integer) {
+        primarySidebar.MoveTo(location);
+    }
+
+    /// @brief Return "left" or "right" for the primary sidebar.
+    expose func GetSidebarPositionName() -> String {
+        return primarySidebar.GetLocationName();
+    }
+
+    /// @brief Consume one user-authored primary-sidebar position change.
+    expose func TakeChangedSidebarPosition() -> String {
+        return primarySidebar.TakeChangedLocation();
+    }
+
+    /// @brief Pump direct primary-sidebar buttons and typed drag targets.
+    expose func PumpSidebarDocking() {
+        primarySidebar.Pump();
+    }
+
+    /// @brief Return whether primary-sidebar drag targets are visible.
+    expose func AreSidebarDockTargetsVisible() -> Boolean {
+        return primarySidebar.AreTargetsVisible();
+    }
+
+    /// @brief Restore default primary-sidebar geometry and placement.
+    expose func ResetSidebarLayout(visible: Boolean) {
+        primarySidebar.Reset(visible);
     }
 
     /// @brief Store the user's minimap preference and apply the current lane policy.
@@ -247,12 +410,15 @@ class WorkbenchShell {
         return true;
     }
 
-    /// @brief Record the active document surface and keep the editor row shown.
+    /// @brief Select exactly one document surface for the active file kind.
     /// @param kind Surface kind selected by the caller.
     expose func SelectSurface(kind: Integer) {
         activeSurfaceKind = kind;
         activeDocumentSurfaceKind = kind;
-        editorRow.SetVisible(true);
+        editorRow.SetVisible(file_utils.IsVisualKind(kind) == false);
+        scene2DHost.SetVisible(kind == file_utils.DOC_KIND_SCENE_2D);
+        scene3DHost.SetVisible(kind == file_utils.DOC_KIND_SCENE_3D);
+        welcomeHost.SetVisible(false);
     }
 
     /// @brief Set the breadcrumb path and hide it when empty.

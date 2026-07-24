@@ -631,6 +631,20 @@ void *rt_material3d_make_instance(void *obj);
 void rt_material3d_set_color(void *obj, double r, double g, double b);
 /// @brief Read the diffuse / base color as a Vec3.
 void *rt_material3d_get_color(void *obj);
+/// @brief Borrow the current base-color/albedo map as decoded Pixels, or NULL.
+void *rt_material3d_get_texture_pixels(void *obj);
+/// @brief Borrow the current tangent-space normal map as decoded Pixels, or NULL.
+void *rt_material3d_get_normal_map_pixels(void *obj);
+/// @brief Borrow the current legacy specular map as decoded Pixels, or NULL.
+void *rt_material3d_get_specular_map_pixels(void *obj);
+/// @brief Borrow the current emissive map as decoded Pixels, or NULL.
+void *rt_material3d_get_emissive_map_pixels(void *obj);
+/// @brief Borrow the current packed metallic/roughness map as decoded Pixels, or NULL.
+void *rt_material3d_get_metallic_roughness_map_pixels(void *obj);
+/// @brief Borrow the current ambient-occlusion map as decoded Pixels, or NULL.
+void *rt_material3d_get_ao_map_pixels(void *obj);
+/// @brief Borrow the current baked lightmap as decoded Pixels, or NULL.
+void *rt_material3d_get_lightmap_pixels(void *obj);
 /// @brief Set the diffuse texture (legacy workflow); aliased to albedo for PBR.
 void rt_material3d_set_texture(void *obj, void *pixels);
 /// @brief Bind a RenderTarget3D's live contents as the albedo texture (auto-refreshing).

@@ -58,7 +58,7 @@ Simple string templating with placeholder substitution.
 
 ### Zia Example
 
-```rust
+```zia
 module TemplateDemo;
 
 bind Zanna.Terminal;
@@ -207,7 +207,7 @@ many intermediate string objects.
 
 ### Zia Example
 
-```rust
+```zia
 module StringBuilderDemo;
 
 bind Zanna.Terminal;
@@ -324,7 +324,7 @@ Text wrapping, alignment, indentation, and truncation utilities for formatting t
 
 ### Zia Example
 
-```rust
+```zia
 module TextWrapDemo;
 
 bind Zanna.Terminal;
@@ -456,7 +456,7 @@ Number formatting utilities for human-readable display of integers and floating-
 
 ### Zia Example
 
-```rust
+```zia
 module NumFmtDemo;
 
 bind Zanna.Terminal;
@@ -546,7 +546,7 @@ English noun pluralization and singularization. Handles common English rules, ir
 
 ### Zia Example
 
-```rust
+```zia
 module PluralDemo;
 
 bind Zanna.Terminal;
@@ -620,7 +620,7 @@ leading `v` or `V` accepted for compatibility.
 | `BumpMajor()`     | `String()`           | Bump major version, reset minor and patch to 0              |
 | `BumpMinor()`     | `String()`           | Bump minor version, reset patch to 0                        |
 | `BumpPatch()`     | `String()`           | Bump patch version                                          |
-| `Cmp(other)`      | `Integer(Version)`   | Compare to another version: -1 (less), 0 (equal), 1 (greater) |
+| `CompareTo(other)`      | `Integer(Version)`   | Compare to another version: -1 (less), 0 (equal), 1 (greater) |
 | `Compare(a, b)`   | `Integer(String, String)` | Parse and compare two version strings: -1, 0, or 1 (static) |
 | `IsValid(str)`    | `Boolean(String)`    | Check if a string is a valid semantic version (static)      |
 | `ParseMajor(str)` | `Integer(String)`    | Parse and return the major component (static)               |
@@ -651,7 +651,7 @@ leading `v` or `V` accepted for compatibility.
 
 ### Zia Example
 
-```rust
+```zia
 module VersionDemo;
 
 bind Zanna.Terminal;
@@ -675,7 +675,7 @@ func start() {
     Say("Invalid: " + Fmt.Bool(Version.IsValid("not.a.version"))); // false
 
     var v2 = Version.Parse("2.0.0");
-    Say("Cmp: " + Fmt.Int(v.Cmp(v2)));         // -1
+    Say("Cmp: " + Fmt.Int(v.CompareTo(v2)));         // -1
     Say("Satisfies: " + Fmt.Bool(v.Satisfies(">=1.0.0"))); // true
 }
 ```
@@ -704,7 +704,7 @@ PRINT v.BumpPatch()  ' Output: "1.2.4"
 
 ' Compare versions
 DIM v2 AS Zanna.Text.Version = Zanna.Text.Version.Parse("2.0.0")
-DIM cmp AS INTEGER = v.Cmp(v2)
+DIM cmp AS INTEGER = v.CompareTo(v2)
 PRINT cmp  ' Output: -1 (v < v2)
 
 ' Validate version strings
@@ -794,7 +794,7 @@ in `text`; it is not accumulated into the containing element's `text` field.
 
 ### Zia Example
 
-```rust
+```zia
 module HtmlDemo;
 
 bind Zanna.Terminal;
@@ -902,7 +902,7 @@ CommonMark parser.
 
 ### Zia Example
 
-```rust
+```zia
 module MarkdownDemo;
 
 bind Zanna.Terminal;

@@ -65,7 +65,9 @@ Constructor: `Zanna.Game2D.SceneDocument.New`
 | <a id="zanna-game2d-scenedocument-objectid"></a>`ObjectId` | `str(i64)` | `Zanna.Game2D.SceneDocument.ObjectId` |
 | <a id="zanna-game2d-scenedocument-objectx"></a>`ObjectX` | `i64(i64)` | `Zanna.Game2D.SceneDocument.ObjectX` |
 | <a id="zanna-game2d-scenedocument-objecty"></a>`ObjectY` | `i64(i64)` | `Zanna.Game2D.SceneDocument.ObjectY` |
+| <a id="zanna-game2d-scenedocument-setobjectmetadata"></a>`SetObjectMetadata` | `void(i64,str,str)` | `Zanna.Game2D.SceneDocument.SetObjectMetadata` |
 | <a id="zanna-game2d-scenedocument-setobjectposition"></a>`SetObjectPosition` | `void(i64,i64,i64)` | `Zanna.Game2D.SceneDocument.SetObjectPosition` |
+| <a id="zanna-game2d-scenedocument-duplicateobject"></a>`DuplicateObject` | `i64(i64,str)` | `Zanna.Game2D.SceneDocument.DuplicateObject` |
 | <a id="zanna-game2d-scenedocument-setobjectproperty"></a>`SetObjectProperty` | `void(i64,str,str)` | `Zanna.Game2D.SceneDocument.SetObjectProperty` |
 | <a id="zanna-game2d-scenedocument-getobjectproperty"></a>`GetObjectProperty` | `str(i64,str)` | `Zanna.Game2D.SceneDocument.GetObjectProperty` |
 | <a id="zanna-game2d-scenedocument-deleteobjectproperty"></a>`DeleteObjectProperty` | `void(i64,str)` | `Zanna.Game2D.SceneDocument.DeleteObjectProperty` |
@@ -74,7 +76,9 @@ Constructor: `Zanna.Game2D.SceneDocument.New`
 | <a id="zanna-game2d-scenedocument-objectgetfloat"></a>`ObjectGetFloat` | `f64(i64,str,f64)` | `Zanna.Game2D.SceneDocument.ObjectGetFloat` |
 | <a id="zanna-game2d-scenedocument-objectgetbool"></a>`ObjectGetBool` | `i1(i64,str,i1)` | `Zanna.Game2D.SceneDocument.ObjectGetBool` |
 | <a id="zanna-game2d-scenedocument-objecthas"></a>`ObjectHas` | `i1(i64,str)` | `Zanna.Game2D.SceneDocument.ObjectHas` |
+| <a id="zanna-game2d-scenedocument-objectpropertykind"></a>`ObjectPropertyKind` | `str(i64,str)` | `Zanna.Game2D.SceneDocument.ObjectPropertyKind` |
 | <a id="zanna-game2d-scenedocument-objectkeys"></a>`ObjectKeys` | `obj<Zanna.Collections.Seq>(i64)` | `Zanna.Game2D.SceneDocument.ObjectKeys` |
+| <a id="zanna-game2d-scenedocument-objectsetnull"></a>`ObjectSetNull` | `void(i64,str)` | `Zanna.Game2D.SceneDocument.ObjectSetNull` |
 | <a id="zanna-game2d-scenedocument-objectsetint"></a>`ObjectSetInt` | `void(i64,str,i64)` | `Zanna.Game2D.SceneDocument.ObjectSetInt` |
 | <a id="zanna-game2d-scenedocument-objectsetstr"></a>`ObjectSetStr` | `void(i64,str,str)` | `Zanna.Game2D.SceneDocument.ObjectSetStr` |
 | <a id="zanna-game2d-scenedocument-objectsetfloat"></a>`ObjectSetFloat` | `void(i64,str,f64)` | `Zanna.Game2D.SceneDocument.ObjectSetFloat` |
@@ -155,7 +159,9 @@ Constructor: `Zanna.Game2D.SceneDocument.New`
 | `Zanna.Game2D.SceneDocument.ObjectId` | `str(obj,i64)` | `rt_game_scene_object_id` |
 | `Zanna.Game2D.SceneDocument.ObjectX` | `i64(obj,i64)` | `rt_game_scene_object_x` |
 | `Zanna.Game2D.SceneDocument.ObjectY` | `i64(obj,i64)` | `rt_game_scene_object_y` |
+| `Zanna.Game2D.SceneDocument.SetObjectMetadata` | `void(obj,i64,str,str)` | `rt_game_scene_set_object_metadata` |
 | `Zanna.Game2D.SceneDocument.SetObjectPosition` | `void(obj,i64,i64,i64)` | `rt_game_scene_set_object_position` |
+| `Zanna.Game2D.SceneDocument.DuplicateObject` | `i64(obj,i64,str)` | `rt_game_scene_duplicate_object` |
 | `Zanna.Game2D.SceneDocument.SetObjectProperty` | `void(obj,i64,str,str)` | `rt_game_scene_set_object_property` |
 | `Zanna.Game2D.SceneDocument.GetObjectProperty` | `str(obj,i64,str)` | `rt_game_scene_get_object_property` |
 | `Zanna.Game2D.SceneDocument.DeleteObjectProperty` | `void(obj,i64,str)` | `rt_game_scene_delete_object_property` |
@@ -164,7 +170,9 @@ Constructor: `Zanna.Game2D.SceneDocument.New`
 | `Zanna.Game2D.SceneDocument.ObjectGetFloat` | `f64(obj,i64,str,f64)` | `rt_game_scene_object_get_float` |
 | `Zanna.Game2D.SceneDocument.ObjectGetBool` | `i1(obj,i64,str,i1)` | `rt_game_scene_object_get_bool` |
 | `Zanna.Game2D.SceneDocument.ObjectHas` | `i1(obj,i64,str)` | `rt_game_scene_object_has` |
+| `Zanna.Game2D.SceneDocument.ObjectPropertyKind` | `str(obj,i64,str)` | `rt_game_scene_object_property_kind` |
 | `Zanna.Game2D.SceneDocument.ObjectKeys` | `obj<Zanna.Collections.Seq>(obj,i64)` | `rt_game_scene_object_keys` |
+| `Zanna.Game2D.SceneDocument.ObjectSetNull` | `void(obj,i64,str)` | `rt_game_scene_object_set_null` |
 | `Zanna.Game2D.SceneDocument.ObjectSetInt` | `void(obj,i64,str,i64)` | `rt_game_scene_object_set_int` |
 | `Zanna.Game2D.SceneDocument.ObjectSetStr` | `void(obj,i64,str,str)` | `rt_game_scene_object_set_str` |
 | `Zanna.Game2D.SceneDocument.ObjectSetFloat` | `void(obj,i64,str,f64)` | `rt_game_scene_object_set_float` |

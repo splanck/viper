@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-07-15
+last-verified: 2026-07-23
 ---
 
 # Zanna.Graphics3D — User Guide
@@ -17,6 +17,46 @@ primitives, use the runtime-backed `Zanna.Game3D` API documented in
 [`docs/zannalib/graphics/game3d.md`](zannalib/graphics/game3d.md). Game3D is C
 runtime code like the rest of the Zanna runtime, not a separate Zia helper
 library.
+
+Zanna Studio opens `.vscn` files in its built-in visual scene editor. The
+viewport provides stable hierarchy multi-selection, primitive and asset import,
+orbit/group-frame controls, numeric local transforms, and parent-aware Move,
+Rotate, and Scale axis tools. The primary row owns the visible gizmo; dragging
+applies its local-axis delta to every selected node. Optional snapping uses
+0.5-unit, 15-degree, and 0.1-scale steps; one completed group drag creates one
+undo entry and Escape restores every origin. Duplicate and delete operate once
+per selected top-level subtree, even when a descendant is also selected. W/E/R
+select Move/Rotate/Scale while the viewport or transform toolbar owns focus,
+without intercepting text entry in other Studio surfaces. The primary selected
+node's numeric fields become explicit relative batch controls for a group:
+position and rotation values are added to every local transform while scale
+values multiply each local scale, with one undo entry and neutral fields after
+apply. Duplicate Selection (`Ctrl`/`Cmd`+`Shift`+`D`) and Delete are likewise
+limited to hierarchy/viewport focus; inspector inputs keep their native keys.
+The Parent chooser moves the selected top-level roots under Scene Root or a
+valid existing node in one undoable transaction. It omits destinations inside
+the moved subtrees or beyond the scene depth limit, preserves local transforms,
+and restores the complete selection after hierarchy preorder changes.
+Drag-to-reparent, explicit sibling ordering, and preserve-world conversion are
+not yet provided.
+The primary selected
+node's Material component can create, edit, or remove base RGB, alpha,
+metallic, roughness, ambient occlusion, opaque/mask/blend, double-sided, and
+unlit state. Studio clones an existing material before editing it, so shared
+imported siblings are unaffected and unexposed maps/custom values survive.
+The inspector also assigns or clears albedo, normal, metallic/roughness,
+ambient-occlusion, and emissive maps from PNG, JPEG, BMP, GIF, or strictly
+validated KTX2 files up to 16 MB; decoded raster maps are capped at 16,777,216
+pixels. The model-import and texture-map sections can search supported assets
+from every open workspace root with bounded results and common-image previews,
+while native file pickers remain available. Map replacement is clone-safe, each
+accepted replace or clear creates one undo entry, and the image data is embedded
+in VSCN. Standard Cut, Copy, Paste, and Select All commands follow the active
+scene. A versioned clipboard envelope supports same-kind cross-document subtree
+paste with unique root names, a one-unit local-X offset, restored hierarchy
+selection, one-step undo, and exact rejection rollback. Studio serializes
+accepted edits back to VSCN immediately, so ordinary
+Save, Save As, session restore, and recovery remain authoritative.
 
 ---
 
@@ -320,7 +360,7 @@ during the last poll.
 For deterministic tests, select synthetic input and clock before the scripted
 frames:
 
-```rust
+```zia
 Canvas3D.SetInputSource(canvas, 1)
 Canvas3D.SetClockSource(canvas, 1)
 Canvas3D.SetSyntheticDeltaTimeSec(canvas, 1.0 / 60.0)
@@ -682,6 +722,13 @@ aliases for these factories.
 | `Reflectivity` | Float | read/write | Environment reflection strength [0.0-1.0] |
 | `SsrEnabled` | Bool | read/write | Opt into screen-space reflections (composited by a `PostFX3D.AddSSR` pass on GPU backends; misses keep the env-map term) |
 | `Color` | Vec3 | read | Current diffuse/base color |
+| `TexturePixels` | Pixels | read | Current decoded base-color/albedo map, or null |
+| `NormalMapPixels` | Pixels | read | Current decoded normal map, or null |
+| `SpecularMapPixels` | Pixels | read | Current decoded specular map, or null |
+| `EmissiveMapPixels` | Pixels | read | Current decoded emissive map, or null |
+| `MetallicRoughnessMapPixels` | Pixels | read | Current decoded packed PBR map, or null |
+| `AmbientOcclusionMapPixels` | Pixels | read | Current decoded AO map, or null |
+| `LightmapPixels` | Pixels | read | Current decoded baked lightmap, or null |
 | `Unlit` | Bool | read | Whether lighting is ignored |
 | `ShadingModel` | Integer | read | Current shading model index |
 
@@ -718,6 +765,9 @@ aliases for these factories.
 - `Clone()` and `MakeInstance()` both return independent material objects. They eagerly copy scalar state and share the currently referenced texture/cubemap objects by pointer. After cloning, either material can replace its maps independently.
 - Color and scalar setters sanitize input at the runtime boundary: colors and PBR factors are clamped to valid ranges, non-finite custom parameters become `0`, and non-finite shadow/fog/material values fall back to deterministic safe defaults. The draw path repeats finite/clamp validation before backend command submission.
 - `Textured` and texture map setters accept `Pixels` handles or `TextureAsset3D` handles with either an RGBA8 fallback or retained native compressed mip blocks. Compressed-only assets render on backends that advertise the matching `bc7`, `astc`, or `etc2` capability and otherwise behave as an unbound texture until a fallback-capable mip is resident. `SetEnvMap` accepts `CubeMap3D` handles only; invalid cubemap handles are ignored rather than retained.
+- The read-only `*Pixels` map properties resolve the current drawable decoded
+  view for inspectors and previews without replacing the original
+  `TextureAsset3D`/`RenderTarget3D` source or changing VSCN provenance.
 - `AlphaMode` changes how texture alpha is interpreted for PBR materials:
   - `0`: opaque. Texture/material alpha does not enable blending, and surviving fragments write depth as opaque.
   - `1`: masked. Fragments below the cutoff are discarded; surviving fragments render as opaque coverage. Masked materials also cast alpha-tested shadows on the software, Metal, OpenGL, and D3D11 backends.
@@ -1024,7 +1074,7 @@ module CubeMapDemo;
 bind Zanna.Graphics3D.CubeMap3D;
 bind Zanna.Graphics3D.Canvas3D;
 bind Zanna.Graphics3D.Material3D;
-bind Zanna.IO.Pixels;
+bind Zanna.Graphics.Pixels;
 
 func start() {
     var canvas = Canvas3D.New("Skybox Demo", 800, 600);
@@ -1109,7 +1159,7 @@ Individual node in a SceneGraph tree with transform, mesh, material, and child h
 | `ChildCount` | Integer | read | Number of child nodes |
 | `Parent` | SceneNode | read | Parent node (null if root) |
 | `Visible` | Boolean | read/write | Visibility (hides node + all descendants) |
-| `Name` | String | read/write | Name for Find() lookup |
+| `Name` | String | read/write | Name for Find() lookup; native reads return an owned runtime-string reference |
 | `Mesh` | Mesh3D | write | Mesh to render |
 | `Material` | Material3D | write | Material for rendering |
 | `Camera` | Camera3D | read/write | Camera attached to this node; imported camera animation updates this exact object |
@@ -1287,7 +1337,7 @@ bind Zanna.Terminal;
 
 func start() {
     var model = SceneAsset.LoadResult("tree.gltf").Unwrap();
-    var templateNode = SceneAsset.FindNodeOption(model, "Trunk").Unwrap();
+    var templateNode = SceneAsset.FindNode(model, "Trunk").Unwrap();
     var instanceRoot = SceneAsset.Instantiate(model);
     var scene = SceneAsset.InstantiateScene(model);
     var indexedScene = SceneAsset.InstantiateSceneAt(model, 0);
@@ -1624,7 +1674,7 @@ partial asset.
 ```zia
 module FBXDemo;
 
-bind Zanna.Graphics3D.FBX;
+bind Zanna.Graphics3D.Fbx;
 bind Zanna.Graphics3D.Canvas3D;
 bind Zanna.Graphics3D.Camera3D;
 bind Zanna.Graphics3D.AnimPlayer3D;
@@ -1634,14 +1684,14 @@ func start() {
     var canvas = Canvas3D.New("FBX Demo", 800, 600);
     var cam = Camera3D.New(60.0, 800.0 / 600.0, 0.1, 100.0);
 
-    var asset = FBX.Load("character.fbx");
-    var mesh = FBX.GetMesh(asset, 0);
-    var skel = FBX.GetSkeleton(asset);
-    var mat = FBX.GetMaterial(asset, 0);
+    var asset = Fbx.Load("character.fbx");
+    var mesh = Fbx.GetMesh(asset, 0);
+    var skel = Fbx.GetSkeleton(asset);
+    var mat = Fbx.GetMaterial(asset, 0);
 
     // Play first animation
     var player = AnimPlayer3D.New(skel);
-    var anim = FBX.GetAnimation(asset, 0);
+    var anim = Fbx.GetAnimation(asset, 0);
     AnimPlayer3D.Play(player, anim);
 
     while (Canvas3D.get_ShouldClose(canvas) == 0) {
@@ -1700,19 +1750,19 @@ Low-level extractor API for meshes and materials from glTF 2.0 files. `SceneAsse
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `GLTF.Load(path)` | `obj(str)` | Parse glTF file |
-| `GLTF.LoadAsset(path)` | `obj(str)` | Parse glTF/GLB through `Zanna.IO.Assets`, including package-relative external dependencies |
+| `Gltf.Load(path)` | `obj(str)` | Parse glTF file |
+| `Gltf.LoadAsset(path)` | `obj(str)` | Parse glTF/GLB through `Zanna.IO.Assets`, including package-relative external dependencies |
 | `GLTF.get_MeshCount(asset)` | `i64(obj)` | Number of meshes |
-| `GLTF.GetMesh(asset, index)` | `obj(obj, i64)` | Get Mesh3D by index |
+| `Gltf.GetMesh(asset, index)` | `obj(obj, i64)` | Get Mesh3D by index |
 | `GLTF.get_MaterialCount(asset)` | `i64(obj)` | Number of materials |
-| `GLTF.GetMaterial(asset, index)` | `obj(obj, i64)` | Get Material3D by index |
+| `Gltf.GetMaterial(asset, index)` | `obj(obj, i64)` | Get Material3D by index |
 
 ### Zia Example
 
 ```zia
 module GLTFDemo;
 
-bind Zanna.Graphics3D.GLTF;
+bind Zanna.Graphics3D.Gltf;
 bind Zanna.Graphics3D.Canvas3D;
 bind Zanna.Graphics3D.Camera3D;
 bind Zanna.Math.Mat4;
@@ -1721,9 +1771,9 @@ func start() {
     var canvas = Canvas3D.New("GLTF Demo", 800, 600);
     var cam = Camera3D.New(60.0, 800.0 / 600.0, 0.1, 100.0);
 
-    var asset = GLTF.Load("scene.gltf");
-    var mesh = GLTF.GetMesh(asset, 0);
-    var mat = GLTF.GetMaterial(asset, 0);
+    var asset = Gltf.Load("scene.gltf");
+    var mesh = Gltf.GetMesh(asset, 0);
+    var mat = Gltf.GetMaterial(asset, 0);
 
     while (Canvas3D.get_ShouldClose(canvas) == 0) {
         Canvas3D.Poll(canvas);
@@ -2250,7 +2300,7 @@ Notes:
 
 ### CollisionEvent3D
 
-`CollisionEvent3D` is the structured per-pair contact event produced by `Physics3DWorld.Step()`.
+`CollisionEvent3D` is the structured per-pair contact event produced by `PhysicsWorld3D.Step()`.
 
 | Property | Type | Access | Description |
 |----------|------|--------|-------------|
@@ -2484,7 +2534,7 @@ load-scaled friction circle — unloaded wheels slide first.
 | `SetMaxSteer(degrees)` | `void(f64)` | Max steering angle for steerable wheels (clamped to 85°) |
 | `SetGrip(longitudinal, lateral)` | `void(f64, f64)` | Tire friction-circle coefficients |
 | `SetCollisionMask(mask)` | `void(i64)` | Layers the suspension rays treat as ground |
-| `Step(dt)` | `void(f64)` | Cast suspension rays and apply forces; call before `Physics3DWorld.Step` |
+| `Step(dt)` | `void(f64)` | Cast suspension rays and apply forces; call before `PhysicsWorld3D.Step` |
 | `WheelInContact(i)` / `WheelTravel(i)` / `WheelLoad(i)` | telemetry | Contact flag, current suspension length (m), suspension force (N) |
 
 ### Zia Example
@@ -2492,7 +2542,7 @@ load-scaled friction circle — unloaded wheels slide first.
 ```zia
 module PhysicsDemo;
 
-bind Zanna.Graphics3D.Physics3DWorld;
+bind Zanna.Graphics3D.PhysicsWorld3D;
 bind Zanna.Graphics3D.Physics3DBody;
 bind Zanna.Graphics3D.Character3D;
 bind Zanna.Graphics3D.Trigger3D;
@@ -2501,27 +2551,27 @@ bind Zanna.Math.Vec3;
 
 func start() {
     // Create physics world with gravity
-    var world = Physics3DWorld.New(0.0, -9.8, 0.0);
+    var world = PhysicsWorld3D.New(0.0, -9.8, 0.0);
 
     // Static ground
     var ground = Physics3DBody.NewAABB(100.0, 1.0, 100.0, 0.0);
     Physics3DBody.SetPosition(ground, 0.0, -0.5, 0.0);
     Physics3DBody.set_Static(ground, true);
-    Physics3DWorld.Add(world, ground);
+    PhysicsWorld3D.Add(world, ground);
 
     // Dynamic sphere
     var ball = Physics3DBody.NewSphere(0.5, 1.0);
     Physics3DBody.SetPosition(ball, 0.0, 10.0, 0.0);
     Physics3DBody.set_Restitution(ball, 0.8);
-    Physics3DWorld.Add(world, ball);
+    PhysicsWorld3D.Add(world, ball);
 
     // Distance joint between two bodies
     var anchor = Physics3DBody.NewSphere(0.2, 0.0);
     Physics3DBody.SetPosition(anchor, 0.0, 15.0, 0.0);
     Physics3DBody.set_Static(anchor, true);
-    Physics3DWorld.Add(world, anchor);
+    PhysicsWorld3D.Add(world, anchor);
     var joint = DistanceJoint3D.New(anchor, ball, 5.0);
-    Physics3DWorld.AddJoint(world, joint, 0);
+    PhysicsWorld3D.AddJoint(world, joint, 0);
 
     // Character controller
     var player = Character3D.New(0.4, 1.8, 80.0);
@@ -2531,7 +2581,7 @@ func start() {
     var zone = Trigger3D.New(-2.0, 0.0, -2.0, 2.0, 3.0, 2.0);
 
     // Simulation loop
-    Physics3DWorld.Step(world, 0.016);
+    PhysicsWorld3D.Step(world, 0.016);
 
     // Check collisions
     var n = Physics3DWorld.get_CollisionCount(world);
@@ -2636,7 +2686,7 @@ module Sprite3DDemo;
 bind Zanna.Graphics3D.Sprite3D;
 bind Zanna.Graphics3D.Canvas3D;
 bind Zanna.Graphics3D.Camera3D;
-bind Zanna.IO.Pixels;
+bind Zanna.Graphics.Pixels;
 
 func start() {
     var canvas = Canvas3D.New("Sprite3D", 800, 600);
@@ -3512,7 +3562,7 @@ Each added layer is copied into the atlas with a duplicated 1-pixel edge/corner 
 module AtlasDemo;
 
 bind Zanna.Graphics3D.TextureAtlas3D;
-bind Zanna.IO.Pixels;
+bind Zanna.Graphics.Pixels;
 
 func start() {
     var atlas = TextureAtlas3D.New(256, 256);
@@ -3557,7 +3607,7 @@ bind Zanna.Graphics3D.Vegetation3D;
 bind Zanna.Graphics3D.Terrain3D;
 bind Zanna.Graphics3D.Canvas3D;
 bind Zanna.Graphics3D.Camera3D;
-bind Zanna.IO.Pixels;
+bind Zanna.Graphics.Pixels;
 
 func start() {
     var canvas = Canvas3D.New("Vegetation", 800, 600);

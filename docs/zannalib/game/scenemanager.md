@@ -33,7 +33,7 @@ actions itself.
 
 ## Example
 
-```rust
+```zia
 module SceneManagerExample;
 
 func start() {

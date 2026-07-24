@@ -26,7 +26,7 @@ Recent runtime updates include reliable `Tab` / `Shift+Tab` focus traversal, foc
 
 ## Complete Example (Zia)
 
-```rust
+```zia
 module NoteEditor;
 
 bind Zanna.GUI.App as App;

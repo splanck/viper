@@ -1,0 +1,300 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/ui/workspace_dock.zia
+// Purpose: Stable dock-location identifiers and edge-drop geometry for Studio.
+// Key invariants:
+//   - Persisted names are portable strings and unknown values fall back safely.
+//   - Tool-panel and primary-sidebar drags use distinct typed payloads.
+//   - Attached primary docks remain a three-value compatibility surface while
+//     independent tool groups may also use the in-window floating location.
+//   - Bottom-edge intent wins in lower corners so a horizontal panel is easy
+//     to recover even when the workbench is narrow.
+//   - Stationary target cards remain inside the workbench at compact sizes.
+//   - Pure geometry and copy helpers have no GUI ownership and are probe-friendly.
+// Ownership/Lifetime: This module owns values only; ToolPanelShell owns widgets.
+// Links: zannastudio/src/ui/tool_panel_shell.zia,
+//        zannastudio/src/ui/workbench_shell.zia
+//
+//===----------------------------------------------------------------------===//
+
+module workspace_dock;
+
+final DOCK_BOTTOM: Integer = 0;
+final DOCK_LEFT: Integer = 1;
+final DOCK_RIGHT: Integer = 2;
+final DOCK_FLOATING: Integer = 3;
+final DOCK_NONE: Integer = -1;
+
+final TOOL_PANEL_DRAG_TYPE = "application/x-zanna-studio-tool-panel";
+final TOOL_PANEL_DRAG_DATA = "tool-panel";
+final PRIMARY_SIDEBAR_DRAG_TYPE =
+    "application/x-zanna-studio-primary-sidebar";
+final PRIMARY_SIDEBAR_DRAG_DATA = "primary-sidebar";
+final DOCK_TARGET_MARGIN: Number = 16.0;
+final DOCK_TARGET_MIN_WIDTH: Number = 132.0;
+final DOCK_TARGET_MAX_WIDTH: Number = 196.0;
+final DOCK_TARGET_MIN_HEIGHT: Number = 56.0;
+final DOCK_TARGET_MAX_HEIGHT: Number = 80.0;
+final FLOATING_SNAP_MIN_SIZE: Number = 24.0;
+final FLOATING_SNAP_MAX_SIZE: Number = 56.0;
+
+/// @brief Return whether a numeric dock location is supported.
+expose func IsDockLocation(location: Integer) -> Boolean {
+    return location == DOCK_BOTTOM
+        or location == DOCK_LEFT
+        or location == DOCK_RIGHT;
+}
+
+/// @brief Return whether a location can own an independent tool group.
+/// @details The legacy primary dock remains attached to one workbench edge,
+///          while individual panels and merged groups may float above it.
+expose func IsToolLocation(location: Integer) -> Boolean {
+    return IsDockLocation(location) or location == DOCK_FLOATING;
+}
+
+/// @brief Convert one location to its durable settings value.
+expose func DockLocationName(location: Integer) -> String {
+    if location == DOCK_LEFT { return "left"; }
+    if location == DOCK_RIGHT { return "right"; }
+    return "bottom";
+}
+
+/// @brief Parse a durable settings value, defaulting malformed data to bottom.
+expose func DockLocationFromName(name: String) -> Integer {
+    if name == "left" { return DOCK_LEFT; }
+    if name == "right" { return DOCK_RIGHT; }
+    return DOCK_BOTTOM;
+}
+
+/// @brief Convert an attached or floating tool location to durable text.
+expose func ToolLocationName(location: Integer) -> String {
+    if location == DOCK_FLOATING { return "floating"; }
+    return DockLocationName(location);
+}
+
+/// @brief Return whether a location is valid for the primary sidebar.
+expose func IsSidebarLocation(location: Integer) -> Boolean {
+    return location == DOCK_LEFT or location == DOCK_RIGHT;
+}
+
+/// @brief Convert one primary-sidebar location to durable settings text.
+expose func SidebarLocationName(location: Integer) -> String {
+    if location == DOCK_RIGHT { return "right"; }
+    return "left";
+}
+
+/// @brief Parse primary-sidebar settings, defaulting malformed data to left.
+expose func SidebarLocationFromName(name: String) -> Integer {
+    if name == "right" { return DOCK_RIGHT; }
+    return DOCK_LEFT;
+}
+
+/// @brief Return the edge currently under a pointer, or DOCK_NONE in the center.
+/// @details Unlike DockLocationForPointer, this helper does not fold the center
+///          into the current dock. It is intended for live drag affordances so
+///          the header never claims a central drop will move the panel.
+expose func DockEdgeForPointer(pointerX: Number,
+                               pointerY: Number,
+                               workspaceX: Number,
+                               workspaceY: Number,
+                               workspaceWidth: Number,
+                               workspaceHeight: Number) -> Integer {
+    if workspaceWidth <= 0.0 or workspaceHeight <= 0.0 { return DOCK_NONE; }
+
+    var relativeX = pointerX - workspaceX;
+    var relativeY = pointerY - workspaceY;
+    if relativeX < 0.0 or relativeY < 0.0
+       or relativeX > workspaceWidth or relativeY > workspaceHeight {
+        return DOCK_NONE;
+    }
+
+    // Make the bottom target slightly taller than either side target. A side
+    // panel is narrow by definition, while the horizontal panel should remain
+    // easy to restore in a compact workbench.
+    if relativeY >= workspaceHeight * 0.66 { return DOCK_BOTTOM; }
+    if relativeX <= workspaceWidth * 0.30 { return DOCK_LEFT; }
+    if relativeX >= workspaceWidth * 0.70 { return DOCK_RIGHT; }
+    return DOCK_NONE;
+}
+
+/// @brief Return an intentional floating-window edge snap, or DOCK_NONE.
+/// @details Attached panel drags use broad destination regions because the
+///          source remains stationary. A freely moving window instead gets a
+///          narrow, clamped hot zone so ordinary repositioning near the editor
+///          cannot unexpectedly dock the whole group.
+expose func FloatingSnapEdgeForPointer(pointerX: Number,
+                                       pointerY: Number,
+                                       workspaceX: Number,
+                                       workspaceY: Number,
+                                       workspaceWidth: Number,
+                                       workspaceHeight: Number) -> Integer {
+    if workspaceWidth <= 0.0 or workspaceHeight <= 0.0 { return DOCK_NONE; }
+
+    var relativeX = pointerX - workspaceX;
+    var relativeY = pointerY - workspaceY;
+    if relativeX < 0.0 or relativeY < 0.0
+       or relativeX > workspaceWidth or relativeY > workspaceHeight {
+        return DOCK_NONE;
+    }
+
+    var horizontalSnap = workspaceWidth * 0.06;
+    if horizontalSnap < FLOATING_SNAP_MIN_SIZE {
+        horizontalSnap = FLOATING_SNAP_MIN_SIZE;
+    }
+    if horizontalSnap > FLOATING_SNAP_MAX_SIZE {
+        horizontalSnap = FLOATING_SNAP_MAX_SIZE;
+    }
+    var verticalSnap = workspaceHeight * 0.08;
+    if verticalSnap < FLOATING_SNAP_MIN_SIZE {
+        verticalSnap = FLOATING_SNAP_MIN_SIZE;
+    }
+    if verticalSnap > FLOATING_SNAP_MAX_SIZE {
+        verticalSnap = FLOATING_SNAP_MAX_SIZE;
+    }
+
+    if relativeY >= workspaceHeight - verticalSnap { return DOCK_BOTTOM; }
+    if relativeX <= horizontalSnap { return DOCK_LEFT; }
+    if relativeX >= workspaceWidth - horizontalSnap { return DOCK_RIGHT; }
+    return DOCK_NONE;
+}
+
+/// @brief Return concise live feedback for a panel-header drag.
+expose func DockDragHint(location: Integer) -> String {
+    if location == DOCK_LEFT { return "Release to dock panels left"; }
+    if location == DOCK_BOTTOM { return "Release to dock panels at bottom"; }
+    if location == DOCK_RIGHT { return "Release to dock panels right"; }
+    if location == DOCK_FLOATING { return "Release to float panel group"; }
+    return "Move to an edge or the Float target";
+}
+
+/// @brief Return concise live feedback for a primary-sidebar header drag.
+expose func SidebarDragHint(location: Integer) -> String {
+    if location == DOCK_LEFT { return "Release to move sidebar left"; }
+    if location == DOCK_RIGHT { return "Release to move sidebar right"; }
+    return "Move to the left or right target";
+}
+
+/// @brief Return concise copy for one stationary dock target card.
+/// @param location Target card location.
+/// @param currentLocation Current durable dock location.
+/// @param active True while the drag is directly over this target.
+expose func DockTargetText(location: Integer,
+                           currentLocation: Integer,
+                           active: Boolean) -> String {
+    var edgeName = "";
+    if location == DOCK_LEFT { edgeName = "Left"; }
+    else if location == DOCK_BOTTOM { edgeName = "Bottom"; }
+    else if location == DOCK_RIGHT { edgeName = "Right"; }
+    else if location == DOCK_FLOATING { edgeName = "Float"; }
+    else { return ""; }
+
+    if active {
+        if location == currentLocation { return "Keep: " + edgeName; }
+        return "Release: " + edgeName;
+    }
+    if location == currentLocation { return edgeName + " (current)"; }
+    return "Dock " + edgeName;
+}
+
+/// @brief Return concise copy for one primary-sidebar drop target.
+expose func SidebarTargetText(location: Integer,
+                              currentLocation: Integer,
+                              active: Boolean) -> String {
+    if !IsSidebarLocation(location) { return ""; }
+    var edgeName = "Left";
+    if location == DOCK_RIGHT { edgeName = "Right"; }
+    if active {
+        if location == currentLocation { return "Keep Sidebar: " + edgeName; }
+        return "Move Sidebar: " + edgeName;
+    }
+    if location == currentLocation {
+        return "Sidebar " + edgeName + " (current)";
+    }
+    return "Move Sidebar " + edgeName;
+}
+
+/// @brief Return a responsive target-card width in logical layout units.
+expose func DockTargetWidth(workspaceWidth: Number) -> Number {
+    if workspaceWidth <= 0.0 { return 0.0; }
+    var available = workspaceWidth - (DOCK_TARGET_MARGIN * 2.0);
+    if available < 1.0 { available = workspaceWidth; }
+    var width = workspaceWidth * 0.18;
+    if width < DOCK_TARGET_MIN_WIDTH { width = DOCK_TARGET_MIN_WIDTH; }
+    if width > DOCK_TARGET_MAX_WIDTH { width = DOCK_TARGET_MAX_WIDTH; }
+    if width > available { width = available; }
+    return width;
+}
+
+/// @brief Return a responsive target-card height in logical layout units.
+expose func DockTargetHeight(workspaceHeight: Number) -> Number {
+    if workspaceHeight <= 0.0 { return 0.0; }
+    var available = workspaceHeight - (DOCK_TARGET_MARGIN * 2.0);
+    if available < 1.0 { available = workspaceHeight; }
+    var height = workspaceHeight * 0.11;
+    if height < DOCK_TARGET_MIN_HEIGHT { height = DOCK_TARGET_MIN_HEIGHT; }
+    if height > DOCK_TARGET_MAX_HEIGHT { height = DOCK_TARGET_MAX_HEIGHT; }
+    if height > available { height = available; }
+    return height;
+}
+
+/// @brief Return one target card's parent-local x coordinate.
+expose func DockTargetX(location: Integer, workspaceWidth: Number) -> Number {
+    var width = DockTargetWidth(workspaceWidth);
+    if width <= 0.0 { return 0.0; }
+    if location == DOCK_LEFT {
+        if workspaceWidth >= width + (DOCK_TARGET_MARGIN * 2.0) {
+            return DOCK_TARGET_MARGIN;
+        }
+        return (workspaceWidth - width) / 2.0;
+    }
+    if location == DOCK_RIGHT {
+        if workspaceWidth >= width + (DOCK_TARGET_MARGIN * 2.0) {
+            return workspaceWidth - DOCK_TARGET_MARGIN - width;
+        }
+        return (workspaceWidth - width) / 2.0;
+    }
+    return (workspaceWidth - width) / 2.0;
+}
+
+/// @brief Return one target card's parent-local y coordinate.
+expose func DockTargetY(location: Integer, workspaceHeight: Number) -> Number {
+    var height = DockTargetHeight(workspaceHeight);
+    if height <= 0.0 { return 0.0; }
+    if location == DOCK_BOTTOM {
+        if workspaceHeight >= height + (DOCK_TARGET_MARGIN * 2.0) {
+            return workspaceHeight - DOCK_TARGET_MARGIN - height;
+        }
+        return (workspaceHeight - height) / 2.0;
+    }
+    return (workspaceHeight - height) / 2.0;
+}
+
+/// @brief Resolve a workspace edge drop to a dock location.
+/// @param pointerX Pointer x in the same screen coordinate space as workspaceX.
+/// @param pointerY Pointer y in the same screen coordinate space as workspaceY.
+/// @param workspaceX Workbench screen x.
+/// @param workspaceY Workbench screen y.
+/// @param workspaceWidth Workbench screen width.
+/// @param workspaceHeight Workbench screen height.
+/// @param currentLocation Location retained for a central or invalid drop.
+/// @return Bottom, left, right, or currentLocation for the central editor area.
+expose func DockLocationForPointer(pointerX: Number,
+                                   pointerY: Number,
+                                   workspaceX: Number,
+                                   workspaceY: Number,
+                                   workspaceWidth: Number,
+                                   workspaceHeight: Number,
+                                   currentLocation: Integer) -> Integer {
+    var fallback = currentLocation;
+    if IsDockLocation(fallback) == false { fallback = DOCK_BOTTOM; }
+    var edge = DockEdgeForPointer(
+        pointerX, pointerY, workspaceX, workspaceY,
+        workspaceWidth, workspaceHeight);
+    if edge != DOCK_NONE { return edge; }
+    return fallback;
+}

@@ -55,7 +55,7 @@ directions. Each key maps to exactly one value, and each value maps to exactly o
 
 ### Zia Example
 
-```rust
+```zia
 module BiMapDemo;
 
 bind Zanna.Collections;
@@ -171,7 +171,7 @@ stores a list of values for each key.
 
 ### Zia Example
 
-```rust
+```zia
 module MultiMapDemo;
 
 bind Zanna.Collections;
@@ -290,8 +290,8 @@ ranking operations for counting occurrences.
 
 | Method              | Signature               | Description                                                         |
 |---------------------|-------------------------|---------------------------------------------------------------------|
-| `Inc(key)`          | `Integer(String)`       | Increment count for key by 1; returns new count                     |
-| `Dec(key)`          | `Integer(String)`       | Decrement count for key by 1; removes key if count reaches 0        |
+| `Increment(key)`          | `Integer(String)`       | Increment count for key by 1; returns new count                     |
+| `Decrement(key)`          | `Integer(String)`       | Decrement count for key by 1; removes key if count reaches 0        |
 | `IncrementBy(key, n)`     | `Integer(String, Integer)` | Add positive n; non-positive n returns 0 without changing the map|
 | `Get(key)`          | `Integer(String)`       | Get current count for key (0 if not present)                        |
 | `Set(key, count)`   | `Void(String, Integer)` | Set a positive count; zero or negative removes the key               |
@@ -321,7 +321,7 @@ ranking operations for counting occurrences.
 
 ### Zia Example
 
-```rust
+```zia
 module CountMapDemo;
 
 bind Zanna.Collections;
@@ -333,12 +333,12 @@ func start() {
     var cm: CountMap = CountMap.New();
 
     // Count occurrences
-    cm.Inc("apple");
-    cm.Inc("apple");
-    cm.Inc("banana");
-    cm.Inc("cherry");
-    cm.Inc("cherry");
-    cm.Inc("cherry");
+    cm.Increment("apple");
+    cm.Increment("apple");
+    cm.Increment("banana");
+    cm.Increment("cherry");
+    cm.Increment("cherry");
+    cm.Increment("cherry");
     SayInt(cm.Count);                // 3 (distinct keys)
 
     // Bulk increment
@@ -353,8 +353,8 @@ func start() {
     SayInt(top.Count);               // 2
 
     // Decrement removes at zero
-    cm.Dec("apple");               // count -> 1
-    cm.Dec("apple");               // count -> 0, removed
+    cm.Decrement("apple");               // count -> 1
+    cm.Decrement("apple");               // count -> 0, removed
     SayBool(cm.Has("apple"));      // 0
 }
 ```
@@ -366,12 +366,12 @@ DIM cm AS OBJECT
 cm = Zanna.Collections.CountMap.New()
 
 ' Count word occurrences
-cm.Inc("apple")
-cm.Inc("apple")
-cm.Inc("banana")
-cm.Inc("cherry")
-cm.Inc("cherry")
-cm.Inc("cherry")
+cm.Increment("apple")
+cm.Increment("apple")
+cm.Increment("banana")
+cm.Increment("cherry")
+cm.Increment("cherry")
+cm.Increment("cherry")
 PRINT cm.Count                ' 3 (distinct keys)
 
 ' Bulk increment
@@ -386,8 +386,8 @@ cm.Set("date", 10)
 PRINT cm.Get("date")        ' 10
 
 ' Decrement (removes key when count reaches 0)
-cm.Dec("apple")              ' 1
-cm.Dec("apple")              ' 0 (removed)
+cm.Decrement("apple")              ' 1
+cm.Decrement("apple")              ' 0 (removed)
 PRINT cm.Has("apple")        ' 0
 
 ' Get top entries
@@ -460,7 +460,7 @@ An integer-keyed dictionary for efficient mapping of integer keys to object valu
 
 ### Zia Example
 
-```rust
+```zia
 module IntMapDemo;
 
 bind Zanna.Terminal;
@@ -576,7 +576,7 @@ value specified at construction time via `Zanna.Core.Box`.
 
 ### Zia Example
 
-```rust
+```zia
 module DefaultMapDemo;
 
 bind Zanna.Collections;
@@ -708,7 +708,7 @@ Negative capacities trap.
 
 ### Zia Example
 
-```rust
+```zia
 module LruCacheDemo;
 
 bind Zanna.Collections;
@@ -845,7 +845,7 @@ A map with weak value references. Values may become NULL when their referent is 
 
 ### Zia Example
 
-```rust
+```zia
 module WeakMapDemo;
 
 bind Zanna.Collections.WeakMap as WeakMap;
@@ -961,7 +961,7 @@ for gaps. Only occupied indices consume storage.
 
 ### Zia Example
 
-```rust
+```zia
 module SparseArrayDemo;
 
 bind Zanna.Collections;
@@ -1041,7 +1041,7 @@ PRINT sa.Has(1000)       ' 0
 PRINT sa.Count             ' 3
 
 ' Setting NULL also removes an entry
-sa.Set(100, NULL)
+sa.Set(100, NOTHING)
 PRINT sa.Has(100)        ' 0
 PRINT sa.Count             ' 2
 

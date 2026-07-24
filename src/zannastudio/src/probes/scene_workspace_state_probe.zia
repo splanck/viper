@@ -1,0 +1,266 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/probes/scene_workspace_state_probe.zia
+// Purpose: Verify bounded session persistence and recovery for visual scenes.
+// Key invariants:
+//   - Named 2D and 3D scenes restore independent, versioned workspace state.
+//   - Hostile scalar fields clamp before a scene controller can consume them.
+//   - Wide inspector preference and compact master/detail pane restore exactly.
+//   - Dirty untitled scenes recover as visual tabs, never as source documents.
+// Ownership/Lifetime:
+//   - The probe owns and removes one isolated temporary directory.
+// Links: zannastudio/src/core/session.zia,
+//        zannastudio/src/core/document.zia
+//
+//===----------------------------------------------------------------------===//
+
+module scene_workspace_state_probe;
+
+// ============================================================================
+// MODULE: scene_workspace_state_probe
+// PURPOSE: Regress bounded scene-tab workspace persistence and dirty visual
+//          document recovery without constructing native scene widgets.
+//
+// WHERE-THIS-FITS: Non-display persistence probe registered as
+//          zia_zannastudio_scene_workspace_state.
+//
+// TEACHING-NOTE: Session values are untrusted input. Assert ordinary round
+//          trips and hostile clamping before a controller consumes them.
+// ============================================================================
+
+bind "../core/document_manager";
+bind "../core/project_manager";
+bind "../core/session";
+bind "../services/file_utils";
+
+bind SceneDocument = Zanna.Game2D.SceneDocument;
+bind TempFile = Zanna.IO.TempFile;
+bind File = Zanna.IO.File;
+bind Dir = Zanna.IO.Dir;
+bind Path = Zanna.IO.Path;
+bind Ini = Zanna.Data.Ini;
+bind Terminal = Zanna.Terminal;
+
+func fail(root: String, message: String) {
+    if root != "" { Dir.RemoveAll(root); }
+    Terminal.Say("RESULT: fail " + message);
+}
+
+func near(actual: Number, expected: Number) -> Boolean {
+    var difference = actual - expected;
+    if difference < 0.0 { difference = 0.0 - difference; }
+    return difference < 0.001;
+}
+
+func main() {
+    var root = TempFile.CreateDirWithPrefix(
+        "zannastudio_scene_workspace_state_");
+    if root == "" {
+        fail(root, "could not create isolated state directory");
+        return;
+    }
+
+    var settingsPath = Path.Join(root, "named-scenes.ini");
+    var scene2DPath = Path.Join(root, "workspace-state.scene");
+    var scene3DPath = Path.Join(root, "workspace-state.vscn");
+    File.WriteAllText(
+        scene2DPath, SceneDocument.New(32, 18, 32, 32).ToJson());
+    File.WriteAllText(scene3DPath, file_utils.DefaultScene3DContent());
+    File.WriteAllText(
+        settingsPath, "[settings]\nrestoreSession=1\nrestoreLastProject=0\n");
+
+    var sourceDocs = new document_manager.DocumentManager();
+    var source2D = sourceDocs.OpenFile(scene2DPath);
+    source2D.scene2DWorkspace.initialized = true;
+    source2D.scene2DWorkspace.mode = 2;
+    source2D.scene2DWorkspace.zoomPercent = 375;
+    source2D.scene2DWorkspace.activeLayer = 7;
+    source2D.scene2DWorkspace.selectedObject = 12;
+    source2D.scene2DWorkspace.selectedObjectProperty = 3;
+    source2D.scene2DWorkspace.selectedCellX = 21;
+    source2D.scene2DWorkspace.selectedCellY = 9;
+    source2D.scene2DWorkspace.tileId = 44;
+    source2D.scene2DWorkspace.splitPosition = 0.625;
+    source2D.scene2DWorkspace.canvasScrollX = 128.0;
+    source2D.scene2DWorkspace.canvasScrollY = 64.0;
+    source2D.scene2DWorkspace.inspectorScrollY = 96.0;
+    source2D.scene2DWorkspace.inspectorRequestedVisible = false;
+    source2D.scene2DWorkspace.compactInspectorShown = true;
+
+    var source3D = sourceDocs.OpenFile(scene3DPath);
+    source3D.scene3DWorkspace.initialized = true;
+    source3D.scene3DWorkspace.selectedIndex = 9;
+    source3D.scene3DWorkspace.transformMode = 2;
+    source3D.scene3DWorkspace.transformSnapEnabled = true;
+    source3D.scene3DWorkspace.viewYawDegrees = -70;
+    source3D.scene3DWorkspace.viewPitchDegrees = 35;
+    source3D.scene3DWorkspace.viewScale = 52;
+    source3D.scene3DWorkspace.viewTargetX = 1.25;
+    source3D.scene3DWorkspace.viewTargetY = -2.5;
+    source3D.scene3DWorkspace.viewTargetZ = 3.75;
+    source3D.scene3DWorkspace.splitPosition = 0.575;
+    source3D.scene3DWorkspace.inspectorScrollY = 48.0;
+    source3D.scene3DWorkspace.inspectorRequestedVisible = true;
+    source3D.scene3DWorkspace.compactInspectorShown = false;
+
+    var writer = new session.SessionManager();
+    writer.Setup(settingsPath);
+    if writer.SaveCleanExit(
+           sourceDocs, new project_manager.ProjectManager()) == false {
+        fail(root, "named scene workspace save failed");
+        return;
+    }
+    var savedIni = Ini.Parse(File.ReadAllText(settingsPath));
+    if Ini.Get(savedIni, "session.file.0", "scene2dVersion") != "1"
+       or Ini.Get(savedIni, "session.file.0", "scene2dSplit") != "6250"
+       or Ini.Get(savedIni, "session.file.0", "scene2dInspectorVisible") != "0"
+       or Ini.Get(savedIni, "session.file.0", "scene2dCompactInspector") != "1"
+       or Ini.Get(savedIni, "session.file.1", "scene3dVersion") != "1"
+       or Ini.Get(savedIni, "session.file.1", "scene3dTransformMode") != "2"
+       or Ini.Get(savedIni, "session.file.1", "scene3dTransformSnap") != "1"
+       or Ini.Get(savedIni, "session.file.1", "scene3dTargetY") != "-2500"
+       or Ini.Get(savedIni, "session.file.1", "scene3dInspectorVisible") != "1"
+       or Ini.Get(savedIni, "session.file.1", "scene3dCompactInspector") != "0" {
+        fail(root, "scene state was not written as versioned fixed-point fields");
+        return;
+    }
+
+    var reader = new session.SessionManager();
+    reader.Setup(settingsPath);
+    var restoredDocs = new document_manager.DocumentManager();
+    if reader.Restore(
+           restoredDocs, new project_manager.ProjectManager(), null) != 2 {
+        fail(root, "named scene session did not restore both tabs");
+        return;
+    }
+    var restored2DIndex = restoredDocs.FindByPath(scene2DPath);
+    var restored3DIndex = restoredDocs.FindByPath(scene3DPath);
+    if restored2DIndex < 0 or restored3DIndex < 0 {
+        fail(root, "named scenes lost their canonical path owners");
+        return;
+    }
+    var restored2D = restoredDocs.documents.get(restored2DIndex);
+    var restored3D = restoredDocs.documents.get(restored3DIndex);
+    if restored2D.kind != file_utils.DOC_KIND_SCENE_2D
+       or restored2D.scene2DWorkspace.initialized == false
+       or restored2D.scene2DWorkspace.mode != 2
+       or restored2D.scene2DWorkspace.zoomPercent != 375
+       or restored2D.scene2DWorkspace.tileId != 44
+       or near(restored2D.scene2DWorkspace.splitPosition, 0.625) == false
+       or near(restored2D.scene2DWorkspace.canvasScrollX, 128.0) == false
+       or restored2D.scene2DWorkspace.inspectorRequestedVisible
+       or restored2D.scene2DWorkspace.compactInspectorShown == false
+       or restored3D.kind != file_utils.DOC_KIND_SCENE_3D
+       or restored3D.scene3DWorkspace.initialized == false
+       or restored3D.scene3DWorkspace.selectedIndex != 9
+       or restored3D.scene3DWorkspace.transformMode != 2
+       or restored3D.scene3DWorkspace.transformSnapEnabled == false
+       or restored3D.scene3DWorkspace.viewYawDegrees != -70
+       or restored3D.scene3DWorkspace.viewPitchDegrees != 35
+       or restored3D.scene3DWorkspace.viewScale != 52
+       or near(restored3D.scene3DWorkspace.viewTargetX, 1.25) == false
+       or near(restored3D.scene3DWorkspace.viewTargetY, -2.5) == false
+       or near(restored3D.scene3DWorkspace.viewTargetZ, 3.75) == false
+       or restored3D.scene3DWorkspace.inspectorRequestedVisible == false
+       or restored3D.scene3DWorkspace.compactInspectorShown {
+        fail(root, "named scene workspace values did not round trip");
+        return;
+    }
+
+    Ini.Set(savedIni, "session.file.0", "scene2dMode", "-30");
+    Ini.Set(savedIni, "session.file.0", "scene2dZoom", "999999");
+    Ini.Set(savedIni, "session.file.0", "scene2dSplit", "-20");
+    Ini.Set(savedIni, "session.file.0", "scene2dScrollX", "2000000");
+    Ini.Set(savedIni, "session.file.0", "scene2dInspectorVisible", "99");
+    Ini.Set(savedIni, "session.file.0", "scene2dCompactInspector", "-5");
+    Ini.Set(savedIni, "session.file.1", "scene3dSelection", "999999");
+    Ini.Set(savedIni, "session.file.1", "scene3dTransformMode", "-99");
+    Ini.Set(savedIni, "session.file.1", "scene3dTransformSnap", "50");
+    Ini.Set(savedIni, "session.file.1", "scene3dYaw", "-999");
+    Ini.Set(savedIni, "session.file.1", "scene3dPitch", "999");
+    Ini.Set(savedIni, "session.file.1", "scene3dScale", "0");
+    Ini.Set(savedIni, "session.file.1", "scene3dTargetX", "2000000000");
+    Ini.Set(savedIni, "session.file.1", "scene3dInspectorVisible", "-9");
+    Ini.Set(savedIni, "session.file.1", "scene3dCompactInspector", "50");
+    File.WriteAllText(settingsPath, Ini.Format(savedIni));
+    var hostileReader = new session.SessionManager();
+    hostileReader.Setup(settingsPath);
+    var boundedDocs = new document_manager.DocumentManager();
+    if hostileReader.Restore(
+           boundedDocs, new project_manager.ProjectManager(), null) != 2 {
+        fail(root, "repairable hostile scene state rejected the session");
+        return;
+    }
+    var bounded2D = boundedDocs.documents.get(
+        boundedDocs.FindByPath(scene2DPath));
+    var bounded3D = boundedDocs.documents.get(
+        boundedDocs.FindByPath(scene3DPath));
+    if bounded2D.scene2DWorkspace.mode != 0
+       or bounded2D.scene2DWorkspace.zoomPercent != 1600
+       or near(bounded2D.scene2DWorkspace.splitPosition, 0.20) == false
+       or near(bounded2D.scene2DWorkspace.canvasScrollX, 1000000.0) == false
+       or bounded2D.scene2DWorkspace.inspectorRequestedVisible == false
+       or bounded2D.scene2DWorkspace.compactInspectorShown
+       or bounded3D.scene3DWorkspace.selectedIndex != 1023
+       or bounded3D.scene3DWorkspace.transformMode != 0
+       or bounded3D.scene3DWorkspace.transformSnapEnabled == false
+       or bounded3D.scene3DWorkspace.viewYawDegrees != -180
+       or bounded3D.scene3DWorkspace.viewPitchDegrees != 80
+       or bounded3D.scene3DWorkspace.viewScale != 4
+       or near(bounded3D.scene3DWorkspace.viewTargetX, 1000000.0) == false
+       or bounded3D.scene3DWorkspace.inspectorRequestedVisible
+       or bounded3D.scene3DWorkspace.compactInspectorShown == false {
+        fail(root, "hostile scene workspace fields were not bounded");
+        return;
+    }
+
+    var recoveryPath = Path.Join(root, "untitled-scenes.ini");
+    File.WriteAllText(
+        recoveryPath, "[settings]\nrestoreSession=1\nrestoreLastProject=0\n");
+    var recoveryDocs = new document_manager.DocumentManager();
+    var recovery2D = recoveryDocs.NewScene2DDocument();
+    recovery2D.isModified = true;
+    recovery2D.scene2DWorkspace.initialized = true;
+    recovery2D.scene2DWorkspace.zoomPercent = 250;
+    var recovery3D = recoveryDocs.NewScene3DDocument();
+    recovery3D.isModified = true;
+    recovery3D.scene3DWorkspace.initialized = true;
+    recovery3D.scene3DWorkspace.transformMode = 1;
+    recovery3D.scene3DWorkspace.transformSnapEnabled = true;
+    recovery3D.scene3DWorkspace.viewScale = 64;
+    var recoveryWriter = new session.SessionManager();
+    recoveryWriter.Setup(recoveryPath);
+    if recoveryWriter.Save(
+           recoveryDocs, new project_manager.ProjectManager()) == false {
+        fail(root, "dirty untitled scene recovery save failed");
+        return;
+    }
+    var recoveryReader = new session.SessionManager();
+    recoveryReader.Setup(recoveryPath);
+    var recoveredDocs = new document_manager.DocumentManager();
+    if recoveryReader.Restore(
+           recoveredDocs, new project_manager.ProjectManager(), null) != 2
+       or recoveredDocs.GetCount() != 2
+       or recoveredDocs.documents.get(0).kind
+           != file_utils.DOC_KIND_SCENE_2D
+       or recoveredDocs.documents.get(0).language != "scene"
+       or recoveredDocs.documents.get(0).scene2DWorkspace.zoomPercent != 250
+       or recoveredDocs.documents.get(1).kind
+           != file_utils.DOC_KIND_SCENE_3D
+       or recoveredDocs.documents.get(1).language != "scene3d"
+       or recoveredDocs.documents.get(1).scene3DWorkspace.transformMode != 1
+       or recoveredDocs.documents.get(1).scene3DWorkspace.transformSnapEnabled
+           == false
+       or recoveredDocs.documents.get(1).scene3DWorkspace.viewScale != 64 {
+        fail(root, "dirty untitled scenes did not recover as visual tabs");
+        return;
+    }
+
+    Dir.RemoveAll(root);
+    Terminal.Say("RESULT: ok");
+}

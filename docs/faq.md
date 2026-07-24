@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-05-31
+last-verified: 2026-07-23
 ---
 
 # Zanna FAQ
@@ -14,9 +14,11 @@ Frequently asked questions about the Zanna compiler toolchain.
 
 ### 1. What is Zanna?
 
-Zanna is an IL-based compiler toolchain that includes multiple language frontends (Zia and BASIC), an intermediate
-language (IL), virtual machine, and native code generator. It's designed as a research and educational platform for
-exploring language implementation, compiler design, and runtime systems.
+Zanna is a from-scratch compiler toolchain and game development platform. Two language frontends—Zia and BASIC—lower to
+a shared intermediate language (IL) that runs on a virtual machine or compiles to native code, all on top of a
+comprehensive runtime library. The IL layer cleanly separates language semantics from execution, which makes Zanna a
+practical foundation both for building programs and games and for exploring language implementation, compiler design,
+and runtime systems.
 
 ### 2. What makes Zanna different?
 
@@ -27,8 +29,9 @@ runtime.
 
 ### 3. Is Zanna suitable for production use?
 
-No. Zanna is an experimental research project at an early stage. While it implements substantial subsets of Zia and
-BASIC, it's intended for education, experimentation, and compiler research rather than production use.
+Zanna is under active development and has not yet reached a stable 1.0 release, so it is not yet recommended for
+production systems. It already implements substantial subsets of Zia and BASIC over a broad runtime library, and is
+well suited to learning language and compiler internals, experimentation, and building games and tools.
 
 ---
 
@@ -74,7 +77,7 @@ ilrun program.il
 - `/examples/games/vtris/` - Full Tetris game demonstrating OOP, graphics, and game loop patterns (BASIC)
 - `/examples/games/frogger-basic/`, `/examples/games/centipede-basic/`, `/examples/games/pacman-basic/` - BASIC ports of the same games
 - `/examples/apps/` - Zia application examples such as `zannasql/` and `paint/`
-- `/zannastudio/` - Zanna Studio source, built separately from the examples
+- `/src/zannastudio/` - Zanna Studio source, built separately from the examples
 - `/examples/apiaudit/` - Focused runtime API examples in both Zia and BASIC
 - `/src/tests/zia/` - Frontend tests covering specific Zia language features
 - `/src/tests/basic/` - Frontend tests covering specific BASIC language features
@@ -107,7 +110,7 @@ Zia is Zanna's primary language, designed as a modern, clean systems programming
 
 ### 9. How do I write a simple Zia program?
 
-```rust
+```zia
 module Main;
 
 bind Zanna.Terminal;
@@ -127,7 +130,7 @@ zanna run hello.zia
 
 Classes are Zia's object-oriented construct:
 
-```rust
+```zia
 class Counter {
     expose Integer value;
 
@@ -147,7 +150,7 @@ Use `expose` to make fields and methods visible outside the class.
 
 Use modules and binds:
 
-```rust
+```zia
 module MyModule;
 
 bind "./OtherModule";
@@ -228,7 +231,7 @@ See `/docs/il/il-guide.md` for the complete IL specification.
 Yes! The IL has a textual assembly syntax. You can write `.il` files and run them:
 
 ```bash
-zanna -run myprogram.il
+zanna run myprogram.il
 ```
 
 Tools available:

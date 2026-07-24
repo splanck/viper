@@ -45,7 +45,7 @@ stays true while resting flush on a solid tile even on a zero-displacement frame
 
 ## Example
 
-```rust
+```zia
 module EntityExample;
 
 func start() {

@@ -10,6 +10,11 @@
 // Key invariants:
 //   - Visible menu shortcuts match the active platform command registry.
 //   - Tool-panel state and structured search locations remain coherent.
+//   - Search and Preferences take intentional focus and never misroute Enter.
+//   - Preferences finds settings and commands or shows an explicit empty state.
+//   - Background search completion never steals the active Terminal panel.
+//   - Repeated search/build requests reveal active work without canceling it.
+//   - Durable Build/Search completion never becomes a transient popup.
 //   - Workspace-symbol parsing remains bounded and honors dirty live buffers.
 //   - Floating workbench forms stay inside the effective viewport at UI zoom.
 //   - Focus-taking forms replace one another without stale-owner interference.
@@ -41,10 +46,13 @@ bind "../ui/diff_view";
 bind "../ui/explorer_actions";
 bind "../ui/ide_overlays";
 bind "../ui/output_cache";
+bind "../ui/notification_policy";
 bind "../app/command_palette_controller";
 bind "../commands/command_registry";
+bind "../commands/build_commands";
 bind "../commands/quick_open_commands";
 bind "../commands/search_commands";
+bind "../build/build_system";
 bind "../core/document_manager";
 bind "../core/project_manager";
 bind "../core/settings";
@@ -151,6 +159,23 @@ func main() {
     var shell = new app_shell.AppShell();
     shell.Build("Zanna Studio Console Search Probe", 800, 520);
 
+    if notification_policy.ShouldShowPopup(
+           notification_policy.EVENT_BACKGROUND_RESULT, true, true)
+       or notification_policy.ShouldShowPopup(
+           notification_policy.EVENT_BACKGROUND_RESULT, true, false)
+       or !notification_policy.ShouldShowPopup(
+           notification_policy.EVENT_BACKGROUND_RESULT, false, true)
+       or !notification_policy.ShouldShowPopup(
+           notification_policy.EVENT_ACTION_FAILURE, false, true)
+       or notification_policy.ShouldShowPopup(
+           notification_policy.EVENT_EXTERNAL_CHANGE, false, false)
+       or !notification_policy.ShouldShowPopup(
+           notification_policy.EVENT_EXTERNAL_CHANGE, true, true)
+       or notification_policy.ShouldShowPopup(999, false, true) {
+        fail(shell, "contextual notification eligibility");
+        return;
+    }
+
     var chromeRegistry = new command_registry.CommandRegistry();
     shell.ApplyCommandShortcuts(chromeRegistry);
     var closeWorkspaceEntry = chromeRegistry.Find("closeworkspace");
@@ -170,6 +195,10 @@ func main() {
        or shell.menuChrome.miSaveAs.GetShortcut() != chromeRegistry.ShortcutFor("saveas")
        or shell.menuChrome.miSaveAll.GetShortcut() != chromeRegistry.ShortcutFor("saveall")
        or shell.menuChrome.miSearchProject.GetShortcut() != chromeRegistry.ShortcutFor("searchproject")
+       or shell.menuChrome.miDuplicateSelection.GetShortcut()
+            != chromeRegistry.ShortcutFor("duplicateline")
+       or shell.menuChrome.miDeleteSceneSelection.GetShortcut()
+            != chromeRegistry.ShortcutFor("deletesceneselection")
        or shell.menuChrome.miGoToDefinition.GetShortcut() != chromeRegistry.ShortcutFor("gotodef")
        or shell.menuChrome.miWorkspaceSymbols.GetShortcut() != chromeRegistry.ShortcutFor("workspacesymbols")
        or shell.menuChrome.miSymbolOutline.GetShortcut() != chromeRegistry.ShortcutFor("symboloutline")
@@ -192,6 +221,32 @@ func main() {
         return;
     }
     shell.SetCommandContextAvailable(false, false, false, false);
+
+    shell.SetCommandContextAvailable(true, false, false, false);
+    shell.SetTextEditorContextAvailable(false);
+    shell.SetEditHistoryAvailable(false, false);
+    if shell.menuChrome.miSave.IsEnabled() == false
+       or shell.menuChrome.miUndo.IsEnabled()
+       or shell.menuChrome.miCut.IsEnabled()
+       or shell.menuChrome.miFind.IsEnabled()
+       or shell.menuChrome.miToggleMinimap.IsEnabled()
+       or shell.menuChrome.tbFind.IsEnabled() {
+        fail(shell, "visual-surface code command state");
+        return;
+    }
+    shell.SetSurfaceEditActionsAvailable(
+        true, true, false, true, true, true);
+    if shell.menuChrome.miCut.IsEnabled() == false
+       or shell.menuChrome.miCopy.IsEnabled() == false
+       or shell.menuChrome.miPaste.IsEnabled()
+       or shell.menuChrome.miSelectAll.IsEnabled() == false
+       or shell.menuChrome.miDuplicateSelection.IsEnabled() == false
+       or shell.menuChrome.miDeleteSceneSelection.IsEnabled() == false
+       or shell.menuChrome.miFind.IsEnabled() {
+        fail(shell, "visual-surface standard edit action state");
+        return;
+    }
+    shell.SetTextEditorContextAvailable(true);
 
     // Palette and shortcut dispatch must honor the same workspace/job/debug
     // policy as visible menu items.
@@ -454,6 +509,21 @@ func main() {
         fail(shell, "output auto-scroll lock preserves selection");
         return;
     }
+    shell.toolPanels.ShowTerminalPanel();
+    var panelRevisionBeforeBuildOutput =
+        shell.toolPanels.GetPanelSelectionRevision();
+    shell.toolPanels.UpdateBuildOutput("background build output\n");
+    if shell.toolPanels.IsTerminalPanelVisible() == false
+       or shell.toolPanels.GetPanelSelectionRevision()
+          != panelRevisionBeforeBuildOutput {
+        fail(shell, "background build output stole context");
+        return;
+    }
+    shell.toolPanels.ShowOutputPanel();
+    if shell.toolPanels.IsOutputPanelActive() == false {
+        fail(shell, "Output panel did not become active");
+        return;
+    }
     shell.toolPanels.ClearOutputPanel();
     if shell.toolPanels.outputPane.LineCount != 0 or shell.toolPanels.outputListBox.Count != 0 {
         fail(shell, "clear output helper");
@@ -475,6 +545,21 @@ func main() {
        or shell.statusShell.jobItem.GetText() != "Job: Build"
        or shell.statusShell.jobStatusVisible == false {
         fail(shell, "active build toolbar state");
+        return;
+    }
+    var activeBuild = new build_system.BuildSystem();
+    activeBuild.isBuilding = true;
+    activeBuild.activeName = "Build";
+    activeBuild.buildOutput = "Compiling current project...\n";
+    shell.toolPanels.ShowTerminalPanel();
+    if build_commands.CanStartExecutionJob(shell, activeBuild,
+                                            "start a new run")
+       or activeBuild.IsActive() == false
+       or shell.toolPanels.IsOutputPanelActive() == false
+       or shell.toolPanels.lastBuildOutput != activeBuild.buildOutput
+       or Str.IndexOf(shell.statusShell.lastLeftStatus,
+                      "use Stop before you start a new run") == 0 {
+        fail(shell, "repeated build request interrupted or hid the active job");
         return;
     }
     shell.SetBuildJobActive(false, "");
@@ -504,9 +589,11 @@ func main() {
     shell.toolPanels.BeginProblems();
     var prob = shell.toolPanels.AddProblem("error", "zia", "src/main.zia", 12, 4,
                                 "V-ZIA", "expected token", "");
-    GUI.ListBox.ItemSetData(prob, "loc|src/main.zia|12|4|12|5|diagnostic|expected token");
+    shell.toolPanels.SetAddedProblemLocationData(
+        prob, "loc|src/main.zia|12|4|12|5|diagnostic|expected token");
     shell.toolPanels.FinishProblems(1);
-    if shell.toolPanels.diagListBox.Count != 2 or !shell.toolPanels.diagListBox.IsVisible() {
+    if shell.toolPanels.diagListBox.Count != 2
+       or !shell.toolPanels.diagListBox.IsVisible() {
         fail(shell, "problems structured rows");
         return;
     }
@@ -523,6 +610,20 @@ func main() {
         fail(shell, "problems suppress warning action");
         return;
     }
+    shell.toolPanels.ShowTerminalPanel();
+    var panelRevisionBeforeDiagnostics =
+        shell.toolPanels.GetPanelSelectionRevision();
+    shell.toolPanels.BeginProblems();
+    shell.toolPanels.AddProblem("warning", "zia", "src/main.zia", 20, 2,
+                                "W000", "passive diagnostic", "");
+    shell.toolPanels.UpdateProblems(1);
+    if shell.toolPanels.IsTerminalPanelVisible() == false
+       or shell.toolPanels.GetPanelSelectionRevision()
+          != panelRevisionBeforeDiagnostics {
+        fail(shell, "background diagnostics stole the Terminal panel");
+        return;
+    }
+    shell.toolPanels.ShowProblemsPanel();
     if diagnostics.ProblemActionForDiagnostic(0, "E000") != "No quick fix" {
         fail(shell, "problems no quick fix action");
         return;
@@ -557,6 +658,56 @@ func main() {
     prefs.completionDelayMs = 700;
     prefs.restoreSession = false;
     overlays.OpenSettings(shell, prefs);
+    if overlays.settingsFilterInput.IsFocused() == false
+       or overlays.fontPathInput.IsFocused() {
+        fail(shell, "preferences did not focus its search field");
+        return;
+    }
+    if ide_overlays.SettingsTermsMatch(
+           "appearance editor font size", "font editor") == false
+       or ide_overlays.SettingsTermsMatch(
+           "editing auto save", "auto-save") == false
+       or ide_overlays.SettingsTermsMatch(
+           "appearance editor font size", "font terminal") {
+        fail(shell, "preferences token matching");
+        return;
+    }
+    overlays.settingsFilterInput.SetText("font editor");
+    overlays.PopulateKeybindings(chromeRegistry, "font editor");
+    if overlays.ApplySettingsFilter("font editor") <= 0
+       or overlays.settingsNoMatchesLabel.IsVisible()
+       or overlays.settingsFilterClearButton.IsEnabled() == false {
+        fail(shell, "preferences could not find a setting by control name");
+        return;
+    }
+    overlays.settingsFilterInput.SetText("auto save");
+    overlays.PopulateKeybindings(chromeRegistry, "auto save");
+    if overlays.ApplySettingsFilter("auto save") <= 0 {
+        fail(shell, "preferences could not find a multi-word editing setting");
+        return;
+    }
+    overlays.settingsFilterInput.SetText("quick open");
+    if overlays.PopulateKeybindings(chromeRegistry, "quick open") <= 0
+       or overlays.ApplySettingsFilter("quick open") <= 0 {
+        fail(shell, "preferences hid matching live commands");
+        return;
+    }
+    overlays.settingsFilterInput.SetText("zzzz-no-such-setting-command");
+    overlays.PopulateKeybindings(
+        chromeRegistry, "zzzz-no-such-setting-command");
+    if overlays.ApplySettingsFilter("zzzz-no-such-setting-command") != 0
+       or overlays.settingsNoMatchesLabel.IsVisible() == false {
+        fail(shell, "preferences missing explicit empty search state");
+        return;
+    }
+    overlays.settingsFilterInput.SetText("");
+    overlays.PopulateKeybindings(chromeRegistry, "");
+    if overlays.ApplySettingsFilter("") != 5
+       or overlays.settingsNoMatchesLabel.IsVisible()
+       or overlays.settingsFilterClearButton.IsEnabled() {
+        fail(shell, "cleared preferences search did not restore all sections");
+        return;
+    }
     overlays.ResetAppearanceDefaults();
     if overlays.ReadFontSize() != settings.DEFAULT_FONT_SIZE
        or overlays.ReadTheme() != "dark"
@@ -611,7 +762,12 @@ func main() {
             + overlays.fontPathInput.GetScreenX() + "/"
             + overlays.fontPathInput.GetScreenWidth() + " scroll="
             + overlays.settingsBodyScroll.GetScreenX() + "/"
-            + overlays.settingsBodyScroll.GetScreenWidth() + " inputRight="
+            + overlays.settingsBodyScroll.GetScreenWidth()
+            + " filter=" + overlays.settingsFilterInput.GetScreenWidth()
+            + " clear=" + overlays.settingsFilterClearButton.GetScreenWidth()
+            + " keys=" + overlays.keybindingList.GetScreenWidth()
+            + " noMatch=" + overlays.settingsNoMatchesLabel.GetScreenWidth()
+            + " inputRight="
             + (overlays.fontPathInput.GetScreenX()
                 + overlays.fontPathInput.GetScreenWidth())
             + " panelRight=" + settingsRight
@@ -623,9 +779,17 @@ func main() {
     }
     overlays.settingsBodyScroll.SetScroll(100000.0, 100000.0);
     shell.Render();
+    // Backing-scale rounding may leave a subpixel horizontal range even when
+    // every child is visibly contained; anything at or below one logical pixel
+    // is not user-scrollable overflow.
     if overlays.settingsBodyScroll.GetScrollY() <= 0.0
-       or overlays.settingsBodyScroll.GetScrollX() > 0.5 {
-        fail(shell, "preferences body must scroll vertically without horizontal overflow");
+       or overlays.settingsBodyScroll.GetScrollX() > 1.0 {
+        fail(shell, "preferences body must scroll vertically without horizontal overflow: "
+            + overlays.settingsBodyScroll.GetScrollX() + ","
+            + overlays.settingsBodyScroll.GetScrollY()
+            + " filter=" + overlays.settingsFilterInput.GetScreenWidth()
+            + " keys=" + overlays.keybindingList.GetScreenWidth()
+            + " scroll=" + overlays.settingsBodyScroll.GetScreenWidth());
         return;
     }
     shell.app.SetWindowSize(1280, 720);
@@ -664,7 +828,65 @@ func main() {
         fail(shell, "command input overlay overflowed at minimum size");
         return;
     }
-    commandOverlay.Cancel();
+
+    // Submit/cancel through the real keyboard path. Empty input must stay in
+    // place, successful capture must preserve enough state for command-level
+    // validation, and rejection must restore the original text and focus.
+    var commandHarness = GUI.TestHarness.New();
+    if commandHarness.BindApp(shell.app) == false {
+        fail(shell, "command input automation could not bind the app");
+        return;
+    }
+    commandOverlay.input.SetText("   ");
+    commandHarness.SendKey("enter", 0);
+    commandHarness.DispatchPending();
+    if commandOverlay.Pump(shell) != command_input.COMMAND_INPUT_NONE
+       or commandOverlay.IsVisible() == false
+       or commandOverlay.input.IsFocused() == false
+       or commandOverlay.validationMessage != "Enter a value." {
+        commandHarness.UnbindApp();
+        fail(shell, "empty command input did not remain focused inline");
+        return;
+    }
+    commandOverlay.input.SetText("27");
+    commandHarness.SendKey("enter", 0);
+    commandHarness.DispatchPending();
+    if commandOverlay.Pump(shell) != command_input.COMMAND_INPUT_GOTO_LINE
+       or commandOverlay.IsVisible()
+       or commandOverlay.ReadValue() != "27"
+       or commandOverlay.pendingAction
+              != command_input.COMMAND_INPUT_GOTO_LINE {
+        commandHarness.UnbindApp();
+        fail(shell, "command input submit did not preserve validation state");
+        return;
+    }
+    commandOverlay.Reject(shell, "Enter a line available in the active document.");
+    shell.Render();
+    if commandOverlay.IsVisible() == false
+       or commandOverlay.panel.IsVisible() == false
+       or commandOverlay.input.IsFocused() == false
+       or commandOverlay.input.get_Text() != "27"
+       or commandOverlay.validationMessage
+              != "Enter a line available in the active document."
+       or shell.OwnsTransientSurface(
+              app_shell.TRANSIENT_SURFACE_COMMAND_INPUT) == false {
+        commandHarness.UnbindApp();
+        fail(shell, "rejected command input did not restore text and focus");
+        return;
+    }
+    commandHarness.SendKey("escape", 0);
+    commandHarness.DispatchPending();
+    if commandOverlay.Pump(shell) != command_input.COMMAND_INPUT_CANCEL
+       or commandOverlay.IsVisible()
+       or commandOverlay.panel.IsVisible()
+       or shell.OwnsTransientSurface(
+              app_shell.TRANSIENT_SURFACE_COMMAND_INPUT) {
+        commandHarness.UnbindApp();
+        fail(shell, "command input Escape did not cancel cleanly");
+        return;
+    }
+    commandOverlay.Finish();
+    commandHarness.UnbindApp();
 
     var explorerOverlay = new explorer_actions.ExplorerActionOverlay();
     explorerOverlay.Setup(shell);
@@ -902,6 +1124,7 @@ func main() {
         fail(shell, "search slice result count");
         return;
     }
+    shell.toolPanels.ShowTerminalPanel();
     while searcher.active {
         searcher.Pump(shell, docMgr, locStore);
     }
@@ -909,7 +1132,14 @@ func main() {
         fail(shell, "cooperative search final count");
         return;
     }
-    if shell.toolPanels.searchListBox.Count != 80 or !shell.toolPanels.searchListBox.IsVisible() {
+    if shell.toolPanels.IsTerminalPanelVisible() == false
+       or shell.toolPanels.IsSearchPanelActive() {
+        fail(shell, "background search completion stole the Terminal panel");
+        return;
+    }
+    shell.toolPanels.ShowSearchPanel();
+    if shell.toolPanels.searchListBox.Count != 80
+       or !shell.toolPanels.searchListBox.IsVisible() {
         fail(shell, "search panel rows");
         return;
     }
@@ -1038,7 +1268,21 @@ func main() {
     quickPalette.ResetToCommands(shell, chromeRegistry, null);
 
     var panelSearcher = new search_commands.SearchController();
+    shell.toolPanels.ShowTerminalPanel();
     panelSearcher.OpenPanel(shell, root, "");
+    if shell.toolPanels.searchQueryInput.IsFocused() == false
+       or shell.toolPanels.terminalPane.IsFocused()
+       or shell.toolPanels.IsSearchRunInputFocused() == false {
+        fail(shell, "explicit project search did not take query focus");
+        return;
+    }
+    shell.toolPanels.searchReplaceInput.Focus();
+    if shell.toolPanels.IsSearchInputFocused() == false
+       or shell.toolPanels.IsSearchRunInputFocused() {
+        fail(shell, "replacement input was routed through Enter-to-search");
+        return;
+    }
+    shell.toolPanels.searchQueryInput.Focus();
     shell.toolPanels.searchQueryInput.SetText("needle");
     shell.toolPanels.searchKindsInput.SetText(".zia");
     shell.toolPanels.searchIncludeInput.SetText("file1*.zia");
@@ -1049,6 +1293,22 @@ func main() {
     }
     if panelSearcher.RunPanel(shell, null, docMgr, null) == false {
         fail(shell, "search panel starts direct search");
+        return;
+    }
+    var activeSearchRoot = panelSearcher.root;
+    var activePanelRoot = panelSearcher.panelRoot;
+    shell.toolPanels.ShowTerminalPanel();
+    if panelSearcher.StartProject(shell, projMgr, "Search in Project",
+                                  docMgr, null)
+       or panelSearcher.active == false
+       or panelSearcher.root != activeSearchRoot
+       or panelSearcher.panelRoot != activePanelRoot
+       or panelSearcher.panelUseWorkspace
+       or shell.toolPanels.IsSearchPanelActive() == false
+       or shell.toolPanels.searchQueryInput.IsFocused() == false
+       or Str.IndexOf(shell.statusShell.lastLeftStatus,
+                      "Search is already running") == 0 {
+        fail(shell, "repeated project search interrupted active work");
         return;
     }
     while panelSearcher.active {
@@ -1062,6 +1322,31 @@ func main() {
        or panelSearcher.resultLocationLastId
           - panelSearcher.resultLocationFirstId + 1 != 10 {
         fail(shell, "search result generation range");
+        return;
+    }
+    if panelSearcher.replacer.StartFromResults(
+           locStore, panelSearcher.resultLocationFirstId,
+           panelSearcher.resultLocationLastId, "needle",
+           "needle", false, false, false) == false {
+        fail(shell, "cooperative replace did not start");
+        return;
+    }
+    shell.toolPanels.ShowTerminalPanel();
+    var replacePanelRevision =
+        shell.toolPanels.GetPanelSelectionRevision();
+    while panelSearcher.replacer.IsBusy() {
+        panelSearcher.HandlePanel(shell, null, docMgr, null, locStore);
+    }
+    if shell.toolPanels.IsTerminalPanelVisible() == false
+       or shell.toolPanels.IsSearchPanelActive()
+       or shell.toolPanels.GetPanelSelectionRevision()
+          != replacePanelRevision {
+        fail(shell, "background replace completion stole the Terminal panel");
+        return;
+    }
+    shell.toolPanels.ShowSearchPanel();
+    if shell.toolPanels.searchListBox.Count <= 0 {
+        fail(shell, "passive replace completion did not publish a summary");
         return;
     }
     docMgr.OpenFile(symbolPath);
@@ -1166,6 +1451,21 @@ func main() {
     shell.toolPanels.SetDebugOutput("debug one\ndebug two\n");
     if shell.toolPanels.debugListBox.Count != 2 or !shell.toolPanels.debugListBox.IsVisible() {
         fail(shell, "debug console rows");
+        return;
+    }
+    shell.toolPanels.ShowTerminalPanel();
+    var panelRevisionBeforeDebugOutput =
+        shell.toolPanels.GetPanelSelectionRevision();
+    shell.toolPanels.UpdateDebugOutput("debug three\n");
+    if shell.toolPanels.IsTerminalPanelVisible() == false
+       or shell.toolPanels.GetPanelSelectionRevision()
+          != panelRevisionBeforeDebugOutput {
+        fail(shell, "background debug output stole the Terminal panel");
+        return;
+    }
+    shell.toolPanels.ShowDebugPanel();
+    if shell.toolPanels.debugListBox.Count != 1 {
+        fail(shell, "passive debug output did not refresh rows");
         return;
     }
     shell.toolPanels.AddToolPlainRow(shell.toolPanels.referencesListBox, "main.zia", 0);

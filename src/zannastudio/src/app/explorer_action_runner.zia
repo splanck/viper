@@ -172,7 +172,7 @@ func ApplyExplorerNewFile(shell: app_shell.AppShell,
     indexer.UpdateFile(newPath);
     var opened = OpenFileAndRecord(shell, docMgr, engine, tabs, sessionMgr, newPath);
     if opened {
-        GUI.Toast.Success("Created: " + name);
+        shell.SetStatusLeft("Created: " + name);
     } else {
         shell.SetStatusLeft("Created but cannot open in the text editor: " + name);
     }
@@ -202,7 +202,6 @@ func ApplyExplorerNewFolder(shell: app_shell.AppShell,
     }
     projMgr.RefreshTree();
     shell.SetStatusLeft("Created folder: " + name);
-    GUI.Toast.Success("Created folder: " + name);
     overlay.Finish();
 }
 
@@ -230,7 +229,6 @@ func ApplyExplorerDuplicate(shell: app_shell.AppShell,
     projMgr.RefreshTree();
     indexer.UpdateFile(targetPath);
     shell.SetStatusLeft("Duplicated: " + name);
-    GUI.Toast.Success("Duplicated: " + name);
     overlay.Finish();
 }
 
@@ -289,7 +287,6 @@ func ApplyExplorerRename(shell: app_shell.AppShell,
         GUI.Toast.Warning(projMgr.lastOperationError);
     } else {
         shell.SetStatusLeft(status);
-        GUI.Toast.Success(status);
     }
     overlay.Finish();
     return true;
@@ -419,7 +416,6 @@ expose func ReopenClosedFile(shell: app_shell.AppShell,
                       sessionMgr: session.SessionManager) {
     var path = docMgr.PopRecentlyClosedPath();
     if path == "" {
-        GUI.Toast.Info("No recently closed file");
         shell.SetStatusLeft("No recently closed file");
         return;
     }

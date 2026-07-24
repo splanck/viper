@@ -1,3 +1,21 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/app/dispatch_helpers.zia
+// Purpose: Normalize command triggers, input classification, and frame budgets.
+// Key invariants:
+//   - Disabled commands report context without mutating application state.
+//   - Trigger helpers treat menu, toolbar, shortcut, and palette paths equally.
+// Ownership/Lifetime: Stateless helpers borrow command and shell objects.
+// Links: zannastudio/src/main.zia,
+//        zannastudio/src/commands/main_command_dispatcher.zia
+//
+//===----------------------------------------------------------------------===//
+
 module dispatch_helpers;
 
 bind "../ui/app_shell";
@@ -91,7 +109,7 @@ expose func FrameBudgetAllows(frameWorkStartMs: Integer, budgetMs: Integer) -> B
 }
 
 /// @brief Return whether a build/run command may start in the current IDE state.
-/// @param shell Workbench shell used for status/toast feedback.
+/// @param shell Workbench shell used for contextual status feedback.
 /// @param session Debug session controller.
 /// @param commandName Human-readable command name used in feedback text.
 /// @return True when the command may continue to its handler.
@@ -104,7 +122,6 @@ expose func CanStartBuildCommand(shell: app_shell.AppShell,
     if session != null and session.IsActive() {
         var message = commandName + " is disabled while debugging";
         shell.SetStatusLeft(message);
-        GUI.Toast.Info(message);
         return false;
     }
     return true;

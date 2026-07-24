@@ -1,3 +1,22 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/ui/activity_bar.zia
+// Purpose: Switch and identify the persistent left-rail workspace view.
+// Key invariants:
+//   - Exactly one built-in view and its matching activity button are selected.
+//   - Unknown persisted IDs fall back to Explorer instead of corrupting state.
+//   - Run and Debug participates in the same persisted view identity contract.
+// Ownership/Lifetime: Main owns one controller that borrows Workbench widgets.
+// Links: zannastudio/src/main.zia,
+//        zannastudio/src/core/settings.zia
+//
+//===----------------------------------------------------------------------===//
+
 module activity_bar;
 
 bind Zanna.GUI as GUI;
@@ -23,46 +42,76 @@ bind Zanna.GUI as GUI;
 
 final VIEW_EXPLORER = "explorer";
 final VIEW_SCM = "scm";
+final VIEW_RUN_DEBUG = "run-debug";
+
+/// @brief Return whether @p name is a stable built-in activity-view ID.
+expose func IsKnownView(name: String) -> Boolean {
+    return name == VIEW_EXPLORER or name == VIEW_SCM
+        or name == VIEW_RUN_DEBUG;
+}
+
+/// @brief Normalize persisted or caller-supplied state to a built-in view.
+expose func NormalizeView(name: String) -> String {
+    if name == VIEW_SCM { return VIEW_SCM; }
+    if name == VIEW_RUN_DEBUG { return VIEW_RUN_DEBUG; }
+    return VIEW_EXPLORER;
+}
 
 /// @brief Drives the shell's swappable left view from the activity bar.
 class ActivityBar {
     expose GUI.VBox explorerView;
     expose GUI.VBox scmView;
+    expose GUI.VBox runDebugView;
     expose GUI.ToolbarItem explorerBtn;
     expose GUI.ToolbarItem scmBtn;
+    expose GUI.ToolbarItem runDebugBtn;
     expose String activeView;
 
     /// @brief Empty/unwired; Setup() supplies the views and buttons.
     expose func init() {
         explorerView = null;
         scmView = null;
+        runDebugView = null;
         explorerBtn = null;
         scmBtn = null;
+        runDebugBtn = null;
         activeView = VIEW_EXPLORER;
     }
 
     /// @brief Wire the view containers + their activity-bar buttons, then show Explorer.
-    expose func Setup(explorerArg: GUI.VBox, scmArg: GUI.VBox,
-                      explorerBtnArg: GUI.ToolbarItem, scmBtnArg: GUI.ToolbarItem) {
+    expose func Setup(explorerArg: GUI.VBox,
+                      scmArg: GUI.VBox,
+                      runDebugArg: GUI.VBox,
+                      explorerBtnArg: GUI.ToolbarItem,
+                      scmBtnArg: GUI.ToolbarItem,
+                      runDebugBtnArg: GUI.ToolbarItem) {
         explorerView = explorerArg;
         scmView = scmArg;
+        runDebugView = runDebugArg;
         explorerBtn = explorerBtnArg;
         scmBtn = scmBtnArg;
+        runDebugBtn = runDebugBtnArg;
         ShowView(VIEW_EXPLORER);
     }
 
     /// @brief Show one left view, hide the rest, and sync the button toggle state.
     expose func ShowView(name: String) {
-        activeView = name;
-        if name == VIEW_SCM {
-            if explorerView != null { explorerView.SetVisible(false); }
+        activeView = NormalizeView(name);
+        if explorerView != null { explorerView.SetVisible(false); }
+        if scmView != null { scmView.SetVisible(false); }
+        if runDebugView != null { runDebugView.SetVisible(false); }
+        if explorerBtn != null { explorerBtn.SetToggled(false); }
+        if scmBtn != null { scmBtn.SetToggled(false); }
+        if runDebugBtn != null { runDebugBtn.SetToggled(false); }
+
+        if activeView == VIEW_SCM {
             if scmView != null { scmView.SetVisible(true); }
-            if explorerBtn != null { explorerBtn.SetToggled(false); }
             if scmBtn != null { scmBtn.SetToggled(true); }
+        } else if activeView == VIEW_RUN_DEBUG {
+            if runDebugView != null { runDebugView.SetVisible(true); }
+            if runDebugBtn != null { runDebugBtn.SetToggled(true); }
         } else {
-            if scmView != null { scmView.SetVisible(false); }
             if explorerView != null { explorerView.SetVisible(true); }
-            if scmBtn != null { scmBtn.SetToggled(false); }
             if explorerBtn != null { explorerBtn.SetToggled(true); }
         }
     }

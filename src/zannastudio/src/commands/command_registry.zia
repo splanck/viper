@@ -11,6 +11,9 @@
 // Key invariants:
 //   - Menu, palette, and shortcut entry points share the same availability.
 //   - Invalid persisted or live shortcut spellings never replace a working binding.
+//   - Split commands describe the live pane topology and never advertise a
+//     visual, preview, missing-companion, or already-split operation.
+//   - Scene-only commands are unavailable outside an active visual scene.
 //   - Runtime context is permissive until the application explicitly supplies
 //     its first snapshot, preserving standalone registry use in tooling/tests.
 // Ownership/Lifetime:
@@ -69,6 +72,10 @@ class CommandRegistry {
     expose List[CommandEntry] commands;
     expose Boolean runtimeContextInitialized;
     expose Boolean documentAvailable;
+    expose Boolean textEditorAvailable;
+    expose Boolean visualSceneEditorAvailable;
+    expose Boolean splitOpenAvailable;
+    expose Boolean editorSplitActive;
     expose Boolean projectAvailable;
     expose Boolean buildTargetAvailable;
     expose Boolean debugTargetAvailable;
@@ -83,6 +90,10 @@ class CommandRegistry {
         commands = [];
         runtimeContextInitialized = false;
         documentAvailable = false;
+        textEditorAvailable = true;
+        visualSceneEditorAvailable = false;
+        splitOpenAvailable = true;
+        editorSplitActive = false;
         projectAvailable = false;
         buildTargetAvailable = false;
         debugTargetAvailable = false;
@@ -399,6 +410,44 @@ class CommandRegistry {
         ApplyShortcutStates(service);
     }
 
+    /// @brief Gate code-editor-only commands while a visual scene owns the tab.
+    /// @details Save, close, workspace, build-project, and panel commands remain
+    ///          available; hidden CodeEditor state must never receive edit,
+    ///          navigation, minimap, breakpoint, or split shortcuts.
+    expose func SetTextEditorAvailable(available: Boolean) {
+        if textEditorAvailable == available { return; }
+        textEditorAvailable = available;
+        if runtimeContextInitialized {
+            ApplyShortcutStates(shortcutContextService);
+        }
+    }
+
+    /// @brief Gate standard edit shortcuts on an active 2D/3D scene surface.
+    /// @details This is distinct from textEditorAvailable so visual scenes may
+    ///          own Cut/Copy/Paste/Select All without enabling source-only
+    ///          navigation or allowing hidden edits in read-only previews.
+    expose func SetVisualSceneEditorAvailable(available: Boolean) {
+        if visualSceneEditorAvailable == available { return; }
+        visualSceneEditorAvailable = available;
+        if runtimeContextInitialized {
+            ApplyShortcutStates(shortcutContextService);
+        }
+    }
+
+    /// @brief Publish the live split topology for palette and shortcut gates.
+    /// @param canOpen True when another eligible CodeEditor document is open.
+    /// @param active True while two editor panes are visible.
+    expose func SetSplitEditorContext(canOpen: Boolean, active: Boolean) {
+        if splitOpenAvailable == canOpen and editorSplitActive == active {
+            return;
+        }
+        splitOpenAvailable = canOpen;
+        editorSplitActive = active;
+        if runtimeContextInitialized {
+            ApplyShortcutStates(shortcutContextService);
+        }
+    }
+
     /// @brief Reconcile all registered shortcuts against current availability.
     /// @param service Active language service for capability checks.
     hide func ApplyShortcutStates(service: language_service.LanguageService) {
@@ -560,6 +609,22 @@ class CommandRegistry {
     hide func IsContextSupported(cmd: CommandEntry) -> Boolean {
         if runtimeContextInitialized == false { return true; }
         if RequiresDocument(cmd) and documentAvailable == false { return false; }
+        if IsSurfaceEditCommand(cmd)
+           and textEditorAvailable == false
+           and visualSceneEditorAvailable == false {
+            return false;
+        }
+        if IsSceneOnlyCommand(cmd) and visualSceneEditorAvailable == false {
+            return false;
+        }
+        if RequiresTextEditor(cmd) and textEditorAvailable == false { return false; }
+        if cmd.id == "spliteditorright" and splitOpenAvailable == false {
+            return false;
+        }
+        if (cmd.id == "focusotherpane" or cmd.id == "closesplit")
+           and editorSplitActive == false {
+            return false;
+        }
         if RequiresProject(cmd.id) and projectAvailable == false { return false; }
 
         if IsBuildCommand(cmd.id) {
@@ -594,18 +659,55 @@ class CommandRegistry {
                or id == "save" or id == "saveas" or id == "saveall"
                or id == "close" or id == "reload"
                or id == "find" or id == "goto" or id == "minimap"
-               or id == "spliteditorright"
-               or id == "undo" or id == "redo" or id == "selectall"
+               or id == "spliteditorright" or id == "focusotherpane"
+               or id == "closesplit"
+               or id == "undo" or id == "redo"
+               or id == "cut" or id == "copy" or id == "paste"
+               or id == "selectall"
                or id == "addnextoccurrence" or id == "skipoccurrence"
                or id == "selectalloccurrences" or id == "clearcursors"
                or id == "expandselection" or id == "shrinkselection"
                or id == "togglelinecomment" or id == "toggleblockcomment"
-               or id == "duplicateline" or id == "movelineup"
+               or id == "duplicateline" or id == "deletesceneselection"
+               or id == "movelineup"
                or id == "movelinedown" or id == "trimtrailingwhitespace"
                or id == "togglerenderwhitespace"
                or id == "formatdocument" or id == "formatselection"
                or id == "togglebreakpoint" or id == "debugcondition"
                or id == "debuglogpoint" or id == "debugruntocursor";
+    }
+
+    /// @brief Whether a command operates on the visible code editor surface.
+    hide func RequiresTextEditor(cmd: CommandEntry) -> Boolean {
+        if cmd.capability != "" { return true; }
+        var id = cmd.id;
+        return id == "comparewithsaved"
+               or id == "find" or id == "goto" or id == "minimap"
+               or id == "spliteditorright" or id == "focusotherpane"
+               or id == "closesplit"
+               or id == "addnextoccurrence" or id == "skipoccurrence"
+               or id == "selectalloccurrences" or id == "clearcursors"
+               or id == "expandselection" or id == "shrinkselection"
+               or id == "togglelinecomment" or id == "toggleblockcomment"
+               or id == "movelineup"
+               or id == "movelinedown" or id == "trimtrailingwhitespace"
+               or id == "togglerenderwhitespace"
+               or id == "formatdocument" or id == "formatselection"
+               or id == "zoomin" or id == "zoomout" or id == "zoomreset"
+               or id == "togglebreakpoint" or id == "debugcondition"
+               or id == "debuglogpoint" or id == "debugruntocursor";
+    }
+
+    /// @brief Whether a standard edit command can target text or scene data.
+    hide func IsSurfaceEditCommand(cmd: CommandEntry) -> Boolean {
+        var id = cmd.id;
+        return id == "cut" or id == "copy" or id == "paste"
+               or id == "selectall" or id == "duplicateline";
+    }
+
+    /// @brief Whether a command is meaningful only on a visual scene surface.
+    hide func IsSceneOnlyCommand(cmd: CommandEntry) -> Boolean {
+        return cmd.id == "deletesceneselection";
     }
 
     /// @brief Whether a command needs an open workspace root.
@@ -680,6 +782,28 @@ class CommandRegistry {
         if runtimeContextInitialized == false { return ""; }
         if RequiresDocument(cmd) and documentAvailable == false {
             return "Open a document to use " + cmd.label + ".";
+        }
+        if IsSurfaceEditCommand(cmd)
+           and textEditorAvailable == false
+           and visualSceneEditorAvailable == false {
+            return cmd.label
+                + " is available in editable source, text, and scene surfaces.";
+        }
+        if IsSceneOnlyCommand(cmd) and visualSceneEditorAvailable == false {
+            return "Open a 2D or 3D scene to use " + cmd.label + ".";
+        }
+        if RequiresTextEditor(cmd) and textEditorAvailable == false {
+            return cmd.label + " is available in source and text editors.";
+        }
+        if cmd.id == "spliteditorright" and splitOpenAvailable == false {
+            if editorSplitActive {
+                return "Close the current editor split before opening another.";
+            }
+            return "Open another source or text document before splitting the editor.";
+        }
+        if (cmd.id == "focusotherpane" or cmd.id == "closesplit")
+           and editorSplitActive == false {
+            return "Open an editor split before using " + cmd.label + ".";
         }
         if RequiresProject(cmd.id) and projectAvailable == false {
             return "Open a project folder to use " + cmd.label + ".";

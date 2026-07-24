@@ -1,0 +1,3550 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/ui/scene_editor_2d.zia
+// Purpose: Visual tileset/tile/layer/object editor for canonical Game2D scene
+//          files.
+// Key invariants:
+//   - Zanna.Game2D.SceneDocument is the only editable scene source of truth.
+//   - Every accepted mutation immediately refreshes Document.content as
+//     canonical JSON, so normal save/session/recovery paths remain authoritative.
+//   - One paint or object-drag gesture creates one gap-free history snapshot.
+//   - Compact windows show canvas or inspector at full width, never two slivers.
+//   - Raster work is bounded even for malformed or resource-limit-sized maps.
+//   - Layer images resolve through bounded preview caches; broken references
+//     never invalidate or rewrite authored scene JSON.
+//   - Multi-object property, layout, nudge, and selection commands commit once
+//     or restore the complete prior selection/content; inspector inputs never
+//     own scene keys.
+// Ownership/Lifetime:
+//   - Main owns one controller; WorkbenchShell owns its persistent host widgets.
+//   - The controller borrows the active Document and recreates its model on
+//     document/content changes.
+// Links: zannastudio/src/core/document.zia,
+//        zannastudio/src/ui/scene_clipboard.zia,
+//        zannastudio/src/ui/scene_layout_2d.zia,
+//        zannastudio/src/ui/scene_tileset_2d.zia,
+//        zannastudio/src/ui/scene_tileset_inspector_2d.zia,
+//        docs/zannalib/game/scene.md,
+//        docs/adr/0155-scene-object-authoring-metadata-and-duplication.md,
+//        docs/adr/0156-listbox-selected-row-data.md
+//
+//===----------------------------------------------------------------------===//
+
+module scene_editor_2d;
+
+bind "../core/document";
+bind "../core/project_manager";
+bind "../services/file_utils";
+bind "scene_asset_browser";
+bind "scene_clipboard";
+bind "scene_layout_2d";
+bind "scene_selection";
+bind "scene_tileset_2d";
+bind "scene_tileset_inspector_2d";
+
+bind Zanna.GUI as GUI;
+bind SceneDocument = Zanna.Game2D.SceneDocument;
+bind Pixels = Zanna.Graphics.Pixels;
+bind Color = Zanna.Graphics.Color;
+bind Input = Zanna.Input;
+bind Convert = Zanna.Core.Convert;
+bind Parse = Zanna.Core.Parse;
+bind Fmt = Zanna.Text.Fmt;
+bind Seq = Zanna.Collections.Seq;
+bind Path = Zanna.IO.Path;
+bind Str = Zanna.String;
+
+// ============================================================================
+// MODULE: scene_editor_2d
+// PURPOSE: Coordinate the document-backed 2D scene surface, gestures, asset
+//          intent, and one-step canonical history transactions.
+//
+// WHERE-THIS-FITS: SceneDocument owns serialized scene truth; tileset leaf
+//          modules own bounded image decoding and palette presentation.
+//
+// TEACHING-NOTE: Preview pixels are disposable external state. Only an accepted
+//          authored path or scene edit may change Document.content.
+// ============================================================================
+
+final MODE_SELECT: Integer = 0;
+final MODE_PAINT: Integer = 1;
+final MODE_ERASE: Integer = 2;
+final MODE_OBJECT: Integer = 3;
+
+final DEFAULT_SCENE_WIDTH: Integer = 32;
+final DEFAULT_SCENE_HEIGHT: Integer = 18;
+final DEFAULT_TILE_SIZE: Integer = 32;
+final BASE_DISPLAY_CELL: Integer = 16;
+final MIN_ZOOM_PERCENT: Integer = 25;
+final MAX_ZOOM_PERCENT: Integer = 1600;
+final MAX_RENDER_DIMENSION: Integer = 2048;
+final MAX_RENDER_CELLS_PER_AXIS: Integer = 256;
+final MAX_2D_SCENE_HISTORY: Integer = 100;
+final MAX_INSPECTOR_PROPERTIES: Integer = 512;
+final COMPACT_SCENE_2D_WIDTH: Number = 640.0;
+
+final PROPERTY_TYPE_STRING: Integer = 0;
+final PROPERTY_TYPE_INT: Integer = 1;
+final PROPERTY_TYPE_FLOAT: Integer = 2;
+final PROPERTY_TYPE_BOOL: Integer = 3;
+final PROPERTY_TYPE_NULL: Integer = 4;
+
+final ARRANGE_ALIGN_X: Integer = scene_layout_2d.LAYOUT_ALIGN_X;
+final ARRANGE_ALIGN_Y: Integer = scene_layout_2d.LAYOUT_ALIGN_Y;
+final ARRANGE_DISTRIBUTE_X: Integer =
+    scene_layout_2d.LAYOUT_DISTRIBUTE_X;
+final ARRANGE_DISTRIBUTE_Y: Integer =
+    scene_layout_2d.LAYOUT_DISTRIBUTE_Y;
+
+/// @brief Deterministic preview color for a nonzero tile id.
+func TilePreviewColor(tile: Integer, layer: Integer) -> Integer {
+    var r = 56 + (tile * 53 + layer * 19) % 168;
+    var g = 56 + (tile * 97 + layer * 31) % 168;
+    var b = 56 + (tile * 151 + layer * 47) % 168;
+    return Color.RGB(r, g, b);
+}
+
+/// @brief Clamp one integer without depending on platform math adapters.
+func ClampInt(value: Integer, minimum: Integer, maximum: Integer) -> Integer {
+    if value < minimum { return minimum; }
+    if value > maximum { return maximum; }
+    return value;
+}
+
+/// @brief Clamp one Number used by persisted workspace geometry.
+func ClampNumber2D(value: Number, minimum: Number, maximum: Number) -> Number {
+    if value < minimum { return minimum; }
+    if value > maximum { return maximum; }
+    return value;
+}
+
+func AbsInt2D(value: Integer) -> Integer {
+    if value < 0 { return 0 - value; }
+    return value;
+}
+
+/// @brief Compute a bounded whole-percent zoom that fits a tile scene.
+/// @details Kept pure so compact-window and tiny-scene behavior can be probed
+///          without constructing a native GUI.
+expose func FitZoomPercent(sceneWidth: Integer,
+                           sceneHeight: Integer,
+                           viewportWidth: Integer,
+                           viewportHeight: Integer) -> Integer {
+    if sceneWidth <= 0 or sceneHeight <= 0
+       or viewportWidth <= 0 or viewportHeight <= 0 {
+        return 100;
+    }
+    var cellX = viewportWidth / sceneWidth;
+    var cellY = viewportHeight / sceneHeight;
+    var cell = cellX;
+    if cellY < cell { cell = cellY; }
+    if cell < 1 { cell = 1; }
+    return ClampInt(cell * 100 / BASE_DISPLAY_CELL,
+                    MIN_ZOOM_PERCENT,
+                    MAX_ZOOM_PERCENT);
+}
+
+/// @brief Return whether a 2D scene width needs master/detail presentation.
+expose func UsesCompactLayout(width: Number) -> Boolean {
+    return width > 0.0 and width <= COMPACT_SCENE_2D_WIDTH;
+}
+
+/// @brief Persistent visual editor for one active 2D scene document.
+class SceneEditor2D {
+    hide GUI.App guiApp;
+    expose GUI.VBox root;
+    expose GUI.Flex toolbar;
+    expose GUI.Flex viewToolbar;
+    expose GUI.Button newSceneButton;
+    expose GUI.Button importButton;
+    expose GUI.Button selectButton;
+    expose GUI.Button paintButton;
+    expose GUI.Button eraseButton;
+    expose GUI.Button objectButton;
+    expose GUI.Spinner tileSpinner;
+    expose GUI.Button zoomOutButton;
+    expose GUI.Button zoomInButton;
+    expose GUI.Button fitButton;
+    expose GUI.Button inspectorButton;
+    expose GUI.Label toolbarStatus;
+    expose GUI.Label viewStatusLabel;
+    expose GUI.SplitPane bodySplit;
+    expose GUI.ScrollView canvasScroll;
+    expose GUI.VBox canvasStage;
+    expose GUI.Image canvasImage;
+    expose GUI.ScrollView inspectorScroll;
+    expose GUI.Label sceneInfoLabel;
+    expose GUI.Spinner sceneWidthSpinner;
+    expose GUI.Spinner sceneHeightSpinner;
+    expose GUI.Spinner sceneTileSizeSpinner;
+    expose GUI.ListBox layerList;
+    expose GUI.Button addLayerButton;
+    expose GUI.Button removeLayerButton;
+    expose GUI.Button layerUpButton;
+    expose GUI.Button layerDownButton;
+    expose GUI.Checkbox layerVisibleCheck;
+    expose GUI.TextInput layerNameInput;
+    expose GUI.TextInput layerAssetInput;
+    expose GUI.Button chooseLayerAssetButton;
+    expose scene_asset_browser.SceneAssetBrowser tiledAssetBrowser;
+    expose scene_tileset_inspector_2d.SceneTilesetInspector2D
+        tilesetInspector;
+    expose GUI.ListBox objectList;
+    expose GUI.TextInput objectTypeInput;
+    expose GUI.TextInput objectIdInput;
+    expose GUI.Spinner objectXSpinner;
+    expose GUI.Spinner objectYSpinner;
+    expose GUI.Button addObjectButton;
+    expose GUI.Button applyObjectButton;
+    expose GUI.Button removeObjectButton;
+    expose GUI.Button duplicateObjectButton;
+    expose GUI.Button objectUpButton;
+    expose GUI.Button objectDownButton;
+    expose GUI.Dropdown objectArrangeDropdown;
+    expose GUI.Button arrangeObjectButton;
+    expose GUI.ListBox objectPropertyList;
+    expose GUI.TextInput objectPropertyKeyInput;
+    expose GUI.Dropdown objectPropertyTypeDropdown;
+    expose GUI.TextInput objectPropertyValueInput;
+    expose GUI.Button newObjectPropertyButton;
+    expose GUI.Button setObjectPropertyButton;
+    expose GUI.Button removeObjectPropertyButton;
+    expose GUI.Label detailLabel;
+
+    expose project_manager.ProjectManager projectManager;
+    expose document.Document currentDoc;
+    expose SceneDocument scene;
+    expose Pixels framePixels;
+    expose String currentSerialized;
+    expose String loadError;
+    expose Integer mode;
+    expose Integer zoomPercent;
+    expose Integer activeLayer;
+    expose Integer selectedObject;
+    expose List[Integer] selectedObjects;
+    expose Integer selectedObjectProperty;
+    expose Integer selectedCellX;
+    expose Integer selectedCellY;
+    expose Integer displayCellSize;
+    expose Integer renderedColumns;
+    expose Integer renderedRows;
+    expose Integer revision;
+    expose Boolean compactLayout;
+    expose Boolean inspectorRequestedVisible;
+    expose Boolean compactInspectorShown;
+    expose List[String] undoStack;
+    expose List[String] redoStack;
+    expose List[String] objectPropertyKeys;
+    expose scene_tileset_2d.SceneTilesetLibrary2D tilesets;
+    hide String cleanSerialized;
+    hide Integer lastPaintX;
+    hide Integer lastPaintY;
+    hide Integer layerVisibleRevision;
+    hide Boolean renderDirty;
+    hide Boolean fitPending;
+    hide Boolean paintStrokeActive;
+    hide Boolean paintStrokeChanged;
+    hide String paintStrokeSnapshot;
+    hide Boolean objectDragActive;
+    hide Boolean objectDragChanged;
+    hide String objectDragSnapshot;
+    hide Integer objectDragIndex;
+    hide Integer objectDragLastX;
+    hide Integer objectDragLastY;
+    hide Integer lastCanvasViewportWidth;
+    hide Integer lastCanvasViewportHeight;
+    hide Boolean restoreScrollPending;
+    hide Number pendingCanvasScrollX;
+    hide Number pendingCanvasScrollY;
+    hide Number pendingInspectorScrollY;
+    hide String tilesetDocumentPath;
+    hide Boolean editorControlsEnabled;
+
+    expose func init() {
+        guiApp = null;
+        root = null;
+        toolbar = null;
+        viewToolbar = null;
+        newSceneButton = null;
+        importButton = null;
+        selectButton = null;
+        paintButton = null;
+        eraseButton = null;
+        objectButton = null;
+        tileSpinner = null;
+        zoomOutButton = null;
+        zoomInButton = null;
+        fitButton = null;
+        inspectorButton = null;
+        toolbarStatus = null;
+        viewStatusLabel = null;
+        bodySplit = null;
+        canvasScroll = null;
+        canvasStage = null;
+        canvasImage = null;
+        inspectorScroll = null;
+        sceneInfoLabel = null;
+        sceneWidthSpinner = null;
+        sceneHeightSpinner = null;
+        sceneTileSizeSpinner = null;
+        layerList = null;
+        addLayerButton = null;
+        removeLayerButton = null;
+        layerUpButton = null;
+        layerDownButton = null;
+        layerVisibleCheck = null;
+        layerNameInput = null;
+        layerAssetInput = null;
+        chooseLayerAssetButton = null;
+        tiledAssetBrowser = new scene_asset_browser.SceneAssetBrowser();
+        tilesetInspector =
+            new scene_tileset_inspector_2d.SceneTilesetInspector2D();
+        objectList = null;
+        objectTypeInput = null;
+        objectIdInput = null;
+        objectXSpinner = null;
+        objectYSpinner = null;
+        addObjectButton = null;
+        applyObjectButton = null;
+        removeObjectButton = null;
+        duplicateObjectButton = null;
+        objectUpButton = null;
+        objectDownButton = null;
+        objectArrangeDropdown = null;
+        arrangeObjectButton = null;
+        objectPropertyList = null;
+        objectPropertyKeyInput = null;
+        objectPropertyTypeDropdown = null;
+        objectPropertyValueInput = null;
+        newObjectPropertyButton = null;
+        setObjectPropertyButton = null;
+        removeObjectPropertyButton = null;
+        detailLabel = null;
+        projectManager = null;
+        currentDoc = null;
+        scene = null;
+        framePixels = null;
+        currentSerialized = "";
+        loadError = "";
+        mode = MODE_SELECT;
+        zoomPercent = 100;
+        activeLayer = 0;
+        selectedObject = -1;
+        selectedObjects = [];
+        selectedObjectProperty = -1;
+        selectedCellX = -1;
+        selectedCellY = -1;
+        displayCellSize = BASE_DISPLAY_CELL;
+        renderedColumns = 0;
+        renderedRows = 0;
+        revision = 0;
+        compactLayout = false;
+        inspectorRequestedVisible = true;
+        compactInspectorShown = false;
+        undoStack = [];
+        redoStack = [];
+        objectPropertyKeys = [];
+        tilesets = new scene_tileset_2d.SceneTilesetLibrary2D();
+        cleanSerialized = "";
+        lastPaintX = -1;
+        lastPaintY = -1;
+        layerVisibleRevision = 0;
+        renderDirty = true;
+        fitPending = false;
+        paintStrokeActive = false;
+        paintStrokeChanged = false;
+        paintStrokeSnapshot = "";
+        objectDragActive = false;
+        objectDragChanged = false;
+        objectDragSnapshot = "";
+        objectDragIndex = -1;
+        objectDragLastX = 0;
+        objectDragLastY = 0;
+        objectDragLastX = 0;
+        objectDragLastY = 0;
+        lastCanvasViewportWidth = 0;
+        lastCanvasViewportHeight = 0;
+        restoreScrollPending = false;
+        pendingCanvasScrollX = 0.0;
+        pendingCanvasScrollY = 0.0;
+        pendingInspectorScrollY = 0.0;
+        tilesetDocumentPath = "";
+        editorControlsEnabled = false;
+    }
+
+    /// @brief Build the visual editor into WorkbenchShell.scene2DHost.
+    expose func Setup(host: GUI.VBox, app: GUI.App) {
+        guiApp = app;
+        root = GUI.VBox.New();
+        root.SetSpacing(0.0);
+        root.SetPadding(0.0);
+        root.SetFlex(1.0);
+        root.SetName("scene-editor-2d");
+        root.SetAccessibleName("2D scene editor");
+        host.AddChild(root);
+
+        toolbar = GUI.Flex.New();
+        toolbar.SetDirection(GUI.FlexDirection.Row);
+        toolbar.SetWrap(GUI.FlexWrap.Wrap);
+        toolbar.SetAlign(GUI.Align.Center);
+        toolbar.SetGap(4.0);
+        toolbar.SetPadding(4.0);
+        root.AddChild(toolbar);
+
+        newSceneButton = GUI.Button.New(toolbar, "New Scene");
+        newSceneButton.SetTooltip(
+            "Replace this document using the inspector dimensions (undoable)");
+        importButton = GUI.Button.New(toolbar, "Import Tiled...");
+        importButton.SetTooltip("Import a Tiled JSON or TMX map into this document");
+        selectButton = GUI.Button.New(toolbar, "Select");
+        selectButton.SetTooltip(
+            "Select and drag objects; Arrow keys nudge one pixel and "
+            + "Shift+Arrow nudges one tile");
+        paintButton = GUI.Button.New(toolbar, "Paint");
+        eraseButton = GUI.Button.New(toolbar, "Erase");
+        objectButton = GUI.Button.New(toolbar, "Object");
+        toolbarStatus = GUI.Label.New(toolbar, "Open or create a 2D scene");
+        toolbarStatus.SetFlex(1.0);
+
+        viewToolbar = GUI.Flex.New();
+        viewToolbar.SetDirection(GUI.FlexDirection.Row);
+        viewToolbar.SetWrap(GUI.FlexWrap.Wrap);
+        viewToolbar.SetAlign(GUI.Align.Center);
+        viewToolbar.SetGap(4.0);
+        viewToolbar.SetPadding(4.0);
+        root.AddChild(viewToolbar);
+        GUI.Label.New(viewToolbar, "Tile");
+        tileSpinner = GUI.Spinner.New(viewToolbar);
+        tileSpinner.SetAccessibleName("Selected tile ID");
+        tileSpinner.SetRange(0.0, 1000000.0);
+        tileSpinner.SetStep(1.0);
+        tileSpinner.SetDecimals(0);
+        tileSpinner.SetValue(1.0);
+        tileSpinner.SetPreferredSize(88.0, 0.0);
+        GUI.Label.New(viewToolbar, "Zoom");
+        zoomOutButton = GUI.Button.New(viewToolbar, "-");
+        zoomOutButton.SetTooltip("Zoom out");
+        zoomInButton = GUI.Button.New(viewToolbar, "+");
+        zoomInButton.SetTooltip("Zoom in");
+        fitButton = GUI.Button.New(viewToolbar, "Fit");
+        fitButton.SetTooltip("Fit the complete scene in the current viewport");
+        inspectorButton = GUI.Button.New(viewToolbar, "Hide Inspector");
+        inspectorButton.SetStyle(2);
+        inspectorButton.SetTooltip(
+            "Hide the scene inspector and give the canvas the full width");
+        viewStatusLabel = GUI.Label.New(viewToolbar, "");
+        viewStatusLabel.SetFlex(1.0);
+        UpdateModeButtons();
+
+        bodySplit = GUI.SplitPane.New(root, 1);
+        bodySplit.SetFlex(1.0);
+        bodySplit.SetPosition(0.68);
+        bodySplit.SetMinFirst(280.0);
+        bodySplit.SetMinSecond(300.0);
+
+        canvasScroll = GUI.ScrollView.New(bodySplit.First);
+        canvasScroll.SetFlex(1.0);
+        canvasStage = GUI.VBox.New();
+        canvasStage.SetAlign(GUI.Align.Center);
+        canvasStage.SetJustify(GUI.Justify.Center);
+        canvasScroll.AddChild(canvasStage);
+        canvasImage = GUI.Image.New(canvasStage);
+        canvasImage.SetScaleMode(0);
+        canvasImage.SetFilter(0);
+        canvasImage.SetName("scene-2d-canvas");
+        canvasImage.SetAccessibleName("2D scene canvas");
+        canvasImage.SetTooltip(
+            "Paint/erase tiles, drag objects in Select mode, wheel to zoom, "
+            + "middle-drag to pan, or use Arrow keys for precise object nudges");
+
+        inspectorScroll = GUI.ScrollView.New(bodySplit.Second);
+        inspectorScroll.SetFlex(1.0);
+        var inspector = GUI.VBox.New();
+        inspector.SetSpacing(6.0);
+        inspector.SetPadding(8.0);
+        inspectorScroll.AddChild(inspector);
+
+        GUI.Label.New(inspector, "New scene setup");
+        var sceneSizeRow = GUI.HBox.New();
+        sceneSizeRow.SetSpacing(4.0);
+        inspector.AddChild(sceneSizeRow);
+        GUI.Label.New(sceneSizeRow, "W");
+        sceneWidthSpinner = GUI.Spinner.New(sceneSizeRow);
+        ConfigureSceneSpinner(sceneWidthSpinner, DEFAULT_SCENE_WIDTH, 256);
+        GUI.Label.New(sceneSizeRow, "H");
+        sceneHeightSpinner = GUI.Spinner.New(sceneSizeRow);
+        ConfigureSceneSpinner(sceneHeightSpinner, DEFAULT_SCENE_HEIGHT, 256);
+        var tileSizeRow = GUI.HBox.New();
+        tileSizeRow.SetSpacing(4.0);
+        inspector.AddChild(tileSizeRow);
+        GUI.Label.New(tileSizeRow, "Tile size");
+        sceneTileSizeSpinner = GUI.Spinner.New(tileSizeRow);
+        ConfigureSceneSpinner(sceneTileSizeSpinner, DEFAULT_TILE_SIZE, 512);
+        var importGroup = GUI.GroupBox.New(inspector, "Project map imports");
+        tiledAssetBrowser.Setup(
+            importGroup,
+            "Import Project Tiled Map...",
+            ".tmj,.json,.tmx",
+            "Import Map");
+
+        sceneInfoLabel = GUI.Label.New(inspector, "No scene loaded");
+        sceneInfoLabel.SetWordWrap(true);
+
+        GUI.Label.New(inspector, "Layers");
+        layerList = GUI.ListBox.New(inspector);
+        layerList.SetAccessibleName("Scene layers");
+        layerList.SetPreferredSize(0.0, 132.0);
+        var layerButtons = GUI.HBox.New();
+        layerButtons.SetSpacing(4.0);
+        inspector.AddChild(layerButtons);
+        addLayerButton = GUI.Button.New(layerButtons, "Add");
+        removeLayerButton = GUI.Button.New(layerButtons, "Remove");
+        layerUpButton = GUI.Button.New(layerButtons, "Up");
+        layerDownButton = GUI.Button.New(layerButtons, "Down");
+        layerVisibleCheck = GUI.Checkbox.New(inspector, "Layer visible");
+        layerNameInput = GUI.TextInput.New(inspector);
+        layerNameInput.SetPlaceholder("Layer name");
+        layerAssetInput = GUI.TextInput.New(inspector);
+        layerAssetInput.SetPlaceholder("Layer asset path");
+        chooseLayerAssetButton = GUI.Button.New(inspector, "Choose Layer Image...");
+        chooseLayerAssetButton.SetTooltip(
+            "Reference a PNG, JPEG, BMP, or GIF tileset for this layer");
+
+        tilesetInspector.Setup(inspector, guiApp);
+
+        GUI.Label.New(inspector, "Objects");
+        objectList = GUI.ListBox.New(inspector);
+        objectList.SetAccessibleName("Scene objects");
+        objectList.SetPreferredSize(0.0, 132.0);
+        objectList.SetMultiSelect(true);
+        objectList.SetTooltip(
+            "Ctrl/Command-click to select several objects; Shift-click selects a range");
+        objectTypeInput = GUI.TextInput.New(inspector);
+        objectTypeInput.SetPlaceholder("Object type");
+        objectIdInput = GUI.TextInput.New(inspector);
+        objectIdInput.SetPlaceholder("Object id");
+        var objectPositionRow = GUI.HBox.New();
+        objectPositionRow.SetSpacing(4.0);
+        inspector.AddChild(objectPositionRow);
+        GUI.Label.New(objectPositionRow, "X");
+        objectXSpinner = GUI.Spinner.New(objectPositionRow);
+        objectXSpinner.SetRange(-1000000.0, 1000000.0);
+        objectXSpinner.SetStep(1.0);
+        objectXSpinner.SetDecimals(0);
+        GUI.Label.New(objectPositionRow, "Y");
+        objectYSpinner = GUI.Spinner.New(objectPositionRow);
+        objectYSpinner.SetRange(-1000000.0, 1000000.0);
+        objectYSpinner.SetStep(1.0);
+        objectYSpinner.SetDecimals(0);
+        var objectButtons = GUI.HBox.New();
+        objectButtons.SetSpacing(4.0);
+        inspector.AddChild(objectButtons);
+        addObjectButton = GUI.Button.New(objectButtons, "Add");
+        applyObjectButton = GUI.Button.New(objectButtons, "Apply");
+        removeObjectButton = GUI.Button.New(objectButtons, "Remove");
+        var objectOrderButtons = GUI.HBox.New();
+        objectOrderButtons.SetSpacing(4.0);
+        inspector.AddChild(objectOrderButtons);
+        duplicateObjectButton = GUI.Button.New(objectOrderButtons, "Duplicate");
+        duplicateObjectButton.SetTooltip(
+            "Duplicate the selected object and all of its typed properties");
+        objectUpButton = GUI.Button.New(objectOrderButtons, "Up");
+        objectUpButton.SetTooltip("Move the selected object earlier in draw order");
+        objectDownButton = GUI.Button.New(objectOrderButtons, "Down");
+        objectDownButton.SetTooltip("Move the selected object later in draw order");
+        var objectArrangeRow = GUI.HBox.New();
+        objectArrangeRow.SetSpacing(4.0);
+        inspector.AddChild(objectArrangeRow);
+        objectArrangeDropdown = GUI.Dropdown.New(objectArrangeRow);
+        objectArrangeDropdown.AddItem(
+            scene_layout_2d.OperationLabel(ARRANGE_ALIGN_X));
+        objectArrangeDropdown.AddItem(
+            scene_layout_2d.OperationLabel(ARRANGE_ALIGN_Y));
+        objectArrangeDropdown.AddItem(
+            scene_layout_2d.OperationLabel(ARRANGE_DISTRIBUTE_X));
+        objectArrangeDropdown.AddItem(
+            scene_layout_2d.OperationLabel(ARRANGE_DISTRIBUTE_Y));
+        objectArrangeDropdown.SetSelected(ARRANGE_ALIGN_X);
+        objectArrangeDropdown.SetFlex(1.0);
+        objectArrangeDropdown.SetTooltip(
+            "Align to the primary object or distribute authored point positions");
+        arrangeObjectButton = GUI.Button.New(objectArrangeRow, "Arrange");
+        arrangeObjectButton.SetTooltip(
+            "Apply one undoable layout operation to the selected objects");
+
+        GUI.Label.New(inspector, "Object properties");
+        objectPropertyList = GUI.ListBox.New(inspector);
+        objectPropertyList.SetAccessibleName("Selected object properties");
+        objectPropertyList.SetPreferredSize(0.0, 112.0);
+        objectPropertyKeyInput = GUI.TextInput.New(inspector);
+        objectPropertyKeyInput.SetPlaceholder("Property key");
+        var objectPropertyValueRow = GUI.HBox.New();
+        objectPropertyValueRow.SetSpacing(4.0);
+        inspector.AddChild(objectPropertyValueRow);
+        objectPropertyTypeDropdown = GUI.Dropdown.New(objectPropertyValueRow);
+        objectPropertyTypeDropdown.AddItem("String");
+        objectPropertyTypeDropdown.AddItem("Integer");
+        objectPropertyTypeDropdown.AddItem("Float");
+        objectPropertyTypeDropdown.AddItem("Boolean");
+        objectPropertyTypeDropdown.AddItem("Null");
+        objectPropertyTypeDropdown.SetSelected(PROPERTY_TYPE_STRING);
+        objectPropertyValueInput = GUI.TextInput.New(objectPropertyValueRow);
+        objectPropertyValueInput.SetPlaceholder("Property value");
+        objectPropertyValueInput.SetFlex(1.0);
+        var objectPropertyButtons = GUI.HBox.New();
+        objectPropertyButtons.SetSpacing(4.0);
+        inspector.AddChild(objectPropertyButtons);
+        newObjectPropertyButton = GUI.Button.New(objectPropertyButtons, "New");
+        newObjectPropertyButton.SetTooltip("Clear the fields to add a property");
+        setObjectPropertyButton = GUI.Button.New(objectPropertyButtons, "Set");
+        setObjectPropertyButton.SetTooltip(
+            "Create or update this typed property on the current selection");
+        removeObjectPropertyButton = GUI.Button.New(objectPropertyButtons, "Remove");
+        removeObjectPropertyButton.SetTooltip(
+            "Remove this property from the current selection");
+
+        detailLabel = GUI.Label.New(inspector, "");
+        detailLabel.SetWordWrap(true);
+        SetEditorControlsEnabled(false);
+    }
+
+    /// @brief Borrow Studio's multi-root project index for non-modal assets.
+    expose func SetWorkspaceContext(
+        nextProjectManager: project_manager.ProjectManager) {
+        projectManager = nextProjectManager;
+    }
+
+    /// @brief Pump one active document and return true when scene JSON changed.
+    expose func Pump(activeDoc: document.Document) -> Boolean {
+        if activeDoc == null or activeDoc.kind != file_utils.DOC_KIND_SCENE_2D {
+            return false;
+        }
+        if activeDoc != currentDoc or activeDoc.content != currentSerialized {
+            Activate(activeDoc);
+        }
+        if activeDoc == currentDoc and activeDoc.isModified == false
+           and activeDoc.content == currentSerialized {
+            cleanSerialized = currentSerialized;
+        }
+
+        RefreshResponsiveLayout();
+        if inspectorButton.WasClicked() { ToggleInspectorPane(); }
+
+        var changed = false;
+        if newSceneButton.WasClicked() {
+            changed = ReplaceScene(
+                Convert.NumToInt(sceneWidthSpinner.Value),
+                Convert.NumToInt(sceneHeightSpinner.Value),
+                Convert.NumToInt(sceneTileSizeSpinner.Value));
+        }
+        if importButton.WasClicked() {
+            changed = ImportTiled() or changed;
+        }
+        var projectImportPath = tiledAssetBrowser.Pump(
+            projectManager, currentDoc != null);
+        if projectImportPath != "" {
+            changed = ImportTiledPath(projectImportPath) or changed;
+        }
+        var canChooseLayerAsset = scene != null
+            and activeLayer >= 0 and activeLayer < scene.LayerCount();
+        var projectLayerAssetPath = tilesetInspector.assetBrowser.Pump(
+            projectManager, canChooseLayerAsset);
+        if projectLayerAssetPath != "" {
+            changed = ApplyLayerAssetPath(
+                activeLayer,
+                PortableLayerAssetPath(projectLayerAssetPath)) or changed;
+        }
+        if scene == null {
+            if renderDirty { RenderScene(); }
+            ApplyPendingWorkspaceScroll();
+            CaptureWorkspaceState();
+            return changed;
+        }
+        if currentDoc != null
+           and currentDoc.filePath != tilesetDocumentPath {
+            ReloadTilesets();
+            RefreshTilesetPalette();
+        }
+        PollTilesetExternalChanges(250);
+
+        UpdateCanvasViewportSize();
+        if selectButton.WasClicked() { SetMode(MODE_SELECT); }
+        if paintButton.WasClicked() { SetMode(MODE_PAINT); }
+        if eraseButton.WasClicked() { SetMode(MODE_ERASE); }
+        if objectButton.WasClicked() { SetMode(MODE_OBJECT); }
+        if zoomOutButton.WasClicked() {
+            zoomPercent = ClampInt(zoomPercent - 25,
+                                   MIN_ZOOM_PERCENT,
+                                   MAX_ZOOM_PERCENT);
+            renderDirty = true;
+        }
+        if zoomInButton.WasClicked() {
+            zoomPercent = ClampInt(zoomPercent + 25,
+                                   MIN_ZOOM_PERCENT,
+                                   MAX_ZOOM_PERCENT);
+            renderDirty = true;
+        }
+        if fitButton.WasClicked() {
+            fitPending = false;
+            if FitScene() { renderDirty = true; }
+        }
+        if fitPending and FitScene() {
+            fitPending = false;
+            renderDirty = true;
+        }
+        if tileSpinner.WasChanged() { RefreshTilesetPalette(); }
+
+        changed = PumpLayerControls() or changed;
+        changed = PumpObjectControls() or changed;
+        PumpTilesetPalette();
+        changed = PumpCanvas() or changed;
+        changed = PumpCanvasKeyboard() or changed;
+
+        if renderDirty { RenderScene(); }
+        ApplyPendingWorkspaceScroll();
+        CaptureWorkspaceState();
+        return changed;
+    }
+
+    /// @brief Parse and display one document without mutating invalid input.
+    expose func Activate(doc: document.Document) {
+        LoadDocumentModel(doc, false);
+    }
+
+    /// @brief Return whether a visual scene edit can be undone.
+    expose func CanUndo() -> Boolean {
+        return undoStack.count() > 0;
+    }
+
+    /// @brief Return whether an undone visual scene edit can be redone.
+    expose func CanRedo() -> Boolean {
+        return redoStack.count() > 0;
+    }
+
+    /// @brief Restore the preceding canonical scene snapshot.
+    expose func Undo() -> Boolean {
+        if currentDoc == null or undoStack.count() == 0 { return false; }
+        var index = undoStack.count() - 1;
+        var target = undoStack.get(index);
+        undoStack.removeAt(index);
+        PushHistory(redoStack, currentSerialized);
+        currentDoc.content = target;
+        currentDoc.isModified = target != cleanSerialized;
+        revision = revision + 1;
+        LoadDocumentModel(currentDoc, true);
+        toolbarStatus.SetText("Undid 2D scene edit");
+        return true;
+    }
+
+    /// @brief Reapply the next canonical scene snapshot.
+    expose func Redo() -> Boolean {
+        if currentDoc == null or redoStack.count() == 0 { return false; }
+        var index = redoStack.count() - 1;
+        var target = redoStack.get(index);
+        redoStack.removeAt(index);
+        PushHistory(undoStack, currentSerialized);
+        currentDoc.content = target;
+        currentDoc.isModified = target != cleanSerialized;
+        revision = revision + 1;
+        LoadDocumentModel(currentDoc, true);
+        toolbarStatus.SetText("Redid 2D scene edit");
+        return true;
+    }
+
+    /// @brief Parse and display one document with optional history retention.
+    hide func LoadDocumentModel(doc: document.Document,
+                                preserveHistory: Boolean) {
+        var switchingDocument = currentDoc != doc;
+        if currentDoc != null { CaptureWorkspaceState(); }
+        if preserveHistory == false {
+            var savedState = doc.scene2DWorkspace;
+            var canRestoreHistory = switchingDocument
+                and savedState != null
+                and savedState.historyContent == doc.content;
+            if canRestoreHistory {
+                undoStack = savedState.undoStack;
+                redoStack = savedState.redoStack;
+                cleanSerialized = savedState.cleanSerialized;
+            } else {
+                undoStack = [];
+                redoStack = [];
+                if doc.isModified == false { cleanSerialized = doc.content; }
+                else { cleanSerialized = ""; }
+            }
+        }
+        currentDoc = doc;
+        currentSerialized = doc.content;
+        loadError = "";
+        RestoreWorkspaceState(doc);
+        lastPaintX = -1;
+        lastPaintY = -1;
+        paintStrokeActive = false;
+        paintStrokeChanged = false;
+        paintStrokeSnapshot = "";
+        objectDragActive = false;
+        objectDragChanged = false;
+        objectDragSnapshot = "";
+        objectDragIndex = -1;
+
+        var parsed = SceneDocument.LoadJsonResult(doc.content);
+        if parsed.IsOk {
+            scene = parsed.Unwrap() as SceneDocument;
+            SetEditorControlsEnabled(true);
+            detailLabel.SetText("");
+            toolbarStatus.SetText("2D scene ready");
+        } else {
+            scene = null;
+            loadError = parsed.UnwrapErrStr();
+            SetEditorControlsEnabled(false);
+            toolbarStatus.SetText("Scene needs repair");
+            detailLabel.SetText("Scene could not be parsed. The original JSON "
+                                + "is preserved.\n\n" + loadError);
+        }
+        ReloadTilesets();
+        RefreshInspector();
+        RefreshSceneSetupFields();
+        RefreshTilesetPalette();
+        renderDirty = true;
+    }
+
+    /// @brief Snapshot live canvas, inspector, and process-local history state.
+    hide func CaptureWorkspaceState() {
+        if currentDoc == null or currentDoc.scene2DWorkspace == null { return; }
+        var state = currentDoc.scene2DWorkspace;
+        state.initialized = true;
+        state.mode = ClampInt(mode, MODE_SELECT, MODE_OBJECT);
+        state.zoomPercent = ClampInt(
+            zoomPercent, MIN_ZOOM_PERCENT, MAX_ZOOM_PERCENT);
+        state.activeLayer = activeLayer;
+        state.selectedObject = selectedObject;
+        state.selectedObjects = selectedObjects;
+        state.selectedObjectProperty = selectedObjectProperty;
+        state.selectedCellX = selectedCellX;
+        state.selectedCellY = selectedCellY;
+        var tileId = 1;
+        if tileSpinner != null {
+            tileId = ClampInt(
+                Convert.NumToInt(tileSpinner.Value), 0, 1000000);
+        }
+        state.tileId = tileId;
+        if bodySplit != null {
+            state.splitPosition = ClampNumber2D(
+                bodySplit.GetPosition(), 0.20, 0.85);
+        }
+        if canvasScroll != null {
+            state.canvasScrollX = ClampNumber2D(
+                LogicalScrollX(canvasScroll), 0.0, 1000000.0);
+            state.canvasScrollY = ClampNumber2D(
+                LogicalScrollY(canvasScroll), 0.0, 1000000.0);
+        }
+        if inspectorScroll != null {
+            state.inspectorScrollY = ClampNumber2D(
+                LogicalScrollY(inspectorScroll), 0.0, 1000000.0);
+        }
+        state.inspectorRequestedVisible = inspectorRequestedVisible;
+        state.compactInspectorShown = compactInspectorShown;
+        state.undoStack = undoStack;
+        state.redoStack = redoStack;
+        state.cleanSerialized = cleanSerialized;
+        state.historyContent = currentSerialized;
+    }
+
+    /// @brief Restore a document's validated canvas and inspector workspace.
+    hide func RestoreWorkspaceState(doc: document.Document) {
+        var state = doc.scene2DWorkspace;
+        if state == null or state.initialized == false {
+            mode = MODE_SELECT;
+            zoomPercent = 100;
+            activeLayer = 0;
+            selectedObject = -1;
+            selectedObjects = [];
+            selectedObjectProperty = -1;
+            selectedCellX = -1;
+            selectedCellY = -1;
+            if tileSpinner != null { tileSpinner.SetValue(1.0); }
+            if bodySplit != null { bodySplit.SetPosition(0.68); }
+            pendingCanvasScrollX = 0.0;
+            pendingCanvasScrollY = 0.0;
+            pendingInspectorScrollY = 0.0;
+            inspectorRequestedVisible = true;
+            compactInspectorShown = false;
+            restoreScrollPending = true;
+            fitPending = true;
+            UpdateModeButtons();
+            return;
+        }
+
+        mode = ClampInt(state.mode, MODE_SELECT, MODE_OBJECT);
+        zoomPercent = ClampInt(
+            state.zoomPercent, MIN_ZOOM_PERCENT, MAX_ZOOM_PERCENT);
+        activeLayer = ClampInt(state.activeLayer, 0, 1023);
+        selectedObject = ClampInt(state.selectedObject, -1, 1000000);
+        selectedObjects = state.selectedObjects;
+        selectedObjectProperty = ClampInt(
+            state.selectedObjectProperty, -1, MAX_INSPECTOR_PROPERTIES - 1);
+        selectedCellX = ClampInt(
+            state.selectedCellX, -1, MAX_RENDER_CELLS_PER_AXIS - 1);
+        selectedCellY = ClampInt(
+            state.selectedCellY, -1, MAX_RENDER_CELLS_PER_AXIS - 1);
+        if tileSpinner != null {
+            tileSpinner.SetValue(ClampInt(state.tileId, 0, 1000000));
+        }
+        if bodySplit != null {
+            bodySplit.SetPosition(ClampNumber2D(
+                state.splitPosition, 0.20, 0.85));
+        }
+        pendingCanvasScrollX = ClampNumber2D(
+            state.canvasScrollX, 0.0, 1000000.0);
+        pendingCanvasScrollY = ClampNumber2D(
+            state.canvasScrollY, 0.0, 1000000.0);
+        pendingInspectorScrollY = ClampNumber2D(
+            state.inspectorScrollY, 0.0, 1000000.0);
+        inspectorRequestedVisible = state.inspectorRequestedVisible;
+        compactInspectorShown = state.compactInspectorShown;
+        restoreScrollPending = true;
+        fitPending = false;
+        UpdateModeButtons();
+    }
+
+    /// @brief Toggle the inspector without making either compact pane unusable.
+    expose func ToggleInspectorPane() {
+        if compactLayout {
+            compactInspectorShown = !compactInspectorShown;
+        } else {
+            inspectorRequestedVisible = !inspectorRequestedVisible;
+        }
+        ApplyInspectorLayout();
+        CaptureWorkspaceState();
+    }
+
+    /// @brief Reconcile wrapping chrome and master/detail layout after resize.
+    expose func RefreshResponsiveLayout() {
+        if root == null or bodySplit == null { return; }
+        var width = root.GetLogicalWidth();
+        if width <= 0.0 { return; }
+        var nextCompact = UsesCompactLayout(width);
+        if nextCompact != compactLayout {
+            compactLayout = nextCompact;
+            ApplyResponsiveChrome();
+            renderDirty = true;
+        }
+        ApplyInspectorLayout();
+    }
+
+    /// @brief Keep essential scene actions reachable when toolbar rows wrap.
+    hide func ApplyResponsiveChrome() {
+        if compactLayout {
+            // Flex measurement cannot infer wrapped cross-axis height before
+            // its parent assigns a width. Reserve both compact action rows so
+            // the inspector toggle remains inside the view toolbar.
+            toolbar.SetPreferredSize(0.0, 64.0);
+            viewToolbar.SetPreferredSize(0.0, 64.0);
+            newSceneButton.SetText("New");
+            importButton.SetText("Import...");
+            toolbarStatus.SetVisible(false);
+            viewStatusLabel.SetVisible(false);
+        } else {
+            toolbar.SetPreferredSize(0.0, 0.0);
+            viewToolbar.SetPreferredSize(0.0, 0.0);
+            newSceneButton.SetText("New Scene");
+            importButton.SetText("Import Tiled...");
+            toolbarStatus.SetVisible(true);
+            viewStatusLabel.SetVisible(true);
+        }
+        UpdateInspectorButton();
+    }
+
+    /// @brief Apply wide split or compact one-pane-at-a-time presentation.
+    hide func ApplyInspectorLayout() {
+        if bodySplit == null { return; }
+        var desiredSide = 0;
+        if compactLayout {
+            desiredSide = 2;
+            if compactInspectorShown { desiredSide = 1; }
+        } else if !inspectorRequestedVisible {
+            desiredSide = 2;
+        }
+
+        if bodySplit.GetCollapsedSide() != desiredSide {
+            if desiredSide == 1 { bodySplit.CollapseFirst(); }
+            else if desiredSide == 2 { bodySplit.CollapseSecond(); }
+            else { bodySplit.Restore(); }
+            renderDirty = true;
+        }
+        UpdateInspectorButton();
+    }
+
+    /// @brief Describe the destination of the inspector toggle.
+    hide func UpdateInspectorButton() {
+        if inspectorButton == null { return; }
+        if compactLayout {
+            if compactInspectorShown {
+                inspectorButton.SetText("Canvas");
+                inspectorButton.SetTooltip("Return to the full-width scene canvas");
+                inspectorButton.SetStyle(1);
+            } else {
+                inspectorButton.SetText("Inspector");
+                inspectorButton.SetTooltip("Show the scene inspector at full width");
+                inspectorButton.SetStyle(2);
+            }
+        } else if inspectorRequestedVisible {
+            inspectorButton.SetText("Hide Inspector");
+            inspectorButton.SetTooltip(
+                "Hide the scene inspector and give the canvas the full width");
+            inspectorButton.SetStyle(2);
+        } else {
+            inspectorButton.SetText("Show Inspector");
+            inspectorButton.SetTooltip("Restore the scene inspector");
+            inspectorButton.SetStyle(1);
+        }
+    }
+
+    /// @brief Apply deferred scroll state after the canvas content size is known.
+    hide func ApplyPendingWorkspaceScroll() {
+        if restoreScrollPending == false { return; }
+        if canvasScroll != null {
+            SetLogicalScroll(
+                canvasScroll,
+                pendingCanvasScrollX, pendingCanvasScrollY);
+        }
+        if inspectorScroll != null {
+            SetLogicalScroll(
+                inspectorScroll, 0.0, pendingInspectorScrollY);
+        }
+        restoreScrollPending = false;
+    }
+
+    /// @brief Return the editor's monotonically increasing content revision.
+    expose func GetRevision() -> Integer {
+        return revision;
+    }
+
+    /// @brief Create a canonical default scene JSON for New Scene commands.
+    expose func DefaultSceneJson() -> String {
+        var fresh = SceneDocument.New(DEFAULT_SCENE_WIDTH,
+                                      DEFAULT_SCENE_HEIGHT,
+                                      DEFAULT_TILE_SIZE,
+                                      DEFAULT_TILE_SIZE);
+        return fresh.ToJson();
+    }
+
+    /// @brief Set one tile through the same transactional path as canvas paint.
+    /// @return True only when a valid cell changed.
+    expose func SetSceneTile(layer: Integer,
+                             x: Integer,
+                             y: Integer,
+                             tile: Integer) -> Boolean {
+        if scene == null or layer < 0 or layer >= scene.LayerCount()
+           or x < 0 or y < 0 or x >= scene.Width or y >= scene.Height {
+            return false;
+        }
+        var nextTile = tile;
+        if nextTile < 0 { nextTile = 0; }
+        if scene.GetTile(layer, x, y) == nextTile { return false; }
+        scene.SetTile(layer, x, y, nextTile);
+        activeLayer = layer;
+        selectedCellX = x;
+        selectedCellY = y;
+        return CommitScene("Tile " + x + ", " + y + " updated");
+    }
+
+    /// @brief Paint an inclusive raster line as one undoable document edit.
+    /// @details This is the deterministic command path used to regression-test
+    ///          gap-free drag strokes without relying on native pointer timing.
+    expose func PaintTileLine(layer: Integer,
+                              startX: Integer,
+                              startY: Integer,
+                              endX: Integer,
+                              endY: Integer,
+                              tile: Integer) -> Boolean {
+        if scene == null or layer < 0 or layer >= scene.LayerCount()
+           or startX < 0 or startY < 0 or endX < 0 or endY < 0
+           or startX >= scene.Width or endX >= scene.Width
+           or startY >= scene.Height or endY >= scene.Height {
+            return false;
+        }
+        var nextTile = tile;
+        if nextTile < 0 { nextTile = 0; }
+        var snapshot = currentSerialized;
+        if ApplyTileLineUncommitted(
+               layer, startX, startY, endX, endY, nextTile) == false {
+            return false;
+        }
+        activeLayer = layer;
+        selectedCellX = endX;
+        selectedCellY = endY;
+        if CommitScene("Painted tile stroke") { return true; }
+        RestoreSceneSnapshot(snapshot);
+        detailLabel.SetText("The tile stroke could not be committed.");
+        return false;
+    }
+
+    /// @brief Add one scene object and commit its canonical JSON immediately.
+    /// @return New object index, or -1 when the model rejects the object.
+    expose func AddSceneObject(typeName: String,
+                               objectId: String,
+                               x: Integer,
+                               y: Integer) -> Integer {
+        if scene == null { return -1; }
+        var nextType = Str.Trim(typeName);
+        var nextId = Str.Trim(objectId);
+        if nextType == "" {
+            detailLabel.SetText("Object type cannot be empty.");
+            return -1;
+        }
+        if nextId == "" {
+            detailLabel.SetText("Object ID cannot be empty.");
+            return -1;
+        }
+        if ObjectIdExists(nextId, -1) {
+            detailLabel.SetText("Object ID \"" + nextId + "\" is already in use.");
+            return -1;
+        }
+        var objectIndex = scene.AddObject(nextType, nextId, x, y);
+        if objectIndex < 0 { return -1; }
+        selectedObject = objectIndex;
+        selectedObjects = scene_selection.Single(
+            objectIndex, scene.ObjectCount());
+        if CommitScene("Added object " + nextId) == false {
+            scene.RemoveObject(objectIndex);
+            selectedObject = -1;
+            selectedObjects = [];
+            selectedObjectProperty = -1;
+            detailLabel.SetText("The object could not be committed to the document.");
+            RefreshInspector();
+            return -1;
+        }
+        detailLabel.SetText("");
+        RefreshInspector();
+        return objectIndex;
+    }
+
+    /// @brief Apply reserved metadata and position as one undoable inspector edit.
+    expose func UpdateSceneObject(index: Integer,
+                                  typeName: String,
+                                  objectId: String,
+                                  x: Integer,
+                                  y: Integer) -> Boolean {
+        if scene == null or index < 0 or index >= scene.ObjectCount() {
+            return false;
+        }
+        var nextType = Str.Trim(typeName);
+        var nextId = Str.Trim(objectId);
+        if nextType == "" {
+            detailLabel.SetText("Object type cannot be empty.");
+            return false;
+        }
+        if nextId == "" {
+            detailLabel.SetText("Object ID cannot be empty.");
+            return false;
+        }
+        if ObjectIdExists(nextId, index) {
+            detailLabel.SetText("Object ID \"" + nextId + "\" is already in use.");
+            return false;
+        }
+
+        var previousType = scene.ObjectType(index);
+        var previousId = scene.ObjectId(index);
+        var previousX = scene.ObjectX(index);
+        var previousY = scene.ObjectY(index);
+        if previousType == nextType and previousId == nextId
+           and previousX == x and previousY == y {
+            detailLabel.SetText("Object is already up to date.");
+            return false;
+        }
+
+        scene.SetObjectMetadata(index, nextType, nextId);
+        scene.SetObjectPosition(index, x, y);
+        if scene.ObjectType(index) != nextType or scene.ObjectId(index) != nextId {
+            scene.SetObjectMetadata(index, previousType, previousId);
+            scene.SetObjectPosition(index, previousX, previousY);
+            detailLabel.SetText("Object metadata was rejected by the scene model.");
+            return false;
+        }
+        selectedObject = index;
+        selectedObjects = scene_selection.Single(
+            index, scene.ObjectCount());
+        if CommitScene("Updated object " + nextId) == false {
+            scene.SetObjectMetadata(index, previousType, previousId);
+            scene.SetObjectPosition(index, previousX, previousY);
+            detailLabel.SetText("The object update could not be committed.");
+            RefreshInspector();
+            return false;
+        }
+        detailLabel.SetText("");
+        RefreshInspector();
+        return true;
+    }
+
+    /// @brief Duplicate one object without flattening its typed property map.
+    /// @return New object index, or -1 when the model rejects the operation.
+    expose func DuplicateSceneObject(index: Integer) -> Integer {
+        if scene == null or index < 0 or index >= scene.ObjectCount() {
+            return -1;
+        }
+        var nextId = UniqueObjectId(scene.ObjectId(index) + "-copy");
+        var duplicate = scene.DuplicateObject(index, nextId);
+        if duplicate < 0 {
+            detailLabel.SetText("The scene could not duplicate this object.");
+            return -1;
+        }
+        scene.SetObjectPosition(
+            duplicate,
+            scene.ObjectX(index) + scene.TileWidth,
+            scene.ObjectY(index) + scene.TileHeight);
+        selectedObject = duplicate;
+        selectedObjects = scene_selection.Single(
+            duplicate, scene.ObjectCount());
+        if CommitScene("Duplicated object as " + nextId) == false {
+            scene.RemoveObject(duplicate);
+            selectedObject = index;
+            selectedObjects = scene_selection.Single(
+                index, scene.ObjectCount());
+            detailLabel.SetText("The duplicate could not be committed.");
+            RefreshInspector();
+            return -1;
+        }
+        detailLabel.SetText("");
+        RefreshInspector();
+        return duplicate;
+    }
+
+    /// @brief Select validated object rows with one explicit primary object.
+    expose func SelectSceneObjects(indices: List[Integer],
+                                   primary: Integer) -> Boolean {
+        if scene == null { return false; }
+        selectedObjects = scene_selection.Normalize(
+            indices, scene.ObjectCount(), primary);
+        selectedObject = primary;
+        if selectedObject < 0 or selectedObject >= scene.ObjectCount() {
+            selectedObject = -1;
+            if selectedObjects.count() > 0 {
+                selectedObject = selectedObjects.get(0);
+            }
+        }
+        selectedObjectProperty = -1;
+        if objectList != null { RestoreObjectListSelection(); }
+        RefreshObjectFields();
+        renderDirty = true;
+        CaptureWorkspaceState();
+        return selectedObjects.count() > 0;
+    }
+
+    /// @brief Return whether at least one valid object is selected.
+    expose func HasSceneObjectSelection() -> Boolean {
+        if scene == null { return false; }
+        var normalized = scene_selection.Normalize(
+            selectedObjects, scene.ObjectCount(), selectedObject);
+        return normalized.count() > 0;
+    }
+
+    /// @brief Return whether Select All has an object target.
+    expose func CanSelectAllSceneObjects() -> Boolean {
+        return scene != null and scene.ObjectCount() > 0;
+    }
+
+    /// @brief Return whether the text clipboard may contain pasteable data.
+    /// @details Kind and payload validation happen only on explicit paste so
+    ///          Studio does not copy a potentially large native clipboard every
+    ///          render frame merely to update menu chrome.
+    expose func CanPasteSceneObjects() -> Boolean {
+        return scene != null and GUI.ClipboardText.HasText();
+    }
+
+    /// @brief Select every authored object without changing scene history.
+    expose func SelectAllSceneObjects() -> Boolean {
+        if CanSelectAllSceneObjects() == false { return false; }
+        var all: List[Integer] = [];
+        var index = 0;
+        while index < scene.ObjectCount() {
+            all.add(index);
+            index = index + 1;
+        }
+        var primary = selectedObject;
+        if primary < 0 or primary >= scene.ObjectCount() { primary = 0; }
+        if SelectSceneObjects(all, primary) == false { return false; }
+        toolbarStatus.SetText(
+            "Selected all " + selectedObjects.count() + " scene objects");
+        detailLabel.SetText("");
+        return true;
+    }
+
+    /// @brief Copy selected objects as canonical typed scene data.
+    expose func CopySelectedSceneObjects() -> Boolean {
+        if scene == null or currentSerialized == "" { return false; }
+        selectedObjects = scene_selection.Normalize(
+            selectedObjects, scene.ObjectCount(), selectedObject);
+        if selectedObjects.count() == 0 { return false; }
+        if selectedObject < 0
+           or scene_selection.Contains(selectedObjects, selectedObject) == false {
+            selectedObject = selectedObjects.get(0);
+        }
+        var encoded = scene_clipboard.Encode(
+            "2d", selectedObjects, selectedObject, currentSerialized);
+        if encoded == "" {
+            toolbarStatus.SetText("Scene objects not copied");
+            detailLabel.SetText(
+                "The selected objects exceed Studio's scene clipboard limit.");
+            return false;
+        }
+        GUI.ClipboardText.SetText(encoded);
+        toolbarStatus.SetText(
+            "Copied " + selectedObjects.count() + " scene object(s)");
+        detailLabel.SetText("");
+        return true;
+    }
+
+    /// @brief Copy and remove selected objects as one undoable edit.
+    expose func CutSelectedSceneObjects() -> Boolean {
+        var count = selectedObjects.count();
+        if CopySelectedSceneObjects() == false { return false; }
+        if RemoveSelectedSceneObjects() == false {
+            detailLabel.SetText(
+                "The objects were copied, but Studio could not remove them.");
+            return false;
+        }
+        toolbarStatus.SetText("Cut " + count + " scene object(s)");
+        return true;
+    }
+
+    /// @brief Paste typed 2D objects into this scene as one history action.
+    /// @details Source metadata and custom null/bool/int/float/string values are
+    ///          reconstructed through SceneDocument's typed APIs. Any rejected
+    ///          object restores the exact pre-paste canonical snapshot.
+    expose func PasteSceneObjectsFromClipboard() -> Boolean {
+        if scene == null or currentDoc == null { return false; }
+        var payload = scene_clipboard.Decode(GUI.ClipboardText.GetText());
+        if payload.valid == false {
+            toolbarStatus.SetText("Nothing pasted");
+            detailLabel.SetText(payload.error);
+            return false;
+        }
+        if payload.kind != "2d" {
+            toolbarStatus.SetText("Nothing pasted");
+            detailLabel.SetText(
+                "Clipboard contains 3D nodes. Paste them into a 3D scene.");
+            return false;
+        }
+        var parsed = SceneDocument.LoadJsonResult(payload.content);
+        if parsed.IsOk == false {
+            toolbarStatus.SetText("Nothing pasted");
+            detailLabel.SetText(
+                "Clipboard contains invalid or unsupported 2D scene data.");
+            return false;
+        }
+        var source = parsed.Unwrap() as SceneDocument;
+        var sourceSelection = scene_selection.Normalize(
+            payload.indices, source.ObjectCount(), payload.primary);
+        if sourceSelection.count() != payload.indices.count()
+           or payload.primary < 0
+           or payload.primary >= source.ObjectCount() {
+            toolbarStatus.SetText("Nothing pasted");
+            detailLabel.SetText(
+                "Clipboard object identities no longer match its scene data.");
+            return false;
+        }
+
+        var snapshot = currentSerialized;
+        var previousSelection = selectedObjects;
+        var previousPrimary = selectedObject;
+        var pasted: List[Integer] = [];
+        var pastedPrimary = -1;
+        var index = 0;
+        while index < sourceSelection.count() {
+            var sourceIndex = sourceSelection.get(index);
+            var destination = CopyObjectFromScene(source, sourceIndex);
+            if destination < 0 {
+                RestoreSceneSnapshot(snapshot);
+                selectedObjects = previousSelection;
+                selectedObject = previousPrimary;
+                RefreshInspector();
+                toolbarStatus.SetText("Paste rolled back");
+                detailLabel.SetText(
+                    "Studio could not reconstruct every copied object. "
+                    + "No scene data was changed.");
+                return false;
+            }
+            pasted.add(destination);
+            if sourceIndex == payload.primary { pastedPrimary = destination; }
+            index = index + 1;
+        }
+        if pastedPrimary < 0 and pasted.count() > 0 {
+            pastedPrimary = pasted.get(0);
+        }
+        selectedObjects = pasted;
+        selectedObject = pastedPrimary;
+        selectedObjectProperty = -1;
+        var message = "Pasted " + pasted.count() + " scene objects";
+        if pasted.count() == 1 { message = "Pasted scene object"; }
+        if pasted.count() == 0 or CommitScene(message) == false {
+            RestoreSceneSnapshot(snapshot);
+            selectedObjects = previousSelection;
+            selectedObject = previousPrimary;
+            RefreshInspector();
+            toolbarStatus.SetText("Paste rolled back");
+            detailLabel.SetText(
+                "The pasted objects could not be committed. "
+                + "No scene data was changed.");
+            return false;
+        }
+        detailLabel.SetText("");
+        RefreshInspector();
+        CaptureWorkspaceState();
+        return true;
+    }
+
+    /// @brief Reconstruct one object from another loaded scene.
+    hide func CopyObjectFromScene(source: SceneDocument,
+                                  sourceIndex: Integer) -> Integer {
+        if scene == null or source == null
+           or sourceIndex < 0 or sourceIndex >= source.ObjectCount() {
+            return -1;
+        }
+        var nextId = UniqueObjectId(
+            source.ObjectId(sourceIndex) + "-copy");
+        var destination = scene.AddObject(
+            source.ObjectType(sourceIndex),
+            nextId,
+            source.ObjectX(sourceIndex) + scene.TileWidth,
+            source.ObjectY(sourceIndex) + scene.TileHeight);
+        if destination < 0 { return -1; }
+
+        var keys = source.ObjectKeys(sourceIndex);
+        var keyIndex = 0;
+        while keyIndex < Seq.get_Count(keys) {
+            var key = Seq.GetStr(keys, keyIndex);
+            var kind = source.ObjectPropertyKind(sourceIndex, key);
+            if kind == "string" {
+                scene.ObjectSetStr(
+                    destination, key,
+                    source.ObjectGetStr(sourceIndex, key, ""));
+            } else if kind == "int" {
+                scene.ObjectSetInt(
+                    destination, key,
+                    source.ObjectGetInt(sourceIndex, key, 0));
+            } else if kind == "float" {
+                scene.ObjectSetFloat(
+                    destination, key,
+                    source.ObjectGetFloat(sourceIndex, key, 0.0));
+            } else if kind == "bool" {
+                scene.ObjectSetBool(
+                    destination, key,
+                    source.ObjectGetBool(sourceIndex, key, false));
+            } else if kind == "null" {
+                scene.ObjectSetNull(destination, key);
+            } else {
+                scene.RemoveObject(destination);
+                return -1;
+            }
+            if scene.ObjectHas(destination, key) == false
+               or scene.ObjectPropertyKind(destination, key) != kind {
+                scene.RemoveObject(destination);
+                return -1;
+            }
+            keyIndex = keyIndex + 1;
+        }
+        return destination;
+    }
+
+    /// @brief Duplicate every selected object as one lossless history action.
+    /// @return Number of duplicated objects, or zero when the action fails.
+    expose func DuplicateSelectedSceneObjects() -> Integer {
+        if scene == null { return 0; }
+        selectedObjects = scene_selection.Normalize(
+            selectedObjects, scene.ObjectCount(), selectedObject);
+        if selectedObjects.count() == 0 { return 0; }
+
+        var snapshot = currentSerialized;
+        var previousSelection = selectedObjects;
+        var previousPrimary = selectedObject;
+        var duplicateIds: List[String] = [];
+        var primaryDuplicateId = "";
+        var source = scene.ObjectCount() - 1;
+        while source >= 0 {
+            if scene_selection.Contains(selectedObjects, source) {
+                var nextId = UniqueObjectId(
+                    scene.ObjectId(source) + "-copy");
+                var duplicate = scene.DuplicateObject(source, nextId);
+                if duplicate < 0 {
+                    selectedObjects = previousSelection;
+                    selectedObject = previousPrimary;
+                    RestoreSceneSnapshot(snapshot);
+                    detailLabel.SetText(
+                        "The selected objects could not all be duplicated. "
+                        + "No objects were changed.");
+                    return 0;
+                }
+                scene.SetObjectPosition(
+                    duplicate,
+                    scene.ObjectX(source) + scene.TileWidth,
+                    scene.ObjectY(source) + scene.TileHeight);
+                duplicateIds.add(nextId);
+                if source == previousPrimary {
+                    primaryDuplicateId = nextId;
+                }
+            }
+            source = source - 1;
+        }
+
+        var duplicates: List[Integer] = [];
+        var nextPrimary = -1;
+        var objectIndex = 0;
+        while objectIndex < scene.ObjectCount() {
+            var candidateId = scene.ObjectId(objectIndex);
+            var idIndex = 0;
+            while idIndex < duplicateIds.count() {
+                if candidateId == duplicateIds.get(idIndex) {
+                    duplicates.add(objectIndex);
+                    if candidateId == primaryDuplicateId {
+                        nextPrimary = objectIndex;
+                    }
+                    break;
+                }
+                idIndex = idIndex + 1;
+            }
+            objectIndex = objectIndex + 1;
+        }
+        if nextPrimary < 0 and duplicates.count() > 0 {
+            nextPrimary = duplicates.get(0);
+        }
+        selectedObjects = duplicates;
+        selectedObject = nextPrimary;
+        selectedObjectProperty = -1;
+        var count = duplicates.count();
+        var message = "Duplicated " + count + " objects";
+        if count == 1 { message = "Duplicated scene object"; }
+        if count == 0 or CommitScene(message) == false {
+            selectedObjects = previousSelection;
+            selectedObject = previousPrimary;
+            RestoreSceneSnapshot(snapshot);
+            detailLabel.SetText(
+                "The selected objects could not be committed.");
+            return 0;
+        }
+        detailLabel.SetText("");
+        RefreshInspector();
+        return count;
+    }
+
+    /// @brief Remove every selected object in one descending-index transaction.
+    expose func RemoveSelectedSceneObjects() -> Boolean {
+        if scene == null { return false; }
+        selectedObjects = scene_selection.Normalize(
+            selectedObjects, scene.ObjectCount(), selectedObject);
+        var count = selectedObjects.count();
+        if count == 0 { return false; }
+
+        var snapshot = currentSerialized;
+        var previousSelection = selectedObjects;
+        var previousPrimary = selectedObject;
+        var firstRemoved = scene.ObjectCount();
+        var index = scene.ObjectCount() - 1;
+        while index >= 0 {
+            if scene_selection.Contains(selectedObjects, index) {
+                if index < firstRemoved { firstRemoved = index; }
+                scene.RemoveObject(index);
+            }
+            index = index - 1;
+        }
+
+        var remaining = scene.ObjectCount();
+        selectedObject = firstRemoved;
+        if selectedObject >= remaining { selectedObject = remaining - 1; }
+        selectedObjects = scene_selection.Single(selectedObject, remaining);
+        selectedObjectProperty = -1;
+        var message = "Removed " + count + " objects";
+        if count == 1 { message = "Removed object"; }
+        if CommitScene(message) == false {
+            selectedObjects = previousSelection;
+            selectedObject = previousPrimary;
+            RestoreSceneSnapshot(snapshot);
+            detailLabel.SetText(
+                "The selected objects could not be removed.");
+            return false;
+        }
+        detailLabel.SetText("");
+        RefreshInspector();
+        return true;
+    }
+
+    /// @brief Translate every selected object by one pixel delta and commit once.
+    expose func TranslateSelectedSceneObjects(deltaX: Integer,
+                                              deltaY: Integer) -> Boolean {
+        if scene == null or (deltaX == 0 and deltaY == 0) {
+            return false;
+        }
+        selectedObjects = scene_selection.Normalize(
+            selectedObjects, scene.ObjectCount(), selectedObject);
+        if selectedObjects.count() == 0 { return false; }
+        var snapshot = currentSerialized;
+        if TranslateSelectedObjectsUncommitted(deltaX, deltaY) == false {
+            return false;
+        }
+        var count = selectedObjects.count();
+        var message = "Moved " + count + " objects";
+        if count == 1 { message = "Moved scene object"; }
+        if CommitScene(message) == false {
+            RestoreSceneSnapshot(snapshot);
+            detailLabel.SetText(
+                "The selected object move could not be committed.");
+            return false;
+        }
+        RefreshInspector();
+        return true;
+    }
+
+    /// @brief Apply one group delta without creating an intermediate history row.
+    hide func TranslateSelectedObjectsUncommitted(deltaX: Integer,
+                                                  deltaY: Integer) -> Boolean {
+        if scene == null or (deltaX == 0 and deltaY == 0) {
+            return false;
+        }
+        var changed = false;
+        var selectionIndex = 0;
+        while selectionIndex < selectedObjects.count() {
+            var objectIndex = selectedObjects.get(selectionIndex);
+            if objectIndex >= 0 and objectIndex < scene.ObjectCount() {
+                scene.SetObjectPosition(
+                    objectIndex,
+                    scene.ObjectX(objectIndex) + deltaX,
+                    scene.ObjectY(objectIndex) + deltaY);
+                changed = true;
+            }
+            selectionIndex = selectionIndex + 1;
+        }
+        if changed { renderDirty = true; }
+        return changed;
+    }
+
+    /// @brief Align or distribute the selected authored point positions once.
+    /// @details Align uses selectedObject as the explicit anchor. Distribution
+    ///          leaves both extrema fixed and deterministically rounds every
+    ///          intermediate integer position. Rejected/no-op layouts do not
+    ///          create history.
+    expose func ArrangeSelectedSceneObjects(operation: Integer) -> Boolean {
+        if scene == null or scene_layout_2d.IsOperation(operation) == false {
+            return false;
+        }
+        selectedObjects = scene_selection.Normalize(
+            selectedObjects, scene.ObjectCount(), selectedObject);
+        var minimum = scene_layout_2d.MinimumSelection(operation);
+        if selectedObjects.count() < minimum
+           or selectedObject < 0
+           or selectedObject >= scene.ObjectCount() {
+            detailLabel.SetText(
+                scene_layout_2d.OperationLabel(operation)
+                + " needs at least " + minimum + " selected objects.");
+            return false;
+        }
+
+        var snapshot = currentSerialized;
+        var previousSelection = selectedObjects;
+        var previousPrimary = selectedObject;
+        var useX = scene_layout_2d.UsesX(operation);
+        var changed = false;
+        if scene_layout_2d.IsDistribution(operation) {
+            var ordered = scene_layout_2d.OrderedIndices(
+                scene, selectedObjects, useX);
+            if ordered.count() < minimum { return false; }
+            var minimumCoordinate = scene_layout_2d.Coordinate(
+                scene, ordered.get(0), useX);
+            var maximumCoordinate = scene_layout_2d.Coordinate(
+                scene, ordered.get(ordered.count() - 1), useX);
+            var position = 0;
+            while position < ordered.count() {
+                var objectIndex = ordered.get(position);
+                var target = scene_layout_2d.DistributedCoordinate(
+                    minimumCoordinate,
+                    maximumCoordinate,
+                    position,
+                    ordered.count());
+                var current = scene_layout_2d.Coordinate(
+                    scene, objectIndex, useX);
+                if current != target {
+                    if useX {
+                        scene.SetObjectPosition(
+                            objectIndex, target, scene.ObjectY(objectIndex));
+                    } else {
+                        scene.SetObjectPosition(
+                            objectIndex, scene.ObjectX(objectIndex), target);
+                    }
+                    changed = true;
+                }
+                position = position + 1;
+            }
+        } else {
+            var anchor = scene_layout_2d.Coordinate(
+                scene, selectedObject, useX);
+            var selectionIndex = 0;
+            while selectionIndex < selectedObjects.count() {
+                var objectIndex = selectedObjects.get(selectionIndex);
+                var current = scene_layout_2d.Coordinate(
+                    scene, objectIndex, useX);
+                if current != anchor {
+                    if useX {
+                        scene.SetObjectPosition(
+                            objectIndex, anchor, scene.ObjectY(objectIndex));
+                    } else {
+                        scene.SetObjectPosition(
+                            objectIndex, scene.ObjectX(objectIndex), anchor);
+                    }
+                    changed = true;
+                }
+                selectionIndex = selectionIndex + 1;
+            }
+        }
+
+        if changed == false {
+            detailLabel.SetText(
+                "The selection already satisfies "
+                + scene_layout_2d.OperationLabel(operation) + ".");
+            return false;
+        }
+        var message = scene_layout_2d.OperationLabel(operation)
+            + " (" + selectedObjects.count() + " objects)";
+        if CommitScene(message) == false {
+            selectedObjects = previousSelection;
+            selectedObject = previousPrimary;
+            RestoreSceneSnapshot(snapshot);
+            detailLabel.SetText(
+                "The selected object layout could not be committed.");
+            return false;
+        }
+        detailLabel.SetText("");
+        RefreshInspector();
+        return true;
+    }
+
+    /// @brief Move one object to an explicit draw-order index.
+    expose func MoveSceneObject(index: Integer, target: Integer) -> Boolean {
+        if scene == null or index < 0 or target < 0
+           or index >= scene.ObjectCount() or target >= scene.ObjectCount()
+           or index == target {
+            return false;
+        }
+        scene.MoveObject(index, target);
+        selectedObject = target;
+        selectedObjects = scene_selection.Single(
+            target, scene.ObjectCount());
+        if CommitScene("Changed object draw order") == false {
+            scene.MoveObject(target, index);
+            selectedObject = index;
+            selectedObjects = scene_selection.Single(
+                index, scene.ObjectCount());
+            detailLabel.SetText("The object order change could not be committed.");
+            RefreshInspector();
+            return false;
+        }
+        detailLabel.SetText("");
+        RefreshInspector();
+        return true;
+    }
+
+    /// @brief Create, rename, or update one typed object property transactionally.
+    expose func SetSceneObjectProperty(index: Integer,
+                                       previousKey: String,
+                                       key: String,
+                                       kind: String,
+                                       value: String) -> Boolean {
+        if scene == null or index < 0 or index >= scene.ObjectCount() {
+            return false;
+        }
+        var nextKey = Str.Trim(key);
+        if nextKey == "" {
+            detailLabel.SetText("Property key cannot be empty.");
+            return false;
+        }
+        if previousKey != nextKey and scene.ObjectHas(index, nextKey) {
+            detailLabel.SetText(
+                "Property \"" + nextKey + "\" already exists on this object.");
+            return false;
+        }
+
+        var snapshot = scene.ToJson();
+        var applied = false;
+        if kind == "string" {
+            scene.ObjectSetStr(index, nextKey, value);
+            applied = scene.ObjectGetStr(index, nextKey, "") == value;
+        } else if kind == "int" {
+            var parsedInt = Parse.TryInt(Str.Trim(value));
+            if parsedInt.IsNone {
+                detailLabel.SetText("Enter a valid whole number.");
+                return false;
+            }
+            var intValue = parsedInt.UnwrapI64();
+            scene.ObjectSetInt(index, nextKey, intValue);
+            applied = scene.ObjectGetInt(index, nextKey, 0) == intValue;
+        } else if kind == "float" {
+            var parsedFloat = Parse.TryDouble(Str.Trim(value));
+            if parsedFloat.IsNone {
+                detailLabel.SetText("Enter a valid finite number.");
+                return false;
+            }
+            var floatValue = parsedFloat.UnwrapF64();
+            scene.ObjectSetFloat(index, nextKey, floatValue);
+            var floatDelta =
+                scene.ObjectGetFloat(index, nextKey, 0.0) - floatValue;
+            if floatDelta < 0.0 { floatDelta = 0.0 - floatDelta; }
+            applied = floatDelta < 0.000000000001;
+        } else if kind == "bool" {
+            var parsedBool = Parse.TryBool(Str.Trim(value));
+            if parsedBool.IsNone {
+                detailLabel.SetText(
+                    "Enter true/false, yes/no, on/off, or 1/0.");
+                return false;
+            }
+            var boolValue = parsedBool.UnwrapI1();
+            scene.ObjectSetBool(index, nextKey, boolValue);
+            applied = scene.ObjectGetBool(index, nextKey, false) == boolValue;
+        } else if kind == "null" {
+            scene.ObjectSetNull(index, nextKey);
+            applied = scene.ObjectPropertyKind(index, nextKey) == "null";
+        } else {
+            detailLabel.SetText("Choose a supported property type.");
+            return false;
+        }
+
+        if applied == false or scene.ObjectHas(index, nextKey) == false
+           or scene.ObjectPropertyKind(index, nextKey) != kind {
+            RestoreSceneSnapshot(snapshot);
+            detailLabel.SetText(
+                "The property was rejected. Keys are limited to 128 bytes and "
+                + "string values to 64 KiB.");
+            return false;
+        }
+        if previousKey != "" and previousKey != nextKey {
+            scene.ObjectRemove(index, previousKey);
+        }
+        if scene.ToJson() == snapshot {
+            detailLabel.SetText("Property is already up to date.");
+            return false;
+        }
+        selectedObject = index;
+        selectedObjects = scene_selection.Single(
+            index, scene.ObjectCount());
+        if CommitScene("Updated property " + nextKey) == false {
+            RestoreSceneSnapshot(snapshot);
+            detailLabel.SetText("The property update could not be committed.");
+            return false;
+        }
+
+        selectedObjectProperty = -1;
+        detailLabel.SetText("");
+        RefreshInspector();
+        SelectObjectPropertyByKey(nextKey);
+        return true;
+    }
+
+    /// @brief Remove one typed object property through the shared history path.
+    expose func RemoveSceneObjectProperty(index: Integer,
+                                          key: String) -> Boolean {
+        if scene == null or index < 0 or index >= scene.ObjectCount()
+           or scene.ObjectHas(index, key) == false {
+            return false;
+        }
+        var snapshot = scene.ToJson();
+        scene.ObjectRemove(index, key);
+        if scene.ObjectHas(index, key) {
+            RestoreSceneSnapshot(snapshot);
+            detailLabel.SetText("The scene model rejected the property removal.");
+            return false;
+        }
+        selectedObject = index;
+        selectedObjects = scene_selection.Single(
+            index, scene.ObjectCount());
+        selectedObjectProperty = -1;
+        if CommitScene("Removed property " + key) == false {
+            RestoreSceneSnapshot(snapshot);
+            detailLabel.SetText("The property removal could not be committed.");
+            return false;
+        }
+        detailLabel.SetText("");
+        RefreshInspector();
+        return true;
+    }
+
+    /// @brief Set one typed property across the complete object selection.
+    /// @details The value is parsed once, every selected object is verified,
+    ///          and one canonical history snapshot covers the entire batch.
+    expose func SetSelectedSceneObjectProperty(key: String,
+                                               kind: String,
+                                               value: String) -> Boolean {
+        if scene == null { return false; }
+        selectedObjects = scene_selection.Normalize(
+            selectedObjects, scene.ObjectCount(), selectedObject);
+        var count = selectedObjects.count();
+        if count == 0 { return false; }
+        var nextKey = Str.Trim(key);
+        if nextKey == "" {
+            detailLabel.SetText("Property key cannot be empty.");
+            return false;
+        }
+
+        var intValue = 0;
+        var floatValue = 0.0;
+        var boolValue = false;
+        if kind == "int" {
+            var parsedInt = Parse.TryInt(Str.Trim(value));
+            if parsedInt.IsNone {
+                detailLabel.SetText("Enter a valid whole number.");
+                return false;
+            }
+            intValue = parsedInt.UnwrapI64();
+        } else if kind == "float" {
+            var parsedFloat = Parse.TryDouble(Str.Trim(value));
+            if parsedFloat.IsNone {
+                detailLabel.SetText("Enter a valid finite number.");
+                return false;
+            }
+            floatValue = parsedFloat.UnwrapF64();
+        } else if kind == "bool" {
+            var parsedBool = Parse.TryBool(Str.Trim(value));
+            if parsedBool.IsNone {
+                detailLabel.SetText(
+                    "Enter true/false, yes/no, on/off, or 1/0.");
+                return false;
+            }
+            boolValue = parsedBool.UnwrapI1();
+        } else if kind != "string" and kind != "null" {
+            detailLabel.SetText("Choose a supported property type.");
+            return false;
+        }
+
+        var snapshot = scene.ToJson();
+        var selectionIndex = 0;
+        while selectionIndex < count {
+            var objectIndex = selectedObjects.get(selectionIndex);
+            if kind == "string" {
+                scene.ObjectSetStr(objectIndex, nextKey, value);
+            } else if kind == "int" {
+                scene.ObjectSetInt(objectIndex, nextKey, intValue);
+            } else if kind == "float" {
+                scene.ObjectSetFloat(objectIndex, nextKey, floatValue);
+            } else if kind == "bool" {
+                scene.ObjectSetBool(objectIndex, nextKey, boolValue);
+            } else {
+                scene.ObjectSetNull(objectIndex, nextKey);
+            }
+            if BatchPropertyMatches(
+                   objectIndex, nextKey, kind, value,
+                   intValue, floatValue, boolValue) == false {
+                RestoreSceneSnapshot(snapshot);
+                detailLabel.SetText(
+                    "The batch property was rejected. Keys are limited to "
+                    + "128 bytes and string values to 64 KiB. "
+                    + "No objects were changed.");
+                return false;
+            }
+            selectionIndex = selectionIndex + 1;
+        }
+        if scene.ToJson() == snapshot {
+            detailLabel.SetText(
+                "Property is already up to date on every selected object.");
+            return false;
+        }
+        if CommitScene(
+               "Set " + nextKey + " on " + count + " objects") == false {
+            RestoreSceneSnapshot(snapshot);
+            detailLabel.SetText(
+                "The batch property could not be committed. "
+                + "No objects were changed.");
+            return false;
+        }
+        selectedObjectProperty = -1;
+        detailLabel.SetText("");
+        RefreshInspector();
+        return true;
+    }
+
+    /// @brief Remove one property from every selected object in one history row.
+    expose func RemoveSelectedSceneObjectProperty(key: String) -> Boolean {
+        if scene == null { return false; }
+        selectedObjects = scene_selection.Normalize(
+            selectedObjects, scene.ObjectCount(), selectedObject);
+        var nextKey = Str.Trim(key);
+        if selectedObjects.count() == 0 or nextKey == "" {
+            detailLabel.SetText("Enter a property key to remove.");
+            return false;
+        }
+        var snapshot = scene.ToJson();
+        var removed = 0;
+        var selectionIndex = 0;
+        while selectionIndex < selectedObjects.count() {
+            var objectIndex = selectedObjects.get(selectionIndex);
+            if scene.ObjectHas(objectIndex, nextKey) {
+                scene.ObjectRemove(objectIndex, nextKey);
+                if scene.ObjectHas(objectIndex, nextKey) {
+                    RestoreSceneSnapshot(snapshot);
+                    detailLabel.SetText(
+                        "The batch property removal was rejected. "
+                        + "No objects were changed.");
+                    return false;
+                }
+                removed = removed + 1;
+            }
+            selectionIndex = selectionIndex + 1;
+        }
+        if removed == 0 {
+            detailLabel.SetText(
+                "None of the selected objects has property \""
+                + nextKey + "\".");
+            return false;
+        }
+        if CommitScene(
+               "Removed " + nextKey + " from " + removed + " objects")
+           == false {
+            RestoreSceneSnapshot(snapshot);
+            detailLabel.SetText(
+                "The batch property removal could not be committed. "
+                + "No objects were changed.");
+            return false;
+        }
+        selectedObjectProperty = -1;
+        detailLabel.SetText("");
+        RefreshInspector();
+        return true;
+    }
+
+    /// @brief Verify one just-written typed property without string coercion.
+    hide func BatchPropertyMatches(index: Integer,
+                                   key: String,
+                                   kind: String,
+                                   stringValue: String,
+                                   intValue: Integer,
+                                   floatValue: Number,
+                                   boolValue: Boolean) -> Boolean {
+        if scene.ObjectHas(index, key) == false
+           or scene.ObjectPropertyKind(index, key) != kind {
+            return false;
+        }
+        if kind == "string" {
+            return scene.ObjectGetStr(index, key, "") == stringValue;
+        }
+        if kind == "int" {
+            return scene.ObjectGetInt(index, key, 0) == intValue;
+        }
+        if kind == "float" {
+            var delta =
+                scene.ObjectGetFloat(index, key, 0.0) - floatValue;
+            if delta < 0.0 { delta = 0.0 - delta; }
+            return delta < 0.000000000001;
+        }
+        if kind == "bool" {
+            return scene.ObjectGetBool(index, key, false) == boolValue;
+        }
+        return kind == "null";
+    }
+
+    /// @brief Replace the document with a bounded, undoable empty scene.
+    expose func ReplaceScene(width: Integer,
+                             height: Integer,
+                             tileSize: Integer) -> Boolean {
+        var nextWidth = ClampInt(width, 1, MAX_RENDER_CELLS_PER_AXIS);
+        var nextHeight = ClampInt(height, 1, MAX_RENDER_CELLS_PER_AXIS);
+        var nextTileSize = ClampInt(tileSize, 1, 512);
+        scene = SceneDocument.New(nextWidth, nextHeight,
+                                  nextTileSize, nextTileSize);
+        if scene == null { return false; }
+        loadError = "";
+        activeLayer = 0;
+        selectedObject = -1;
+        selectedObjects = [];
+        selectedObjectProperty = -1;
+        selectedCellX = -1;
+        selectedCellY = -1;
+        SetEditorControlsEnabled(true);
+        fitPending = true;
+        var changed = CommitScene(
+            "Created " + nextWidth + "x" + nextHeight + " scene");
+        ReloadTilesets();
+        detailLabel.SetText("");
+        RefreshInspector();
+        RefreshSceneSetupFields();
+        return changed;
+    }
+
+    /// @brief Rename one scene layer through the canonical history path.
+    expose func RenameSceneLayer(layer: Integer,
+                                 name: String) -> Boolean {
+        if scene == null or layer < 0 or layer >= scene.LayerCount() {
+            return false;
+        }
+        var nextName = Str.Trim(name);
+        if nextName == "" or scene.LayerName(layer) == nextName {
+            return false;
+        }
+        scene.SetLayerName(layer, nextName);
+        if scene.LayerName(layer) != nextName {
+            detailLabel.SetText(
+                "Layer names must fit the scene format's 31-byte limit.");
+            return false;
+        }
+        activeLayer = layer;
+        var changed = CommitScene("Renamed layer to " + nextName);
+        detailLabel.SetText("");
+        RefreshInspector();
+        return changed;
+    }
+
+    /// @brief Validate and persist one external layer tileset reference.
+    /// @details Empty paths clear the reference. Accepted changes create one
+    ///          canonical history entry; invalid images leave JSON untouched.
+    expose func ApplyLayerAssetPath(layer: Integer,
+                                    assetPath: String) -> Boolean {
+        if scene == null or layer < 0 or layer >= scene.LayerCount() {
+            return false;
+        }
+        var nextPath = Str.Trim(assetPath);
+        var previousPath = scene.LayerAsset(layer);
+        if nextPath == previousPath { return false; }
+
+        if nextPath != "" {
+            var docPath = "";
+            if currentDoc != null { docPath = currentDoc.filePath; }
+            var candidate = tilesets.ValidateCandidateForLayer(
+                layer, nextPath, docPath,
+                scene.TileWidth, scene.TileHeight);
+            if candidate.error != "" {
+                toolbarStatus.SetText("Layer image not loaded");
+                tilesetInspector.status.SetText(candidate.error);
+                detailLabel.SetText(
+                    "The layer image was not changed.\n\n" + candidate.error);
+                GUI.Toast.Error("2D tileset image could not be loaded");
+                return false;
+            }
+        }
+
+        scene.SetLayerAsset(layer, nextPath);
+        if scene.LayerAsset(layer) != nextPath {
+            detailLabel.SetText("The scene model rejected the layer image path.");
+            return false;
+        }
+        activeLayer = layer;
+        var action = "Updated layer image";
+        if nextPath == "" { action = "Cleared layer image"; }
+        if CommitScene(action) == false {
+            scene.SetLayerAsset(layer, previousPath);
+            detailLabel.SetText("The layer image change could not be committed.");
+            return false;
+        }
+        ReloadTilesets();
+        detailLabel.SetText("");
+        RefreshInspector();
+        return true;
+    }
+
+    /// @brief Reload external layer pixels without changing scene history.
+    expose func ReloadTilesetPreviews() {
+        ReloadTilesets();
+        RefreshTilesetPalette();
+        var entry = tilesets.Entry(activeLayer);
+        if entry != null and entry.error != "" {
+            toolbarStatus.SetText("Layer image reload failed");
+            detailLabel.SetText(entry.error);
+        } else {
+            toolbarStatus.SetText("Reloaded layer image previews");
+            detailLabel.SetText("");
+        }
+    }
+
+    /// @brief Quietly refresh externally changed layer images without history.
+    /// @return True when metadata changed and the bounded preview was reloaded.
+    expose func PollTilesetExternalChanges(intervalMs: Integer) -> Boolean {
+        if scene == null or tilesets == null
+           or tilesets.PollExternalChanges(intervalMs) == false {
+            return false;
+        }
+        ReloadTilesets();
+        RefreshTilesetPalette();
+        var entry = tilesets.Entry(activeLayer);
+        if entry != null and entry.error != "" {
+            toolbarStatus.SetText("Layer image changed externally");
+            detailLabel.SetText(entry.error);
+        } else {
+            toolbarStatus.SetText(
+                "Layer image refreshed after external change");
+            detailLabel.SetText("");
+        }
+        return true;
+    }
+
+    /// @brief Select one visible palette frame and enter Paint mode.
+    expose func SelectPaletteTile(tileId: Integer) -> Boolean {
+        if scene == null or tileId <= 0
+           or tileId > tilesets.TileCount(activeLayer) {
+            return false;
+        }
+        tileSpinner.SetValue(tileId);
+        SetMode(MODE_PAINT);
+        RefreshTilesetPalette();
+        toolbarStatus.SetText("Selected tile " + tileId + " for painting");
+        return true;
+    }
+
+    /// @brief Import one Tiled path transactionally without opening a dialog.
+    /// @return True only when import and serialization both succeed.
+    expose func ImportTiledPath(path: String) -> Boolean {
+        if path == "" { return false; }
+        var imported = SceneDocument.ImportTiledResult(path);
+        if imported.IsOk == false {
+            var message = imported.UnwrapErrStr();
+            detailLabel.SetText("Tiled import failed:\n" + message);
+            toolbarStatus.SetText("Import failed");
+            GUI.Toast.Error("Tiled import failed: " + message);
+            return false;
+        }
+        scene = imported.Unwrap() as SceneDocument;
+        loadError = "";
+        activeLayer = 0;
+        selectedObject = -1;
+        selectedObjects = [];
+        selectedObjectProperty = -1;
+        selectedCellX = -1;
+        selectedCellY = -1;
+        SetEditorControlsEnabled(true);
+        fitPending = true;
+        var changed = CommitScene("Imported " + Path.Name(path));
+        ReloadTilesets();
+        RefreshInspector();
+        RefreshSceneSetupFields();
+        return changed;
+    }
+
+    /// @brief Import a user-selected Tiled file transactionally.
+    hide func ImportTiled() -> Boolean {
+        var baseDir = "";
+        if currentDoc != null and currentDoc.filePath != "" {
+            baseDir = Path.Directory(currentDoc.filePath);
+        }
+        var path = GUI.FileDialog.Open(
+            "Import Tiled Map", baseDir, "*.tmj;*.json;*.tmx");
+        if path == "" { return false; }
+        return ImportTiledPath(path);
+    }
+
+    /// @brief Serialize one accepted edit into the shared Document model.
+    hide func CommitScene(message: String) -> Boolean {
+        if scene == null or currentDoc == null { return false; }
+        var serialized = scene.ToJson();
+        if serialized == "" {
+            detailLabel.SetText("Scene serialization failed; no document data changed.");
+            return false;
+        }
+        if serialized == currentSerialized { return false; }
+        PushHistory(undoStack, currentSerialized);
+        redoStack = [];
+        currentSerialized = serialized;
+        currentDoc.content = serialized;
+        currentDoc.isModified = serialized != cleanSerialized;
+        revision = revision + 1;
+        renderDirty = true;
+        toolbarStatus.SetText(message);
+        return true;
+    }
+
+    /// @brief Append one bounded canonical history snapshot.
+    hide func PushHistory(stack: List[String], content: String) {
+        if content == "" { return; }
+        stack.add(content);
+        if stack.count() > MAX_2D_SCENE_HISTORY { stack.removeAt(0); }
+    }
+
+    hide func SetMode(nextMode: Integer) {
+        mode = nextMode;
+        lastPaintX = -1;
+        lastPaintY = -1;
+        UpdateModeButtons();
+    }
+
+    hide func UpdateModeButtons() {
+        if selectButton == null { return; }
+        selectButton.SetEnabled(editorControlsEnabled);
+        paintButton.SetEnabled(editorControlsEnabled);
+        eraseButton.SetEnabled(editorControlsEnabled);
+        objectButton.SetEnabled(editorControlsEnabled);
+        selectButton.SetStyle(0);
+        paintButton.SetStyle(0);
+        eraseButton.SetStyle(0);
+        objectButton.SetStyle(0);
+        if mode == MODE_PAINT {
+            paintButton.SetStyle(1);
+        } else if mode == MODE_ERASE {
+            eraseButton.SetStyle(1);
+        } else if mode == MODE_OBJECT {
+            objectButton.SetStyle(1);
+        } else {
+            selectButton.SetStyle(1);
+        }
+    }
+
+    hide func SetEditorControlsEnabled(enabled: Boolean) {
+        if selectButton == null { return; }
+        editorControlsEnabled = enabled;
+        UpdateModeButtons();
+        tileSpinner.SetEnabled(enabled);
+        zoomOutButton.SetEnabled(enabled);
+        zoomInButton.SetEnabled(enabled);
+        fitButton.SetEnabled(enabled);
+        addLayerButton.SetEnabled(enabled);
+        removeLayerButton.SetEnabled(enabled);
+        layerUpButton.SetEnabled(enabled);
+        layerDownButton.SetEnabled(enabled);
+        layerVisibleCheck.SetEnabled(enabled);
+        layerNameInput.SetEnabled(enabled);
+        layerAssetInput.SetEnabled(enabled);
+        chooseLayerAssetButton.SetEnabled(enabled);
+        tilesetInspector.SetEnabled(enabled);
+        addObjectButton.SetEnabled(enabled);
+        applyObjectButton.SetEnabled(enabled);
+        removeObjectButton.SetEnabled(enabled);
+        duplicateObjectButton.SetEnabled(enabled);
+        objectUpButton.SetEnabled(enabled);
+        objectDownButton.SetEnabled(enabled);
+        objectArrangeDropdown.SetEnabled(enabled);
+        arrangeObjectButton.SetEnabled(enabled);
+        objectPropertyList.SetEnabled(enabled);
+        objectPropertyKeyInput.SetEnabled(enabled);
+        objectPropertyTypeDropdown.SetEnabled(enabled);
+        objectPropertyValueInput.SetEnabled(enabled);
+        newObjectPropertyButton.SetEnabled(enabled);
+        setObjectPropertyButton.SetEnabled(enabled);
+        removeObjectPropertyButton.SetEnabled(enabled);
+        objectTypeInput.SetEnabled(enabled);
+        objectIdInput.SetEnabled(enabled);
+        objectXSpinner.SetEnabled(enabled);
+        objectYSpinner.SetEnabled(enabled);
+    }
+
+    /// @brief Rebuild bounded inspector rows from the active model.
+    hide func RefreshInspector() {
+        layerList.Clear();
+        objectList.Clear();
+        if scene == null {
+            selectedObject = -1;
+            selectedObjects = [];
+            selectedObjectProperty = -1;
+            RefreshObjectFields();
+            sceneInfoLabel.SetText("Invalid 2D scene");
+            toolbarStatus.SetText("Scene JSON needs attention");
+            return;
+        }
+
+        sceneInfoLabel.SetText(
+            scene.Width + " x " + scene.Height
+            + " tiles  |  tile " + scene.TileWidth + " x " + scene.TileHeight
+            + "  |  " + scene.LayerCount() + " layer(s)"
+            + "  |  " + scene.ObjectCount() + " object(s)");
+
+        var layerCount = scene.LayerCount();
+        if activeLayer < 0 or activeLayer >= layerCount { activeLayer = 0; }
+        var i = 0;
+        while i < layerCount {
+            var marker = "[ ] ";
+            if scene.LayerVisible(i) { marker = "[x] "; }
+            layerList.AddItem(marker + scene.LayerName(i));
+            i = i + 1;
+        }
+        if layerCount > 0 { layerList.SelectIndex(activeLayer); }
+        RefreshLayerFields();
+
+        var objectCount = scene.ObjectCount();
+        if selectedObject >= objectCount { selectedObject = -1; }
+        selectedObjects = scene_selection.Normalize(
+            selectedObjects, objectCount, selectedObject);
+        if selectedObject < 0 and selectedObjects.count() > 0 {
+            selectedObject = selectedObjects.get(0);
+        }
+        i = 0;
+        while i < objectCount {
+            var item = objectList.AddItem(
+                scene.ObjectId(i) + "  :  " + scene.ObjectType(i)
+                + "  @ " + scene.ObjectX(i) + ", " + scene.ObjectY(i));
+            objectList.ItemSetData(item, Fmt.Int(i));
+            i = i + 1;
+        }
+        RestoreObjectListSelection();
+        RefreshObjectFields();
+    }
+
+    /// @brief Restore every validated object row while keeping one primary.
+    hide func RestoreObjectListSelection() {
+        if objectList == null { return; }
+        objectList.Select(null);
+        var index = 0;
+        while index < selectedObjects.count() {
+            var selected = selectedObjects.get(index);
+            if selected != selectedObject { objectList.SelectIndex(selected); }
+            index = index + 1;
+        }
+        if selectedObject >= 0 { objectList.SelectIndex(selectedObject); }
+    }
+
+    hide func RefreshLayerFields() {
+        if scene == null or activeLayer < 0
+           or activeLayer >= scene.LayerCount() {
+            layerVisibleCheck.SetChecked(false);
+            layerVisibleRevision = layerVisibleCheck.GetRevision();
+            layerNameInput.SetText("");
+            layerAssetInput.SetText("");
+            RefreshTilesetPalette();
+            return;
+        }
+        layerVisibleCheck.SetChecked(scene.LayerVisible(activeLayer));
+        layerVisibleRevision = layerVisibleCheck.GetRevision();
+        layerNameInput.SetText(scene.LayerName(activeLayer));
+        layerAssetInput.SetText(scene.LayerAsset(activeLayer));
+        RefreshTilesetPalette();
+    }
+
+    /// @brief Reload bounded image previews after scene/path/asset changes.
+    hide func ReloadTilesets() {
+        if tilesets == null { return; }
+        var docPath = "";
+        if currentDoc != null { docPath = currentDoc.filePath; }
+        tilesets.Reload(scene, docPath);
+        tilesetDocumentPath = docPath;
+        renderDirty = true;
+    }
+
+    /// @brief Refresh the active layer's scrollable visual tile chooser.
+    hide func RefreshTilesetPalette() {
+        if tilesetInspector == null or tileSpinner == null { return; }
+        tilesetInspector.Refresh(
+            tilesets,
+            activeLayer,
+            Convert.NumToInt(tileSpinner.Value));
+    }
+
+    /// @brief Route a palette click into the same tile selection as the spinner.
+    hide func PumpTilesetPalette() {
+        if tilesetInspector == null { return; }
+        var tileId =
+            tilesetInspector.TakeSelectedTile(tilesets, activeLayer);
+        if tileId > 0 { SelectPaletteTile(tileId); }
+    }
+
+    hide func RefreshObjectFields() {
+        var objectCount = 0;
+        if scene != null { objectCount = scene.ObjectCount(); }
+        selectedObjects = scene_selection.Normalize(
+            selectedObjects, objectCount, selectedObject);
+        var hasSelection = scene != null and selectedObject >= 0
+            and selectedObject < objectCount
+            and selectedObjects.count() > 0;
+        var hasSingle = hasSelection and selectedObjects.count() == 1;
+        applyObjectButton.SetEnabled(hasSingle);
+        removeObjectButton.SetEnabled(hasSelection);
+        duplicateObjectButton.SetEnabled(hasSelection);
+        objectUpButton.SetEnabled(hasSingle and selectedObject > 0);
+        objectDownButton.SetEnabled(
+            hasSingle and selectedObject + 1 < objectCount);
+        objectTypeInput.SetEnabled(hasSingle);
+        objectIdInput.SetEnabled(hasSingle);
+        objectXSpinner.SetEnabled(hasSingle);
+        objectYSpinner.SetEnabled(hasSingle);
+        RefreshObjectArrangeControls(hasSelection);
+        removeObjectButton.SetText("Remove");
+        duplicateObjectButton.SetText("Duplicate");
+        objectTypeInput.SetPlaceholder("Object type");
+        objectIdInput.SetPlaceholder("Object id");
+        if hasSingle == false {
+            objectTypeInput.SetText("");
+            objectIdInput.SetText("");
+            objectXSpinner.SetValue(0.0);
+            objectYSpinner.SetValue(0.0);
+            selectedObjectProperty = -1;
+            if hasSelection {
+                removeObjectButton.SetText(
+                    "Remove (" + selectedObjects.count() + ")");
+                duplicateObjectButton.SetText(
+                    "Duplicate (" + selectedObjects.count() + ")");
+                objectTypeInput.SetPlaceholder(
+                    selectedObjects.count() + " objects selected");
+                objectIdInput.SetPlaceholder(
+                    "Single-object fields disabled for group selection");
+            }
+            RefreshObjectProperties();
+            return;
+        }
+        objectTypeInput.SetText(scene.ObjectType(selectedObject));
+        objectIdInput.SetText(scene.ObjectId(selectedObject));
+        objectXSpinner.SetValue(scene.ObjectX(selectedObject));
+        objectYSpinner.SetValue(scene.ObjectY(selectedObject));
+        RefreshObjectProperties();
+    }
+
+    /// @brief Keep multi-object layout affordances selection-count truthful.
+    hide func RefreshObjectArrangeControls(hasSelection: Boolean) {
+        if objectArrangeDropdown == null or arrangeObjectButton == null {
+            return;
+        }
+        var operation = objectArrangeDropdown.Selected;
+        var minimum = scene_layout_2d.MinimumSelection(operation);
+        var available = hasSelection
+            and selectedObjects.count() >= minimum;
+        objectArrangeDropdown.SetEnabled(
+            hasSelection and selectedObjects.count() >= 2);
+        arrangeObjectButton.SetEnabled(available);
+        arrangeObjectButton.SetText("Arrange");
+        if available {
+            arrangeObjectButton.SetText(
+                "Arrange (" + selectedObjects.count() + ")");
+        }
+        arrangeObjectButton.SetTooltip(
+            scene_layout_2d.OperationLabel(operation)
+            + " as one undoable selection edit; needs "
+            + minimum + " selected objects");
+    }
+
+    hide func RefreshObjectProperties() {
+        objectPropertyList.Clear();
+        objectPropertyKeys = [];
+        var hasSelection = scene != null and selectedObject >= 0
+            and selectedObject < scene.ObjectCount()
+            and selectedObjects.count() > 0;
+        var hasObject = hasSelection and selectedObjects.count() == 1;
+        var hasBatch = hasSelection and selectedObjects.count() > 1;
+        objectPropertyList.SetEnabled(hasObject);
+        newObjectPropertyButton.SetEnabled(hasSelection);
+        setObjectPropertyButton.SetEnabled(hasSelection);
+        objectPropertyKeyInput.SetEnabled(hasSelection);
+        objectPropertyTypeDropdown.SetEnabled(hasSelection);
+        if hasBatch {
+            objectPropertyList.AddItem(
+                "Batch edit " + selectedObjects.count()
+                + " selected objects");
+            selectedObjectProperty = -1;
+            RefreshObjectPropertyFields();
+            return;
+        }
+        if hasObject == false {
+            selectedObjectProperty = -1;
+            RefreshObjectPropertyFields();
+            return;
+        }
+
+        var keys = scene.ObjectKeys(selectedObject);
+        var total = Seq.get_Count(keys);
+        var visible = total;
+        if visible > MAX_INSPECTOR_PROPERTIES {
+            visible = MAX_INSPECTOR_PROPERTIES;
+        }
+        var index = 0;
+        while index < visible {
+            var key = Seq.GetStr(keys, index);
+            var kind = scene.ObjectPropertyKind(selectedObject, key);
+            objectPropertyKeys.add(key);
+            objectPropertyList.AddItem(
+                key + "  [" + kind + "] = "
+                + PropertyPreview(PropertyValueText(
+                    selectedObject, key, kind), kind));
+            index = index + 1;
+        }
+        if total > visible {
+            objectPropertyList.AddItem(
+                "… " + (total - visible) + " more properties not shown");
+        }
+        if selectedObjectProperty >= objectPropertyKeys.count() {
+            selectedObjectProperty = -1;
+        }
+        if selectedObjectProperty >= 0 {
+            objectPropertyList.SelectIndex(selectedObjectProperty);
+        }
+        RefreshObjectPropertyFields();
+    }
+
+    hide func RefreshObjectPropertyFields() {
+        var hasSelection = scene != null and selectedObject >= 0
+            and selectedObject < scene.ObjectCount()
+            and selectedObjects.count() > 0;
+        var hasObject = hasSelection and selectedObjects.count() == 1;
+        var hasBatch = hasSelection and selectedObjects.count() > 1;
+        var hasProperty = hasObject and selectedObjectProperty >= 0
+            and selectedObjectProperty < objectPropertyKeys.count();
+        removeObjectPropertyButton.SetText("Remove");
+        setObjectPropertyButton.SetText("Set");
+        removeObjectPropertyButton.SetEnabled(hasProperty or hasBatch);
+        objectPropertyKeyInput.SetEnabled(hasSelection);
+        objectPropertyTypeDropdown.SetEnabled(hasSelection);
+        setObjectPropertyButton.SetEnabled(hasSelection);
+        if hasBatch {
+            var count = selectedObjects.count();
+            setObjectPropertyButton.SetText("Set on " + count);
+            removeObjectPropertyButton.SetText("Remove from " + count);
+            objectPropertyKeyInput.SetText("");
+            objectPropertyKeyInput.SetPlaceholder(
+                "Property key for " + count + " objects");
+            objectPropertyTypeDropdown.SetSelected(PROPERTY_TYPE_STRING);
+            objectPropertyValueInput.SetText("");
+            objectPropertyValueInput.SetPlaceholder("Shared property value");
+            objectPropertyValueInput.SetEnabled(true);
+            return;
+        }
+        objectPropertyKeyInput.SetPlaceholder("Property key");
+        if hasProperty == false {
+            objectPropertyKeyInput.SetText("");
+            objectPropertyTypeDropdown.SetSelected(PROPERTY_TYPE_STRING);
+            objectPropertyValueInput.SetText("");
+            objectPropertyValueInput.SetPlaceholder("Property value");
+            objectPropertyValueInput.SetEnabled(hasSelection);
+            return;
+        }
+
+        var key = objectPropertyKeys.get(selectedObjectProperty);
+        var kind = scene.ObjectPropertyKind(selectedObject, key);
+        objectPropertyKeyInput.SetText(key);
+        SelectPropertyType(kind);
+        objectPropertyValueInput.SetText(
+            PropertyValueText(selectedObject, key, kind));
+        UpdatePropertyValueControl();
+    }
+
+    hide func PropertyValueText(index: Integer,
+                                key: String,
+                                kind: String) -> String {
+        if kind == "string" { return scene.ObjectGetStr(index, key, ""); }
+        if kind == "int" {
+            return Fmt.Int(scene.ObjectGetInt(index, key, 0));
+        }
+        if kind == "float" {
+            return Fmt.Num(scene.ObjectGetFloat(index, key, 0.0));
+        }
+        if kind == "bool" {
+            return Fmt.Bool(scene.ObjectGetBool(index, key, false));
+        }
+        if kind == "null" { return ""; }
+        return "";
+    }
+
+    hide func PropertyPreview(value: String, kind: String) -> String {
+        if kind == "null" { return "null"; }
+        var preview = Str.Replace(
+            Str.Replace(value, "\r", "\\r"), "\n", "\\n");
+        if Str.get_Length(preview) > 72 {
+            preview = Str.Left(preview, 69) + "...";
+        }
+        if kind == "string" { return "\"" + preview + "\""; }
+        return preview;
+    }
+
+    hide func PropertyKindFromDropdown() -> String {
+        if objectPropertyTypeDropdown.Selected == PROPERTY_TYPE_INT {
+            return "int";
+        }
+        if objectPropertyTypeDropdown.Selected == PROPERTY_TYPE_FLOAT {
+            return "float";
+        }
+        if objectPropertyTypeDropdown.Selected == PROPERTY_TYPE_BOOL {
+            return "bool";
+        }
+        if objectPropertyTypeDropdown.Selected == PROPERTY_TYPE_NULL {
+            return "null";
+        }
+        return "string";
+    }
+
+    hide func SelectPropertyType(kind: String) {
+        var selected = PROPERTY_TYPE_STRING;
+        if kind == "int" { selected = PROPERTY_TYPE_INT; }
+        if kind == "float" { selected = PROPERTY_TYPE_FLOAT; }
+        if kind == "bool" { selected = PROPERTY_TYPE_BOOL; }
+        if kind == "null" { selected = PROPERTY_TYPE_NULL; }
+        objectPropertyTypeDropdown.SetSelected(selected);
+    }
+
+    hide func UpdatePropertyValueControl() {
+        var isNull = PropertyKindFromDropdown() == "null";
+        objectPropertyValueInput.SetEnabled(isNull == false);
+        if isNull {
+            objectPropertyValueInput.SetText("");
+            objectPropertyValueInput.SetPlaceholder("Null has no value");
+        } else {
+            objectPropertyValueInput.SetPlaceholder("Property value");
+        }
+    }
+
+    hide func SelectObjectPropertyByKey(key: String) {
+        var index = 0;
+        while index < objectPropertyKeys.count() {
+            if objectPropertyKeys.get(index) == key {
+                selectedObjectProperty = index;
+                objectPropertyList.SelectIndex(index);
+                RefreshObjectPropertyFields();
+                return;
+            }
+            index = index + 1;
+        }
+        selectedObjectProperty = -1;
+        RefreshObjectPropertyFields();
+    }
+
+    hide func RestoreSceneSnapshot(snapshot: String) {
+        var restored = SceneDocument.LoadJsonResult(snapshot);
+        if restored.IsOk {
+            scene = restored.Unwrap() as SceneDocument;
+            renderDirty = true;
+            RefreshInspector();
+        }
+    }
+
+    hide func PumpLayerControls() -> Boolean {
+        if scene == null { return false; }
+        var changed = false;
+        if layerList.WasSelectionChanged() {
+            var selected = layerList.SelectedIndex;
+            if selected >= 0 and selected < scene.LayerCount() {
+                activeLayer = selected;
+                RefreshLayerFields();
+                renderDirty = true;
+            }
+        }
+        if addLayerButton.WasClicked() {
+            var added = scene.AddLayer("Layer " + (scene.LayerCount() + 1));
+            if added >= 0 {
+                activeLayer = added;
+                changed = CommitScene("Added layer");
+                ReloadTilesets();
+                RefreshInspector();
+            }
+        }
+        if removeLayerButton.WasClicked() {
+            var before = scene.LayerCount();
+            scene.RemoveLayer(activeLayer);
+            if scene.LayerCount() != before {
+                if activeLayer >= scene.LayerCount() {
+                    activeLayer = scene.LayerCount() - 1;
+                }
+                changed = CommitScene("Removed layer") or changed;
+                ReloadTilesets();
+                RefreshInspector();
+            }
+        }
+        if layerUpButton.WasClicked() and activeLayer > 0 {
+            scene.MoveLayer(activeLayer, activeLayer - 1);
+            activeLayer = activeLayer - 1;
+            changed = CommitScene("Moved layer up") or changed;
+            ReloadTilesets();
+            RefreshInspector();
+        }
+        if layerDownButton.WasClicked()
+           and activeLayer + 1 < scene.LayerCount() {
+            scene.MoveLayer(activeLayer, activeLayer + 1);
+            activeLayer = activeLayer + 1;
+            changed = CommitScene("Moved layer down") or changed;
+            ReloadTilesets();
+            RefreshInspector();
+        }
+        if layerNameInput.WasSubmitted() {
+            changed = RenameSceneLayer(
+                activeLayer, layerNameInput.Text) or changed;
+        }
+        var nextVisibleRevision = layerVisibleCheck.GetRevision();
+        if nextVisibleRevision != layerVisibleRevision {
+            layerVisibleRevision = nextVisibleRevision;
+            scene.SetLayerVisible(activeLayer, layerVisibleCheck.IsChecked());
+            changed = CommitScene("Updated layer visibility") or changed;
+            RefreshInspector();
+        }
+        if chooseLayerAssetButton.WasClicked() {
+            var baseDir = "";
+            if currentDoc != null and currentDoc.filePath != "" {
+                baseDir = Path.Directory(currentDoc.filePath);
+            }
+            var assetPath = GUI.FileDialog.Open(
+                "Choose Layer Image", baseDir, "*.png;*.jpg;*.jpeg;*.bmp;*.gif");
+            if assetPath != "" {
+                changed = ApplyLayerAssetPath(
+                    activeLayer, PortableLayerAssetPath(assetPath)) or changed;
+            }
+        }
+        if layerAssetInput.WasSubmitted() {
+            changed = ApplyLayerAssetPath(
+                activeLayer, layerAssetInput.Text) or changed;
+        }
+        if tilesetInspector.TakeReloadRequested() {
+            ReloadTilesetPreviews();
+        }
+        if tilesetInspector.TakeClearRequested() {
+            changed = ApplyLayerAssetPath(activeLayer, "") or changed;
+        }
+        return changed;
+    }
+
+    /// @brief Prefer scene-relative authored paths for saved scene documents.
+    hide func PortableLayerAssetPath(assetPath: String) -> String {
+        var documentPath = "";
+        if currentDoc != null { documentPath = currentDoc.filePath; }
+        return scene_asset_browser.PortableReferencePath(
+            assetPath, documentPath);
+    }
+
+    /// @brief Configure one integer spinner used for new-scene dimensions.
+    hide func ConfigureSceneSpinner(spinner: GUI.Spinner,
+                                    value: Integer,
+                                    maximum: Integer) {
+        spinner.SetRange(1.0, maximum);
+        spinner.SetStep(1.0);
+        spinner.SetDecimals(0);
+        spinner.SetValue(value);
+        spinner.SetPreferredSize(68.0, 0.0);
+    }
+
+    /// @brief Reflect the loaded scene in the new-scene setup controls.
+    hide func RefreshSceneSetupFields() {
+        if scene == null or sceneWidthSpinner == null { return; }
+        sceneWidthSpinner.SetValue(scene.Width);
+        sceneHeightSpinner.SetValue(scene.Height);
+        sceneTileSizeSpinner.SetValue(scene.TileWidth);
+    }
+
+    hide func PumpObjectControls() -> Boolean {
+        if scene == null { return false; }
+        var changed = false;
+        if objectList.WasSelectionChanged() {
+            selectedObject = objectList.SelectedIndex;
+            selectedObjects = scene_selection.FromData(
+                objectList.GetSelectedData(),
+                scene.ObjectCount(),
+                selectedObject);
+            selectedObjectProperty = -1;
+            RefreshObjectFields();
+            renderDirty = true;
+        }
+        if addObjectButton.WasClicked() {
+            var x = 0;
+            var y = 0;
+            if selectedCellX >= 0 {
+                x = selectedCellX * scene.TileWidth;
+                y = selectedCellY * scene.TileHeight;
+            }
+            var objectIndex = AddSceneObject(
+                "entity",
+                UniqueObjectId("object-" + (scene.ObjectCount() + 1)),
+                x,
+                y);
+            if objectIndex >= 0 { changed = true; }
+        }
+        var applyRequested = applyObjectButton.WasClicked();
+        if objectTypeInput.WasSubmitted() { applyRequested = true; }
+        if objectIdInput.WasSubmitted() { applyRequested = true; }
+        if applyRequested and selectedObjects.count() == 1
+           and selectedObject >= 0
+           and selectedObject < scene.ObjectCount() {
+            changed = UpdateSceneObject(
+                selectedObject,
+                objectTypeInput.Text,
+                objectIdInput.Text,
+                Convert.NumToInt(objectXSpinner.Value),
+                Convert.NumToInt(objectYSpinner.Value)) or changed;
+        }
+        if duplicateObjectButton.WasClicked() and selectedObject >= 0 {
+            if DuplicateSelectedSceneObjects() > 0 { changed = true; }
+        }
+        if objectArrangeDropdown.WasChanged() {
+            RefreshObjectArrangeControls(selectedObjects.count() > 0);
+        }
+        if arrangeObjectButton.WasClicked() {
+            changed = ArrangeSelectedSceneObjects(
+                objectArrangeDropdown.Selected) or changed;
+        }
+        if objectUpButton.WasClicked() and selectedObjects.count() == 1
+           and selectedObject > 0 {
+            changed = MoveSceneObject(
+                selectedObject, selectedObject - 1) or changed;
+        }
+        if objectDownButton.WasClicked() and selectedObjects.count() == 1
+           and selectedObject + 1 < scene.ObjectCount() {
+            changed = MoveSceneObject(
+                selectedObject, selectedObject + 1) or changed;
+        }
+        if removeObjectButton.WasClicked() and selectedObject >= 0 {
+            changed = RemoveSelectedSceneObjects() or changed;
+        }
+        if objectPropertyList.WasSelectionChanged() {
+            var propertyIndex = objectPropertyList.SelectedIndex;
+            if propertyIndex >= 0
+               and propertyIndex < objectPropertyKeys.count() {
+                selectedObjectProperty = propertyIndex;
+            } else {
+                selectedObjectProperty = -1;
+            }
+            RefreshObjectPropertyFields();
+        }
+        if newObjectPropertyButton.WasClicked() {
+            selectedObjectProperty = -1;
+            objectPropertyList.SelectIndex(-1);
+            RefreshObjectPropertyFields();
+            objectPropertyKeyInput.Focus();
+        }
+        if objectPropertyTypeDropdown.WasChanged() {
+            UpdatePropertyValueControl();
+        }
+        var setPropertyRequested = setObjectPropertyButton.WasClicked();
+        if objectPropertyKeyInput.WasSubmitted() {
+            setPropertyRequested = true;
+        }
+        if objectPropertyValueInput.WasSubmitted() {
+            setPropertyRequested = true;
+        }
+        if setPropertyRequested and selectedObjects.count() > 1 {
+            changed = SetSelectedSceneObjectProperty(
+                objectPropertyKeyInput.Text,
+                PropertyKindFromDropdown(),
+                objectPropertyValueInput.Text) or changed;
+        } else if setPropertyRequested and selectedObjects.count() == 1
+                  and selectedObject >= 0 {
+            var previousKey = "";
+            if selectedObjectProperty >= 0
+               and selectedObjectProperty < objectPropertyKeys.count() {
+                previousKey = objectPropertyKeys.get(selectedObjectProperty);
+            }
+            changed = SetSceneObjectProperty(
+                selectedObject,
+                previousKey,
+                objectPropertyKeyInput.Text,
+                PropertyKindFromDropdown(),
+                objectPropertyValueInput.Text) or changed;
+        }
+        if removeObjectPropertyButton.WasClicked()
+           and selectedObjects.count() > 1 {
+            changed = RemoveSelectedSceneObjectProperty(
+                objectPropertyKeyInput.Text) or changed;
+        } else if removeObjectPropertyButton.WasClicked()
+                  and selectedObjects.count() == 1
+                  and selectedObject >= 0
+                  and selectedObjectProperty >= 0
+                  and selectedObjectProperty < objectPropertyKeys.count() {
+            changed = RemoveSceneObjectProperty(
+                selectedObject,
+                objectPropertyKeys.get(selectedObjectProperty)) or changed;
+        }
+        return changed;
+    }
+
+    hide func ObjectIdExists(objectId: String, exceptIndex: Integer) -> Boolean {
+        if scene == null { return false; }
+        var index = 0;
+        while index < scene.ObjectCount() {
+            if index != exceptIndex and scene.ObjectId(index) == objectId {
+                return true;
+            }
+            index = index + 1;
+        }
+        return false;
+    }
+
+    hide func UniqueObjectId(base: String) -> String {
+        var stem = Str.Trim(base);
+        if stem == "" { stem = "object"; }
+        if ObjectIdExists(stem, -1) == false { return stem; }
+        var suffix = 2;
+        while suffix <= scene.ObjectCount() + 2 {
+            var candidate = stem + "-" + suffix;
+            if ObjectIdExists(candidate, -1) == false { return candidate; }
+            suffix = suffix + 1;
+        }
+        return stem + "-" + (scene.ObjectCount() + 3);
+    }
+
+    /// @brief Apply the current mouse tool to one bounded scene cell.
+    hide func PumpCanvas() -> Boolean {
+        if paintStrokeActive
+           and !Input.Mouse.IsDown(Input.Mouse.ButtonLeft) {
+            return FinishPaintStroke();
+        }
+        if objectDragActive
+           and !Input.Mouse.IsDown(Input.Mouse.ButtonLeft) {
+            return FinishObjectDrag();
+        }
+        if scene == null or canvasImage == null {
+            return false;
+        }
+        if canvasImage.IsHovered() == false { return false; }
+        if Input.Mouse.WasPressed(Input.Mouse.ButtonLeft)
+           or Input.Mouse.WasPressed(Input.Mouse.ButtonMiddle) {
+            FocusActiveModeButton();
+        }
+
+        if Input.Mouse.IsDown(Input.Mouse.ButtonMiddle) {
+            var panX = PhysicalPointerToUi(Input.Mouse.DeltaX());
+            var panY = PhysicalPointerToUi(Input.Mouse.DeltaY());
+            if panX != 0 or panY != 0 {
+                SetLogicalScroll(
+                    canvasScroll,
+                    LogicalScrollX(canvasScroll) - panX,
+                    LogicalScrollY(canvasScroll) - panY);
+            }
+            return false;
+        }
+
+        var wheel = Input.Mouse.WheelYFloat();
+        if wheel > 0.0 {
+            zoomPercent = ClampInt(zoomPercent + 25,
+                                   MIN_ZOOM_PERCENT,
+                                   MAX_ZOOM_PERCENT);
+            fitPending = false;
+            renderDirty = true;
+        } else if wheel < 0.0 {
+            zoomPercent = ClampInt(zoomPercent - 25,
+                                   MIN_ZOOM_PERCENT,
+                                   MAX_ZOOM_PERCENT);
+            fitPending = false;
+            renderDirty = true;
+        }
+
+        var relativeX = PhysicalPointerToUi(Input.Mouse.X())
+            - canvasImage.GetScreenX();
+        var relativeY = PhysicalPointerToUi(Input.Mouse.Y())
+            - canvasImage.GetScreenY();
+        if displayCellSize <= 0 { return false; }
+        var cellX = Convert.NumToInt(relativeX) / displayCellSize;
+        var cellY = Convert.NumToInt(relativeY) / displayCellSize;
+        if cellX < 0 or cellY < 0
+           or cellX >= renderedColumns or cellY >= renderedRows {
+            return false;
+        }
+
+        if selectedCellX != cellX or selectedCellY != cellY {
+            renderDirty = true;
+        }
+        selectedCellX = cellX;
+        selectedCellY = cellY;
+        if mode == MODE_PAINT or mode == MODE_ERASE {
+            if Input.Mouse.WasPressed(Input.Mouse.ButtonLeft) {
+                paintStrokeActive = true;
+                paintStrokeChanged = false;
+                paintStrokeSnapshot = currentSerialized;
+                lastPaintX = cellX;
+                lastPaintY = cellY;
+                paintStrokeChanged =
+                    ApplyStrokeCell(cellX, cellY) or paintStrokeChanged;
+            }
+            if paintStrokeActive
+               and Input.Mouse.IsDown(Input.Mouse.ButtonLeft)
+               and (cellX != lastPaintX or cellY != lastPaintY) {
+                paintStrokeChanged =
+                    ApplyStrokeLine(cellX, cellY) or paintStrokeChanged;
+            }
+            return false;
+        }
+
+        if mode == MODE_OBJECT {
+            if !Input.Mouse.WasClicked(Input.Mouse.ButtonLeft) { return false; }
+            var objectIndex = AddSceneObject(
+                "entity",
+                UniqueObjectId("object-" + (scene.ObjectCount() + 1)),
+                cellX * scene.TileWidth,
+                cellY * scene.TileHeight);
+            if objectIndex >= 0 {
+                toolbarStatus.SetText("Placed object");
+                return true;
+            }
+            return false;
+        }
+
+        if Input.Mouse.WasPressed(Input.Mouse.ButtonLeft) {
+            var hitObject = FindObjectAtCell(cellX, cellY);
+            if hitObject >= 0 {
+                if scene_selection.Contains(selectedObjects, hitObject) == false {
+                    selectedObjects = scene_selection.Single(
+                        hitObject, scene.ObjectCount());
+                }
+                selectedObject = hitObject;
+                selectedObjects = scene_selection.Normalize(
+                    selectedObjects, scene.ObjectCount(), selectedObject);
+            } else {
+                selectedObject = -1;
+                selectedObjects = [];
+            }
+            selectedObjectProperty = -1;
+            objectDragActive = selectedObject >= 0;
+            objectDragChanged = false;
+            objectDragSnapshot = currentSerialized;
+            objectDragIndex = selectedObject;
+            if objectDragActive {
+                objectDragLastX = scene.ObjectX(objectDragIndex);
+                objectDragLastY = scene.ObjectY(objectDragIndex);
+            }
+            RefreshInspector();
+            renderDirty = true;
+            if selectedObject >= 0 {
+                toolbarStatus.SetText(
+                    "Drag " + selectedObjects.count()
+                    + " selected object(s) together");
+            } else {
+                toolbarStatus.SetText(
+                    "Selected cell " + cellX + ", " + cellY);
+            }
+        }
+        if objectDragActive
+           and Input.Mouse.IsDown(Input.Mouse.ButtonLeft)
+           and objectDragIndex >= 0
+           and objectDragIndex < scene.ObjectCount() {
+            var objectX = cellX * scene.TileWidth;
+            var objectY = cellY * scene.TileHeight;
+            var deltaX = objectX - objectDragLastX;
+            var deltaY = objectY - objectDragLastY;
+            if deltaX != 0 or deltaY != 0 {
+                objectDragChanged = TranslateSelectedObjectsUncommitted(
+                    deltaX, deltaY) or objectDragChanged;
+                objectDragLastX = objectX;
+                objectDragLastY = objectY;
+                objectXSpinner.SetValue(objectX);
+                objectYSpinner.SetValue(objectY);
+                renderDirty = true;
+            }
+        }
+        return false;
+    }
+
+    /// @brief Apply focus-safe pixel/grid nudges from the Select canvas proxy.
+    /// @details Object-list arrows retain native selection navigation and every
+    ///          inspector input retains native editing. Shift uses one authored
+    ///          tile on each axis; a diagonal key frame still commits once.
+    hide func PumpCanvasKeyboard() -> Boolean {
+        if scene == null or mode != MODE_SELECT
+           or selectButton == null or selectButton.IsFocused() == false
+           or objectDragActive or paintStrokeActive
+           or selectedObjects.count() == 0 {
+            return false;
+        }
+        var deltaX = 0;
+        var deltaY = 0;
+        if Input.Keyboard.WasPressed(Input.Key.Left) {
+            deltaX = deltaX - 1;
+        }
+        if Input.Keyboard.WasPressed(Input.Key.Right) {
+            deltaX = deltaX + 1;
+        }
+        if Input.Keyboard.WasPressed(Input.Key.Up) {
+            deltaY = deltaY - 1;
+        }
+        if Input.Keyboard.WasPressed(Input.Key.Down) {
+            deltaY = deltaY + 1;
+        }
+        if deltaX == 0 and deltaY == 0 { return false; }
+
+        var coarse =
+            Input.Keyboard.IsDown(Input.Key.LeftShift)
+            or Input.Keyboard.IsDown(Input.Key.RightShift);
+        if coarse {
+            deltaX = deltaX * scene.TileWidth;
+            deltaY = deltaY * scene.TileHeight;
+        }
+        var changed = TranslateSelectedSceneObjects(deltaX, deltaY);
+        if changed {
+            toolbarStatus.SetText(
+                "Nudged " + selectedObjects.count() + " object(s) by "
+                + deltaX + ", " + deltaY);
+        }
+        return changed;
+    }
+
+    /// @brief Return whether scene selection shortcuts belong to this surface.
+    /// @details Inspector text/value controls intentionally do not qualify.
+    ///          Canvas clicks focus the active mode button because Image is a
+    ///          non-focusable presentation widget.
+    expose func SceneSelectionCommandsOwnFocus() -> Boolean {
+        return (objectList != null and objectList.IsFocused())
+            or (selectButton != null and selectButton.IsFocused())
+            or (paintButton != null and paintButton.IsFocused())
+            or (eraseButton != null and eraseButton.IsFocused())
+            or (objectButton != null and objectButton.IsFocused())
+            or (duplicateObjectButton != null
+                and duplicateObjectButton.IsFocused())
+            or (removeObjectButton != null
+                and removeObjectButton.IsFocused())
+            or (objectUpButton != null and objectUpButton.IsFocused())
+            or (objectDownButton != null and objectDownButton.IsFocused());
+    }
+
+    /// @brief Use the active focusable mode control as the canvas key proxy.
+    hide func FocusActiveModeButton() {
+        if mode == MODE_PAINT {
+            paintButton.Focus();
+        } else if mode == MODE_ERASE {
+            eraseButton.Focus();
+        } else if mode == MODE_OBJECT {
+            objectButton.Focus();
+        } else {
+            selectButton.Focus();
+        }
+    }
+
+    /// @brief Mutate one cell inside the current uncommitted paint stroke.
+    hide func ApplyStrokeCell(cellX: Integer, cellY: Integer) -> Boolean {
+        var tile = 0;
+        if mode == MODE_PAINT {
+            tile = Convert.NumToInt(tileSpinner.Value);
+            if tile < 0 { tile = 0; }
+        }
+        return ApplyTileCell(activeLayer, cellX, cellY, tile);
+    }
+
+    /// @brief Fill every raster cell between the last and current pointer cell.
+    hide func ApplyStrokeLine(targetX: Integer,
+                              targetY: Integer) -> Boolean {
+        var startX = lastPaintX;
+        var startY = lastPaintY;
+        if startX < 0 or startY < 0 {
+            startX = targetX;
+            startY = targetY;
+        }
+        var tile = 0;
+        if mode == MODE_PAINT {
+            tile = Convert.NumToInt(tileSpinner.Value);
+            if tile < 0 { tile = 0; }
+        }
+        var changed = ApplyTileLineUncommitted(
+            activeLayer, startX, startY, targetX, targetY, tile);
+        lastPaintX = targetX;
+        lastPaintY = targetY;
+        return changed;
+    }
+
+    hide func ApplyTileCell(layer: Integer,
+                            cellX: Integer,
+                            cellY: Integer,
+                            tile: Integer) -> Boolean {
+        if scene == null or layer < 0 or layer >= scene.LayerCount()
+           or cellX < 0 or cellY < 0
+           or cellX >= scene.Width or cellY >= scene.Height {
+            return false;
+        }
+        if scene.GetTile(layer, cellX, cellY) == tile { return false; }
+        scene.SetTile(layer, cellX, cellY, tile);
+        renderDirty = true;
+        return true;
+    }
+
+    hide func ApplyTileLineUncommitted(layer: Integer,
+                                       startX: Integer,
+                                       startY: Integer,
+                                       targetX: Integer,
+                                       targetY: Integer,
+                                       tile: Integer) -> Boolean {
+        var x = startX;
+        var y = startY;
+        var dx = AbsInt2D(targetX - x);
+        var sx = -1;
+        if x < targetX { sx = 1; }
+        var dy = 0 - AbsInt2D(targetY - y);
+        var sy = -1;
+        if y < targetY { sy = 1; }
+        var error = dx + dy;
+        var changed = false;
+        while true {
+            changed = ApplyTileCell(layer, x, y, tile) or changed;
+            if x == targetX and y == targetY { break; }
+            var doubled = error * 2;
+            if doubled >= dy {
+                error = error + dy;
+                x = x + sx;
+            }
+            if doubled <= dx {
+                error = error + dx;
+                y = y + sy;
+            }
+        }
+        return changed;
+    }
+
+    /// @brief Commit one complete paint gesture as a single history entry.
+    hide func FinishPaintStroke() -> Boolean {
+        var changed = paintStrokeChanged;
+        var snapshot = paintStrokeSnapshot;
+        paintStrokeActive = false;
+        paintStrokeChanged = false;
+        paintStrokeSnapshot = "";
+        lastPaintX = -1;
+        lastPaintY = -1;
+        if changed == false { return false; }
+
+        var message = "Painted tile stroke";
+        if mode == MODE_ERASE { message = "Erased tile stroke"; }
+        if CommitScene(message) { return true; }
+        RestoreSceneSnapshot(snapshot);
+        detailLabel.SetText("The tile stroke could not be committed.");
+        return false;
+    }
+
+    /// @brief Commit one complete object drag as a single history entry.
+    hide func FinishObjectDrag() -> Boolean {
+        var changed = objectDragChanged;
+        var snapshot = objectDragSnapshot;
+        var index = objectDragIndex;
+        objectDragActive = false;
+        objectDragChanged = false;
+        objectDragSnapshot = "";
+        objectDragIndex = -1;
+        objectDragLastX = 0;
+        objectDragLastY = 0;
+        if changed == false { return false; }
+        selectedObject = index;
+        var count = selectedObjects.count();
+        var message = "Moved " + count + " objects";
+        if count == 1 { message = "Moved scene object"; }
+        if CommitScene(message) {
+            RefreshInspector();
+            return true;
+        }
+        RestoreSceneSnapshot(snapshot);
+        detailLabel.SetText("The object move could not be committed.");
+        return false;
+    }
+
+    hide func FindObjectAtCell(cellX: Integer, cellY: Integer) -> Integer {
+        if scene == null { return -1; }
+        var index = scene.ObjectCount() - 1;
+        while index >= 0 {
+            var objectCellX = scene.ObjectX(index) / scene.TileWidth;
+            var objectCellY = scene.ObjectY(index) / scene.TileHeight;
+            if objectCellX == cellX and objectCellY == cellY { return index; }
+            index = index - 1;
+        }
+        return -1;
+    }
+
+    hide func FitScene() -> Boolean {
+        if scene == null or canvasScroll == null { return false; }
+        var width = Convert.NumToInt(
+            canvasScroll.GetLogicalWidth() - 24.0);
+        var height = Convert.NumToInt(
+            canvasScroll.GetLogicalHeight() - 24.0);
+        if width <= 0 or height <= 0 { return false; }
+        zoomPercent = FitZoomPercent(
+            scene.Width, scene.Height, width, height);
+        SetLogicalScroll(canvasScroll, 0.0, 0.0);
+        return true;
+    }
+
+    /// @brief Re-render when the viewport changes so centering stays accurate.
+    hide func UpdateCanvasViewportSize() {
+        if canvasScroll == null { return; }
+        var width = Convert.NumToInt(canvasScroll.GetLogicalWidth());
+        var height = Convert.NumToInt(canvasScroll.GetLogicalHeight());
+        if width != lastCanvasViewportWidth
+           or height != lastCanvasViewportHeight {
+            lastCanvasViewportWidth = width;
+            lastCanvasViewportHeight = height;
+            renderDirty = true;
+        }
+    }
+
+    /// @brief Return the app's logical-to-framebuffer scale for legacy pixel APIs.
+    hide func EffectiveUiScale() -> Number {
+        if guiApp == null { return 1.0; }
+        var scale = guiApp.GetEffectiveScale();
+        if scale <= 0.0 { return 1.0; }
+        return scale;
+    }
+
+    /// @brief Convert a GUI-app pointer coordinate into effective UI units.
+    /// @details GUI widget screen bounds are logical while Zanna.Input.Mouse
+    ///          receives framebuffer coordinates from GUI application polling.
+    hide func PhysicalPointerToUi(value: Number) -> Number {
+        return value / EffectiveUiScale();
+    }
+
+    /// @brief Read a legacy framebuffer scroll offset as logical UI units.
+    hide func LogicalScrollX(scroll: GUI.ScrollView) -> Number {
+        if scroll == null { return 0.0; }
+        return scroll.GetScrollX() / EffectiveUiScale();
+    }
+
+    /// @brief Read a legacy framebuffer scroll offset as logical UI units.
+    hide func LogicalScrollY(scroll: GUI.ScrollView) -> Number {
+        if scroll == null { return 0.0; }
+        return scroll.GetScrollY() / EffectiveUiScale();
+    }
+
+    /// @brief Apply logical offsets through ScrollView's framebuffer-pixel API.
+    hide func SetLogicalScroll(scroll: GUI.ScrollView,
+                               x: Number,
+                               y: Number) {
+        if scroll == null { return; }
+        var scale = EffectiveUiScale();
+        scroll.SetScroll(x * scale, y * scale);
+    }
+
+    /// @brief Apply logical content dimensions through the legacy pixel API.
+    hide func SetLogicalContentSize(scroll: GUI.ScrollView,
+                                    width: Number,
+                                    height: Number) {
+        if scroll == null { return; }
+        var scale = EffectiveUiScale();
+        scroll.SetContentSize(width * scale, height * scale);
+    }
+
+    /// @brief Render a bounded, dependency-free scene preview into GUI.Image.
+    hide func RenderScene() {
+        renderDirty = false;
+        if canvasImage == null { return; }
+        if scene == null {
+            framePixels = Pixels.New(640, 360);
+            framePixels.FillColor(Color.RGB(24, 28, 36));
+            framePixels.DrawTextCentered(
+                150, "Unable to display this 2D scene", Color.RGB(230, 115, 115));
+            framePixels.DrawTextCentered(
+                172, "Use New 32x18 or repair the JSON as text",
+                Color.RGB(180, 188, 202));
+            canvasImage.SetPixels(framePixels, 640, 360);
+            canvasImage.SetSize(640, 360);
+            var emptyStageWidth = 640;
+            var emptyStageHeight = 360;
+            if lastCanvasViewportWidth > emptyStageWidth {
+                emptyStageWidth = lastCanvasViewportWidth;
+            }
+            if lastCanvasViewportHeight > emptyStageHeight {
+                emptyStageHeight = lastCanvasViewportHeight;
+            }
+            canvasStage.SetSize(emptyStageWidth, emptyStageHeight);
+            SetLogicalContentSize(
+                canvasScroll, emptyStageWidth, emptyStageHeight);
+            renderedColumns = 0;
+            renderedRows = 0;
+            viewStatusLabel.SetText("");
+            return;
+        }
+
+        displayCellSize = BASE_DISPLAY_CELL * zoomPercent / 100;
+        if displayCellSize < 1 { displayCellSize = 1; }
+        renderedColumns = scene.Width;
+        renderedRows = scene.Height;
+        if renderedColumns > MAX_RENDER_CELLS_PER_AXIS {
+            renderedColumns = MAX_RENDER_CELLS_PER_AXIS;
+        }
+        if renderedRows > MAX_RENDER_CELLS_PER_AXIS {
+            renderedRows = MAX_RENDER_CELLS_PER_AXIS;
+        }
+        var maxColumns = MAX_RENDER_DIMENSION / displayCellSize;
+        var maxRows = MAX_RENDER_DIMENSION / displayCellSize;
+        if renderedColumns > maxColumns { renderedColumns = maxColumns; }
+        if renderedRows > maxRows { renderedRows = maxRows; }
+        if renderedColumns < 1 { renderedColumns = 1; }
+        if renderedRows < 1 { renderedRows = 1; }
+
+        var pixelWidth = renderedColumns * displayCellSize + 1;
+        var pixelHeight = renderedRows * displayCellSize + 1;
+        framePixels = Pixels.New(pixelWidth, pixelHeight);
+        framePixels.FillColor(Color.RGB(24, 28, 36));
+
+        var layer = 0;
+        while layer < scene.LayerCount() {
+            if scene.LayerVisible(layer) {
+                var y = 0;
+                while y < renderedRows {
+                    var x = 0;
+                    while x < renderedColumns {
+                        var tile = scene.GetTile(layer, x, y);
+                        if tile > 0 {
+                            var drewAsset = tilesets.DrawTile(
+                                framePixels,
+                                layer,
+                                tile,
+                                x * displayCellSize,
+                                y * displayCellSize,
+                                displayCellSize);
+                            if drewAsset == false {
+                                framePixels.DrawBox(
+                                    x * displayCellSize + 1,
+                                    y * displayCellSize + 1,
+                                    displayCellSize - 1,
+                                    displayCellSize - 1,
+                                    TilePreviewColor(tile, layer));
+                            }
+                        }
+                        x = x + 1;
+                    }
+                    y = y + 1;
+                }
+            }
+            layer = layer + 1;
+        }
+
+        var gridColor = Color.RGB(54, 61, 73);
+        var x = 0;
+        while x <= renderedColumns {
+            framePixels.DrawLine(x * displayCellSize, 0,
+                                 x * displayCellSize, pixelHeight - 1,
+                                 gridColor);
+            x = x + 1;
+        }
+        var y = 0;
+        while y <= renderedRows {
+            framePixels.DrawLine(0, y * displayCellSize,
+                                 pixelWidth - 1, y * displayCellSize,
+                                 gridColor);
+            y = y + 1;
+        }
+
+        var objectIndex = 0;
+        while objectIndex < scene.ObjectCount() {
+            var objectX = scene.ObjectX(objectIndex) * displayCellSize
+                / scene.TileWidth;
+            var objectY = scene.ObjectY(objectIndex) * displayCellSize
+                / scene.TileHeight;
+            var objectColor = Color.RGB(255, 190, 72);
+            if scene_selection.Contains(selectedObjects, objectIndex) {
+                objectColor = Color.RGB(104, 220, 255);
+            }
+            if objectIndex == selectedObject {
+                objectColor = Color.RGB(170, 242, 255);
+            }
+            framePixels.DrawDisc(objectX + displayCellSize / 2,
+                                 objectY + displayCellSize / 2,
+                                 ClampInt(displayCellSize / 4, 2, 10),
+                                 objectColor);
+            framePixels.DrawFrame(objectX, objectY,
+                                  displayCellSize, displayCellSize,
+                                  objectColor);
+            objectIndex = objectIndex + 1;
+        }
+
+        if selectedCellX >= 0 and selectedCellY >= 0
+           and selectedCellX < renderedColumns
+           and selectedCellY < renderedRows {
+            framePixels.DrawFrame(selectedCellX * displayCellSize,
+                                  selectedCellY * displayCellSize,
+                                  displayCellSize + 1,
+                                  displayCellSize + 1,
+                                  Color.RGB(255, 255, 255));
+        }
+
+        canvasImage.SetPixels(framePixels, pixelWidth, pixelHeight);
+        canvasImage.SetSize(pixelWidth, pixelHeight);
+        var stageWidth = pixelWidth;
+        var stageHeight = pixelHeight;
+        if lastCanvasViewportWidth > stageWidth {
+            stageWidth = lastCanvasViewportWidth;
+        }
+        if lastCanvasViewportHeight > stageHeight {
+            stageHeight = lastCanvasViewportHeight;
+        }
+        canvasStage.SetSize(stageWidth, stageHeight);
+        SetLogicalContentSize(canvasScroll, stageWidth, stageHeight);
+        var clipped = renderedColumns < scene.Width or renderedRows < scene.Height;
+        var suffix = "";
+        if clipped {
+            suffix = "  |  preview clipped to "
+                + renderedColumns + "x" + renderedRows;
+        }
+        if tilesets.cacheSaturated {
+            suffix = suffix + "  |  tileset preview cache capped";
+        }
+        var cellStatus = "";
+        if selectedCellX >= 0 and selectedCellY >= 0 {
+            cellStatus = "  |  cell "
+                + selectedCellX + ", " + selectedCellY;
+        }
+        viewStatusLabel.SetText(
+            "Layer " + (activeLayer + 1) + "/" + scene.LayerCount()
+            + "  |  zoom " + zoomPercent + "%"
+            + cellStatus + suffix);
+    }
+}

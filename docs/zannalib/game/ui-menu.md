@@ -16,7 +16,7 @@ MenuList holds at most 64 items; the 65th `AddItem` traps. Each label is copied 
 buffer (127 content bytes) and truncation preserves a UTF-8 boundary. The selected index starts at
 zero, `Clear` resets it to zero, and explicit selection clamps to the current item range.
 
-```rust
+```zia
 module MenuListInputExample;
 
 func start() {
@@ -42,7 +42,7 @@ surface is:
 Dimensions clamp to 1–16,384 pixels and text scale to 1–16. The label is copied into 63 content
 bytes on a UTF-8 boundary, then drawing clips it by the available built-in 8-pixel character cells.
 
-```rust
+```zia
 module GameButtonExample;
 
 func start() {

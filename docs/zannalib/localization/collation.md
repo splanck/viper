@@ -65,7 +65,7 @@ neutral ranges is treated as strong LTR.
 
 ### Zia Example
 
-```rust
+```zia
 module TextDirectionDemo;
 
 bind Zanna.Terminal;

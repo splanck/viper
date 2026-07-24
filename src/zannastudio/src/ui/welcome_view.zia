@@ -42,13 +42,19 @@ class WelcomeView {
     expose GUI.Label titleLabel;
     expose GUI.Label buildLabel;
     expose GUI.HBox actionRow;
+    expose GUI.HBox sceneActionRow;
     expose GUI.Button newFileButton;
+    expose GUI.Button newScene2DButton;
+    expose GUI.Button newScene3DButton;
+    expose GUI.Button openFileButton;
     expose GUI.Button openFolderButton;
     expose GUI.Label recentHeader;
     expose GUI.ListBox recentList;
     expose GUI.Label emptyRecentLabel;
     expose GUI.Label hintLabel;
     hide GUI.HBox editorRow;
+    hide GUI.VBox scene2DHost;
+    hide GUI.VBox scene3DHost;
     hide GUI.Font headingFont;
     hide Integer headingStyleRevision;
     hide Number contentWidth;
@@ -60,6 +66,9 @@ class WelcomeView {
     expose Boolean startupMode;
     expose String startupProgressText;
     expose String commandPaletteShortcut;
+    hide Boolean shownState;
+    hide Boolean restoreScene2D;
+    hide Boolean restoreScene3D;
 
     expose func init() {
         host = null;
@@ -67,13 +76,19 @@ class WelcomeView {
         titleLabel = null;
         buildLabel = null;
         actionRow = null;
+        sceneActionRow = null;
         newFileButton = null;
+        newScene2DButton = null;
+        newScene3DButton = null;
+        openFileButton = null;
         openFolderButton = null;
         recentHeader = null;
         recentList = null;
         emptyRecentLabel = null;
         hintLabel = null;
         editorRow = null;
+        scene2DHost = null;
+        scene3DHost = null;
         headingFont = null;
         headingStyleRevision = 0;
         contentWidth = 720.0;
@@ -85,14 +100,22 @@ class WelcomeView {
         startupMode = false;
         startupProgressText = "";
         commandPaletteShortcut = command_catalog.PlatformShortcut("Ctrl+Shift+P");
+        shownState = false;
+        restoreScene2D = false;
+        restoreScene3D = false;
     }
 
     /// @brief Build the welcome content into the shell-owned host container.
     /// @param hostArg Welcome host VBox (sibling of the editor row).
     /// @param editorRowArg Editor row to hide while the welcome view is shown.
-    expose func Setup(hostArg: GUI.VBox, editorRowArg: GUI.HBox) {
+    expose func Setup(hostArg: GUI.VBox,
+                      editorRowArg: GUI.HBox,
+                      scene2DHostArg: GUI.VBox,
+                      scene3DHostArg: GUI.VBox) {
         host = hostArg;
         editorRow = editorRowArg;
+        scene2DHost = scene2DHostArg;
+        scene3DHost = scene3DHostArg;
 
         // Keep the start content compact, centered, and bounded instead of
         // stretching every label/list edge-to-edge across the editor pane.
@@ -140,16 +163,32 @@ class WelcomeView {
         actionRow = GUI.HBox.New();
         actionRow.SetSpacing(10.0);
         actionRow.SetAlign(GUI.Align.Center);
-        actionRow.SetMarginEdges(0.0, 0.0, 0.0, 18.0);
+        actionRow.SetMarginEdges(0.0, 0.0, 0.0, 6.0);
         actionRow.SetName("welcome-actions");
         content.AddChild(actionRow);
         newFileButton = GUI.Button.New(actionRow, "New File");
         newFileButton.SetIconName("new-file");
         newFileButton.SetMinSize(138.0, 38.0);
+        openFileButton = GUI.Button.New(actionRow, "Open File...");
+        openFileButton.SetStyle(1);
+        openFileButton.SetMinSize(138.0, 38.0);
         openFolderButton = GUI.Button.New(actionRow, "Open Folder...");
         openFolderButton.SetStyle(1);
         openFolderButton.SetIconName("folder-open");
         openFolderButton.SetMinSize(160.0, 38.0);
+
+        sceneActionRow = GUI.HBox.New();
+        sceneActionRow.SetSpacing(10.0);
+        sceneActionRow.SetAlign(GUI.Align.Center);
+        sceneActionRow.SetMarginEdges(0.0, 0.0, 0.0, 18.0);
+        sceneActionRow.SetName("welcome-scene-actions");
+        content.AddChild(sceneActionRow);
+        newScene2DButton = GUI.Button.New(sceneActionRow, "New 2D Scene");
+        newScene2DButton.SetMinSize(150.0, 34.0);
+        newScene2DButton.SetTooltip("Create a tile, layer, and object scene");
+        newScene3DButton = GUI.Button.New(sceneActionRow, "New 3D Scene");
+        newScene3DButton.SetMinSize(150.0, 34.0);
+        newScene3DButton.SetTooltip("Create a VSCN hierarchy or import a 3D asset");
 
         recentHeader = GUI.Label.New(content, "Recent");
         recentHeader.SetColor(theme_colors.Rgb("fgSecondary"));
@@ -266,8 +305,24 @@ class WelcomeView {
             and titleLabel.GetRevision() != headingStyleRevision {
             ApplyHeadingTypography();
         }
+        if shown != shownState {
+            if shown {
+                restoreScene2D = scene2DHost != null and scene2DHost.IsVisible();
+                restoreScene3D = scene3DHost != null and scene3DHost.IsVisible();
+                if editorRow != null { editorRow.SetVisible(false); }
+                if scene2DHost != null { scene2DHost.SetVisible(false); }
+                if scene3DHost != null { scene3DHost.SetVisible(false); }
+            } else {
+                if scene2DHost != null { scene2DHost.SetVisible(restoreScene2D); }
+                if scene3DHost != null { scene3DHost.SetVisible(restoreScene3D); }
+                if editorRow != null {
+                    editorRow.SetVisible(restoreScene2D == false
+                                         and restoreScene3D == false);
+                }
+            }
+            shownState = shown;
+        }
         if host != null { host.SetVisible(shown); }
-        if editorRow != null { editorRow.SetVisible(!shown); }
     }
 
     /// @brief Switch among full, compact-recent, and hero-only layouts.
@@ -307,6 +362,9 @@ class WelcomeView {
     /// @brief Apply startup/compact/recent-state visibility as one policy.
     hide func ApplyContentVisibility() {
         if actionRow != null { actionRow.SetVisible(startupMode == false); }
+        if sceneActionRow != null {
+            sceneActionRow.SetVisible(startupMode == false);
+        }
         if recentHeader == null or recentList == null or emptyRecentLabel == null
             or hintLabel == null {
             return;

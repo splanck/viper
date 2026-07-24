@@ -176,7 +176,7 @@ void rt_scene_node3d_set_visible(void *node, int8_t visible);
 int8_t rt_scene_node3d_get_visible(void *node);
 /// @brief Set the node's name (used by `_find` lookups).
 void rt_scene_node3d_set_name(void *node, rt_string name);
-/// @brief Get the node's name (empty string if unset).
+/// @brief Get the node's name as an owned string (empty if unset).
 rt_string rt_scene_node3d_get_name(void *node);
 /// @brief Get the AABB minimum corner for the node subtree in this node's local space.
 void *rt_scene_node3d_get_aabb_min(void *node);

@@ -68,7 +68,7 @@ Prefer `TryParseOption` for new code. `TryParse` remains as a compatibility help
 
 ### Zia Example
 
-```rust
+```zia
 module LocaleDemo;
 
 bind Zanna.Terminal;

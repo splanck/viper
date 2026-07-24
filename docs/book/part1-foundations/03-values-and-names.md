@@ -36,7 +36,7 @@ Every one of these tasks involves working with specific pieces of data -- values
 
 This is an important distinction. When we write:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 Say(42);
@@ -75,7 +75,7 @@ Types tell the computer what operations make sense for each value. They prevent 
 Zanna has three fundamental types:
 
 **Numbers** are for math, counting, measuring, and anything quantitative.
-```rust
+```zia
 42        // a whole number
 -7        // negative numbers work too
 3.14159   // numbers with decimal points
@@ -84,7 +84,7 @@ Zanna has three fundamental types:
 ```
 
 **Strings** are for text -- any sequence of characters. They're called "strings" because they're like beads on a string: a sequence of individual characters strung together.
-```rust
+```zia
 "Hello"           // a word
 "Enter your name:"// a prompt
 ""                // an empty string (zero characters)
@@ -93,7 +93,7 @@ Zanna has three fundamental types:
 ```
 
 **Booleans** are for yes/no, true/false, on/off questions. Named after mathematician George Boole, who invented the algebra of logic. There are exactly two boolean values:
-```rust
+```zia
 true    // yes, correct, on, 1
 false   // no, incorrect, off, 0
 ```
@@ -104,7 +104,7 @@ These three types -- numbers, strings, booleans -- are surprisingly powerful. Wi
 
 Types prevent bugs by catching mistakes early. Imagine you accidentally wrote:
 
-```rust
+```zia
 var price = "100";    // Oops, used quotes - this is text, not a number!
 var tax = price * 0.08;
 ```
@@ -143,7 +143,7 @@ This is what *variables* are for. A variable is a name attached to a value.
 
 Think of computer memory as a warehouse full of boxes. Each box can hold one thing. A variable is like putting a label on a box.
 
-```rust
+```zia
 var age = 25;
 ```
 
@@ -151,7 +151,7 @@ This instruction says: "Get a box, put the value `25` inside it, and stick a lab
 
 Now, whenever your program mentions `age`, the computer knows to go find the box labeled `age` and look inside to see what value is there.
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 var age = 25;
@@ -168,7 +168,7 @@ When you write `var score = 100`, you're putting a name tag that says "score" on
 
 Or think of variables like nicknames. The value `3.14159265358979` is unwieldy to write every time. So we give it a nickname:
 
-```rust
+```zia
 var pi = 3.14159265358979;
 ```
 
@@ -179,16 +179,16 @@ Now we can just say `pi` instead of typing all those digits each time.
 Variables serve several crucial purposes:
 
 **1. Memory**: Programs need to remember things for later use.
-```rust
+```zia
 bind Zanna.Terminal;
 
-var name = InputLine();  // remember what the user typed
+var name = TryReadLine().UnwrapOrStr("");  // remember what the user typed
 // ... 50 lines of code later ...
 Say("Goodbye, " + name);  // Still remember their name!
 ```
 
 **2. Clarity**: Names make code readable.
-```rust
+```zia
 bind Zanna.Terminal;
 
 // What does this mean?
@@ -201,7 +201,7 @@ Say(price * taxRate);
 ```
 
 **3. Reusability**: Use the same value in multiple places without retyping it.
-```rust
+```zia
 bind Zanna.Terminal;
 
 var greeting = "Welcome to Zanna Programming!";
@@ -211,7 +211,7 @@ Say(greeting);  // Same message, no retyping
 ```
 
 **4. Change**: Update a value in one place, and everywhere using that variable sees the update.
-```rust
+```zia
 var score = 0;
 // ... player scores ...
 score = score + 10;
@@ -222,7 +222,7 @@ score = score + 10;
 
 Let's see variables at work:
 
-```rust
+```zia
 module Variables;
 bind Zanna.Terminal;
 
@@ -261,7 +261,7 @@ Think of it like a person's job title vs. the person. "The President" is a name/
 
 You can name variables almost anything, but the names you choose dramatically affect how easy your code is to understand. Consider:
 
-```rust
+```zia
 // Mystery code
 var x = 100;
 var y = 5;
@@ -272,7 +272,7 @@ What does this program do? You can figure it out by studying it, but it takes me
 
 Now the same program with good names:
 
-```rust
+```zia
 // Clear code
 var pricePerUnit = 100;
 var quantity = 5;
@@ -313,7 +313,7 @@ Zanna has two kinds of numbers:
 
 **Floating-point numbers** (or "floats") have decimal points: `3.14`, `0.5`, `-273.15`, `2.0`. The name "floating-point" refers to how computers store these numbers internally (the decimal point can "float" to different positions).
 
-```rust
+```zia
 var count = 10;        // integer - whole number
 var price = 19.99;     // float - has decimal
 var temperature = -5;  // integer - negative numbers work
@@ -339,7 +339,7 @@ Use floats for:
 
 You can do math with numbers using operators:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 var a = 10;
@@ -357,7 +357,7 @@ These work exactly like arithmetic you learned in school -- mostly. Division has
 ### Real-World Arithmetic Examples
 
 **Shopping calculation:**
-```rust
+```zia
 var itemPrice = 29.99;
 var quantity = 3;
 var subtotal = itemPrice * quantity;  // 89.97
@@ -368,13 +368,13 @@ var total = subtotal + tax;  // 97.1676
 ```
 
 **Temperature conversion:**
-```rust
+```zia
 var celsius = 25;
 var fahrenheit = celsius * 9 / 5 + 32;  // 77
 ```
 
 **Distance and speed:**
-```rust
+```zia
 var distanceMiles = 150;
 var hours = 2.5;
 var averageSpeed = distanceMiles / hours;  // 60 mph
@@ -384,14 +384,14 @@ var averageSpeed = distanceMiles / hours;  // 60 mph
 
 The `%` operator gives the *remainder* after division. It's pronounced "mod" or "modulo."
 
-```rust
+```zia
 10 % 3   // equals 1
 ```
 
 Why? Because 10 divided by 3 is 3 with a remainder of 1. (3 times 3 is 9, and 10 minus 9 is 1.)
 
 More examples:
-```rust
+```zia
 10 % 5   // 0 (10 divides evenly by 5)
 10 % 4   // 2 (4*2=8, remainder 2)
 10 % 6   // 4 (6*1=6, remainder 4)
@@ -403,26 +403,26 @@ More examples:
 The remainder operator is surprisingly handy:
 
 **Checking if a number is even or odd:**
-```rust
+```zia
 var n = 17;
 var remainder = n % 2;  // If 0, n is even. If 1, n is odd.
 // 17 % 2 = 1, so 17 is odd
 ```
 
 **Wrapping around within a range:**
-```rust
+```zia
 var hour = 25;
 var normalizedHour = hour % 24;  // 1 (wraps around past 24)
 ```
 
 **Extracting digits:**
-```rust
+```zia
 var number = 1234;
 var lastDigit = number % 10;  // 4
 ```
 
 **Checking divisibility:**
-```rust
+```zia
 var year = 2024;
 var isDivisibleBy4 = year % 4 == 0;  // true (for leap year checking)
 ```
@@ -431,7 +431,7 @@ var isDivisibleBy4 = year % 4 == 0;  // true (for leap year checking)
 
 Here's something that surprises almost every beginner:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 var result = 10 / 3;
@@ -445,7 +445,7 @@ Wait -- 10 divided by 3 is 3.333..., isn't it? Why does Zanna say 3?
 Think of it like this: if you have 10 cookies and 3 people, each person gets 3 cookies (integer division), with 1 cookie left over (that's where the remainder operator becomes useful).
 
 More examples:
-```rust
+```zia
 7 / 2    // 3, not 3.5
 1 / 2    // 0, not 0.5 (this one really surprises people!)
 99 / 100 // 0, not 0.99
@@ -456,7 +456,7 @@ More examples:
 
 If you want the fractional part, use floats:
 
-```rust
+```zia
 var result = 10.0 / 3.0;  // 3.333...
 ```
 
@@ -464,7 +464,7 @@ The `.0` makes these floating-point numbers, so you get a floating-point result.
 
 Or, if you have integer variables and want a float result:
 
-```rust
+```zia
 var a = 10;
 var b = 3;
 var result = a * 1.0 / b;  // Multiply by 1.0 to make it a float first
@@ -477,7 +477,7 @@ Mathematical operations follow the standard order of operations (PEMDAS/BODMAS):
 2. Multiplication and Division (left to right)
 3. Addition and Subtraction (left to right)
 
-```rust
+```zia
 var result = 2 + 3 * 4;    // 14, not 20 (multiplication first)
 var result2 = (2 + 3) * 4; // 20 (parentheses force addition first)
 ```
@@ -492,7 +492,7 @@ Strings are text -- sequences of characters enclosed in double quotes. Despite s
 
 ### Creating Strings
 
-```rust
+```zia
 var greeting = "Hello, World!";     // A typical string
 var empty = "";                      // An empty string (zero characters)
 var space = " ";                     // A single space character
@@ -511,7 +511,7 @@ You can't do arithmetic with `"42"` (what's `"42" + 1`? Is that `"43"` or `"421"
 
 What if you want to include a quote mark *inside* your string? This won't work:
 
-```rust
+```zia
 var quote = "She said "Hello"";  // Error! Zanna thinks the string ends at said "
 ```
 
@@ -519,7 +519,7 @@ The computer sees the first `"`, starts the string, sees the second `"`, thinks 
 
 The solution is the *escape character*: backslash (`\`). It tells Zanna "the next character is special -- don't interpret it normally."
 
-```rust
+```zia
 var quote = "She said \"Hello\"";  // Works! \" means a literal quote
 ```
 
@@ -537,7 +537,7 @@ The `\"` doesn't print as `\"` -- it prints as `"`. The backslash "escapes" the 
 
 **Examples in action:**
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 // Newlines
@@ -550,7 +550,7 @@ Line two
 Line three
 ```
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 // Tabs (for alignment)
@@ -565,7 +565,7 @@ Alice   30      New York
 Bob     25      Chicago
 ```
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 // Including backslashes (need to escape them)
@@ -576,7 +576,7 @@ Output:
 Path: C:\Users\Alice\Documents
 ```
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 // Quotes in dialogue
@@ -591,7 +591,7 @@ Output:
 
 When you use `+` with strings, it joins them together (concatenation):
 
-```rust
+```zia
 var first = "Hello";
 var second = "World";
 var message = first + ", " + second + "!";  // "Hello, World!"
@@ -601,7 +601,7 @@ Think of it like gluing words together. `"Hello"` + `", "` + `"World"` + `"!"` b
 
 **Concatenating strings with numbers:**
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 var name = "Alice";
@@ -615,7 +615,7 @@ Alice is 30 years old.
 
 When you concatenate a string with a number, Zanna automatically converts the number to its text representation. This is convenient but can lead to surprises:
 
-```rust
+```zia
 var result = "5" + 3;  // "53" (concatenation, not addition!)
 var math = 5 + 3;      // 8 (addition)
 ```
@@ -626,7 +626,7 @@ If either operand is a string, `+` does concatenation, not addition.
 
 Every string has a *length* -- the number of characters it contains.
 
-```rust
+```zia
 "Hello"     // length 5
 ""          // length 0 (empty string)
 "Hi there"  // length 8 (space counts!)
@@ -639,7 +639,7 @@ We'll learn how to get the length and work with individual characters in Chapter
 
 A frequent beginner mistake is treating string-digits as numbers:
 
-```rust
+```zia
 var userInput = "25";      // This is TEXT from user input
 var nextYear = userInput + 1;  // Doesn't give 26!
 ```
@@ -648,7 +648,7 @@ The variable `userInput` contains the string `"25"` -- two characters that look 
 
 To do math with user input, you must convert it first:
 
-```rust
+```zia
 var userInput = "25";
 var age = Zanna.Core.Convert.ToInt64(userInput);  // Convert to number
 var nextYear = age + 1;  // Now this is 26
@@ -682,7 +682,7 @@ Booleans capture these yes/no questions in code. And in the next chapter, we'll 
 
 ### Creating Boolean Values
 
-```rust
+```zia
 var isGameOver = false;
 var hasPermission = true;
 var isLoggedIn = true;
@@ -695,7 +695,7 @@ By convention, boolean variable names often start with `is`, `has`, `can`, `shou
 
 You usually don't write `true` or `false` directly. Instead, booleans are the *result* of comparisons:
 
-```rust
+```zia
 var age = 25;
 var isAdult = age >= 18;  // Is 25 >= 18? Yes! So isAdult is true.
 ```
@@ -715,7 +715,7 @@ The expression `age >= 18` is a *question* that produces a boolean *answer*.
 
 **Real-world examples:**
 
-```rust
+```zia
 var temperature = 72;
 var isHot = temperature > 90;        // false (72 is not greater than 90)
 var isComfortable = temperature >= 65 && temperature <= 80;  // true
@@ -731,7 +731,7 @@ var canAfford = balance >= 100;  // true (150 >= 100)
 
 This is one of the most common bugs in programming:
 
-```rust
+```zia
 // WRONG - this assigns 5 to x, doesn't compare!
 if (x = 5)
 
@@ -754,7 +754,7 @@ Often you need to combine multiple conditions. That's where logical operators co
 
 Real-world: "I'll go to the beach if it's sunny AND I have free time."
 
-```rust
+```zia
 var isSunny = true;
 var haveTime = false;
 var goToBeach = isSunny && haveTime;  // false (both must be true)
@@ -772,7 +772,7 @@ Truth table for AND:
 
 Real-world: "I'll be happy if I get a raise OR get promoted."
 
-```rust
+```zia
 var gotRaise = false;
 var gotPromotion = true;
 var isHappy = gotRaise || gotPromotion;  // true (at least one is true)
@@ -790,7 +790,7 @@ Truth table for OR:
 
 Real-world: "If I'm NOT tired, I'll go for a run."
 
-```rust
+```zia
 var isTired = false;
 var willRun = !isTired;  // true (opposite of false)
 ```
@@ -805,7 +805,7 @@ Truth table for NOT:
 
 Real programs often have complex conditions:
 
-```rust
+```zia
 var age = 25;
 var hasTicket = true;
 var isMember = false;
@@ -823,7 +823,7 @@ Use parentheses to make the logic clear! Without parentheses, `&&` has higher pr
 
 Let's trace through a realistic example:
 
-```rust
+```zia
 var userAge = 16;
 var hasParentPermission = true;
 var movieRating = "PG-13";
@@ -849,7 +849,7 @@ Breaking complex boolean expressions into named parts makes them much easier to 
 
 Variables can change. That's why they're called "variables" -- they vary.
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 var score = 0;
@@ -881,7 +881,7 @@ Think of it like updating a scoreboard. The old score was 10. Something happened
 
 The pattern "variable = variable + something" appears constantly in real programs:
 
-```rust
+```zia
 var score = 10;
 score = score + 5;   // Add 5 to score
 score = score - 3;   // Subtract 3 from score
@@ -907,7 +907,7 @@ Sometimes you have a value that should never change during the program:
 
 For these, use `final` instead of `var`:
 
-```rust
+```zia
 final PI = 3.14159265358979;
 final MAX_PLAYERS = 4;
 final DAYS_IN_WEEK = 7;
@@ -916,7 +916,7 @@ final TAX_RATE = 0.08;
 
 The intent is that `final` values should never be reassigned. Treating them as truly constant makes your code clearer and less error-prone:
 
-```rust
+```zia
 final PI = 3.14159;
 // PI = 3.0;  // Don't do this — PI is meant to be constant
 ```
@@ -939,13 +939,13 @@ final PI = 3.14159;
 
 So far, our variables have been set by us in the code. But programs become interesting when users can provide input.
 
-```rust
+```zia
 module Greeting;
 bind Zanna.Terminal;
 
 func start() {
     Print("What is your name? ");
-    var name = InputLine();
+    var name = TryReadLine().UnwrapOrStr("");
 
     Say("Hello, " + name + "!");
 }
@@ -957,7 +957,7 @@ What is your name? Alice
 Hello, Alice!
 ```
 
-`InputLine()` pauses the program, waits for the user to type something and press Enter, then returns what they typed as a string.
+`TryReadLine().UnwrapOrStr("")` pauses the program, waits for the user to type something and press Enter, then returns what they typed as a string.
 
 Note the difference between `Print()` and `Say()`:
 - `Say()` adds a newline at the end (cursor moves to next line)
@@ -967,15 +967,15 @@ We use `Print()` for the prompt so the user types on the same line as the questi
 
 ### Converting Input to Numbers
 
-`InputLine()` always returns a string. But what if you need a number? You must convert it:
+`TryReadLine().UnwrapOrStr("")` always returns a string. But what if you need a number? You must convert it:
 
-```rust
+```zia
 module Age;
 bind Zanna.Terminal;
 
 func start() {
     Print("How old are you? ");
-    var ageText = InputLine();
+    var ageText = TryReadLine().UnwrapOrStr("");
     var age = Zanna.Core.Convert.ToInt64(ageText);        // Convert to integer
 
     var nextYear = age + 1;
@@ -994,15 +994,15 @@ If you try to parse `"hello"` as a number, you'll get an error. In Chapter 7, we
 
 A very common beginner mistake:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 Print("Enter a number: ");
-var number = InputLine();
+var number = TryReadLine().UnwrapOrStr("");
 var doubled = number * 2;  // Error! Can't multiply a string
 ```
 
-Always remember: `InputLine()` returns a string, not a number. You must convert it with `Zanna.Core.Convert.ToInt64()` if you want to do math.
+Always remember: `TryReadLine().UnwrapOrStr("")` returns a string, not a number. You must convert it with `Zanna.Core.Convert.ToInt64()` if you want to do math.
 
 ---
 
@@ -1011,7 +1011,7 @@ Always remember: `InputLine()` returns a string, not a number. You must convert 
 Zanna supports two syntax styles. The concepts -- values, variables, types, operations -- are identical in both. Only the spelling and punctuation differ.
 
 **Zia**
-```rust
+```zia
 bind Zanna.Terminal;
 
 var name = "Alice";
@@ -1056,14 +1056,14 @@ The syntax differs, but the ideas are identical. Once you understand these conce
 Let's address the most common beginner misunderstandings in one place:
 
 ### 1. Forgetting to initialize variables
-```rust
+```zia
 var count;          // Error: what value does it have?
 var count = 0;      // Good: starts at 0
 ```
 Variables must be given a value when created.
 
 ### 2. Using a variable before creating it
-```rust
+```zia
 bind Zanna.Terminal;
 
 Say(score);  // Error: score doesn't exist yet!
@@ -1072,36 +1072,36 @@ var score = 100;
 You must create a variable before you can use it.
 
 ### 3. Confusing = and ==
-```rust
+```zia
 if (x = 5)   // WRONG: assigns 5 to x
 if (x == 5)  // RIGHT: checks if x equals 5
 ```
 One equals for setting, two equals for checking.
 
 ### 4. Expecting strings to behave like numbers
-```rust
+```zia
 var result = "5" + 3;  // "53", not 8!
 ```
 When either operand is a string, `+` concatenates. Convert strings to numbers first if you want arithmetic.
 
 ### 5. Integer division surprise
-```rust
+```zia
 var half = 1 / 2;      // Result is 0, not 0.5!
 var halfF = 1.0 / 2.0; // Result is 0.5
 ```
 Integer divided by integer gives integer. Use floats for fractional results.
 
 ### 6. Forgetting to convert user input
-```rust
+```zia
 bind Zanna.Terminal;
 
-var age = InputLine();  // This is a string, not a number!
+var age = TryReadLine().UnwrapOrStr("");  // This is a string, not a number!
 var nextYear = age + 1;  // Wrong result: string concatenation, not arithmetic!
 ```
-`InputLine()` returns a string. Use `Zanna.Core.Convert.ToInt64()` or `Zanna.Core.Convert.ToDouble()` to convert it to a number.
+`TryReadLine().UnwrapOrStr("")` returns a string. Use `Zanna.Core.Convert.ToInt64()` or `Zanna.Core.Convert.ToDouble()` to convert it to a number.
 
 ### 7. Using var twice for the same variable
-```rust
+```zia
 var score = 0;
 var score = 10;  // Error: score already exists!
 score = 10;      // Correct: change existing variable
@@ -1109,7 +1109,7 @@ score = 10;      // Correct: change existing variable
 Use `var` to create; use just `=` to change.
 
 ### 8. Thinking variables are linked
-```rust
+```zia
 var a = 5;
 var b = a;  // b is now 5
 a = 10;     // a is now 10, but b is still 5!
@@ -1122,7 +1122,7 @@ a = 10;     // a is now 10, but b is still 5!
 
 Here's a small program that uses everything we've learned:
 
-```rust
+```zia
 module Calculator;
 bind Zanna.Terminal;
 
@@ -1131,10 +1131,10 @@ func start() {
     Say("================");
 
     Print("Enter first number: ");
-    var first = Zanna.Core.Convert.ToDouble(InputLine());
+    var first = Zanna.Core.Convert.ToDouble(TryReadLine().UnwrapOrStr(""));
 
     Print("Enter second number: ");
-    var second = Zanna.Core.Convert.ToDouble(InputLine());
+    var second = Zanna.Core.Convert.ToDouble(TryReadLine().UnwrapOrStr(""));
 
     var sum = first + second;
     var difference = first - second;
@@ -1206,7 +1206,7 @@ Every one of these chapters builds on what you've learned here. Values, types, v
 
 - Variables can change (that's why they're called variables). Use `=` to assign new values.
 
-- Use `InputLine()` to get text input from users. It returns a string. Use `Zanna.Core.Convert.ToInt64()` or `Zanna.Core.Convert.ToDouble()` to convert text to numbers.
+- Use `TryReadLine().UnwrapOrStr("")` to get text input from users. It returns a string. Use `Zanna.Core.Convert.ToInt64()` or `Zanna.Core.Convert.ToDouble()` to convert text to numbers.
 
 - Choose descriptive variable names to make your code readable.
 

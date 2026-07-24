@@ -206,6 +206,49 @@ void *rt_material3d_get_persisted_texture_ref(void *obj, int64_t slot) {
     }
 }
 
+/// @brief Borrow the currently drawable Pixels fallback for one persisted material slot.
+/// @details The returned object remains owned by the material's retained source. TextureAsset3D
+///          and RenderTarget3D references are resolved without discarding their original source
+///          identity, so inspection does not change later rendering or VSCN serialization.
+static void *material_texture_pixels_for_slot(void *obj, int64_t slot) {
+    return rt_material3d_resolve_texture_pixels(rt_material3d_get_persisted_texture_ref(obj, slot));
+}
+
+/// @brief Borrow the current base-color/albedo map as decoded Pixels, or NULL.
+void *rt_material3d_get_texture_pixels(void *obj) {
+    return material_texture_pixels_for_slot(obj, RT_MATERIAL3D_TEXTURE_SLOT_BASE_COLOR);
+}
+
+/// @brief Borrow the current tangent-space normal map as decoded Pixels, or NULL.
+void *rt_material3d_get_normal_map_pixels(void *obj) {
+    return material_texture_pixels_for_slot(obj, RT_MATERIAL3D_TEXTURE_SLOT_NORMAL);
+}
+
+/// @brief Borrow the current legacy specular map as decoded Pixels, or NULL.
+void *rt_material3d_get_specular_map_pixels(void *obj) {
+    return material_texture_pixels_for_slot(obj, RT_MATERIAL3D_TEXTURE_SLOT_SPECULAR);
+}
+
+/// @brief Borrow the current emissive map as decoded Pixels, or NULL.
+void *rt_material3d_get_emissive_map_pixels(void *obj) {
+    return material_texture_pixels_for_slot(obj, RT_MATERIAL3D_TEXTURE_SLOT_EMISSIVE);
+}
+
+/// @brief Borrow the current packed metallic/roughness map as decoded Pixels, or NULL.
+void *rt_material3d_get_metallic_roughness_map_pixels(void *obj) {
+    return material_texture_pixels_for_slot(obj, RT_MATERIAL3D_TEXTURE_SLOT_METALLIC_ROUGHNESS);
+}
+
+/// @brief Borrow the current ambient-occlusion map as decoded Pixels, or NULL.
+void *rt_material3d_get_ao_map_pixels(void *obj) {
+    return material_texture_pixels_for_slot(obj, RT_MATERIAL3D_TEXTURE_SLOT_AO);
+}
+
+/// @brief Borrow the current baked lightmap as decoded Pixels, or NULL.
+void *rt_material3d_get_lightmap_pixels(void *obj) {
+    return material_texture_pixels_for_slot(obj, RT_MATERIAL3D_PERSISTED_TEXTURE_SLOT_LIGHTMAP);
+}
+
 /// @brief Whether a texture reference has any usable source (RGBA Pixels or native blocks).
 static int material_texture_ref_has_drawable_source(void *texture_ref) {
     return rt_material3d_resolve_texture_pixels(texture_ref) ||

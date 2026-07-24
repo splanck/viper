@@ -1,0 +1,432 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/probes/run_debug_view_probe.zia
+// Purpose: Exercise the state-aware Run and Debug activity-sidebar surface.
+// Key invariants:
+//   - Session controls advertise only actions valid for the current state.
+//   - Filtered breakpoint rows retain source path and line identity.
+//   - Command publication/removal preserves store identity and persistence.
+//   - Real pointer actions and scrollable compact layouts work at high UI zoom.
+// Ownership/Lifetime: The probe owns and destroys one AppShell and view.
+// Links: zannastudio/src/ui/run_debug_view.zia,
+//        zannastudio/src/ui/run_debug_support.zia,
+//        zannastudio/src/ui/activity_bar.zia,
+//        zannastudio/src/commands/debug_commands.zia
+//
+//===----------------------------------------------------------------------===//
+
+module run_debug_view_probe;
+
+// ============================================================================
+// MODULE: run_debug_view_probe
+// PURPOSE: Regress the Run/Debug activity surface and command boundary.
+//
+// WHERE-THIS-FITS: Display probe registered as zia_zannastudio_run_debug_view.
+//
+// TEACHING-NOTE: Use real pointer input for controls and explicit frame
+//          advancement because WasClicked is intentionally frame-latched.
+// ============================================================================
+
+bind "../ui/activity_bar";
+bind "../ui/app_shell";
+bind "../ui/run_debug_support";
+bind "../ui/run_debug_view";
+bind "../build/breakpoints";
+bind "../build/build_system";
+bind "../build/debug_session";
+bind "../commands/debug_commands";
+bind "../core/document";
+bind "../core/document_manager";
+bind "../services/file_utils";
+
+bind Convert = Zanna.Core.Convert;
+bind GUI = Zanna.GUI;
+bind Path = Zanna.IO.Path;
+bind Terminal = Zanna.Terminal;
+bind TempFile = Zanna.IO.TempFile;
+
+/// @brief Return whether one rendered child stays inside its parent bounds.
+func ContainsWidget(parent: GUI.Widget,
+                    child: GUI.Widget) -> Boolean {
+    if parent == null or child == null { return false; }
+    return child.GetScreenX() >= parent.GetScreenX() - 1.0
+        and child.GetScreenY() >= parent.GetScreenY() - 1.0
+        and child.GetScreenX() + child.GetScreenWidth()
+            <= parent.GetScreenX() + parent.GetScreenWidth() + 1.0
+        and child.GetScreenY() + child.GetScreenHeight()
+            <= parent.GetScreenY() + parent.GetScreenHeight() + 1.0;
+}
+
+/// @brief Format one rendered widget rectangle for failure diagnostics.
+func WidgetBounds(widget: GUI.Widget) -> String {
+    if widget == null { return "<null>"; }
+    return "(" + widget.GetScreenX() + "," + widget.GetScreenY()
+        + " " + widget.GetScreenWidth() + "x"
+        + widget.GetScreenHeight() + ")";
+}
+
+/// @brief Convert public logical widget geometry to harness framebuffer pixels.
+func HarnessCoordinate(shell: app_shell.AppShell,
+                       logical: Number) -> Integer {
+    var scale = shell.app.GetEffectiveScale();
+    if scale <= 0.0 { scale = 1.0; }
+    return Convert.NumToInt(logical * scale);
+}
+
+/// @brief Dispatch one real pointer click to a rendered widget center.
+func Click(shell: app_shell.AppShell,
+           harness: GUI.TestHarness,
+           widget: GUI.Widget) {
+    var x = HarnessCoordinate(shell,
+        widget.GetScreenX() + widget.GetScreenWidth() / 2.0);
+    var y = HarnessCoordinate(shell,
+        widget.GetScreenY() + widget.GetScreenHeight() / 2.0);
+    harness.SendMouse("move", x, y, 0);
+    harness.SendMouse("down", x, y, 0);
+    harness.SendMouse("up", x, y, 0);
+    harness.DispatchPending();
+}
+
+func Fail(shell: app_shell.AppShell,
+          harness: GUI.TestHarness,
+          reason: String) {
+    if harness != null { harness.UnbindApp(); }
+    if shell != null { shell.Destroy(); }
+    Terminal.Say("RESULT: fail " + reason);
+}
+
+func main() {
+    if run_debug_support.RunDebugUsesCompactControls(360.0) == false
+       or run_debug_support.RunDebugUsesCompactControls(360.01) {
+        Terminal.Say("RESULT: fail Run and Debug compact-layout policy");
+        return;
+    }
+
+    var shell = new app_shell.AppShell();
+    shell.Build("Zanna Studio Run and Debug Probe", 960, 640);
+    var view = new run_debug_view.RunDebugView();
+    view.Setup(shell.workbench.runDebugViewHost);
+    var activity = new activity_bar.ActivityBar();
+    activity.Setup(shell.workbench.explorerView,
+                   shell.workbench.scmViewHost,
+                   shell.workbench.runDebugViewHost,
+                   shell.workbench.abExplorer,
+                   shell.workbench.abSourceControl,
+                   shell.workbench.abRunDebug);
+    activity.ShowView(activity_bar.VIEW_RUN_DEBUG);
+    shell.SetSidebarVisible(true);
+    shell.Poll();
+    shell.Render();
+
+    var harness = GUI.TestHarness.New();
+    if harness.BindApp(shell.app) == false {
+        Fail(shell, harness, "automation app binding");
+        return;
+    }
+
+    if activity.activeView != activity_bar.VIEW_RUN_DEBUG
+       or shell.workbench.runDebugViewHost.IsVisible() == false
+       or shell.workbench.explorerView.IsVisible()
+       or shell.workbench.scmViewHost.IsVisible()
+       or shell.workbench.abRunDebug.IsToggled() == false {
+        Fail(shell, harness, "Run and Debug activity view routing");
+        return;
+    }
+
+    // Idle state tells the truth about whether a saved debug target exists.
+    view.UpdateSession(false, false, "Idle",
+                       "Open or save a source file to start debugging",
+                       false, false, false);
+    if view.primaryActionLabel != "Start"
+       or view.primaryButton.IsEnabled()
+       or view.restartButton.IsEnabled()
+       or view.stopButton.IsEnabled()
+       or view.stepOverButton.IsEnabled() {
+        Fail(shell, harness, "targetless idle action state");
+        return;
+    }
+    view.UpdateSession(true, false, "Idle", "Ready to debug main.zia",
+                       false, false, false);
+    shell.Render();
+    Click(shell, harness, view.primaryButton);
+    if view.Pump() != run_debug_support.RUN_DEBUG_ACTION_START {
+        Fail(shell, harness, "real pointer Start action");
+        return;
+    }
+    shell.Poll();
+
+    // Running offers Pause/Restart/Stop; paused offers Continue and steps.
+    view.UpdateSession(true, false, "Running", "Running main.zia",
+                       true, false, false);
+    shell.Render();
+    if view.primaryActionLabel != "Pause"
+       or view.primaryButton.IsEnabled() == false
+       or view.restartButton.IsEnabled() == false
+       or view.stopButton.IsEnabled() == false
+       or view.stepOverButton.IsEnabled() {
+        Fail(shell, harness, "running action state");
+        return;
+    }
+    Click(shell, harness, view.primaryButton);
+    if view.Pump() != run_debug_support.RUN_DEBUG_ACTION_PAUSE {
+        Fail(shell, harness, "real pointer Pause action");
+        return;
+    }
+    shell.Poll();
+
+    view.UpdateSession(true, false, "Paused",
+                       "Paused at jobs.zia:27 · breakpoint",
+                       true, true, false);
+    shell.Render();
+    if view.primaryActionLabel != "Continue"
+       or view.primaryButton.IsEnabled() == false
+       or view.stepOverButton.IsEnabled() == false
+       or view.stepInButton.IsEnabled() == false
+       or view.stepOutButton.IsEnabled() == false {
+        Fail(shell, harness, "paused action state");
+        return;
+    }
+    Click(shell, harness, view.stepOverButton);
+    if view.Pump() != run_debug_support.RUN_DEBUG_ACTION_STEP_OVER {
+        Fail(shell, harness, "real pointer Step Over action");
+        return;
+    }
+    shell.Poll();
+
+    // Breakpoint filtering keeps durable path/line identity and complete counts.
+    view.BeginBreakpoints(7);
+    view.AddBreakpoint(0, "/workspace/main.zia", 12, "", "");
+    view.AddBreakpoint(1, "/workspace/jobs.zia", 27, "attempts > 2", "");
+    view.AddBreakpoint(2, "/workspace/logging.zia", 44, "", "value={value}");
+    view.EndBreakpoints();
+    if view.breakpointRecords.count() != 3
+       or view.visibleBreakpointCount != 3
+       or view.breakpointList.Count != 3 {
+        Fail(shell, harness, "breakpoint source publication");
+        return;
+    }
+
+    view.breakpointFilterInput.Focus();
+    view.breakpointFilterInput.SetText("jobs");
+    view.Pump();
+    view.breakpointList.SelectIndex(0);
+    var selectionAction = view.Pump();
+    if view.visibleBreakpointCount != 1
+       or view.breakpointList.Count != 1
+       or view.SelectedBreakpointStoreIndex() != 1
+       or view.SelectedBreakpointPath() != "/workspace/jobs.zia"
+       or view.SelectedBreakpointLine() != 27
+       or selectionAction
+          != run_debug_support.RUN_DEBUG_ACTION_OPEN_BREAKPOINT {
+        var selectedData = "";
+        if view.breakpointList.Selected != null {
+            selectedData =
+                GUI.ListBox.ItemGetData(view.breakpointList.Selected);
+        }
+        Fail(shell, harness,
+             "filtered breakpoint identity"
+             + " visible=" + view.visibleBreakpointCount
+             + " rows=" + view.breakpointList.Count
+             + " selected=" + view.breakpointList.SelectedIndex
+             + " data=" + selectedData
+             + " store=" + view.SelectedBreakpointStoreIndex()
+             + " path=" + view.SelectedBreakpointPath()
+             + " line=" + view.SelectedBreakpointLine()
+             + " action=" + selectionAction);
+        return;
+    }
+
+    shell.Render();
+    view.Pump();
+    shell.Render();
+    view.scrollView.SetScroll(0.0, 10000.0);
+    shell.Render();
+    Click(shell, harness, view.removeBreakpointButton);
+    var removeAction = view.Pump();
+    if removeAction != run_debug_support.RUN_DEBUG_ACTION_REMOVE_BREAKPOINT
+       or view.SelectedBreakpointPath() != "/workspace/jobs.zia"
+       or view.SelectedBreakpointLine() != 27 {
+        Fail(shell, harness,
+             "selected breakpoint remove action"
+             + " action=" + removeAction
+             + " scroll-y=" + view.scrollView.GetScrollY()
+             + " host=" + WidgetBounds(view.host)
+             + " remove=" + WidgetBounds(view.removeBreakpointButton)
+             + " path=" + view.SelectedBreakpointPath()
+             + " line=" + view.SelectedBreakpointLine());
+        return;
+    }
+    shell.Poll();
+    view.scrollView.SetScroll(0.0, 0.0);
+    shell.Render();
+    Click(shell, harness, view.breakpointFilterClearButton);
+    view.Pump();
+    if view.breakpointFilterText != ""
+       or view.visibleBreakpointCount != 3
+       or view.breakpointList.Count != 3
+       or view.breakpointFilterInput.IsFocused() == false {
+        Fail(shell, harness, "pointer breakpoint filter reset");
+        return;
+    }
+    shell.Poll();
+
+    // Command-owned state labels cover every stable/transitional session state.
+    var stateSession = new debug_session.DebugSession();
+    if debug_commands.DebugPanelStateLabel(stateSession) != "Idle" {
+        Fail(shell, harness, "idle command state");
+        return;
+    }
+    stateSession.hasSession = true;
+    if debug_commands.DebugPanelStateLabel(stateSession) != "Running" {
+        Fail(shell, harness, "running command state");
+        return;
+    }
+    stateSession.stopped = true;
+    if debug_commands.DebugPanelStateLabel(stateSession) != "Paused" {
+        Fail(shell, harness, "paused command state");
+        return;
+    }
+    stateSession.stopped = false;
+    stateSession.lastType = "pausing";
+    if debug_commands.DebugPanelStateLabel(stateSession) != "Pausing" {
+        Fail(shell, harness, "pausing command state");
+        return;
+    }
+    stateSession.restartPending = true;
+    stateSession.terminateRequested = true;
+    stateSession.lastType = "terminating";
+    if debug_commands.DebugPanelStateLabel(stateSession) != "Restarting" {
+        Fail(shell, harness, "restarting command state");
+        return;
+    }
+    stateSession.restartPending = false;
+    if debug_commands.DebugPanelStateLabel(stateSession) != "Stopping" {
+        Fail(shell, harness, "stopping command state");
+        return;
+    }
+    stateSession.terminateRequested = false;
+    stateSession.terminated = true;
+    if debug_commands.DebugPanelStateLabel(stateSession) != "Terminated" {
+        Fail(shell, harness, "terminated command state");
+        return;
+    }
+
+    // The command boundary publishes the real store version and removes the
+    // exact filtered record without ever falling back to toggle-to-add.
+    var settingsDir =
+        TempFile.CreateDirWithPrefix("zannastudio_run_debug_view_");
+    var settingsPath = Path.Join(settingsDir, "studio.ini");
+    var commandStore = new breakpoints.BreakpointStore();
+    commandStore.Setup(settingsPath);
+    commandStore.Toggle("/workspace/main.zia", 12);
+    commandStore.Toggle("/workspace/jobs.zia", 27);
+    commandStore.SetCondition(
+        "/workspace/jobs.zia", 27, "attempts > 2");
+    commandStore.Toggle("/workspace/logging.zia", 44);
+    commandStore.SetLogMessage(
+        "/workspace/logging.zia", 44, "value={value}");
+
+    var commandDocs = new document_manager.DocumentManager();
+    var commandDoc = new document.Document();
+    commandDoc.filePath = "/workspace/main.zia";
+    commandDoc.fileName = "main.zia";
+    commandDoc.language = "zia";
+    commandDoc.kind = file_utils.DOC_KIND_CODE;
+    commandDoc.isNew = false;
+    commandDocs.documents.add(commandDoc);
+    commandDocs.activeIndex = 0;
+    var commandBuild = new build_system.BuildSystem();
+    var commandSession = new debug_session.DebugSession();
+    debug_commands.SyncRunDebugView(
+        view, commandDocs, commandBuild, commandStore, commandSession);
+    if view.breakpointModelVersion != commandStore.version
+       or view.breakpointRecords.count() != 3
+       or view.primaryActionLabel != "Start"
+       or view.primaryButton.IsEnabled() == false {
+        Fail(shell, harness, "command snapshot publication");
+        return;
+    }
+
+    view.breakpointFilterInput.SetText("jobs");
+    view.Pump();
+    view.breakpointList.SelectIndex(0);
+    view.Pump();
+    var removePath = view.SelectedBreakpointPath();
+    var removeLine = view.SelectedBreakpointLine();
+    debug_commands.handleRemoveBreakpoint(
+        shell, commandDocs, null, commandStore, null,
+        removePath, removeLine);
+    debug_commands.SyncRunDebugView(
+        view, commandDocs, commandBuild, commandStore, commandSession);
+    var reloadedStore = new breakpoints.BreakpointStore();
+    reloadedStore.Setup(settingsPath);
+    if removePath != "/workspace/jobs.zia"
+       or removeLine != 27
+       or commandStore.Has(removePath, removeLine)
+       or commandStore.Count() != 2
+       or view.breakpointRecords.count() != 2
+       or view.breakpointModelVersion != commandStore.version
+       or reloadedStore.Load() == false
+       or reloadedStore.Has(removePath, removeLine)
+       or reloadedStore.Count() != 2 {
+        Fail(shell, harness, "durable filtered breakpoint removal");
+        return;
+    }
+    view.breakpointFilterInput.SetText("");
+    view.Pump();
+
+    // Transitional states never advertise commands that the adapter rejects.
+    view.UpdateSession(true, false, "Stopping", "Stopping debugger...",
+                       true, false, true);
+    if view.primaryButton.IsEnabled()
+       or view.restartButton.IsEnabled()
+       or view.stopButton.IsEnabled()
+       or view.stepOverButton.IsEnabled() {
+        Fail(shell, harness, "stopping state advertised actions");
+        return;
+    }
+
+    // The sidebar uses wrapped controls and lets users reach both ends of a
+    // narrow, high-zoom surface through a real scroll viewport.
+    shell.app.SetUiScale(1.5);
+    shell.app.SetWindowSize(820, 600);
+    shell.Poll();
+    view.Pump();
+    shell.Render();
+    view.Pump();
+    shell.Render();
+    if view.IsCompactControls() == false
+       or ContainsWidget(view.host, view.primaryButton) == false
+       or ContainsWidget(view.host, view.stopButton) == false
+       or ContainsWidget(view.host, view.stepOutButton) == false
+       or ContainsWidget(view.host, view.consoleButton) == false {
+        Fail(shell, harness,
+             "Run and Debug top controls overflowed compact sidebar"
+             + " host=" + WidgetBounds(view.host)
+             + " primary=" + WidgetBounds(view.primaryButton)
+             + " stop=" + WidgetBounds(view.stopButton)
+             + " step-out=" + WidgetBounds(view.stepOutButton)
+             + " console=" + WidgetBounds(view.consoleButton));
+        return;
+    }
+    view.scrollView.SetScroll(0.0, 10000.0);
+    shell.Render();
+    if view.scrollView.GetScrollY() <= 0.0
+       or ContainsWidget(view.host, view.logpointButton) == false {
+        Fail(shell, harness,
+             "Run and Debug bottom controls were not scroll-reachable"
+             + " host=" + WidgetBounds(view.host)
+             + " scroll-y=" + view.scrollView.GetScrollY()
+             + " logpoint=" + WidgetBounds(view.logpointButton));
+        return;
+    }
+
+    harness.UnbindApp();
+    shell.Destroy();
+    Terminal.Say("RESULT: ok");
+}

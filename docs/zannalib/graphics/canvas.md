@@ -110,11 +110,11 @@ Colors are specified as 32-bit integers in `0x00RRGGBB` format or with `Zanna.Gr
 - White: `0x00FFFFFF`
 - Black: `0x00000000`
 
-Use `Zanna.Graphics.Color.RGB()` or `Zanna.Graphics.Color.RGBA()` to create colors from components. RGB-only drawing calls use the RGB channels from either form. Alpha-aware calls such as `BoxAlpha`, `DiscAlpha`, `EllipseAlpha`, and `BlitAlpha` use straight-alpha source-over compositing; the explicit alpha parameter controls shape opacity. `FloodFill` compares and writes alpha as part of the filled region when given a tagged RGBA color. `Color.RGBA()` values carry an internal explicit-alpha tag; use `Color.Get*` or `Color.ToHex()` instead of raw integer equality for RGBA colors. `Color.GetA(Color.RGB(...))` returns `0` because plain RGB stores no alpha byte; drawing helpers still treat plain RGB colors as opaque.
+Use `Zanna.Graphics.Color.RGB()` or `Zanna.Graphics.Color.RGBA()` to create colors from components. RGB-only drawing calls use the RGB channels from either form. Alpha-aware calls such as `BoxAlpha`, `DiscAlpha`, `EllipseAlpha`, and `BlitAlpha` use straight-alpha source-over compositing; the explicit alpha parameter controls shape opacity. `FloodFill` compares and writes alpha as part of the filled region when given a tagged RGBA color. `Color.RGBA()` values carry an internal explicit-alpha tag; use `Color.Get*` or `Color.ToHex()` instead of raw integer equality for RGBA colors. `Color.GetAlpha(Color.RGB(...))` returns `0` because plain RGB stores no alpha byte; drawing helpers still treat plain RGB colors as opaque.
 
 ### Zia Example
 
-```rust
+```zia
 module GameDemo;
 
 bind Zanna.Graphics.Canvas as Canvas;
@@ -413,7 +413,7 @@ both steps into a single call. `SetMaxDeltaTime()` clamps the `DeltaTime`
 and `DeltaTimeSec` properties to prevent
 physics explosions after lag spikes or window drags.
 
-```rust
+```zia
 module GameLoop;
 
 bind Zanna.Graphics.Canvas as Canvas;
@@ -463,13 +463,13 @@ Color utility functions for graphics operations.
 | `Desaturate(color, amount)` | `Integer(Integer, Integer)`               | Decreases saturation of a color (0-100)                                         |
 | `FromHex(hex)`           | `Integer(String)`                             | Parses `#RRGGBB` or `#RRGGBBAA`; invalid input returns `0`                      |
 | `FromHsl(h, s, l)`       | `Integer(Integer, Integer, Integer)`          | Creates a color from hue, saturation (0-100), lightness (0-100); hue wraps modulo 360 |
-| `GetA(color)`            | `Integer(Integer)`                            | Extracts the stored alpha byte (plain `Color.RGB` returns 0)                    |
-| `GetB(color)`            | `Integer(Integer)`                            | Extracts blue component (0-255) from a packed color                             |
-| `GetG(color)`            | `Integer(Integer)`                            | Extracts green component (0-255) from a packed color                            |
-| `GetH(color)`            | `Integer(Integer)`                            | Extracts hue (0-360) from a packed color                                        |
-| `GetL(color)`            | `Integer(Integer)`                            | Extracts lightness (0-100) from a packed color                                  |
-| `GetR(color)`            | `Integer(Integer)`                            | Extracts red component (0-255) from a packed color                              |
-| `GetS(color)`            | `Integer(Integer)`                            | Extracts saturation (0-100) from a packed color                                 |
+| `GetAlpha(color)`            | `Integer(Integer)`                            | Extracts the stored alpha byte (plain `Color.RGB` returns 0)                    |
+| `GetBlue(color)`            | `Integer(Integer)`                            | Extracts blue component (0-255) from a packed color                             |
+| `GetGreen(color)`            | `Integer(Integer)`                            | Extracts green component (0-255) from a packed color                            |
+| `GetHue(color)`            | `Integer(Integer)`                            | Extracts hue (0-360) from a packed color                                        |
+| `GetLightness(color)`            | `Integer(Integer)`                            | Extracts lightness (0-100) from a packed color                                  |
+| `GetRed(color)`            | `Integer(Integer)`                            | Extracts red component (0-255) from a packed color                              |
+| `GetSaturation(color)`            | `Integer(Integer)`                            | Extracts saturation (0-100) from a packed color                                 |
 | `Grayscale(color)`       | `Integer(Integer)`                            | Converts a color to grayscale                                                   |
 | `Invert(color)`          | `Integer(Integer)`                            | Inverts a color (255 minus each channel)                                        |
 | `Lerp(c1, c2, t)`        | `Integer(Integer, Integer, Integer)`          | Linearly interpolates between two colors (t: 0-100, where 0=c1, 100=c2)        |
@@ -485,7 +485,7 @@ fully opaque when interpolated with an alpha-tagged color.
 
 ### Zia Example
 
-```rust
+```zia
 module ColorDemo;
 
 bind Zanna.Terminal;
@@ -504,8 +504,8 @@ func start() {
     Say("Semi-transparent: " + Fmt.Int(semi));
 
     // Extract components
-    Say("R: " + Fmt.Int(Color.GetR(red)));
-    Say("H: " + Fmt.Int(Color.GetH(red)));
+    Say("R: " + Fmt.Int(Color.GetRed(red)));
+    Say("H: " + Fmt.Int(Color.GetHue(red)));
 
     // Color manipulation
     var bright = Color.Brighten(blue, 50);
@@ -539,8 +539,8 @@ DIM semiTransparent AS INTEGER
 semiTransparent = Zanna.Graphics.Color.RGBA(255, 0, 0, 128)  ' 50% transparent red
 
 ' Extract individual components
-DIM r AS INTEGER = Zanna.Graphics.Color.GetR(purple)   ' 128
-DIM g AS INTEGER = Zanna.Graphics.Color.GetG(purple)   ' 0
+DIM r AS INTEGER = Zanna.Graphics.Color.GetRed(purple)   ' 128
+DIM g AS INTEGER = Zanna.Graphics.Color.GetGreen(purple)   ' 0
 
 ' Create from HSL
 DIM orange AS INTEGER
@@ -605,7 +605,7 @@ in one call are skipped and do not count as drawn.
 
 ### Parallax Example
 
-```rust
+```zia
 module ParallaxDemo;
 
 bind Zanna.Graphics.Canvas as Canvas;

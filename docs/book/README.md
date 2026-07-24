@@ -101,7 +101,7 @@ Each chapter builds on the last, and the focus is on *why* things work the way t
 Zanna supports two languages that both compile to the same underlying system. This book emphasizes Zia but shows both:
 
 **Zia** — Modern, clean, C-like syntax. Our recommended choice for new projects.
-```rust
+```zia
 func greet(name: String) {
     Zanna.Terminal.Say("Hello, " + name + "!");
 }

@@ -26,7 +26,8 @@ registered through `src/il/runtime/runtime.def`. Important runtime families are:
 - `Zanna.Workspace.FileIndex` for project tree/search enumeration.
 - `Zanna.Workspace.Edit` for transactional text replacement.
 - `Zanna.Zia.*` and `Zanna.Basic.*` for language services.
-- `Zanna.Game2D.SceneDocument` for scene data loading/saving tests and future editor work.
+- `Zanna.Game2D.SceneDocument` and `Zanna.Graphics3D.SceneGraph` for the
+  built-in visual scene document models.
 
 ## Source Layout
 
@@ -70,6 +71,8 @@ The larger feature areas are intentionally split into small teaching modules:
 - `commands/zia_workspace_commands.zia` owns Zia definition, references, call
   hierarchy, and rename publication; project-index queries run on its owned
   latest-wins worker instead of menu or frame callbacks.
+- `ui/notification_policy.zia` owns transient-popup eligibility so background
+  results with durable panels do not interrupt later work.
 - `ui/tool_panel_model.zia` names bottom-panel ids and tab indexes.
 - `ui/output_cache.zia` owns pure build-output cache and wrapping policy.
 - `editor/completion_items.zia` defines typed completion candidates while
@@ -147,7 +150,8 @@ Document kinds:
 | --- | --- | --- |
 | Code | `.zia`, `.bas`, `.vb` | Full text editor; language-specific services. |
 | Text | `.txt`, `.md`, `.json`, `.il`, unknown | Plain text editing or preview. |
-| Scene | `.scene`, `.level` | Recognized as scene docs but opened as text. |
+| 2D scene | `.scene`, `.level` | Built-in hierarchy/viewport/properties authoring surface with per-document history. |
+| 3D scene | `.vscn` | Built-in hierarchy/viewport/transform/material authoring surface with per-document history. |
 | Binary unsupported | common image extensions | Read-only preview placeholder. |
 
 ### Projects
@@ -250,6 +254,125 @@ Controllers under `editor/` own focused features:
 - `scheduler.zia`: priority model for editor background work.
 - `perf_monitor.zia`: optional frame/controller/editor counters.
 
+### Visual Scene Documents
+
+`ui/scene_editor_2d.zia` and `ui/scene_editor_3d.zia` are document controllers,
+not alternate persistence systems. They parse the active visual document into
+a bounded runtime scene model and immediately serialize every accepted
+transaction back into `Document.content`. DocumentManager therefore remains
+the sole owner of dirty state, save paths, session tabs, and recovery.
+
+Scene workspace state lives on `core/document.zia` records. Camera/canvas
+position, the process-local selection set, inspector layout, 3D transform mode,
+and snap preference follow their scene tab; `core/session.zia` persists only
+bounded scalar view state, including the primary selected row. Undo/redo
+snapshots remain process-local and are valid only while their recorded
+canonical content still matches the document.
+
+`ui/scene_selection.zia` is the stable retained-row selection boundary shared by
+both scene controllers. Each hierarchy row stores its current bounded model
+index in ListBox item data. The helper consumes the byte-exact
+`GetSelectedData()` sequence defined by ADR 0156, discards invalid/duplicate
+indices, and preserves an explicit primary row. Display labels never determine
+which scene objects a batch action mutates. Group transform, duplicate, and
+delete operations serialize once, roll back atomically on failure, and create
+one history entry.
+
+`ui/scene_layout_2d.zia` is the stateless precision-layout boundary. It defines
+the supported align/distribute operations, minimum selection sizes, stable
+coordinate ordering, and deterministic rounded distribution targets.
+`SceneEditor2D` retains keyboard-focus ownership, model mutation, canonical
+no-op detection, rollback, and the single history commit. Arrow nudging is
+accepted only while the Select surface owns focus, so hierarchy and inspector
+controls retain their native keys.
+
+`ui/scene_clipboard.zia` is the document-independent scene interchange
+boundary. It writes an explicit version, scene kind, primary identity, bounded
+selection identities, and byte-exact canonical source content into the shared
+text clipboard. Controllers reconstruct only the selected 2D objects or
+top-level 3D subtrees through typed runtime APIs. The helper never infers scene
+data from arbitrary text; wrong-kind and structurally invalid envelopes cannot
+reach document mutation.
+
+`ui/scene_asset_browser.zia` is the shared non-modal asset-discovery boundary.
+It borrows `ProjectManager`'s cooperative multi-root file cache, incrementally
+filters supported extensions and text, retains absolute row identity, realizes
+at most 512 rows, and decodes at most one bounded common-image preview. It
+returns selection intent only; scene controllers still validate and commit the
+chosen asset. The same module derives a portable saved-scene-relative spelling
+for external 2D references. Native pickers remain controller-owned for assets
+outside the workspace.
+
+`ui/scene_tileset_2d.zia` is the 2D image-preview boundary. It resolves relative
+references beside a saved scene, safely decodes PNG/JPEG/BMP/GIF sources under
+per-source, per-image, aggregate-scene, and scaled-cache limits, and renders
+atlas frames for both the palette and scene canvas. Cached opaque frames use a
+fast copy; cached translucent frames composite source-over so upper layers
+cannot erase lower-layer artwork. A library revision and selection-aware
+palette cache prevent unrelated inspector refreshes from rebuilding hundreds of
+thumbnails. A rotating metadata poll stats at most one referenced image per
+eligible interval; detected changes rebuild disposable previews without
+touching canonical content or history. Missing, malformed, over-budget, and
+out-of-range assets are
+ordinary preview states with deterministic fallback rendering; they never
+rewrite scene JSON.
+
+`ui/scene_tileset_inspector_2d.zia` owns only the palette widgets, inline asset
+status, and pointer/button intent. It cannot mutate a `Document` or
+`SceneDocument`. `SceneEditor2D` retains layer selection, native image
+selection, project-browser intent, asset assignment/clearing, automatic and
+explicit external-image reload, and canonical history ownership. The JSON
+stores only the authored external path, not decoded image pixels. Assignment
+and clearing produce at most one history transaction, while reload affects
+preview pixels only. The controller also owns typed multi-object property
+set/remove transactions: every selected row is verified before one canonical
+commit, and any rejection reloads the complete pre-edit snapshot.
+
+`ui/scene_transform_3d.zia` is the stateless transform-math boundary. It maps
+projected pointer motion into Move, Rotate, or Scale amounts and snaps the final
+axis target. `SceneEditor3D` owns pointer capture, live SceneNode mutation,
+Escape rollback, inspector synchronization, and the single serialization
+commit performed when a drag finishes. Transform-only edits do not rebuild the
+hierarchy, preserving node identity and selection while the viewport moves.
+The active transform button is also the viewport's keyboard-focus proxy:
+W/E/R mode switching is accepted only while one of those buttons owns native
+focus, so scene shortcuts cannot consume text intended for another workbench
+surface. Numeric multi-selection inspector edits are explicitly relative:
+position/rotation fields add local deltas and scale fields multiply each
+selected local scale before one rollback-safe commit. Duplicate Selection and
+Delete use the same hierarchy/viewport focus boundary; command-palette
+invocation remains explicit after the palette moves focus.
+
+`ui/scene_hierarchy_3d.zia` is the stateless existing-node reparent validation
+boundary. It rejects destinations inside a moved subtree, detects unchanged
+common parents, and exposes the containment checks needed by the Parent
+chooser. `SceneEditor3D` adds bounded depth validation, collapses descendants
+beneath selected roots, moves each root once, resolves the post-move preorder
+selection by node identity, and performs one canonical commit. Local transforms
+are intentionally unchanged; drag-to-reparent, sibling ordering, and
+preserve-world conversion remain outside this v1 control.
+
+`ui/scene_material_3d.zia` is the material value and file-decoding boundary. It
+clamps compact-inspector PBR values, normalizes scalar and editable-map slots,
+loads common images under a decoded-pixel ceiling or strictly validated KTX2
+assets, recognizes no-op drafts, and always clones an existing `Material3D`
+before applying visible fields or replacing a map. That copy-on-edit rule
+prevents one imported node from mutating siblings that share the same material
+identity while preserving maps, shading extensions, and custom parameters the
+inspector does not expose. Its bounded thumbnail helper reads the selected
+slot's canonical decoded `Material3D` pixels through ADR 0157, so previews
+follow load, history, paste, import, and VSCN round trips without retaining an
+editor-only source path.
+
+`ui/scene_material_inspector_3d.zia` owns only the material widgets, summaries,
+enablement rules, and one disposable 128-pixel map thumbnail; it never mutates
+a `SceneNode` or `Document`.
+`SceneEditor3D` retains selection, the 16 MB source-size boundary, native and
+project-browser selection, node assignment, and canonical history ownership.
+Scalar apply and remove plus map replace and clear each produce at most one
+history transaction; material-only refreshes avoid rebuilding hierarchy
+identity.
+
 ### Build, Run, And Debug
 
 `build/build_system.zia` starts argument-vector jobs through
@@ -262,10 +385,21 @@ project manifest. It never invokes a shell.
 
 `build/debug_session.zia` launches `zanna run --debug-adapter <file>` as an
 external process, sends newline JSON commands on stdin, consumes sentinel-tagged
-newline JSON debug events on stderr, and surfaces program stdout separately.
+newline JSON debug events on stderr, and owns program stdout/stderr separately
+from debugger control status. Program output can therefore be cleared without
+discarding the truthful running, stopped, or terminated state.
 Restart is an asynchronous state transition: the active adapter is asked to
 terminate, the frame pump waits until the process has actually exited, and only
 then is the replacement adapter launched with the current breakpoint set.
+
+`ui/run_debug_view.zia` deliberately has no build or debugger dependency. It
+owns the scrollable activity-sidebar widgets, copied breakpoint presentation
+records, filtering, and responsive control state. `commands/debug_commands.zia`
+publishes primitive session/breakpoint snapshots into that view and consumes
+integer action intent to invoke the existing debugger commands. Breakpoint rows
+carry their original `BreakpointStore` index and source path/line; filtering
+never makes visible row position authoritative. The store also exposes exact
+removal, so a stale action cannot toggle a missing breakpoint back on.
 
 ### Terminal
 
@@ -286,10 +420,12 @@ semantics are out of scope.
 sequences. It resolves `git`, captures stdout/stderr/exit code, parses
 porcelain v2 status, and keeps blocking compatibility wrappers for probes and
 older call sites. `scm_view.zia` pumps one active Git job at a time and
-maintains the Source Control UI state, including conflict markers for porcelain
-v2 unmerged rows. Active Git jobs expose cancellation, and stdout/stderr capture
-uses the process read-result API so excessive output is reported as truncated
-rather than trapping the workbench.
+maintains the Source Control UI state. Responsive wrapped controls derive their
+enabled states from the latest structured selection/index snapshot; porcelain
+v2 unmerged rows block commits and explain the edit-then-Stage recovery path.
+Active Git jobs expose cancellation, and stdout/stderr capture uses the process
+read-result API so excessive output is reported as truncated rather than
+trapping the workbench.
 
 `scm/scm_gutter_controller.zia` separately owns one coalescing read-only diff
 job for editor change bars. The main loop drains it every frame, rejects output
@@ -299,9 +435,10 @@ external diff and text-conversion drivers because passive editor decoration must
 never execute arbitrary configured helpers or wait for interactive input.
 
 The Source Control view is intentionally lightweight. Push and pull are
-long-running operations with basic progress/error text rather than rich
-credential, conflict, and recovery workflows. Treat it as useful local Git
-integration, not a complete Git client.
+long-running operations with streamed progress and heuristic in-app credential
+prompts. Basic content conflicts have a safe guided path, but merge/rebase
+orchestration, ours/theirs review, and advanced recovery are absent. Treat it as
+useful local Git integration, not a complete Git client.
 
 ## UI Ownership
 
@@ -309,6 +446,44 @@ integration, not a complete Git client.
 activity bar, editor area, bottom tool panels, preferences, overlays, status bar,
 debug panels, terminal, and Source Control view. Other subsystems receive
 references to widgets owned by `AppShell`.
+
+`WorkbenchShell` creates stable Explorer, Source Control, and Run and Debug
+activity hosts. `ActivityBar` selects one by persisted string id. `main.zia`
+owns the `RunDebugView` controller and pumps it through the debug-command
+snapshot/action boundary; the view can therefore remain open for a standalone
+saved source file without pretending that Explorer or Source Control has a
+workspace.
+
+`ui/primary_sidebar_dock.zia` owns the direct left/right placement boundary for
+those activity hosts. `WorkbenchShell` provides nested stable splitters and
+reparents only the live sidebar view tree plus its activity rail; the editor
+and tool-panel trees never move as part of sidebar docking. The controller mirrors one logical width
+between left and right splitter coordinates, retains collapsed state, restores
+safe sidebar focus, and accepts only its typed payload on stationary edge
+targets. User moves publish one-shot settings edges; startup/reset placement
+does not. `ui/workspace_dock.zia` supplies the shared portable location IDs,
+bounded target geometry, and distinct sidebar/tool-panel payload types.
+
+`ui/tool_panel_groups.zia` is the complete, GUI-independent membership/order
+model for Problems, Output, Search, References, Variables, Call Stack, Debug
+Console, and Terminal. `ToolPanelShell` keeps one stable content widget per tool,
+recreates only Tab presentations when a widget crosses groups, and mounts
+simultaneous group roots in WorkbenchShell's stable left/bottom/right hosts plus
+one `GUI.FloatingPanel` overlay. Whole-primary-group docking or floating merges
+occupied destinations without duplicating widgets. The floating overlay has
+bounded move/resize geometry, explicit target-card and narrow-edge docking, and
+viewport/UI-scale recovery. Per-group selection and collapse are independent;
+canonical membership, global stable-ID order, primary host, attached split
+sizes, and floating bounds are replayed from Settings. Focus restoration targets
+the exact terminal/search/filter control that owned keyboard input before
+reparenting.
+
+`ui/notification_policy.zia` is the shared eligibility boundary introduced for
+background-capable command controllers. Build and Search use it so immediate
+failures caused by the current command are eligible, while external state is
+eligible only when it affects the active resource. Their background Build,
+Search, and Replace completion stays in the status bar and its durable owning
+panel, regardless of which tool group is currently active.
 
 `AppShell` also owns one transient-surface token. Settings, About, explorer
 actions, breakpoint editing, command input, and the side-by-side diff claim that
@@ -323,15 +498,35 @@ below 620 effective UI units reclaim the minimap's width, while a later resize
 restores it automatically when the user preference remains enabled.
 
 `ui/command_input.zia` owns reusable non-modal single-value command input for
-Go To Line, Add Watch, output filtering, Workspace Symbols, Rename Symbol, and
-source-extract names. Command modules still perform validation and effects.
+Go To Line, output filtering, Workspace Symbols, Rename Symbol, source-extract,
+and New Project names. Command modules still perform validation and effects.
+
+`ui/workspace_edit_preview.zia` owns bounded non-modal review for multi-file
+rename results. The language controllers supply immutable edit/root payloads;
+`commands/workspace_edit_preview_commands.zia` revalidates and applies them only
+after an explicit Apply action, then restores editor focus.
 
 Current tool panels include Problems, Output, Search, References, Debug Console,
 Variables, Call Stack, Debug, and Terminal. Problems, Search, References, Debug
 Console, Variables, and Call Stack share a bounded stable-row model; Output has
-its own bounded row/raw-pane model. The concrete widgets are still
-ListBox/OutputPane surfaces, so this is not yet a fully virtualized dockable
-workbench, but rows now have a consistent data boundary and memory cap.
+its own bounded row/raw-pane model. Problems additionally retains durable
+diagnostic records outside its realized ListBox rows so text/severity filtering
+cannot discard location or quick-fix metadata. Problems and Output own wrapped,
+responsive in-panel toolbars with selection/content-aware enabled states.
+References retains grouped rows and location IDs outside its realized ListBox
+items; its responsive toolbar can filter, copy, and clear while incremental
+workspace-result publication continues against the durable model.
+Variables similarly wraps an inline watch expression field and
+Add/Remove/Refresh/Clear actions around its structured rows. Call Stack retains
+adapter frame indices independently of filtered ListBox rows and presents live
+session state when no frames should be visible. Debug Console retains separate
+program-output and debugger-status sources; filtering and wrapping rebuild only
+presentation rows, while Clear mutates the session-owned program output. Both
+own wrapped responsive toolbars with complete-source copy. The tools can form
+simultaneous left/bottom/right groups plus one in-window floating group, with
+persisted membership/order/bounds and independent collapse, but the concrete
+content widgets remain ListBox/OutputPane surfaces rather than fully virtualized
+views.
 
 Search also owns a cooperative replacement state machine. The Search button
 callback records an exact location-id generation; Replace All copies only that

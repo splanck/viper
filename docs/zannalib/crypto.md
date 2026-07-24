@@ -68,7 +68,7 @@ AES utilities: authenticated AES-128-GCM/AES-256-GCM for `Bytes` and password-en
 
 ### Zia Example
 
-```rust
+```zia
 module AesDemo;
 
 bind Zanna.Terminal;
@@ -207,7 +207,7 @@ Approved-mode key encryption produces:
 
 ### Zia Example
 
-```rust
+```zia
 module CipherDemo;
 
 bind Zanna.Terminal;
@@ -360,7 +360,7 @@ Modern hash and HMAC helpers for strings and binary data. Security-sensitive cod
 |----------------------|-------------------|------------------------------------------|
 | `SHA256(str)`        | `String(String)`  | Compute SHA256 hash of a string          |
 | `SHA256Bytes(bytes)` | `String(Bytes)`   | Compute SHA256 hash of a Bytes object    |
-| `Fast(str)`          | `Integer(String)` | Compute keyed SipHash-2-4 of a string    |
+| `NonCryptoFast(str)`          | `Integer(String)` | Compute keyed SipHash-2-4 of a string    |
 | `FastBytes(data)`    | `Integer(Bytes)`  | Compute keyed SipHash-2-4 of Bytes       |
 | `FastInt(value)`     | `Integer(Integer)`| Compute keyed SipHash-2-4 of an integer  |
 | `ConstantTimeEquals(a, b)` | `Boolean(String,String)` | Timing-safe equality for digests/MACs |
@@ -396,7 +396,7 @@ Approved mode disables them. The seed is initialized exactly once with full CSPR
 OS CSPRNG is unavailable the process aborts rather than falling back to a predictable key, and
 first-use seeding is data-race-free on every platform.
 
-```rust
+```zia
 module FastHashDemo;
 
 bind Zanna.Terminal;
@@ -404,23 +404,23 @@ bind Zanna.Crypto.Hash as Hash;
 bind Zanna.Text.Fmt as Fmt;
 
 func start() {
-    Say("Hash: " + Fmt.Int(Hash.Fast("hello")));
-    Say("Int hash: " + Fmt.Int(Hash.FastInt(42)));
+    Say("Hash: " + Fmt.Int(Hash.NonCryptoFast("hello")));
+    Say("Int hash: " + Fmt.Int(Hash.NonCryptoFastInt(42)));
 }
 ```
 
 ```basic
 ' Fast non-cryptographic hashing
-DIM h AS INTEGER = Zanna.Crypto.Hash.Fast("hello")
+DIM h AS INTEGER = Zanna.Crypto.Hash.NonCryptoFast("hello")
 PRINT "String hash:"; h
 
 ' Hash binary data
 DIM data AS OBJECT = Zanna.Collections.Bytes.FromStr("binary data")
-DIM h2 AS INTEGER = Zanna.Crypto.Hash.FastBytes(data)
+DIM h2 AS INTEGER = Zanna.Crypto.Hash.NonCryptoFastBytes(data)
 PRINT "Bytes hash:"; h2
 
 ' Hash an integer
-DIM h3 AS INTEGER = Zanna.Crypto.Hash.FastInt(42)
+DIM h3 AS INTEGER = Zanna.Crypto.Hash.NonCryptoFastInt(42)
 PRINT "Int hash:"; h3
 ```
 
@@ -433,7 +433,7 @@ PRINT "Int hash:"; h3
 
 ### Zia Example
 
-```rust
+```zia
 module HashDemo;
 
 bind Zanna.Terminal;
@@ -573,7 +573,7 @@ Key derivation functions for deriving cryptographic keys from passwords.
 
 ### Zia Example
 
-```rust
+```zia
 module KeyDeriveDemo;
 
 bind Zanna.Terminal;
@@ -721,7 +721,7 @@ domain without range overflow.
 
 ### Zia Example
 
-```rust
+```zia
 module CryptoRandDemo;
 
 bind Zanna.Terminal;
@@ -1098,7 +1098,7 @@ salt, and derived key.
 
 ### Zia Example
 
-```rust
+```zia
 module PasswordDemo;
 
 bind Zanna.Terminal;

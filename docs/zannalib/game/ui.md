@@ -472,7 +472,7 @@ and optional BitmapFont rendering.
 
 ## Usage Example
 
-```rust
+```zia
 bind Zanna.Graphics;
 bind Zanna.Game.UI;
 

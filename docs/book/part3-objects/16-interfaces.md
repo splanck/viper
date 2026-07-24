@@ -32,7 +32,7 @@ Think of it this way:
 
 Imagine you're building a game engine. You want to draw things on screen. Without interfaces, you might write code like this:
 
-```rust
+```zia
 func drawEverything(dogs: List[Dog], spaceships: List[Spaceship], trees: List[Tree]) {
     for dog in dogs {
         dog.draw();
@@ -63,7 +63,7 @@ A USB port is an interface. It defines a contract: "If you have the right shape 
 This is incredibly powerful. The same USB port can work with devices that didn't exist when the computer was manufactured. As long as new devices follow the USB contract, they work.
 
 In code terms:
-```rust
+```zia
 interface USBDevice {
     func connect();
     func transfer(data: bytes);
@@ -77,7 +77,7 @@ Any device that implements these three methods can work with any USB port.
 
 Electrical outlets are interfaces too. A standard wall outlet promises to provide 120V AC power (in the US). Your lamp doesn't know or care how the electricity is generated. It might come from a coal plant, nuclear reactor, solar farm, or wind turbine. The outlet is the interface. Anything that needs electricity can plug in, and anything that generates electricity can feed into the system.
 
-```rust
+```zia
 interface PowerSource {
     func getVoltage() -> Number;
     func draw(watts: Number) -> Boolean;
@@ -88,7 +88,7 @@ interface PowerSource {
 
 When companies hire, job postings list requirements: "Must know Python, SQL, and have 3 years of experience." This is an interface! The company doesn't care where you learned Python or which bootcamp you attended. They care that you *can do* certain things.
 
-```rust
+```zia
 interface SoftwareEngineer {
     func writeCode(language: String) -> String;
     func reviewCode(pr: PullRequest) -> List[Comment];
@@ -108,7 +108,7 @@ A restaurant menu is an interface between you and the kitchen. You don't need to
 
 An interface declares methods without implementing them:
 
-```rust
+```zia
 interface Drawable {
     func draw();
 }
@@ -125,7 +125,7 @@ There's no method body. No curly braces with code inside. Just the promise that 
 
 You can have multiple methods:
 
-```rust
+```zia
 interface Saveable {
     func save(filename: String) -> Boolean;
     func load(filename: String) -> Boolean;
@@ -135,7 +135,7 @@ interface Saveable {
 
 And methods can have any signature:
 
-```rust
+```zia
 interface Calculator {
     func add(a: Number, b: Number) -> Number;
     func subtract(a: Number, b: Number) -> Number;
@@ -157,7 +157,7 @@ To implement an interface, a class must:
 2. Provide working code for *every* method the interface declares
 3. Match the exact signatures (names, parameters, return types)
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 interface Drawable {
@@ -188,7 +188,7 @@ Both classes are Drawable. They each provide their own implementation of `draw()
 
 If you claim to implement an interface but forget a method, the compiler will complain:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 interface Drawable {
@@ -273,7 +273,7 @@ Three completely different implementations, one interface. Code that uses DataSt
 
 The power comes from treating different classes uniformly:
 
-```rust
+```zia
 func renderScene(items: List[Drawable]) {
     for item in items {
         item.draw();
@@ -295,7 +295,7 @@ The `renderScene` function doesn't know or care about the specific types. It jus
 
 You can use an interface as a type anywhere you'd use a class type:
 
-```rust
+```zia
 // As a variable type
 var drawable: Drawable = new Circle(3.0);
 
@@ -320,7 +320,7 @@ items.Push(new Rectangle(4.0, 3.0));
 
 When you use the interface type, you can only call methods that the interface defines. You can't call Circle-specific methods on a Drawable variable, even if the actual object is a Circle:
 
-```rust
+```zia
 var drawable: Drawable = new Circle(5.0);
 drawable.draw();  // OK: Drawable has draw()
 drawable.radius;  // ERROR: Drawable doesn't define radius!
@@ -336,7 +336,7 @@ This is a crucial distinction that often confuses beginners. Let's be crystal cl
 
 **Inheritance** creates an "is-a" relationship and shares implementation:
 
-```rust
+```zia
 class Dog extends Animal { ... }
 // A dog IS an animal, inherits animal's code
 ```
@@ -351,7 +351,7 @@ When you extend a class:
 
 **Interface** creates a "can-do" relationship and shares behavior contract:
 
-```rust
+```zia
 class Dog implements Drawable { ... }
 // A dog CAN BE drawn, must implement draw()
 ```
@@ -388,7 +388,7 @@ When you implement an interface:
 
 **Example decision:**
 
-```rust
+```zia
 // These ARE accounts. They share implementation. Use inheritance.
 class BankAccount { ... }
 class SavingsAccount extends BankAccount { ... }
@@ -420,7 +420,7 @@ You can't express this with single inheritance. A smartphone isn't "a type of ph
 
 ### Implementing Multiple Interfaces
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 interface Drawable {
@@ -457,7 +457,7 @@ class Button implements Drawable, Movable, Clickable {
 
 The Button is Drawable AND Movable AND Clickable. It can be used anywhere any of those interfaces is expected:
 
-```rust
+```zia
 func drawAll(items: List[Drawable]) { ... }
 func moveAll(items: List[Movable]) { ... }
 func handleClick(item: Clickable) { ... }
@@ -472,7 +472,7 @@ handleClick(btn);    // Works: Button is Clickable
 
 Different classes can implement different combinations:
 
-```rust
+```zia
 // A tree can be drawn but not moved or clicked
 class Tree implements Drawable {
     expose func draw() { ... }
@@ -499,7 +499,7 @@ Each class implements exactly what it needs. No more, no less.
 
 You can combine inheritance and interfaces. This is common and powerful.
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 class Enemy {
@@ -538,7 +538,7 @@ The Goblin:
 
 When combining, `extends` comes before `implements`:
 
-```rust
+```zia
 // Correct
 class Goblin extends Enemy implements Drawable, Attackable { ... }
 
@@ -548,7 +548,7 @@ class Goblin implements Drawable extends Enemy { ... }
 
 ### A Richer Example
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 class GameObject {
@@ -633,7 +633,7 @@ This is where interfaces truly shine. *Dependency injection* is a fancy term for
 
 Consider a UserService that needs to store user data:
 
-```rust
+```zia
 class UserService {
     expose func saveUser(user: User) {
         var db = MySQLDatabase();  // Hardcoded!
@@ -649,7 +649,7 @@ This is problematic:
 
 ### The Solution: Depend on Interfaces
 
-```rust
+```zia
 interface Database {
     func save(table: String, data: any);
     func load(table: String, id: Integer) -> any;
@@ -674,7 +674,7 @@ class UserService {
 
 Now you can use UserService with any database:
 
-```rust
+```zia
 // In production
 var mysqlDb = MySQLDatabase();
 var userService = UserService(mysqlDb);
@@ -703,7 +703,7 @@ The benefit? Your code becomes:
 
 ### A Practical Example
 
-```rust
+```zia
 interface Logger {
     func log(message: String);
     func error(message: String);
@@ -866,7 +866,7 @@ func testHandlesPaymentFailure() {
 
 Beyond testing, interfaces let you swap implementations for other reasons:
 
-```rust
+```zia
 // Development: fast local storage
 var store = InMemoryStore();
 
@@ -891,7 +891,7 @@ Designing good interfaces is a skill. Here are principles to guide you.
 Prefer small, focused interfaces over large ones. This is called the *Interface Segregation Principle*.
 
 **Bad: One massive interface**
-```rust
+```zia
 interface GameEntity {
     func draw();
     func move(dx: Number, dy: Number);
@@ -910,7 +910,7 @@ Problems:
 - Everyone implements everything, even what doesn't apply
 
 **Good: Small focused interfaces**
-```rust
+```zia
 interface Drawable {
     func draw();
 }
@@ -968,7 +968,7 @@ Or use nouns that describe a role:
 When designing an interface, think about the code that will *use* it, not the code that will *implement* it.
 
 **Bad: Designed around implementation details**
-```rust
+```zia
 interface UserRepository {
     func openConnection();
     func executeQuery(sql: String) -> ResultSet;
@@ -979,7 +979,7 @@ interface UserRepository {
 This interface leaks implementation details. What if the implementation isn't SQL-based?
 
 **Good: Designed around what clients need**
-```rust
+```zia
 interface UserRepository {
     func getUser(id: Integer) -> User;
     func saveUser(user: User);
@@ -999,7 +999,7 @@ Once an interface is published and used, changing it breaks all implementations.
 
 If you need to add capabilities, consider creating a new interface:
 
-```rust
+```zia
 // Original interface
 interface Drawable {
     func draw();
@@ -1022,7 +1022,7 @@ needs both drawing and animation.
 
 Interfaces are perfect for plugin systems where you don't know what implementations will exist:
 
-```rust
+```zia
 module PluginSystem;
 
 bind Zanna.Terminal;
@@ -1051,7 +1051,7 @@ class ReversePlugin implements Plugin {
     }
 
     expose func execute(input: String) -> String {
-        return Str.Flip(input);
+        return Str.Reverse(input);
     }
 }
 
@@ -1129,7 +1129,7 @@ This is the power of interfaces: *designing for extension without modification*.
 ## The Two Languages
 
 **Zia**
-```rust
+```zia
 bind Zanna.Terminal;
 
 interface Printable {
@@ -1164,7 +1164,7 @@ END CLASS
 
 The strategy pattern lets you swap algorithms at runtime:
 
-```rust
+```zia
 interface SortStrategy {
     func sort(items: List[Integer]) -> List[Integer];
 }
@@ -1209,7 +1209,7 @@ if data.Length < 10 {
 
 The observer pattern notifies interested parties when something happens:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 interface Observer {
@@ -1269,7 +1269,7 @@ subject.notify("User signed up");  // Both observers notified
 
 The repository pattern abstracts data access:
 
-```rust
+```zia
 interface UserRepository {
     func findById(id: Integer) -> User;
     func findByEmail(email: String) -> User;

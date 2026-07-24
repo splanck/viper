@@ -18,7 +18,7 @@ Functions are not merely a convenience. They are the fundamental building block 
 
 Before we define functions formally, let's experience the problem they solve. Imagine you're writing a program that needs to greet users at several different points:
 
-```rust
+```zia
 module MessyProgram;
 bind Zanna.Terminal;
 
@@ -53,7 +53,7 @@ This is **copy-paste programming**, and it is a trap. Every time you copy code, 
 
 Let's see an even worse example. Suppose you need to calculate the area of rectangles throughout your program:
 
-```rust
+```zia
 module MessierProgram;
 bind Zanna.Terminal;
 
@@ -73,7 +73,7 @@ func start() {
     // Calculate area for room 3
     var width3 = 20;
     var height3 = 10;
-    var area3 = width3 * heigth3;  // Oops! Typo: heigth3
+    var area3 = width3 * height3;  // Oops! Typo: height3
     Say("Room 3 area: " + area3);
 
     // Calculate area for room 4
@@ -154,7 +154,7 @@ When you write your own functions, think about them as black boxes you're creati
 
 Here's a simple function:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 func greet() {
@@ -174,7 +174,7 @@ This defines a function named `greet` that, when called, prints two lines.
 
 To use it:
 
-```rust
+```zia
 module Greeting;
 bind Zanna.Terminal;
 
@@ -209,7 +209,7 @@ Notice the syntax for calling a function: the function name followed by parenthe
 
 A function that always does the exact same thing is limited. Usually, we want to customize behavior. We do this by giving functions **parameters** --- placeholders for values that will be provided when the function is called.
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 func greet(name: String) {
@@ -240,7 +240,7 @@ These two terms are often confused, but they mean different things:
 
 Think of it this way: the **parameter** is the parking space, the **argument** is the car you park in it.
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 func greet(name: String) {    // 'name' is the PARAMETER (the parking space)
@@ -279,7 +279,7 @@ Each call gets its own copy of the parameters. They don't interfere with each ot
 
 You can have multiple parameters, separated by commas:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 func introduce(name: String, age: Integer) {
@@ -304,7 +304,7 @@ Bob is 25 years old.
 
 When you pass a value to a function, the function receives a **copy** of that value (for simple types like numbers and strings). Parameters themselves are immutable, so if you want to experiment with a changed value inside the function, copy the parameter into a local variable first. Changing that local copy does not affect the original:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 func tryToChange(x: Integer) {
@@ -331,7 +331,7 @@ The function received a copy of `42`. Changing `localX` doesn't change the origi
 
 Some functions compute a value and give it back to the caller. They *return* a result:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 func add(a: Integer, b: Integer) -> Integer {
@@ -358,7 +358,7 @@ When a function executes a `return` statement, two things happen:
 
 Think of it like a tennis ball machine. You press the button (call the function), the machine does some internal work (the function body), and a ball shoots out (the return value). The `return` statement is the moment the ball leaves the machine.
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 func add(a: Integer, b: Integer) -> Integer {
@@ -377,7 +377,7 @@ The `Say` line in `stopEarly` never executes because `return` exits the function
 
 When a function returns a value, that value appears at the place where the function was called. It's as if the function call gets replaced by the returned value:
 
-```rust
+```zia
 func add(a: Integer, b: Integer) -> Integer {
     return a + b;
 }
@@ -389,7 +389,7 @@ var sum = add(3, 4);
 
 The returned value can be used in any way a regular value can be used:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 func add(a: Integer, b: Integer) -> Integer {
@@ -445,7 +445,7 @@ This nested evaluation is powerful. Functions can use other functions, which can
 
 Some functions do things without computing a result --- like printing, saving files, or modifying state. These functions perform *actions* rather than *calculations*. They don't specify a return type:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 func sayGoodbye() {
@@ -467,7 +467,7 @@ func start() {
 
 You can use `return` without a value to exit early:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 func maybeGreet(shouldGreet: Boolean) {
@@ -491,7 +491,7 @@ Early returns are useful for handling special cases at the beginning of a functi
 
 Variables created inside a function are *local* --- they exist only within that function. This region where a variable is valid is called its **scope**.
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 func calculateArea(width: Integer, height: Integer) -> Integer {
@@ -512,7 +512,7 @@ The variable `area` exists only while `calculateArea` is running. When the funct
 
 Scope is a feature, not a limitation. It provides **isolation**:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 func calculateRectangleArea(w: Integer, h: Integer) -> Integer {
@@ -541,7 +541,7 @@ Without scope, every variable name in your entire program would have to be uniqu
 
 A **local variable** is declared inside a function and exists only within that function. A **global variable** is declared outside any function and exists throughout the program.
 
-```rust
+```zia
 module ScopeDemo;
 bind Zanna.Terminal;
 
@@ -570,7 +570,7 @@ func start() {
 
 Blocks (code inside `{ }`) create nested scopes:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 func scopeExample() {
@@ -593,7 +593,7 @@ Inner scopes can see variables from outer scopes, but outer scopes cannot see in
 
 Each function is completely separate. Variables in one function are invisible to all other functions:
 
-```rust
+```zia
 func functionA() {
     var secretA = 42;
 }
@@ -619,7 +619,7 @@ A stack is a data structure like a stack of plates: you add plates to the top, a
 
 Let's trace through this code:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 func multiply(a: Integer, b: Integer) -> Integer {
@@ -733,7 +733,7 @@ Understanding the call stack helps you trace through complex code and debug prob
 
 In many languages (including Zia), you can define multiple functions with the same name as long as they have different parameters. This is called **function overloading**.
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 func greet() {
@@ -769,7 +769,7 @@ Overloading is useful for:
 1. **Providing defaults**: A no-argument version uses defaults, a parameterized version lets users customize.
 
 2. **Handling different types**:
-```rust
+```zia
 bind Zanna.Terminal;
 
 func printValue(n: Integer) {
@@ -805,7 +805,7 @@ Factorial is the product of all positive integers up to n. For example, 5! (read
 
 Notice something interesting: 5! = 5 x 4! And 4! = 4 x 3! The factorial of n is n times the factorial of (n-1). This is a recursive definition --- factorial is defined in terms of itself.
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 func factorial(n: Integer) -> Integer {
@@ -869,7 +869,7 @@ Every recursive function needs:
 
 The Fibonacci sequence is: 0, 1, 1, 2, 3, 5, 8, 13, 21, ... Each number is the sum of the two before it.
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 func fib(n: Integer) -> Integer {
@@ -929,7 +929,7 @@ Let's see functions in action by taking messy code and improving it. Here's a di
 
 ### Before: Messy, Repetitive Code
 
-```rust
+```zia
 module MessyStats;
 bind Zanna.Terminal;
 
@@ -997,7 +997,7 @@ This code has serious problems:
 
 ### After: Clean, Organized Code
 
-```rust
+```zia
 module CleanStats;
 bind Zanna.Terminal;
 
@@ -1091,7 +1091,7 @@ Over decades, programmers have developed principles for writing good functions. 
 
 A function should have a single, clear purpose. If you find yourself using "and" to describe what a function does ("calculates the average AND prints it AND saves it to a file"), consider splitting it.
 
-```rust
+```zia
 bind Zanna.Terminal;
 bind Zanna.IO as IO;
 
@@ -1170,7 +1170,7 @@ Short functions are also easier to name. If you struggle to name a function, it 
 
 A **pure function** takes inputs and returns outputs without modifying anything else. Given the same inputs, it always returns the same output.
 
-```rust
+```zia
 // Pure function: no side effects
 func add(a: Integer, b: Integer) -> Integer {
     return a + b;
@@ -1184,7 +1184,7 @@ func formatName(first: String, last: String) -> String {
 
 A function with **side effects** changes something outside itself:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 var counter = 0;
@@ -1212,7 +1212,7 @@ When a function must have side effects, make them obvious from the name (`printR
 
 Within a single function, keep all the code at the same level of abstraction. Don't mix high-level operations with low-level details.
 
-```rust
+```zia
 struct Order {
     var customerEmail: String;
 }
@@ -1267,7 +1267,7 @@ The improved version reads like a story: validate, check for spam, calculate, ch
 
 Let's see all these principles applied to a complete, well-organized program:
 
-```rust
+```zia
 module GradeTracker;
 bind Zanna.Terminal;
 
@@ -1279,7 +1279,7 @@ bind Zanna.Terminal;
 // Returns -1 if user wants to finish
 func readGrade() -> Integer {
     Print("Grade: ");
-    return Zanna.Core.Convert.ToInt64(InputLine());
+    return Zanna.Core.Convert.ToInt64(TryReadLine().UnwrapOrStr(""));
 }
 
 // Check if a grade is within valid range
@@ -1448,7 +1448,7 @@ Each function does one thing. They're short. They have clear names. They build o
 ## The Two Languages
 
 **Zia**
-```rust
+```zia
 bind Zanna.Terminal;
 
 func add(a: Integer, b: Integer) -> Integer {
@@ -1488,7 +1488,7 @@ BASIC distinguishes between `FUNCTION` (returns a value) and `SUB` (no return va
 ## Common Mistakes
 
 **Forgetting to return:**
-```rust
+```zia
 func add(a: Integer, b: Integer) -> Integer {
     var sum = a + b;
     // Oops! Forgot 'return sum'
@@ -1496,7 +1496,7 @@ func add(a: Integer, b: Integer) -> Integer {
 ```
 
 **Wrong parameter order:**
-```rust
+```zia
 func greet(name: String, age: Integer) { ... }
 
 greet(25, "Alice");  // Error! Arguments are swapped
@@ -1504,7 +1504,7 @@ greet("Alice", 25);  // Correct
 ```
 
 **Infinite recursion:**
-```rust
+```zia
 func forever(n: Integer) -> Integer {
     return forever(n);  // Never stops! No base case, n never changes
 }
@@ -1515,7 +1515,7 @@ func badFactorial(n: Integer) -> Integer {
 ```
 
 **Trying to use local variables outside their function:**
-```rust
+```zia
 bind Zanna.Terminal;
 
 func compute() {
@@ -1529,7 +1529,7 @@ func start() {
 ```
 
 **Expecting parameters to modify original variables:**
-```rust
+```zia
 bind Zanna.Terminal;
 
 func double(x: Integer) {
@@ -1545,7 +1545,7 @@ func start() {
 ```
 
 **Creating functions that do too much:**
-```rust
+```zia
 // Bad: One function doing everything
 func doEverything(numbers: List[Integer]) {
     // 50 lines of reading input

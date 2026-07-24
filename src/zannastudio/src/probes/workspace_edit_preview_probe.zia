@@ -1,0 +1,291 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+// File: zannastudio/src/probes/workspace_edit_preview_probe.zia
+// Purpose: Exercise bounded, non-modal multi-file rename review and application.
+// Key invariants:
+//   - Opening/rendering a preview never changes source or disk state.
+//   - Real pointer Apply uses the retained edit/root payload exactly once.
+//   - Stale edits reopen inline and never partially mutate the document.
+//   - Escape cancels and releases transient focus ownership cleanly.
+// Ownership/Lifetime: The probe owns and destroys all UI, files, and models.
+// Links: zannastudio/src/ui/workspace_edit_preview.zia,
+//        zannastudio/src/commands/workspace_edit_preview_commands.zia
+//
+//===----------------------------------------------------------------------===//
+
+module workspace_edit_preview_probe;
+
+bind "../commands/file_commands";
+bind "../commands/workspace_edit_preview_commands";
+bind "../core/document_manager";
+bind "../editor/editor_engine";
+bind "../editor/editor_tabs";
+bind "../ui/app_shell";
+bind "../ui/workspace_edit_preview";
+
+bind Convert = Zanna.Core.Convert;
+bind File = Zanna.IO.File;
+bind GUI = Zanna.GUI;
+bind Map = Zanna.Collections.Map;
+bind Path = Zanna.IO.Path;
+bind Seq = Zanna.Collections.Seq;
+bind Str = Zanna.String;
+bind TempFile = Zanna.IO.TempFile;
+bind Terminal = Zanna.Terminal;
+
+/// @brief Build one single-line rename edit map.
+func RenameEdit(path: String,
+                line: Integer,
+                startColumn: Integer,
+                endColumn: Integer,
+                expected: String,
+                replacement: String) -> Any {
+    var edit = Map.New();
+    Map.SetStr(edit, "file", path);
+    Map.SetInt(edit, "startLine", line);
+    Map.SetInt(edit, "startColumn", startColumn);
+    Map.SetInt(edit, "endLine", line);
+    Map.SetInt(edit, "endColumn", endColumn);
+    Map.SetStr(edit, "expectedText", expected);
+    Map.SetStr(edit, "newText", replacement);
+    return edit;
+}
+
+/// @brief Return whether a child remains within its floating panel.
+func ContainsWidget(parent: GUI.Widget,
+                    child: GUI.Widget) -> Boolean {
+    if parent == null or child == null { return false; }
+    return child.GetScreenX() >= parent.GetScreenX() - 1.0
+        and child.GetScreenY() >= parent.GetScreenY() - 1.0
+        and child.GetScreenX() + child.GetScreenWidth()
+            <= parent.GetScreenX() + parent.GetScreenWidth() + 1.0
+        and child.GetScreenY() + child.GetScreenHeight()
+            <= parent.GetScreenY() + parent.GetScreenHeight() + 1.0;
+}
+
+/// @brief Return whether a floating preview and primary action fit the viewport.
+func OverlayContainsAction(app: GUI.App,
+                           panel: GUI.FloatingPanel,
+                           action: GUI.Button) -> Boolean {
+    if app == null or panel == null or action == null { return false; }
+    var panelRight = panel.GetScreenX() + panel.GetScreenWidth();
+    var panelBottom = panel.GetScreenY() + panel.GetScreenHeight();
+    return panel.GetScreenX() >= 0.0 and panel.GetScreenY() >= 0.0
+        and panelRight <= app_shell.UiViewportWidth(app) + 1.0
+        and panelBottom <= app_shell.UiViewportHeight(app) + 1.0
+        and action.GetScreenX() + action.GetScreenWidth() <= panelRight
+        and action.GetScreenY() + action.GetScreenHeight() <= panelBottom;
+}
+
+func fail(shell: app_shell.AppShell,
+          harness: GUI.TestHarness,
+          reason: String) {
+    if harness != null { harness.UnbindApp(); }
+    if shell != null { shell.Destroy(); }
+    Terminal.Say("RESULT: fail " + reason);
+}
+
+/// @brief Convert public logical widget geometry to harness framebuffer pixels.
+func HarnessCoordinate(shell: app_shell.AppShell,
+                       logical: Number) -> Integer {
+    var scale = shell.app.GetEffectiveScale();
+    if scale <= 0.0 { scale = 1.0; }
+    return Convert.NumToInt(logical * scale);
+}
+
+func main() {
+    var root = TempFile.CreateDirWithPrefix("zannastudio_rename_preview_");
+    var path = Path.Join(root, "main.zia");
+    var original = "module Demo;\n"
+        + "func oldName() {}\n"
+        + "func run() { oldName(); }\n";
+    var renamed = "module Demo;\n"
+        + "func newName() {}\n"
+        + "func run() { newName(); }\n";
+    File.WriteAllText(path, original);
+
+    var shell = new app_shell.AppShell();
+    shell.Build("Zanna Studio Rename Preview Probe", 720, 520);
+    var engine = new editor_engine.EditorEngine();
+    engine.Setup(shell.workbench.editorRow);
+    var tabs = new editor_tabs.EditorTabs();
+    tabs.Setup(shell.workbench.tabBar);
+    var docMgr = new document_manager.DocumentManager();
+    if file_commands.OpenFileAtPath(shell, docMgr, engine, tabs, path) == false {
+        fail(shell, null, "fixture open");
+        return;
+    }
+
+    var roots = new List();
+    roots.Push(root);
+    var edits = Seq.New();
+    Seq.Push(edits, RenameEdit(path, 2, 6, 13, "oldName", "newName"));
+    Seq.Push(edits, RenameEdit(path, 3, 14, 21, "oldName", "newName"));
+
+    var preview =
+        new workspace_edit_preview.WorkspaceEditPreview();
+    preview.Setup(shell);
+    if preview.OpenRename(shell, edits, roots, "newName") == false {
+        fail(shell, null, "preview did not open");
+        return;
+    }
+    shell.Poll();
+    preview.Pump(shell);
+    shell.Render();
+    if preview.IsVisible() == false
+       or preview.HasPendingRename() == false
+       or preview.renderIndex != 2
+       or preview.lastPumpRenderCount
+              > workspace_edit_preview.WORKSPACE_EDIT_PREVIEW_ROWS_PER_FRAME
+       or ContainsWidget(preview.panel, preview.rowsList) == false
+       or ContainsWidget(preview.panel, preview.applyButton) == false
+       or engine.GetText() != original
+       or File.ReadAllText(path) != original {
+        fail(shell, null, "opening/rendering preview changed state or overflowed");
+        return;
+    }
+
+    // Drive Apply through the real hit-test path rather than toggling widget
+    // state directly.
+    var harness = GUI.TestHarness.New();
+    if harness.BindApp(shell.app) == false {
+        fail(shell, harness, "automation app binding");
+        return;
+    }
+    var applyX = HarnessCoordinate(shell,
+        preview.applyButton.GetScreenX()
+        + preview.applyButton.GetScreenWidth() / 2.0);
+    var applyY = HarnessCoordinate(shell,
+        preview.applyButton.GetScreenY()
+        + preview.applyButton.GetScreenHeight() / 2.0);
+    harness.SendMouse("move", applyX, applyY, 0);
+    harness.SendMouse("down", applyX, applyY, 0);
+    harness.SendMouse("up", applyX, applyY, 0);
+    harness.DispatchPending();
+    var applied = workspace_edit_preview_commands.PumpRenamePreview(
+        preview, shell, docMgr, engine, tabs, null);
+    var active = docMgr.GetActive();
+    if applied
+          != workspace_edit_preview_commands.RENAME_PREVIEW_OUTCOME_APPLIED
+       or preview.IsVisible()
+       or preview.HasPendingRename()
+       or active == null
+       or active!.content != renamed
+       or active!.isModified == false
+       or engine.GetText() != renamed
+       or engine.editor.IsFocused() == false
+       or File.ReadAllText(path) != original
+       or shell.statusShell.lastLeftStatus != "Renamed to newName" {
+        fail(shell, harness, "reviewed edits were not applied exactly once");
+        return;
+    }
+    shell.Poll();
+
+    // Reusing stale oldName expectations against the renamed buffer must fail
+    // atomically and reopen the same preview with an inline explanation.
+    var staleEdits = Seq.New();
+    Seq.Push(staleEdits, RenameEdit(path, 2, 6, 13, "oldName", "again"));
+    if preview.OpenRename(shell, staleEdits, roots, "again") == false {
+        fail(shell, harness, "stale preview setup");
+        return;
+    }
+    preview.Pump(shell);
+    shell.Render();
+    applyX = HarnessCoordinate(shell,
+        preview.applyButton.GetScreenX()
+        + preview.applyButton.GetScreenWidth() / 2.0);
+    applyY = HarnessCoordinate(shell,
+        preview.applyButton.GetScreenY()
+        + preview.applyButton.GetScreenHeight() / 2.0);
+    harness.SendMouse("move", applyX, applyY, 0);
+    harness.SendMouse("down", applyX, applyY, 0);
+    harness.SendMouse("up", applyX, applyY, 0);
+    harness.DispatchPending();
+    var rejected = workspace_edit_preview_commands.PumpRenamePreview(
+        preview, shell, docMgr, engine, tabs, null);
+    if rejected
+          != workspace_edit_preview_commands.RENAME_PREVIEW_OUTCOME_REJECTED
+       or preview.IsVisible() == false
+       or preview.HasPendingRename() == false
+       or preview.applyButton.IsFocused() == false
+       or Str.IndexOf(preview.validationMessage, "source changed") == 0
+       or engine.GetText() != renamed {
+        Terminal.Say(
+            "DETAIL: outcome=" + rejected
+            + " visible=" + preview.IsVisible()
+            + " pending=" + preview.HasPendingRename()
+            + " focused=" + preview.applyButton.IsFocused()
+            + " message=" + preview.validationMessage
+            + " text_ok=" + (engine.GetText() == renamed));
+        fail(shell, harness, "stale edit did not reject inline and atomically");
+        return;
+    }
+
+    harness.SendKey("escape", 0);
+    harness.DispatchPending();
+    var canceled = workspace_edit_preview_commands.PumpRenamePreview(
+        preview, shell, docMgr, engine, tabs, null);
+    if canceled
+          != workspace_edit_preview_commands.RENAME_PREVIEW_OUTCOME_CANCELED
+       or preview.IsVisible()
+       or preview.HasPendingRename()
+       or engine.editor.IsFocused() == false
+       or shell.OwnsTransientSurface(
+              app_shell.TRANSIENT_SURFACE_WORKSPACE_EDIT_PREVIEW) {
+        fail(shell, harness, "Escape did not cancel and release preview");
+        return;
+    }
+    shell.Poll();
+
+    // A large preview must stay incremental even though the complete payload is
+    // retained for eventual application.
+    var manyEdits = Seq.New();
+    var i = 0;
+    while i < 300 {
+        Seq.Push(manyEdits,
+                 RenameEdit(path, 2, 6, 13, "newName", "finalName"));
+        i = i + 1;
+    }
+    if preview.OpenRename(shell, manyEdits, roots, "finalName") == false {
+        fail(shell, harness, "large preview setup");
+        return;
+    }
+    preview.Pump(shell);
+    if preview.lastPumpRenderCount
+          > workspace_edit_preview.WORKSPACE_EDIT_PREVIEW_ROWS_PER_FRAME
+       or preview.renderIndex >= preview.renderLimit
+       or preview.renderLimit
+          != workspace_edit_preview.WORKSPACE_EDIT_PREVIEW_MAX_ROWS {
+        fail(shell, harness, "large preview exceeded its frame/row budget");
+        return;
+    }
+    preview.Cancel();
+    preview.Finish();
+
+    // UI scale changes must use the effective layout viewport; otherwise a
+    // logically centered review can escape the usable window at 200%.
+    shell.Poll();
+    shell.app.SetUiScale(2.0);
+    shell.app.SetWindowSize(720, 520);
+    shell.Poll();
+    if preview.OpenRename(shell, edits, roots, "newName") == false {
+        fail(shell, harness, "scaled preview setup");
+        return;
+    }
+    preview.Pump(shell);
+    shell.Render();
+    if OverlayContainsAction(shell.app, preview.panel,
+                             preview.applyButton) == false {
+        fail(shell, harness, "scaled preview escaped the effective viewport");
+        return;
+    }
+    preview.Cancel();
+    preview.Finish();
+
+    harness.UnbindApp();
+    shell.Destroy();
+    Terminal.Say("RESULT: ok");
+}

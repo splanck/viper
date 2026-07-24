@@ -40,6 +40,8 @@ class MenuChrome {
     expose GUI.Menu buildMenu;
 
     expose GUI.MenuItem miNew;
+    expose GUI.MenuItem miNewScene2D;
+    expose GUI.MenuItem miNewScene3D;
     expose GUI.MenuItem miOpen;
     expose GUI.MenuItem miOpenFolder;
     expose GUI.MenuItem miAddFolder;
@@ -60,6 +62,8 @@ class MenuChrome {
     expose GUI.MenuItem miCopy;
     expose GUI.MenuItem miPaste;
     expose GUI.MenuItem miSelectAll;
+    expose GUI.MenuItem miDuplicateSelection;
+    expose GUI.MenuItem miDeleteSceneSelection;
     expose GUI.MenuItem miFind;
     expose GUI.MenuItem miSearchProject;
     expose GUI.MenuItem miGoToLine;
@@ -76,6 +80,7 @@ class MenuChrome {
     expose GUI.MenuItem miPreferences;
     expose GUI.MenuItem miToggleSidebar;
     expose GUI.MenuItem miToggleStatusBar;
+    expose GUI.MenuItem miResetWorkspaceLayout;
     expose GUI.MenuItem miZoomIn;
     expose GUI.MenuItem miZoomOut;
     expose GUI.MenuItem miZoomReset;
@@ -204,6 +209,8 @@ class MenuChrome {
         fileMenu = menuBar.AddMenu("File");
         miNew = fileMenu.AddItem("New File");
         miNew.SetShortcut("Ctrl+N");
+        miNewScene2D = fileMenu.AddItem("New 2D Scene");
+        miNewScene3D = fileMenu.AddItem("New 3D Scene");
         miOpen = fileMenu.AddItem("Open File...");
         miOpen.SetShortcut("Ctrl+O");
         miOpenFolder = fileMenu.AddItem("Open Folder...");
@@ -251,6 +258,12 @@ class MenuChrome {
         editMenu.AddSeparator();
         miSelectAll = editMenu.AddItem("Select All");
         miSelectAll.SetShortcut("Ctrl+A");
+        miDuplicateSelection = editMenu.AddItem("Duplicate Selection");
+        miDuplicateSelection.SetShortcut("Ctrl+Shift+D");
+        miDeleteSceneSelection =
+            editMenu.AddItem("Delete Scene Selection");
+        miDeleteSceneSelection.SetShortcut("Delete");
+        editMenu.AddSeparator();
         miFind = editMenu.AddItem("Find...");
         miFind.SetShortcut("Ctrl+F");
         miSearchProject = editMenu.AddItem("Search in Project");
@@ -295,6 +308,7 @@ class MenuChrome {
         miToggleSidebar = viewMenu.AddItem("Toggle Sidebar");
         miToggleSidebar.SetShortcut("Ctrl+B");
         miToggleStatusBar = viewMenu.AddItem("Toggle Status Bar");
+        miResetWorkspaceLayout = viewMenu.AddItem("Reset Workspace Layout");
         viewMenu.AddSeparator();
         miZoomIn = viewMenu.AddItem("Zoom In");
         miZoomIn.SetShortcut("Ctrl+=");
@@ -460,6 +474,8 @@ class MenuChrome {
         if registry == null { return; }
         appliedShortcutRegistry = registry;
         ApplyShortcut(miNew, "new", registry);
+        ApplyShortcut(miNewScene2D, "newscene2d", registry);
+        ApplyShortcut(miNewScene3D, "newscene3d", registry);
         ApplyShortcut(miOpen, "open", registry);
         ApplyShortcut(miOpenFolder, "openfolder", registry);
         ApplyShortcut(miAddFolder, "addfolder", registry);
@@ -479,6 +495,9 @@ class MenuChrome {
         ApplyShortcut(miCopy, "copy", registry);
         ApplyShortcut(miPaste, "paste", registry);
         ApplyShortcut(miSelectAll, "selectall", registry);
+        ApplyShortcut(miDuplicateSelection, "duplicateline", registry);
+        ApplyShortcut(
+            miDeleteSceneSelection, "deletesceneselection", registry);
         ApplyShortcut(miFind, "find", registry);
         ApplyShortcut(miSearchProject, "searchproject", registry);
         ApplyShortcut(miGoToLine, "goto", registry);
@@ -495,6 +514,7 @@ class MenuChrome {
         ApplyShortcut(miSignatureHelp, "signature_trigger", registry);
         ApplyShortcut(miToggleSidebar, "togglesidebar", registry);
         ApplyShortcut(miToggleStatusBar, "statusbar", registry);
+        ApplyShortcut(miResetWorkspaceLayout, "resetworkspacelayout", registry);
         ApplyShortcut(miZoomIn, "zoomin", registry);
         ApplyShortcut(miZoomOut, "zoomout", registry);
         ApplyShortcut(miZoomReset, "zoomreset", registry);
@@ -589,6 +609,8 @@ class MenuChrome {
         SetMenuEnabled(miCopy, hasDocument);
         SetMenuEnabled(miPaste, hasDocument);
         SetMenuEnabled(miSelectAll, hasDocument);
+        SetMenuEnabled(miDuplicateSelection, hasDocument);
+        SetMenuEnabled(miDeleteSceneSelection, false);
         SetMenuEnabled(miFind, hasDocument);
         SetMenuEnabled(miGoToLine, hasDocument);
         SetMenuEnabled(miToggleMinimap, hasDocument);
@@ -631,6 +653,76 @@ class MenuChrome {
         }
 
         ApplyExecutionCommandState();
+    }
+
+    /// @brief Grey code-editor actions while a visual scene surface is active.
+    /// @details This is applied after language capability state each frame so a
+    ///          stale Zia/Basic service cannot re-enable commands that would
+    ///          otherwise mutate the hidden CodeEditor buffer.
+    expose func SetTextEditorContextAvailable(available: Boolean) {
+        SetMenuEnabled(miCut, available);
+        SetMenuEnabled(miCopy, available);
+        SetMenuEnabled(miPaste, available);
+        SetMenuEnabled(miSelectAll, available);
+        SetMenuEnabled(miDuplicateSelection, available);
+        SetMenuEnabled(miDeleteSceneSelection, false);
+        SetMenuEnabled(miFind, available);
+        SetMenuEnabled(miGoToLine, available);
+        SetMenuEnabled(miGoToDefinition, available);
+        SetMenuEnabled(miFindReferences, available);
+        SetMenuEnabled(miIncomingCalls, available);
+        SetMenuEnabled(miOutgoingCalls, available);
+        SetMenuEnabled(miRenameSymbol, available);
+        SetMenuEnabled(miSymbolOutline, available);
+        SetMenuEnabled(miSignatureHelp, available);
+        SetMenuEnabled(miZoomIn, available);
+        SetMenuEnabled(miZoomOut, available);
+        SetMenuEnabled(miZoomReset, available);
+        SetMenuEnabled(miToggleMinimap, available);
+        SetMenuEnabled(miToggleBreakpoint, available);
+        SetMenuEnabled(ecCut, available);
+        SetMenuEnabled(ecCopy, available);
+        SetMenuEnabled(ecPaste, available);
+        SetMenuEnabled(ecGotoDef, available);
+        SetMenuEnabled(ecFindRefs, available);
+        SetMenuEnabled(ecRename, available);
+        SetMenuEnabled(ecFormat, available);
+        SetMenuEnabled(ecToggleBreakpoint, available);
+        SetMenuEnabled(ecEvaluate, available);
+        if tbFind != null {
+            SetToolbarItemState(
+                tbFind, available,
+                CommandTooltip("Find", "find", "Ctrl+F"),
+                "Find is available in source and text editors");
+        }
+    }
+
+    /// @brief Reflect standard edit actions owned by the active surface.
+    /// @details Main applies this after the code-editor gate so a 2D/3D scene
+    ///          may expose only actions with a live selection or clipboard
+    ///          candidate while all source-only commands remain disabled.
+    expose func SetSurfaceEditActionsAvailable(canCut: Boolean,
+                                               canCopy: Boolean,
+                                               canPaste: Boolean,
+                                               canSelectAll: Boolean,
+                                               canDuplicate: Boolean,
+                                               canDeleteScene: Boolean) {
+        SetMenuEnabled(miCut, canCut);
+        SetMenuEnabled(miCopy, canCopy);
+        SetMenuEnabled(miPaste, canPaste);
+        SetMenuEnabled(miSelectAll, canSelectAll);
+        SetMenuEnabled(miDuplicateSelection, canDuplicate);
+        SetMenuEnabled(miDeleteSceneSelection, canDeleteScene);
+        SetMenuEnabled(ecCut, canCut);
+        SetMenuEnabled(ecCopy, canCopy);
+        SetMenuEnabled(ecPaste, canPaste);
+    }
+
+    /// @brief Reflect undo/redo history owned by the active editor surface.
+    expose func SetEditHistoryAvailable(canUndo: Boolean,
+                                        canRedo: Boolean) {
+        SetMenuEnabled(miUndo, canUndo);
+        SetMenuEnabled(miRedo, canRedo);
     }
 
     /// @brief Apply build/run job state to toolbar and menu controls.

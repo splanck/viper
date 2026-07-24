@@ -1,0 +1,393 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+// File: zannastudio/src/ui/workspace_edit_preview.zia
+// Purpose: Non-modal, bounded preview surface for multi-file workspace edits.
+// Key invariants:
+//   - Opening a preview never mutates documents or files.
+//   - Preview rows are materialized under a fixed per-frame widget budget.
+//   - Apply preserves the exact edit/root payload until command code finishes.
+//   - Losing transient ownership abandons stale edit intent without a popup.
+// Ownership/Lifetime:
+//   - Main owns one preview for the application lifetime.
+//   - Edit sequences and root lists are borrowed until Finish or abandonment.
+// Links: zannastudio/src/commands/basic_workspace_commands.zia,
+//        zannastudio/src/commands/zia_workspace_commands.zia
+//
+//===----------------------------------------------------------------------===//
+
+module workspace_edit_preview;
+
+bind "../ui/app_shell";
+
+bind Zanna.GUI as GUI;
+bind Input = Zanna.Input;
+bind Map = Zanna.Collections.Map;
+bind Path = Zanna.IO.Path;
+bind Seq = Zanna.Collections.Seq;
+
+final WORKSPACE_EDIT_PREVIEW_NONE: Integer = 0;
+final WORKSPACE_EDIT_PREVIEW_APPLY: Integer = 1;
+final WORKSPACE_EDIT_PREVIEW_CANCEL: Integer = 2;
+
+final WORKSPACE_EDIT_PREVIEW_WIDTH: Integer = 780;
+final WORKSPACE_EDIT_PREVIEW_HEIGHT: Integer = 520;
+final WORKSPACE_EDIT_PREVIEW_MARGIN: Integer = 24;
+final WORKSPACE_EDIT_PREVIEW_ROWS_PER_FRAME: Integer = 50;
+final WORKSPACE_EDIT_PREVIEW_MAX_ROWS: Integer = 250;
+
+/// @brief Reusable review surface for a complete rename edit set.
+/// @details This class captures only user intent. The command layer validates
+///          and applies the retained edit payload after Pump returns Apply.
+class WorkspaceEditPreview {
+    expose GUI.FloatingPanel panel;
+    expose GUI.VBox root;
+    expose GUI.Label titleLabel;
+    expose GUI.Label summaryLabel;
+    expose GUI.ListBox rowsList;
+    expose GUI.Label detailLabel;
+    expose GUI.Button cancelButton;
+    expose GUI.Button applyButton;
+
+    expose Boolean visible;
+    expose Integer pendingAction;
+    expose Integer completedAction;
+    expose Any edits;
+    expose List allowedRoots;
+    expose String newName;
+    expose String validationMessage;
+    expose Integer renderIndex;
+    expose Integer renderLimit;
+    expose Integer lastPumpRenderCount;
+    expose String renderLastPath;
+    expose Boolean truncationRowAdded;
+    hide app_shell.AppShell ownerShell;
+
+    /// @brief Initialize an empty, detached preview.
+    expose func init() {
+        panel = null;
+        root = null;
+        titleLabel = null;
+        summaryLabel = null;
+        rowsList = null;
+        detailLabel = null;
+        cancelButton = null;
+        applyButton = null;
+        visible = false;
+        pendingAction = WORKSPACE_EDIT_PREVIEW_NONE;
+        completedAction = WORKSPACE_EDIT_PREVIEW_NONE;
+        edits = null;
+        allowedRoots = new List();
+        newName = "";
+        validationMessage = "";
+        renderIndex = 0;
+        renderLimit = 0;
+        lastPumpRenderCount = 0;
+        renderLastPath = "";
+        truncationRowAdded = false;
+        ownerShell = null;
+    }
+
+    /// @brief Construct the floating review panel once.
+    /// @param shell Workbench shell whose App owns the panel.
+    expose func Setup(shell: app_shell.AppShell) {
+        if shell == null or shell.app == null or panel != null { return; }
+        ownerShell = shell;
+        panel = GUI.FloatingPanel.New(shell.app);
+        panel.SetSize(WORKSPACE_EDIT_PREVIEW_WIDTH,
+                      WORKSPACE_EDIT_PREVIEW_HEIGHT);
+        panel.SetVisible(false);
+
+        root = GUI.VBox.New();
+        root.SetPadding(16.0);
+        root.SetSpacing(10.0);
+        panel.AddChild(root);
+
+        titleLabel = GUI.Label.New(root, "Rename Preview");
+        titleLabel.SetMargin(0);
+        titleLabel.SetEllipsis(true);
+
+        summaryLabel = GUI.Label.New(root, "");
+        summaryLabel.SetMargin(0);
+        summaryLabel.SetWordWrap(true);
+
+        rowsList = GUI.ListBox.New(null);
+        rowsList.SetFlex(1.0);
+        rowsList.SetAccessibleName("Rename edit preview");
+        root.AddChild(rowsList);
+
+        detailLabel = GUI.Label.New(root, "");
+        detailLabel.SetMargin(0);
+        detailLabel.SetWordWrap(true);
+
+        var footer = GUI.HBox.New();
+        footer.SetSpacing(10.0);
+        root.AddChild(footer);
+        var spacer = GUI.Label.New(footer, "");
+        spacer.SetFlex(1.0);
+        cancelButton = GUI.Button.New(footer, "Cancel");
+        cancelButton.SetStyle(2);
+        cancelButton.SetAccessibleName("Cancel rename");
+        cancelButton.SetTooltip("Close without changing files");
+        applyButton = GUI.Button.New(footer, "Apply Rename");
+        applyButton.SetStyle(1);
+        applyButton.SetAccessibleName("Apply rename");
+        applyButton.SetTooltip("Apply every validated edit in this preview");
+    }
+
+    /// @brief Show a bounded preview for a complete rename edit set.
+    /// @param shell Workbench shell used for transient ownership and layout.
+    /// @param editPayload Runtime sequence of workspace edit maps.
+    /// @param roots Workspace roots allowed to receive closed-file edits.
+    /// @param requestedName New identifier selected by the user.
+    /// @return True when a non-empty preview opened.
+    expose func OpenRename(shell: app_shell.AppShell,
+                           editPayload: Any,
+                           roots: List,
+                           requestedName: String) -> Boolean {
+        if panel == null or shell == null or editPayload == null {
+            return false;
+        }
+        var count = Seq.get_Count(editPayload);
+        if count <= 0 { return false; }
+
+        pendingAction = WORKSPACE_EDIT_PREVIEW_APPLY;
+        completedAction = WORKSPACE_EDIT_PREVIEW_NONE;
+        edits = editPayload;
+        allowedRoots = roots;
+        newName = requestedName;
+        validationMessage = "";
+        renderIndex = 0;
+        renderLimit = count;
+        if renderLimit > WORKSPACE_EDIT_PREVIEW_MAX_ROWS {
+            renderLimit = WORKSPACE_EDIT_PREVIEW_MAX_ROWS;
+        }
+        lastPumpRenderCount = 0;
+        renderLastPath = "";
+        truncationRowAdded = false;
+        titleLabel.SetText("Rename to " + requestedName);
+        summaryLabel.SetText(
+            "Review " + count
+            + " reference(s). No document or file changes until Apply Rename.");
+        detailLabel.SetText("");
+        rowsList.Clear();
+
+        ownerShell = shell;
+        shell.ClaimTransientSurface(
+            app_shell.TRANSIENT_SURFACE_WORKSPACE_EDIT_PREVIEW, panel);
+        visible = true;
+        Layout(shell);
+        rowsList.Focus();
+        return true;
+    }
+
+    /// @brief Poll one frame of preview rendering and user actions.
+    /// @param shell Workbench shell used for ownership and responsive layout.
+    /// @return Apply, Cancel, or NONE.
+    expose func Pump(shell: app_shell.AppShell) -> Integer {
+        completedAction = WORKSPACE_EDIT_PREVIEW_NONE;
+        lastPumpRenderCount = 0;
+        if visible == false { return WORKSPACE_EDIT_PREVIEW_NONE; }
+        if ownerShell == null
+           or ownerShell.OwnsTransientSurface(
+               app_shell.TRANSIENT_SURFACE_WORKSPACE_EDIT_PREVIEW) == false {
+            Abandon();
+            return WORKSPACE_EDIT_PREVIEW_NONE;
+        }
+
+        Layout(shell);
+        PumpRenderRows();
+        if Input.Keyboard.WasPressed(Zanna.Input.Key.Escape)
+           or cancelButton.WasClicked() {
+            Cancel();
+            return WORKSPACE_EDIT_PREVIEW_CANCEL;
+        }
+        if applyButton.WasClicked() {
+            return Complete();
+        }
+        return WORKSPACE_EDIT_PREVIEW_NONE;
+    }
+
+    /// @brief Reopen an unapplied preview with an inline validation error.
+    /// @param shell Workbench shell used for ownership and positioning.
+    /// @param message User-facing reason the edit set was rejected.
+    expose func Reject(shell: app_shell.AppShell,
+                       message: String) {
+        if pendingAction != WORKSPACE_EDIT_PREVIEW_APPLY or edits == null {
+            return;
+        }
+        completedAction = WORKSPACE_EDIT_PREVIEW_NONE;
+        validationMessage = message;
+        detailLabel.SetText(message);
+        ownerShell = shell;
+        shell.ClaimTransientSurface(
+            app_shell.TRANSIENT_SURFACE_WORKSPACE_EDIT_PREVIEW, panel);
+        visible = true;
+        Layout(shell);
+        applyButton.Focus();
+    }
+
+    /// @brief Cancel the visible preview while retaining payload for this frame.
+    expose func Cancel() {
+        completedAction = WORKSPACE_EDIT_PREVIEW_CANCEL;
+        Hide();
+    }
+
+    /// @brief Clear a completed/canceled preview after command code consumes it.
+    expose func Finish() {
+        pendingAction = WORKSPACE_EDIT_PREVIEW_NONE;
+        completedAction = WORKSPACE_EDIT_PREVIEW_NONE;
+        edits = null;
+        allowedRoots = new List();
+        newName = "";
+        validationMessage = "";
+        renderIndex = 0;
+        renderLimit = 0;
+        lastPumpRenderCount = 0;
+        renderLastPath = "";
+        truncationRowAdded = false;
+        if rowsList != null { rowsList.Clear(); }
+        if detailLabel != null { detailLabel.SetText(""); }
+    }
+
+    /// @brief Return whether a review surface is currently visible.
+    expose func IsVisible() -> Boolean {
+        return visible;
+    }
+
+    /// @brief Return whether an edit set is awaiting Apply/Cancel resolution.
+    expose func HasPendingRename() -> Boolean {
+        return pendingAction == WORKSPACE_EDIT_PREVIEW_APPLY and edits != null;
+    }
+
+    /// @brief Return the retained runtime edit sequence.
+    expose func ReadEdits() -> Any {
+        return edits;
+    }
+
+    /// @brief Return roots captured with the retained edit sequence.
+    expose func ReadAllowedRoots() -> List {
+        return allowedRoots;
+    }
+
+    /// @brief Return the requested replacement identifier.
+    expose func ReadNewName() -> String {
+        return newName;
+    }
+
+    /// @brief Hide after Apply while preserving the payload until Finish.
+    hide func Complete() -> Integer {
+        if pendingAction != WORKSPACE_EDIT_PREVIEW_APPLY or edits == null {
+            return WORKSPACE_EDIT_PREVIEW_NONE;
+        }
+        completedAction = WORKSPACE_EDIT_PREVIEW_APPLY;
+        Hide();
+        return WORKSPACE_EDIT_PREVIEW_APPLY;
+    }
+
+    /// @brief Hide and release transient ownership without clearing payload.
+    hide func Hide() {
+        visible = false;
+        if panel != null { panel.SetVisible(false); }
+        if ownerShell != null {
+            ownerShell.ReleaseTransientSurface(
+                app_shell.TRANSIENT_SURFACE_WORKSPACE_EDIT_PREVIEW);
+        }
+    }
+
+    /// @brief Silently discard a preview superseded by another workbench form.
+    hide func Abandon() {
+        visible = false;
+        if panel != null { panel.SetVisible(false); }
+        Finish();
+    }
+
+    /// @brief Materialize at most the fixed widget budget for this frame.
+    hide func PumpRenderRows() {
+        if edits == null or rowsList == null { return; }
+        while renderIndex < renderLimit
+              and lastPumpRenderCount < WORKSPACE_EDIT_PREVIEW_ROWS_PER_FRAME {
+            var edit = Seq.Get(edits, renderIndex);
+            var path = Map.GetStr(edit, "file");
+            if path != renderLastPath {
+                var groupName = Path.Name(path);
+                if groupName == "" { groupName = path; }
+                rowsList.AddItem(groupName + "  —  " + path);
+                renderLastPath = path;
+                lastPumpRenderCount = lastPumpRenderCount + 1;
+                if lastPumpRenderCount
+                   >= WORKSPACE_EDIT_PREVIEW_ROWS_PER_FRAME {
+                    break;
+                }
+            }
+
+            var expected = Map.GetStr(edit, "expectedText");
+            if expected == "" { expected = "reference"; }
+            var row = "  " + Map.GetInt(edit, "startLine")
+                      + ":" + Map.GetInt(edit, "startColumn")
+                      + "   " + expected + "  →  "
+                      + Map.GetStr(edit, "newText");
+            rowsList.AddItem(row);
+            renderIndex = renderIndex + 1;
+            lastPumpRenderCount = lastPumpRenderCount + 1;
+        }
+
+        var total = Seq.get_Count(edits);
+        if renderIndex >= renderLimit and renderLimit < total
+           and truncationRowAdded == false
+           and lastPumpRenderCount
+               < WORKSPACE_EDIT_PREVIEW_ROWS_PER_FRAME {
+            rowsList.AddItem("… " + (total - renderLimit)
+                             + " more references will also be renamed");
+            truncationRowAdded = true;
+            lastPumpRenderCount = lastPumpRenderCount + 1;
+        }
+        if renderIndex < renderLimit {
+            summaryLabel.SetText(
+                "Rendering preview " + renderIndex + "/" + renderLimit
+                + " (" + total + " total references)...");
+        } else {
+            summaryLabel.SetText(
+                "Review " + total
+                + " reference(s). No document or file changes until Apply Rename.");
+        }
+    }
+
+    /// @brief Keep the preview centered inside the logical workbench viewport.
+    hide func Layout(shell: app_shell.AppShell) {
+        if panel == null or shell == null or shell.app == null { return; }
+        var rootW = app_shell.UiViewportWidth(shell.app);
+        var rootH = app_shell.UiViewportHeight(shell.app);
+        if rootW <= 0 { rootW = 1280; }
+        if rootH <= 0 { rootH = 800; }
+        var margin = WORKSPACE_EDIT_PREVIEW_MARGIN;
+        if rootW < 400 or rootH < 320 { margin = 8; }
+        var maxW = rootW - (margin * 2);
+        var maxH = rootH - (margin * 2);
+        if maxW <= 0 { maxW = rootW; margin = 0; }
+        if maxH <= 0 { maxH = rootH; margin = 0; }
+        var panelW = WORKSPACE_EDIT_PREVIEW_WIDTH;
+        var panelH = WORKSPACE_EDIT_PREVIEW_HEIGHT;
+        if panelW > maxW {
+            panelW = maxW;
+        }
+        if panelH > maxH {
+            panelH = maxH;
+        }
+        if panelW < 320 and maxW >= 320 { panelW = 320; }
+        if panelH < 260 and maxH >= 260 { panelH = 260; }
+        panel.SetSize(panelW, panelH);
+
+        var x = (rootW - panelW) / 2;
+        var y = (rootH - panelH) / 2;
+        if x < margin {
+            x = margin;
+        }
+        if y < margin {
+            y = margin;
+        }
+        panel.SetPosition(x, y);
+    }
+}

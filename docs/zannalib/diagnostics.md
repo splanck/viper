@@ -66,7 +66,7 @@ Immutable snapshot of trap metadata captured by `Zanna.Diagnostics.CurrentTrap()
 
 ### Zia Example
 
-```rust
+```zia
 module TrapInfoDemo;
 
 bind Zanna.Diagnostics as Diagnostics;
@@ -120,7 +120,7 @@ Runtime assertion helpers that terminate execution when a condition fails.
 
 ### Zia Example
 
-```rust
+```zia
 module DiagDemo;
 
 bind Zanna.Terminal;

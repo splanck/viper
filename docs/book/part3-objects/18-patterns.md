@@ -165,7 +165,7 @@ The key elements:
 
 Using it:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 func start() {
@@ -185,7 +185,7 @@ No matter how many times you call `getInstance()`, you get the same engine. The 
 
 ### A More Complete Example: Configuration Manager
 
-```rust
+```zia
 bind Zanna.Terminal;
 bind File = Zanna.IO.File;
 
@@ -288,7 +288,7 @@ enemy: dragon at 100, 100
 
 How does your code create these enemies? The naive approach:
 
-```rust
+```zia
 func loadLevel(data: String) {
     // Parse data...
     for line in data.Split("\n") {
@@ -452,7 +452,7 @@ class EnemyFactory {
 
 Now the level loader is clean:
 
-```rust
+```zia
 func loadLevel(data: String) {
     for line in data.Split("\n") {
         var parts = parseLine(line);
@@ -503,7 +503,7 @@ The caller doesn't know or care about Goblin, Orc, or Dragon. It just asks the f
 
 Imagine creating a character in a role-playing game. Characters have many attributes:
 
-```rust
+```zia
 var hero = Character(
     "Arthus",           // name
     "Warrior",          // class
@@ -792,7 +792,7 @@ You're building a navigation app. You need to calculate routes, but there are di
 
 You could write one giant method with if-else for each mode:
 
-```rust
+```zia
 func calculateRoute(start: Point, end: Point, mode: String) {
     if mode == "driving" {
         // 200 lines of driving logic
@@ -816,7 +816,7 @@ Think of paying for something. You can use cash, credit card, mobile payment, or
 
 The Strategy pattern defines a family of algorithms, encapsulates each one, and makes them interchangeable:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 interface RouteStrategy {
@@ -922,7 +922,7 @@ class Navigator {
 
 Using the navigator:
 
-```rust
+```zia
 func start() {
     var home = Point(0.0, 0.0);
     var office = Point(10.0, 5.0);
@@ -971,7 +971,7 @@ func start() {
 
 ### Another Example: Sorting Strategies
 
-```rust
+```zia
 interface SortStrategy {
     func sort(items: List[Integer]) -> List[Integer];
     func getName() -> String;
@@ -1063,7 +1063,7 @@ This is the publish-subscribe model. The channel "publishes" content; subscriber
 
 The Observer pattern defines a one-to-many dependency: when one object changes, all dependent objects are notified:
 
-```rust
+```zia
 interface Observer {
     func onUpdate(event: String, data: any);
 }
@@ -1220,7 +1220,7 @@ class AutoTrader implements Observer {
 
 Using the system:
 
-```rust
+```zia
 func start() {
     // Create a stock
     var apple = StockPrice("AAPL", 150.0);
@@ -1546,7 +1546,7 @@ class CommandHistory {
 
 Using the editor:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 func start() {
@@ -1659,7 +1659,7 @@ You're programming a vending machine. Its behavior depends entirely on its state
 
 You could handle this with flags and conditionals:
 
-```rust
+```zia
 func insertCoin(amount: Integer) {
     if self.state == "idle" {
         self.balance += amount;
@@ -1911,7 +1911,7 @@ class VendingMachine {
 
 Using the vending machine:
 
-```rust
+```zia
 func start() {
     var machine = VendingMachine();
     machine.stock("Cola", 3, 150);    // $1.50
@@ -1992,7 +1992,7 @@ Structural patterns deal with how objects are composed — how you build larger 
 
 You run a coffee shop with a software ordering system. You start with simple coffee:
 
-```rust
+```zia
 class Coffee {
     expose func cost() -> Number { return 2.00; }
     expose func description() -> String { return "Coffee"; }
@@ -2001,7 +2001,7 @@ class Coffee {
 
 But customers want options: milk, sugar, whipped cream, vanilla, caramel, oat milk, extra shot... You could create subclasses:
 
-```rust
+```zia
 class CoffeeWithMilk extends Coffee { ... }
 class CoffeeWithSugar extends Coffee { ... }
 class CoffeeWithMilkAndSugar extends Coffee { ... }
@@ -2140,7 +2140,7 @@ class ExtraShot extends BeverageDecorator {
 
 Now any combination is possible:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 func start() {

@@ -106,14 +106,14 @@ C:\
 An *absolute path* specifies the complete location of a file, starting from the root. It works no matter what directory you're currently "in."
 
 **Linux/Mac examples:**
-```rust
+```zia
 "/home/alice/Documents/report.txt"
 "/etc/config.ini"
 "/usr/bin/zanna"
 ```
 
 **Windows examples:**
-```rust
+```zia
 "C:\\Users\\Alice\\Documents\\report.txt"
 "C:\\Program Files\\Zanna\\zanna.exe"
 ```
@@ -122,7 +122,7 @@ Notice Windows uses backslashes (`\`), but since backslash is also the escape ch
 
 **Good news:** Zanna handles this automatically. You can use forward slashes everywhere, and Zanna will convert them appropriately for the operating system:
 
-```rust
+```zia
 bind File = Zanna.IO.File;
 
 // This works on ALL operating systems
@@ -134,7 +134,7 @@ var content = File.ReadAllText(path);
 
 A *relative path* specifies a location relative to the "current working directory" — typically the directory where your program is running.
 
-```rust
+```zia
 "data.txt"              // In the current directory
 "data/scores.txt"       // In a 'data' subdirectory
 "../config.txt"         // In the parent directory
@@ -168,7 +168,7 @@ If your program is running from `/home/alice/myprogram/`, then:
 
 The `Path` module helps work with paths safely:
 
-```rust
+```zia
 bind Zanna.IO.Path as Path;
 
 var path = "/home/alice/documents/report.txt";
@@ -186,7 +186,7 @@ var full = Path.Join(dir, file);  // "/home/alice/documents/report.txt"
 
 Always use `Path.Join` instead of string concatenation:
 
-```rust
+```zia
 bind Zanna.IO.Path as Path;
 
 // Bad: might produce "/home/alice//documents" or wrong separators
@@ -213,7 +213,7 @@ If you're writing software that might run on different operating systems, keep t
 
 To get standard locations portably:
 
-```rust
+```zia
 bind Zanna.System.Machine as Machine;
 bind Zanna.IO.Dir as Dir;
 
@@ -284,7 +284,7 @@ When you open a file, you specify what you intend to do with it. This is called 
 
 Read mode opens an existing file for reading. The file must already exist — if it doesn't, you'll get an error.
 
-```rust
+```zia
 bind File = Zanna.IO.File;
 
 var content = File.ReadAllText("data.txt");
@@ -296,7 +296,7 @@ The file is opened, read from beginning to end, and then closed automatically. Y
 
 Write mode creates a new file or overwrites an existing one. This is destructive — if the file exists, its contents are erased and replaced.
 
-```rust
+```zia
 bind File = Zanna.IO.File;
 
 File.WriteAllText("output.txt", "Hello, World!");
@@ -308,7 +308,7 @@ File.WriteAllText("output.txt", "Hello, World!");
 
 Append mode adds data to the end of an existing file, or creates a new file if it doesn't exist. Existing content is preserved.
 
-```rust
+```zia
 bind File = Zanna.IO.File;
 
 File.Append("log.txt", "New entry\n");
@@ -336,7 +336,7 @@ Let's explore file reading in detail, from simple to advanced techniques.
 
 The simplest approach loads the entire file into memory:
 
-```rust
+```zia
 bind File = Zanna.IO.File;
 bind Zanna.Terminal;
 
@@ -359,7 +359,7 @@ Say(content);
 
 Often you want to process a file line by line. `ReadAllLines` returns a typed sequence of strings:
 
-```rust
+```zia
 bind File = Zanna.IO.File;
 bind Zanna.Terminal;
 
@@ -381,7 +381,7 @@ This is still loading everything at once, but having lines as separate strings i
 
 When line-by-line processing is clearer than working with one large string, use `ReadAllLines` and process the returned sequence:
 
-```rust
+```zia
 bind File = Zanna.IO.File;
 bind Zanna.Terminal;
 
@@ -405,7 +405,7 @@ for line in lines {
 
 Sometimes you need to jump to a specific location:
 
-```rust
+```zia
 bind File = Zanna.IO.File;
 
 var bytes = File.ReadAllBytes("data.bin");
@@ -424,7 +424,7 @@ Writing is where things can go wrong in ways that lose data. Let's understand ho
 
 ### Simple Writing
 
-```rust
+```zia
 bind File = Zanna.IO.File;
 bind Zanna.Terminal;
 
@@ -444,7 +444,7 @@ The `\n` creates line breaks. Without them, everything would be on one line.
 
 ### Appending Data
 
-```rust
+```zia
 bind File = Zanna.IO.File;
 
 File.Append("log.txt", "Event 1 occurred\n");
@@ -465,7 +465,7 @@ Append is safer than write because you can't accidentally erase data.
 
 For generated output, build the content first and then write it in one call:
 
-```rust
+```zia
 bind File = Zanna.IO.File;
 bind Zanna.Text.StringBuilder as SB;
 
@@ -489,7 +489,7 @@ File.WriteAllText("output.txt", builder.ToString());
 
 `WriteAllText`, `WriteAllBytes`, and `Append` open the file, perform the write, and close it before returning:
 
-```rust
+```zia
 bind File = Zanna.IO.File;
 
 File.WriteAllText("critical.txt", "Important data\n");
@@ -534,7 +534,7 @@ If you open a binary file in Notepad, you see gibberish — because the bytes ar
 
 A simple example — storing numbers efficiently:
 
-```rust
+```zia
 bind File = Zanna.IO.File;
 bind Zanna.Collections.Bytes as Bytes;
 
@@ -569,7 +569,7 @@ var bytes = File.ReadAllBytes("number.bin");
 
 ### Working with Binary Files
 
-```rust
+```zia
 bind File = Zanna.IO.File;
 bind Zanna.Collections.Bytes as Bytes;
 bind Zanna.Terminal;
@@ -600,7 +600,7 @@ Binary file handling is more complex and usually requires understanding the spec
 
 Before reading, you might want to check if a file exists:
 
-```rust
+```zia
 bind File = Zanna.IO.File;
 bind Zanna.Terminal;
 
@@ -616,7 +616,7 @@ if File.Exists("config.txt") {
 
 There's a subtle issue with check-then-read:
 
-```rust
+```zia
 bind File = Zanna.IO.File;
 
 if File.Exists("data.txt") {
@@ -629,7 +629,7 @@ Between checking and reading, another program (or user) could delete the file. T
 
 For critical code, consider using try-catch instead:
 
-```rust
+```zia
 bind File = Zanna.IO.File;
 bind Zanna.Terminal;
 
@@ -653,7 +653,7 @@ Files are organized in directories. Zanna provides tools to work with them.
 
 ### Checking and Creating Directories
 
-```rust
+```zia
 bind Zanna.IO.Dir as Dir;
 bind Zanna.Terminal;
 
@@ -671,7 +671,7 @@ Dir.MakeAll("output/data/processed");
 
 ### Listing Directory Contents
 
-```rust
+```zia
 bind Zanna.IO.Dir as Dir;
 bind Zanna.Terminal;
 
@@ -688,18 +688,18 @@ for dir in dirs {
 }
 
 // List everything (files and directories)
-var all = Dir.ListSeq("documents");
+var all = Dir.List("documents");
 ```
 
 ### Practical Example: Finding All Text Files
 
-```rust
+```zia
 bind Zanna.IO.Dir as Dir;
 bind Zanna.IO.Path as Path;
 bind Zanna.Terminal;
 
 func findTextFiles(directory: String) {
-    for entry in Dir.ListSeq(directory) {
+    for entry in Dir.List(directory) {
         var path = Path.Join(directory, entry);
 
         if Dir.Exists(path) {
@@ -725,7 +725,7 @@ Files are a major source of errors. The file might not exist. You might not have
 ### Common File Errors
 
 **File not found:**
-```rust
+```zia
 bind File = Zanna.IO.File;
 
 // The file doesn't exist
@@ -734,7 +734,7 @@ var content = File.ReadAllText("nonexistent.txt");
 ```
 
 **Permission denied:**
-```rust
+```zia
 bind File = Zanna.IO.File;
 
 // You don't have permission to read/write this file
@@ -743,7 +743,7 @@ var content = File.ReadAllText("/etc/shadow");
 ```
 
 **Disk full:**
-```rust
+```zia
 bind File = Zanna.IO.File;
 
 // No space left on the storage device
@@ -753,7 +753,7 @@ File.WriteAllText("huge.txt", massiveData);
 ```
 
 **Path is a directory:**
-```rust
+```zia
 bind File = Zanna.IO.File;
 
 // Trying to read a directory as a file
@@ -762,7 +762,7 @@ var content = File.ReadAllText("my_folder");
 ```
 
 **Invalid path:**
-```rust
+```zia
 bind File = Zanna.IO.File;
 
 // Path contains invalid characters or is malformed
@@ -774,7 +774,7 @@ var content = File.ReadAllText("file\0name.txt");
 
 Never let file errors crash your program unexpectedly. Handle them:
 
-```rust
+```zia
 bind File = Zanna.IO.File;
 bind Zanna.Terminal;
 
@@ -801,7 +801,7 @@ func loadConfig() -> String {
 
 Don't show raw error messages to users. Translate them:
 
-```rust
+```zia
 bind File = Zanna.IO.File;
 bind Zanna.Terminal;
 
@@ -832,7 +832,7 @@ Writing files is risky. If something goes wrong mid-write, you might end up with
 
 ### The Danger of Direct Overwriting
 
-```rust
+```zia
 bind File = Zanna.IO.File;
 
 // Dangerous: if this fails mid-write, data.txt is corrupted
@@ -846,7 +846,7 @@ If power fails, or your program crashes, or the disk has an error during the wri
 
 The professional approach:
 
-```rust
+```zia
 bind File = Zanna.IO.File;
 
 func safeWrite(filename: String, content: String) {
@@ -874,7 +874,7 @@ Why is this safer?
 
 For critical data, keep a backup:
 
-```rust
+```zia
 bind File = Zanna.IO.File;
 
 func writeWithBackup(filename: String, content: String) {
@@ -894,14 +894,14 @@ If something goes wrong, the user still has their `.backup` file.
 ### Avoiding Accidental Overwrites
 
 **Confirm before overwriting:**
-```rust
+```zia
 bind File = Zanna.IO.File;
 bind Zanna.Terminal;
 
 func saveFile(filename: String, content: String) {
     if File.Exists(filename) {
         Print("File exists. Overwrite? (y/n): ");
-        var response = InputLine().Trim().ToLower();
+        var response = TryReadLine().UnwrapOrStr("").Trim().ToLower();
         if response != "y" {
             Say("Save cancelled.");
             return;
@@ -913,7 +913,7 @@ func saveFile(filename: String, content: String) {
 ```
 
 **Generate unique names:**
-```rust
+```zia
 bind File = Zanna.IO.File;
 
 func uniqueFilename(base: String, ext: String) -> String {
@@ -942,7 +942,7 @@ Let's look at real-world examples of how files are used.
 
 Programs often store settings in configuration files:
 
-```rust
+```zia
 module Config;
 
 bind File = Zanna.IO.File;
@@ -1021,7 +1021,7 @@ lastFile=/home/alice/documents/report.txt
 
 Recording events for debugging and auditing:
 
-```rust
+```zia
 module Logger;
 
 bind Zanna.Time.DateTime as DateTime;
@@ -1075,7 +1075,7 @@ Example log output:
 
 Games need to persist player progress:
 
-```rust
+```zia
 module GameSave;
 
 bind Zanna.IO.Dir as Dir;
@@ -1142,7 +1142,7 @@ func listSaves() -> List[Integer] {
 
 Exporting data for spreadsheets or other programs:
 
-```rust
+```zia
 bind File = Zanna.IO.File;
 bind Zanna.String as Str;
 bind Zanna.Terminal;
@@ -1192,7 +1192,7 @@ func start() {
 
 Reading data from CSV files:
 
-```rust
+```zia
 bind File = Zanna.IO.File;
 bind Zanna.String as Str;
 bind Zanna.Terminal;
@@ -1220,7 +1220,7 @@ func start() {
 
 Let's build a full application that demonstrates proper file handling:
 
-```rust
+```zia
 module NoteKeeper;
 
 bind File = Zanna.IO.File;
@@ -1352,7 +1352,7 @@ func start() {
 
     while true {
         Print("> ");
-        var command = InputLine().Trim().ToLower();
+        var command = TryReadLine().UnwrapOrStr("").Trim().ToLower();
 
         if command == "quit" || command == "exit" {
             Say("Goodbye!");
@@ -1366,7 +1366,7 @@ func start() {
 
         } else if command == "add" {
             Print("Enter note: ");
-            var note = InputLine().Trim();
+            var note = TryReadLine().UnwrapOrStr("").Trim();
 
             if note.Length == 0 {
                 Say("Note cannot be empty.");
@@ -1383,7 +1383,7 @@ func start() {
             } else {
                 displayNotes(notes);
                 Print("Delete which number? (0 to cancel): ");
-                var input = InputLine().Trim();
+                var input = TryReadLine().UnwrapOrStr("").Trim();
 
                 try {
                     var num = Convert.ToInt64(input);
@@ -1409,7 +1409,7 @@ func start() {
             } else {
                 displayNotes(notes);
                 Print("Edit which number? (0 to cancel): ");
-                var input = InputLine().Trim();
+                var input = TryReadLine().UnwrapOrStr("").Trim();
 
                 try {
                     var num = Convert.ToInt64(input);
@@ -1418,7 +1418,7 @@ func start() {
                     } else if num >= 1 && num <= notes.count() {
                         Say("Current: " + notes.get(num - 1));
                         Print("New text: ");
-                        var newNote = InputLine().Trim();
+                        var newNote = TryReadLine().UnwrapOrStr("").Trim();
 
                         if newNote.Length == 0 {
                             Say("Note cannot be empty. Use 'delete' to remove.");
@@ -1441,7 +1441,7 @@ func start() {
                 Say("Already empty.");
             } else {
                 Print("Delete ALL " + notes.count() + " notes? (yes/no): ");
-                var confirm = InputLine().Trim().ToLower();
+                var confirm = TryReadLine().UnwrapOrStr("").Trim().ToLower();
 
                 if confirm == "yes" {
                     notes = [];
@@ -1478,7 +1478,7 @@ This program demonstrates:
 ## The Two Languages
 
 **Zia**
-```rust
+```zia
 bind File = Zanna.IO.File;
 
 // Read
@@ -1532,7 +1532,7 @@ BASIC uses file numbers (#1, #2, etc.) and requires explicit OPEN/CLOSE. The FOR
 ## Common Mistakes
 
 **Forgetting the file might not exist:**
-```rust
+```zia
 bind File = Zanna.IO.File;
 bind Zanna.Terminal;
 
@@ -1553,7 +1553,7 @@ try {
 ```
 
 **Overwriting when you meant to append:**
-```rust
+```zia
 bind File = Zanna.IO.File;
 
 File.WriteAllText("log.txt", "Entry 1\n");
@@ -1565,7 +1565,7 @@ File.Append("log.txt", "Entry 2\n");  // Both entries preserved
 ```
 
 **Hardcoding paths:**
-```rust
+```zia
 bind Zanna.System.Machine as Machine;
 bind Zanna.IO.Path as Path;
 
@@ -1581,7 +1581,7 @@ var documentsFile = Path.Join(home, "Documents/data.txt");
 ```
 
 **Expecting stream handles from whole-file APIs:**
-```rust
+```zia
 bind File = Zanna.IO.File;
 bind Zanna.Terminal;
 
@@ -1594,7 +1594,7 @@ for line in lines {
 ```
 
 **Looking for a Flush method on whole-file writes:**
-```rust
+```zia
 bind File = Zanna.IO.File;
 
 File.WriteAllText("important.txt", "Critical data\n");
@@ -1603,7 +1603,7 @@ File.Append("important.txt", "More data\n");
 ```
 
 **Not handling paths cross-platform:**
-```rust
+```zia
 bind Zanna.IO.Path as Path;
 
 // Bad: backslash doesn't work on Mac/Linux

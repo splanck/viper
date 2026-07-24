@@ -23,7 +23,7 @@ Byte-oriented regular-expression-subset matching for text search and manipulatio
 |---------------------------------------|-----------------------------|----------------------------------------------------|
 | `IsMatch(text, pattern)`              | `Boolean(String, String)`   | Test if pattern matches anywhere in text           |
 | `Find(text, pattern)`                 | `String(String, String)`    | Find first match, or empty string if none          |
-| `FindOption(text, pattern)`           | `Option[String](String, String)` | Find first match as `Some(match)`, including empty-string matches, or `None` |
+| `Find(text, pattern)`           | `Option[String](String, String)` | Find first match as `Some(match)`, including empty-string matches, or `None` |
 | `FindFrom(text, pattern, start)`      | `String(String, String, Integer)` | Find first match at or after start position  |
 | `FindFromOption(text, pattern, start)` | `Option[String](String, String, Integer)` | Find first match at or after start as `Some(match)`, or `None` |
 | `FindPos(text, pattern)`              | `Integer(String, String)`   | Find position of first match, or -1 if none        |
@@ -92,11 +92,11 @@ The following advanced regex features are not implemented:
   members inside a character class; each shorthand contributes its own byte set to the union
   (`[a\D]` matches `a` and every non-digit).
 - The regex cache is safe for concurrent users of cached patterns; in-use compiled entries are not evicted.
-- Prefer `FindOption()`, `FindFromOption()`, and `FindPosOption()` for new code. The legacy string-returning forms cannot distinguish no match from a valid empty-string match.
+- Prefer `Find()`, `FindFromOption()`, and `FindPosOption()` for new code. The legacy string-returning forms cannot distinguish no match from a valid empty-string match.
 
 ### Zia Example
 
-```rust
+```zia
 module PatternDemo;
 
 bind Zanna.Terminal;
@@ -105,7 +105,7 @@ bind Zanna.Text.Fmt as Fmt;
 func start() {
     // Pattern functions take (text, pattern) order
     Say("Match: " + Fmt.Bool(Zanna.Text.Pattern.IsMatch("hello123", "[a-z]+[0-9]+")));
-    var found = Zanna.Text.Pattern.FindOption("Price is $42.50", "[0-9]+");
+    var found = Zanna.Text.Pattern.Find("Price is $42.50", "[0-9]+");
     if found.IsSome {
         Say("Find: " + found.UnwrapStr());
     }
@@ -120,7 +120,7 @@ func start() {
 PRINT "Match: "; Zanna.Text.Pattern.IsMatch("hello123", "[a-z]+[0-9]+")
 
 ' Find first match
-DIM found AS OBJECT = Zanna.Text.Pattern.FindOption("Price is $42.50", "[0-9]+")
+DIM found AS OBJECT = Zanna.Text.Pattern.Find("Price is $42.50", "[0-9]+")
 IF found.IsSome THEN
     PRINT "Find: "; found.UnwrapStr()
 END IF
@@ -141,7 +141,7 @@ IF Zanna.Text.Pattern.IsMatch(text, "\w+") THEN
 END IF
 
 ' Find first match
-DIM word AS OBJECT = Zanna.Text.Pattern.FindOption(text, "[A-Z][a-z]+")
+DIM word AS OBJECT = Zanna.Text.Pattern.Find(text, "[A-Z][a-z]+")
 IF word.IsSome THEN
     PRINT word.UnwrapStr()  ' Output: "Hello"
 END IF
@@ -249,7 +249,7 @@ strings to avoid recompilation overhead.
 |------------------------------------|------------------------------|----------------------------------------------------|
 | `IsMatch(text)`                    | `Boolean(String)`            | Test if pattern matches anywhere in text           |
 | `Find(text)`                       | `String(String)`             | Find first match, or empty string if none          |
-| `FindOption(text)`                 | `Option[String](String)`     | Find first match as `Some(match)`, including empty-string matches, or `None` |
+| `Find(text)`                 | `Option[String](String)`     | Find first match as `Some(match)`, including empty-string matches, or `None` |
 | `FindFrom(text, start)`            | `String(String, Integer)`    | Find first match at or after start position        |
 | `FindFromOption(text, start)`      | `Option[String](String, Integer)` | Find first match at or after start as `Some(match)`, or `None` |
 | `FindPos(text)`                    | `Integer(String)`            | Find position of first match, or -1 if none        |
@@ -293,7 +293,7 @@ when the pattern itself can match an empty string.
 
 ### Zia Example
 
-```rust
+```zia
 module CompiledPatternDemo;
 
 bind Zanna.Terminal;
@@ -405,7 +405,7 @@ Stateful string scanner for lexing and parsing text. Maintains a position cursor
 
 | Property    | Type    | Access     | Description                              |
 |-------------|---------|------------|------------------------------------------|
-| `Pos`       | Integer | Read/Write | Current byte position (0-indexed)        |
+| `Position`  | Integer | Read/Write | Current byte position (0-indexed)        |
 | `IsEnd`     | Boolean | Read-only  | True if at end of string                 |
 | `Remaining` | Integer | Read-only  | Number of bytes remaining                |
 | `Length`    | Integer | Read-only  | Total byte length of the source string   |
@@ -430,7 +430,7 @@ Stateful string scanner for lexing and parsing text. Maintains a position cursor
 | `Skip(n)`             | `Void(Integer)`            | Skip up to n bytes                                              |
 | `SkipWhitespace()`    | `Integer()`                | Skip space, tab, `LF`, and `CR`; return the byte count           |
 | `ReadIdent()`         | `String()`                 | Read an identifier (letter/underscore start, then alnum/underscore) |
-| `ReadInt()`           | `String()`                 | Read an integer (optional sign + digits)                       |
+| `ReadIntToken()`           | `String()`                 | Read an integer (optional sign + digits)                       |
 | `ReadNumber()`        | `String()`                 | Read a decimal number token with optional sign/exponent         |
 | `ReadQuoted(quote)`   | `String(Integer)`          | Consume a quoted string and decode its simple escapes           |
 | `ReadLine()`          | `String()`                 | Read a line and consume its `LF`, `CR`, or `CRLF` terminator    |
@@ -441,15 +441,15 @@ Stateful string scanner for lexing and parsing text. Maintains a position cursor
 - The scanner retains the source string for its lifetime, so scanning remains valid even if the caller releases its reference
 - A null source creates an empty scanner
 - `Peek`, `PeekAt`, and `Read` return `-1` when their byte is out of range. `PeekAt` is relative to
-  `Pos` and accepts negative offsets.
+  `Position` and accepts negative offsets.
 - `Match` and `MatchStr` test without advancing; `Accept` and `AcceptStr` advance only if matched
 - Null delimiter/character-set arguments fail safely; `ReadUntilAny(NULL)` reads the rest of the source
 - `PeekStr` and `ReadStr` return empty for `n <= 0`; `Skip` is a no-op for `n <= 0`. Positive
   lengths clamp at the end of the source.
 - `ReadIdent` recognizes ASCII letters/underscore followed by ASCII alphanumerics/underscore.
-  `ReadInt` accepts an optional sign followed by at least one digit. `ReadNumber` additionally
+  `ReadIntToken` accepts an optional sign followed by at least one digit. `ReadNumber` additionally
   accepts forms such as `.5`, `1.`, and `1.5e-2`; an incomplete exponent is left unconsumed.
-- `ReadIdent`, `ReadInt`, `ReadNumber`, and `ReadQuoted` return an empty string without advancing if
+- `ReadIdent`, `ReadIntToken`, `ReadNumber`, and `ReadQuoted` return an empty string without advancing if
   the current position does not start the requested token.
 - `ReadQuoted` decodes `\n`, `\t`, `\r`, `\\`, `\"`, and `\'`. For another escaped byte it drops
   the backslash and keeps that byte. An unterminated quoted string restores `Pos` and traps.
@@ -457,7 +457,7 @@ Stateful string scanner for lexing and parsing text. Maintains a position cursor
 
 ### Zia Example
 
-```rust
+```zia
 module ScannerDemo;
 
 bind Zanna.Terminal;
@@ -470,13 +470,13 @@ func start() {
     var ident = sc.ReadIdent();
     Say("Ident: " + ident);                         // hello
     sc.SkipWhitespace();
-    var num = sc.ReadInt();
+    var num = sc.ReadIntToken();
     Say("Int: " + num);                              // 42
     sc.SkipWhitespace();
     var rest = sc.ReadIdent();
     Say("Rest: " + rest);                            // world
     Say("AtEnd: " + Fmt.Bool(sc.IsEnd));             // true
-    Say("Pos: " + Fmt.Int(sc.Pos));                  // 14
+    Say("Pos: " + Fmt.Int(sc.Position));                  // 14
 }
 ```
 
@@ -494,7 +494,7 @@ PRINT ident       ' Output: "hello"
 sc.SkipWhitespace()
 
 ' Read an integer
-DIM num AS STRING = sc.ReadInt()
+DIM num AS STRING = sc.ReadIntToken()
 PRINT num          ' Output: "42"
 
 ' Skip whitespace and read another identifier
@@ -504,23 +504,23 @@ PRINT rest         ' Output: "world"
 
 ' Check position and end state
 PRINT sc.IsEnd     ' Output: 1 (true)
-PRINT sc.Pos       ' Output: 14
+PRINT sc.Position       ' Output: 14
 PRINT sc.Length       ' Output: 14
 
 ' Reset and scan again
 sc.Reset()
-PRINT sc.Pos       ' Output: 0
+PRINT sc.Position       ' Output: 0
 PRINT sc.Remaining ' Output: 14
 
 ' Peek without advancing
 DIM ch AS INTEGER = sc.Peek()
 PRINT CHR$(ch)     ' Output: "h"
-PRINT sc.Pos       ' Output: 0 (unchanged)
+PRINT sc.Position       ' Output: 0 (unchanged)
 
 ' Read characters one at a time
 ch = sc.Read()
 PRINT CHR$(ch)     ' Output: "h"
-PRINT sc.Pos       ' Output: 1 (advanced)
+PRINT sc.Position       ' Output: 1 (advanced)
 ```
 
 ### Parsing Example
@@ -587,7 +587,7 @@ Line-based text differencing using a longest-common-subsequence table. It comput
 
 ### Zia Example
 
-```rust
+```zia
 module DiffDemo;
 
 bind Zanna.Terminal;
@@ -679,7 +679,7 @@ byte; a final backslash matches a literal backslash.
 
 ### Zia Example
 
-```rust
+```zia
 module LikeDemo;
 
 bind Zanna.Terminal;
@@ -761,7 +761,7 @@ byte offsets into the candidate, and `end` is exclusive.
 
 ### Zia Example
 
-```rust
+```zia
 module FuzzyDemo;
 
 bind Zanna.Terminal;

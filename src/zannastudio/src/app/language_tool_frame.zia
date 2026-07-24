@@ -49,6 +49,7 @@ bind "../editor/semantic_tokens";
 bind "../editor/signature";
 bind "../editor/symbols";
 bind "../editor/workbench_state";
+bind "../services/file_utils";
 bind "../services/locations";
 bind "../ui/app_shell";
 
@@ -94,6 +95,8 @@ class LanguageToolFrameController {
     expose document.Document activeDocument;
     /// Text typed during the current frame after completion key routing.
     expose String typedThisFrame;
+    /// True only while the focused code editor owns application keyboard input.
+    expose Boolean editorInputActive;
     /// Current editor cursor line after language-trigger handling.
     expose Integer curCursorLine;
     /// Current editor cursor column after language-trigger handling.
@@ -120,12 +123,20 @@ class LanguageToolFrameController {
         activeService = null;
         activeDocument = null;
         typedThisFrame = "";
+        editorInputActive = false;
         curCursorLine = 1;
         curCursorCol = 1;
         frameWorkStartMs = 0;
         lastWorkspaceIndexStatus = "";
         lastBreakpointPath = "";
         lastBreakpointVersion = -1;
+    }
+
+    /// @brief Whether editor-intelligence work targets the visible surface.
+    hide func ActiveUsesTextEditor() -> Boolean {
+        return activeDocument != null
+               and activeDocument.isReadOnlyPreview == false
+               and file_utils.IsVisualKind(activeDocument.kind) == false;
     }
 
     /// @brief Wire long-lived editor intelligence services into the frame pump.
@@ -203,7 +214,20 @@ class LanguageToolFrameController {
         }
 
         ConfigureLanguageTools(activeToolPath, activeService, appSettings, engine);
-        typedThisFrame = Input.Keyboard.GetText();
+        editorInputActive = ActiveUsesTextEditor()
+                            and engine != null and engine.editor != null
+                            and engine.editor.IsFocused();
+        typedThisFrame = "";
+        if editorInputActive {
+            typedThisFrame = Input.Keyboard.GetText();
+        } else {
+            // The keyboard queue is application-global. Editor popups must yield
+            // immediately when Terminal, Search, an overlay, or another widget
+            // takes focus, without re-focusing the editor as they close.
+            if completer != null and completer.isVisible { completer.Hide(); }
+            if hoverCtrl != null { hoverCtrl.hideTooltip(); }
+            if sigCtrl != null { sigCtrl.Hide(); }
+        }
         frameWorkStartMs = Clock.NowMs();
     }
 
@@ -219,7 +243,9 @@ class LanguageToolFrameController {
         var perfSpan = StartPerfSpan();
         if indexer != null {
             indexer.EnsureProject(projMgr, docMgr);
-            indexer.SyncActiveWhenIdle(docMgr, engine);
+            if ActiveUsesTextEditor() {
+                indexer.SyncActiveWhenIdle(docMgr, engine);
+            }
             if indexer.valid and indexer.workspaceIndexComplete == false {
                 if indexer.indexing == false and indexer.pendingIndexFiles == null {
                     indexer.StartIndexWorkspace();
@@ -246,7 +272,7 @@ class LanguageToolFrameController {
     expose func SyncBreakpoints(engine: editor_engine.EditorEngine,
                                 store: breakpoints.BreakpointStore) {
         if engine == null or store == null { return; }
-        if activeDocument != null {
+        if ActiveUsesTextEditor() {
             if lastBreakpointPath != activeDocument.filePath or lastBreakpointVersion != store.version {
                 store.ApplyToEditor(engine, activeDocument);
                 lastBreakpointPath = activeDocument.filePath;
@@ -263,7 +289,10 @@ class LanguageToolFrameController {
     /// @details This mutates `typedThisFrame` when a key should not also drive
     ///          automatic completion or signature triggers later in the frame.
     expose func RouteCompletionKeys() {
-        if completer == null or completer.isVisible == false { return; }
+        if editorInputActive == false
+           or completer == null or completer.isVisible == false {
+            return;
+        }
         if Input.Keyboard.WasPressed(Zanna.Input.Key.Tab) {
             completer.AcceptTabKey();
             typedThisFrame = "";
@@ -308,16 +337,16 @@ class LanguageToolFrameController {
                                     dbgSession: debug_session.DebugSession,
                                     breakpointStore: breakpoints.BreakpointStore) {
         var perfSpan = StartPerfSpan();
-        if completer != null {
+        if editorInputActive and completer != null {
             completer.Update(typedThisFrame);
         }
         AddCompletionPerf(perfSpan);
 
         perfSpan = StartPerfSpan();
-        if liveDiag != null {
+        if ActiveUsesTextEditor() and liveDiag != null {
             liveDiag.update(engine, shell, locStore);
         }
-        if semHighlighter != null {
+        if ActiveUsesTextEditor() and semHighlighter != null {
             semHighlighter.update(engine);
         }
         AddDiagnosticsPerf(perfSpan);
@@ -354,31 +383,37 @@ class LanguageToolFrameController {
         if searcher != null {
             searcher.HandlePanel(shell, projMgr, docMgr, engine, locStore);
             if searcher.HasActiveWork()
+               and shell != null
+               and shell.toolPanels.IsSearchInputFocused()
                and Input.Keyboard.WasPressed(Zanna.Input.Key.Escape) {
                 searcher.Cancel(shell);
             }
         }
         if BudgetAllows() {
             var hoverSpan = StartPerfSpan();
-            if hoverCtrl != null { hoverCtrl.update(engine); }
+            if editorInputActive and hoverCtrl != null { hoverCtrl.update(engine); }
             AddHoverPerf(hoverSpan);
         }
         if BudgetAllows() {
             var sigSpan = StartPerfSpan();
-            if sigCtrl != null { sigCtrl.update(engine); }
+            if editorInputActive and sigCtrl != null { sigCtrl.update(engine); }
             AddSignaturePerf(sigSpan);
         }
         if BudgetAllows() {
             var inlaySpan = StartPerfSpan();
-            if inlayCtrl != null { inlayCtrl.update(engine); }
+            if ActiveUsesTextEditor() and inlayCtrl != null {
+                inlayCtrl.update(engine);
+            }
             AddInlayPerf(inlaySpan);
         }
         if BudgetAllows() {
             var symbolsSpan = StartPerfSpan();
-            if symbolOutline != null { symbolOutline.update(engine); }
+            if ActiveUsesTextEditor() and symbolOutline != null {
+                symbolOutline.update(engine);
+            }
             AddSymbolsPerf(symbolsSpan);
         }
-        if symbolOutline != null {
+        if ActiveUsesTextEditor() and symbolOutline != null {
             symbolOutline.handleClicks(engine);
         }
     }
@@ -386,6 +421,7 @@ class LanguageToolFrameController {
     /// @brief Handle explicit completion/signature shortcut triggers.
     /// @param engine Active editor engine used by signature help.
     expose func HandleManualIntelligenceTriggers(engine: editor_engine.EditorEngine) {
+        if editorInputActive == false { return; }
         if Shortcuts.WasTriggered("completion_trigger") {
             var perfSpan = StartPerfSpan();
             if completer != null {
@@ -405,7 +441,7 @@ class LanguageToolFrameController {
     /// @brief Handle typed dot, identifier, comma, and parenthesis language triggers.
     /// @param engine Active editor engine used for cursor position and signatures.
     expose func HandleTypedLanguageTriggers(engine: editor_engine.EditorEngine) {
-        if engine == null { return; }
+        if editorInputActive == false or engine == null { return; }
         curCursorLine = engine.GetCursorLine();
         curCursorCol = engine.GetCursorCol();
 

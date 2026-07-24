@@ -197,9 +197,9 @@ IF conn.IsOpen THEN
 END IF
 
 ' Send HTTP request
-DIM request AS STRING = "GET / HTTP/1.1" + CHR(13) + CHR(10) + _
-                        "Host: example.com" + CHR(13) + CHR(10) + _
-                        CHR(13) + CHR(10)
+DIM request AS STRING = "GET / HTTP/1.1" + CHR$(13) + CHR$(10) + _
+                        "Host: example.com" + CHR$(13) + CHR$(10) + _
+                        CHR$(13) + CHR$(10)
 conn.SendStr(request)
 
 ' Receive response
@@ -221,7 +221,7 @@ DIM greeting AS STRING = conn.RecvLine()
 PRINT "Server: "; greeting
 
 ' Send HELO command
-conn.SendStr("HELO localhost" + CHR(13) + CHR(10))
+conn.SendStr("HELO localhost" + CHR$(13) + CHR$(10))
 
 ' Read response
 DIM response AS STRING = conn.RecvLine()
@@ -425,7 +425,7 @@ FOR i = 1 TO 10
     PRINT "Client "; i; " connected from "; clientHost
 
     ' Send greeting
-    client.SendStr("Hello, client " + STR(i) + "!" + CHR(10))
+    client.SendStr("Hello, client " + STR$(i) + "!" + CHR$(10))
 
     ' Close client
     client.Close()
@@ -728,7 +728,7 @@ Static utility class for DNS resolution and IP address validation.
 
 ### Zia Example
 
-```rust
+```zia
 module DnsDemo;
 
 bind Zanna.Terminal;
@@ -1199,7 +1199,7 @@ IF res.IsOk() THEN
     PRINT "Downloaded "; data.Length; " bytes"
 
     ' Save to file
-    Zanna.IO.File.WriteBytes("/tmp/image.png", data)
+    Zanna.IO.File.WriteAllBytes("/tmp/image.png", data)
 END IF
 ```
 
@@ -1300,11 +1300,12 @@ IPv6 literal hosts are bracketed automatically when `Authority`, `HostPort`, or 
 
 ### Zia Example
 
-```rust
+```zia
 module UrlDemo;
 
 bind Zanna.Terminal;
 bind Zanna.Network.Url as Url;
+bind Zanna.Text.Codec as Codec;
 bind Zanna.Text.Fmt as Fmt;
 
 func start() {
@@ -1319,8 +1320,8 @@ func start() {
     Say("Full: " + u.get_Full());
 
     // URL encoding/decoding
-    Say("Encode: " + Url.Encode("hello world!"));
-    Say("Decode: " + Url.Decode("hello%20world%21"));
+    Say("Encode: " + Codec.UrlEncode("hello world!"));
+    Say("Decode: " + Codec.UrlDecode("hello%20world%21"));
 
     // Validation
     Say("IsValid: " + Fmt.Bool(Url.IsValid("https://example.com")));
@@ -1349,8 +1350,8 @@ PRINT "Fragment: "; fragment
 PRINT "Full: "; full
 
 ' URL encoding/decoding
-PRINT "Encode: "; Zanna.Network.Url.Encode("hello world!")
-PRINT "Decode: "; Zanna.Network.Url.Decode("hello%20world%21")
+PRINT "Encode: "; Zanna.Text.Codec.UrlEncode("hello world!")
+PRINT "Decode: "; Zanna.Text.Codec.UrlDecode("hello%20world%21")
 
 ' Validation
 PRINT "IsValid: "; Zanna.Network.Url.IsValid("https://example.com")
@@ -1438,15 +1439,15 @@ PRINT full3  ' "https://other.com/x"
 
 ```basic
 ' Percent-encode special characters
-DIM encoded AS STRING = Zanna.Network.Url.Encode("hello world!")
+DIM encoded AS STRING = Zanna.Text.Codec.UrlEncode("hello world!")
 PRINT encoded  ' "hello%20world%21"
 
 ' Decode percent-encoded string
-DIM decoded AS STRING = Zanna.Network.Url.Decode("hello%20world%21")
+DIM decoded AS STRING = Zanna.Text.Codec.UrlDecode("hello%20world%21")
 PRINT decoded  ' "hello world!"
 
 ' Decode does not treat + as a space outside query strings
-PRINT Zanna.Network.Url.Decode("a+b")  ' "a+b"
+PRINT Zanna.Text.Codec.UrlDecode("a+b")  ' "a+b"
 
 ' Encode Map as query string
 DIM params AS Zanna.Collections.Map = Zanna.Collections.Map.New()
@@ -1755,21 +1756,13 @@ Any JSON value can be returned, including a Map, Seq, string, number, Boolean, o
 HTTP response returns null. Transport/setup failures still trap, and malformed response JSON traps
 during parsing. The mutation helpers also return null for a successful empty body.
 
-### Compatibility Diagnostics
-
-| Method           | Returns | Description                                          |
-|------------------|---------|------------------------------------------------------|
-| `LastOk()`       | Boolean | True if last status was 200-299                      |
-| `LastResponse()` | HttpRes | Last response object (null if none)                  |
-| `LastStatus()`   | Integer | HTTP status code of last request (0 if none)         |
-
-`LastStatus`, `LastResponse`, and `LastOk` are receiver-scoped compatibility
-diagnostics. New code should store the response returned by `*Result` instead
-of reading mutable last-state after a request.
+Store the response returned by each `*Result` call rather than reading mutable
+last-request state; this keeps transport failures and HTTP status handling
+explicit at the call site.
 
 ### Zia Example
 
-```rust
+```zia
 var api = Zanna.Network.RestClient.New("https://api.example.com");
 api.SetHeader("User-Agent", "ZannaDemo/1.0");
 api.SetTimeout(15000);
@@ -1794,10 +1787,6 @@ api.SetAuthBearer("test-token-123")
 
 ' Clear auth
 api.ClearAuth()
-
-' Check last status (no request yet, should be 0)
-PRINT "LastStatus: "; api.LastStatus()
-PRINT "LastOk: "; api.LastOk()
 ```
 
 ### Basic Example
@@ -1944,7 +1933,7 @@ DIM legacy AS OBJECT = legacyApi.GetJson("/api/v1/data")
   applied to the request and disables its deadlines.
 - **JSON helpers:** Automatic serialization/deserialization for JSON APIs
 - **Result-returning requests:** `GetResult`, `PostResult`, `PutResult`, `PatchResult`, `DeleteResult`, and `HeadResult` return `Result<HttpRes>` so transport failures and HTTP status handling stay explicit.
-- **Last request tracking:** `LastResponse()` returns the most recent response object; it is replaced on every new request. `LastStatus()` returns the HTTP status code; `LastOk()` returns true for 2xx responses. These are compatibility diagnostics; prefer storing the response from `*Result`.
+- **Explicit responses:** Each `*Result` call returns its own `Result<HttpRes>`; store that response rather than relying on mutable last-request state, so status and transport handling stay explicit at the call site.
 - **Threading:** Base URL/default headers, timeout/pool configuration, and last-response diagnostics
   are synchronized. Each request retains a complete immutable snapshot before unlocking, so one
   `RestClient` may be shared across concurrent callers. As expected, the final `LastResponse`
@@ -2023,7 +2012,7 @@ should coordinate it with in-flight retry work.
 
 ### Zia Example
 
-```rust
+```zia
 var policy = Zanna.Network.RetryPolicy.New(3, 1000);
 var firstDelay = policy.NextDelay(); // 1000
 ```
@@ -2110,7 +2099,7 @@ acquisitions compare exactly against the balance.
 
 ### Zia Example
 
-```rust
+```zia
 var limiter = Zanna.Network.RateLimiter.New(10, 10.0);
 if limiter.TryAcquire() {
     // Perform one rate-limited operation.

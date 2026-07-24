@@ -1,0 +1,133 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/ui/scene_layout_2d.zia
+// Purpose: Pure operation metadata and deterministic ordering math for 2D
+//          multi-object layout commands.
+// Key invariants:
+//   - Align operations use the explicitly selected primary object as anchor.
+//   - Distribution ordering is stable for equal coordinates and rounds each
+//     integer target from the two unchanged extrema.
+// Ownership/Lifetime:
+//   - This module owns values only; SceneEditor2D owns scene mutations/history.
+// Links: zannastudio/src/ui/scene_editor_2d.zia,
+//        zannastudio/src/probes/scene_editor_2d_probe.zia
+//
+//===----------------------------------------------------------------------===//
+
+module scene_layout_2d;
+
+bind SceneDocument = Zanna.Game2D.SceneDocument;
+bind Math = Zanna.Math;
+bind Convert = Zanna.Core.Convert;
+
+// ============================================================================
+// MODULE: scene_layout_2d
+// PURPOSE: Keep layout choice, stable ordering, and integer interpolation
+//          independent from widgets and document history.
+//
+// WHERE-THIS-FITS: SceneEditor2D validates selection and commits one canonical
+//          transaction; this module supplies deterministic target geometry.
+//
+// TEACHING-NOTE: Distribution never chains rounded deltas. Every intermediate
+//          position is derived from the original extrema, preventing drift.
+// ============================================================================
+
+final LAYOUT_ALIGN_X: Integer = 0;
+final LAYOUT_ALIGN_Y: Integer = 1;
+final LAYOUT_DISTRIBUTE_X: Integer = 2;
+final LAYOUT_DISTRIBUTE_Y: Integer = 3;
+
+/// @brief Return whether one operation identifier is supported.
+func IsOperation(operation: Integer) -> Boolean {
+    return operation == LAYOUT_ALIGN_X
+        or operation == LAYOUT_ALIGN_Y
+        or operation == LAYOUT_DISTRIBUTE_X
+        or operation == LAYOUT_DISTRIBUTE_Y;
+}
+
+/// @brief Return whether an operation distributes rather than aligns.
+func IsDistribution(operation: Integer) -> Boolean {
+    return operation == LAYOUT_DISTRIBUTE_X
+        or operation == LAYOUT_DISTRIBUTE_Y;
+}
+
+/// @brief Return whether an operation reads/writes the X coordinate.
+func UsesX(operation: Integer) -> Boolean {
+    return operation == LAYOUT_ALIGN_X
+        or operation == LAYOUT_DISTRIBUTE_X;
+}
+
+/// @brief Return the minimum useful selection size.
+func MinimumSelection(operation: Integer) -> Integer {
+    if IsDistribution(operation) { return 3; }
+    if IsOperation(operation) { return 2; }
+    return 1000000;
+}
+
+/// @brief Return concise inspector copy for one layout operation.
+func OperationLabel(operation: Integer) -> String {
+    if operation == LAYOUT_ALIGN_Y { return "Align Y to primary"; }
+    if operation == LAYOUT_DISTRIBUTE_X { return "Distribute X"; }
+    if operation == LAYOUT_DISTRIBUTE_Y { return "Distribute Y"; }
+    return "Align X to primary";
+}
+
+/// @brief Read one authored point coordinate.
+func Coordinate(scene: SceneDocument,
+                objectIndex: Integer,
+                useX: Boolean) -> Integer {
+    if scene == null or objectIndex < 0
+       or objectIndex >= scene.ObjectCount() {
+        return 0;
+    }
+    if useX { return scene.ObjectX(objectIndex); }
+    return scene.ObjectY(objectIndex);
+}
+
+/// @brief Return a stable coordinate/index ordering of selected identities.
+func OrderedIndices(scene: SceneDocument,
+                    indices: List[Integer],
+                    useX: Boolean) -> List[Integer] {
+    var ordered: List[Integer] = [];
+    if scene == null { return ordered; }
+    var sourceIndex = 0;
+    while sourceIndex < indices.count() {
+        var candidate = indices.get(sourceIndex);
+        var candidateCoordinate = Coordinate(scene, candidate, useX);
+        var insertAt = 0;
+        while insertAt < ordered.count() {
+            var existing = ordered.get(insertAt);
+            var existingCoordinate = Coordinate(scene, existing, useX);
+            if candidateCoordinate < existingCoordinate
+               or (candidateCoordinate == existingCoordinate
+                   and candidate < existing) {
+                break;
+            }
+            insertAt = insertAt + 1;
+        }
+        if insertAt < ordered.count() {
+            ordered.insert(insertAt, candidate);
+        } else {
+            ordered.add(candidate);
+        }
+        sourceIndex = sourceIndex + 1;
+    }
+    return ordered;
+}
+
+/// @brief Interpolate one deterministic integer position between two extrema.
+func DistributedCoordinate(minimum: Integer,
+                           maximum: Integer,
+                           position: Integer,
+                           count: Integer) -> Integer {
+    if count < 2 or position <= 0 { return minimum; }
+    if position >= count - 1 { return maximum; }
+    var fraction = (1.0 * position) / (count - 1);
+    return Convert.NumToInt(Math.Round(
+        minimum + (maximum - minimum) * fraction));
+}

@@ -215,7 +215,7 @@ embed locales/de-DE.json
 ```
 
 Load at runtime:
-```rust
+```zia
 LocaleManager.LoadFromAsset("locales/fr-FR.json")
 ```
 

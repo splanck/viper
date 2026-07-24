@@ -1,3 +1,20 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/probes/scm_probe.zia
+// Purpose: Exercise the Source Control Git command and status parser layer.
+// Key invariants:
+//   - Real paths, spaces, renames, and porcelain-v2 conflicts round-trip.
+//   - Async jobs report the same structured status as blocking operations.
+// Ownership/Lifetime: The probe owns one temporary repository and Git wrapper.
+// Links: zannastudio/src/scm/scm_git.zia
+//
+//===----------------------------------------------------------------------===//
+
 module scm_probe;
 
 // ============================================================================
@@ -155,7 +172,11 @@ func main() {
     if git.Commit("rename spaced file") == false { Terminal.Say("RESULT: fail commit rename"); return; }
 
     var conflictText = "# branch.head main\n";
-    conflictText = conflictText + "u UU N... 100644 100644 100644 100644 abc abc abc abc conflict file.zia\n";
+    conflictText = conflictText
+        + "u UU N... 100644 100644 100644 100644 "
+        + "1111111111111111111111111111111111111111 "
+        + "2222222222222222222222222222222222222222 "
+        + "3333333333333333333333333333333333333333 conflict file.zia\n";
     var conflictStatus = git.StatusFromOutput(conflictText, "", 0);
     if entryConflicted(conflictStatus, "conflict file.zia") == false {
         Terminal.Say("RESULT: fail unmerged conflict row not parsed");

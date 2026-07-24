@@ -742,6 +742,14 @@ class DebugSession {
                                      MAX_DEBUG_OUTPUT_CHARS);
     }
 
+    /// @brief Clear only user-program stdout/stderr retained by this session.
+    /// @details Debugger stop and termination status are separate state and
+    ///          remain available to the Debug Console after this operation.
+    expose func ClearProgramOutput() {
+        programOutput = "";
+        dirty = true;
+    }
+
     /// @brief Copy a matching asynchronous variables reply into the stable path cache.
     hide func CachePendingVariableChildren() {
         if pendingVarPath == "" or pendingVarRef <= 0
@@ -846,7 +854,11 @@ class DebugSession {
     expose func FormatConsole() -> String {
         if hasSession == false and terminated == false { return ""; }
         if consoleText != "" { return consoleText; }
-        return "[debug] " + lastType + " " + lastReason;
+        var state = lastType;
+        if state == "" and hasSession { state = "running"; }
+        var result = "[debug] " + state;
+        if lastReason != "" { result = result + " " + lastReason; }
+        return result;
     }
 
     // ── Structured stop accessors (Variables / Call Stack panels) ───────────

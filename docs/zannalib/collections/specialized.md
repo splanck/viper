@@ -88,11 +88,10 @@ intersection, difference), and enumeration.
 | `Has(str)`      | `Boolean(String)` | Check if string is in the bag                                |
 | `Clear()`       | `Void()`          | Remove all strings from the bag                              |
 | `Clone()`       | `StringSet()`           | Return an independent copy                                   |
-| `Items()`       | `Seq()`           | Get all strings as a Seq (order undefined)                   |
 | `Union(other)`     | `StringSet(StringSet)`        | Return new bag with union of both bags                       |
 | `Intersect(other)` | `StringSet(StringSet)`        | Return new bag with intersection of both bags                |
-| `Diff(other)`   | `StringSet(StringSet)`        | Return new bag with elements in this but not other           |
-| `ToSeq()`        | `Seq()`           | Return all strings as a Seq (same as Items)                    |
+| `Difference(other)`   | `StringSet(StringSet)`        | Return new bag with elements in this but not other           |
+| `ToSeq()`        | `Seq()`           | Return all strings as a Seq (order undefined)                  |
 | `ToSet()`        | `Set()`           | Return all strings as a new Set                                |
 
 ### Notes
@@ -100,9 +99,9 @@ intersection, difference), and enumeration.
 - Strings are stored by value (copied into the bag). The full runtime byte
   length participates in hashing and equality; a null string argument is
   treated as the empty string.
-- Order of strings returned by `Items()` is not guaranteed (hash-table order).
-- `Items()` and `ToSeq()` return independent snapshots containing copied strings.
-- `Clone` and the set operations (`Union`, `Intersect`, `Diff`) return new bags;
+- Order of strings returned by `ToSeq()` is not guaranteed (hash-table order).
+- `ToSeq()` and `ToSet()` return independent snapshots containing copied strings.
+- `Clone` and the set operations (`Union`, `Intersect`, `Difference`) return new bags;
   their inputs are unchanged.
 - The implementation uses FNV-1a hashing and separate chaining for average
   O(1) membership, insertion, and removal. It grows after the next insertion
@@ -119,7 +118,7 @@ intersection, difference), and enumeration.
 
 ### Zia Example
 
-```rust
+```zia
 module BagDemo;
 
 bind Zanna.Terminal;
@@ -189,11 +188,11 @@ DIM common AS Zanna.Collections.StringSet = bagA.Intersect(bagB)
 PRINT common.Count           ' Output: 2 (b, c)
 
 ' Difference: elements in A but not B
-DIM diff AS Zanna.Collections.StringSet = bagA.Diff(bagB)
+DIM diff AS Zanna.Collections.StringSet = bagA.Difference(bagB)
 PRINT diff.Count             ' Output: 1 (a only)
 
 ' Enumerate all elements
-DIM items AS Zanna.Collections.Seq = fruits.Items()
+DIM items AS Zanna.Collections.Seq = fruits.ToSeq()
 FOR i = 0 TO items.Count - 1
     PRINT Zanna.Collections.Seq.GetStr(items, i)
 NEXT
@@ -261,7 +260,7 @@ expected number of elements and desired false positive rate
 
 ### Zia Example
 
-```rust
+```zia
 module BloomFilterDemo;
 
 bind Zanna.Collections;
@@ -399,7 +398,7 @@ existence checking, longest prefix matching, and retrieving all keys with a give
 
 ### Zia Example
 
-```rust
+```zia
 module TrieDemo;
 
 bind Zanna.Collections;
@@ -529,31 +528,29 @@ elements belong to the same group and supports merging groups.
 
 | Method                | Signature                  | Description                                                     |
 |-----------------------|----------------------------|-----------------------------------------------------------------|
-| `Find(x)`            | `Integer(Integer)`         | Find the representative (root) of element x's set, or `-1` for an invalid element |
-| `FindRootOption(x)`  | `Option[Integer](Integer)` | Find the representative root as `Some(root)`, or `None` for an invalid element |
+| `FindRoot(x)`            | `Option[Integer](Integer)` | Representative root of element x's set as `Some(root)`, or `None` for an invalid element |
 | `Union(x, y)`        | `Integer(Integer, Integer)`| Merge the sets containing x and y; returns 1 if merged, otherwise 0 |
-| `Connected(x, y)`    | `Boolean(Integer, Integer)`| Check if x and y are in the same set                            |
-| `SetSize(x)`         | `Integer(Integer)`         | Get the size of the set containing element x                    |
-| `Clear()`            | `Void()`                   | Compatibility alias for `Reset()`                               |
-| `Reset()`            | `Void()`                   | Reset all elements to individual sets                           |
+| `IsConnected(x, y)`    | `Boolean(Integer, Integer)`| Check if x and y are in the same set                            |
+| `ComponentSize(x)`         | `Integer(Integer)`         | Get the size of the set containing element x                    |
+| `Clear()`            | `Void()`                   | Reset all elements to individual singleton sets                 |
 
 ### Notes
 
 - Elements are identified by integers from 0 to effective-size minus one. The
   effective size is one when the constructor argument is zero.
 - Uses path compression and union by rank for near-O(1) amortized operations.
-- Prefer `FindRootOption()` for new code that accepts user-provided element indexes. `Find()` remains available for compatibility with existing `-1` checks.
+- `FindRoot()` returns `Some(root)` for a valid element, or `None` for an out-of-range index.
 - `Union` returns 0 both when the elements are already in the same set and when
-  either index is invalid. `Connected` returns false for invalid indexes, and
-  `SetSize` returns zero.
-- `Reset` (and its `Clear` alias) restores the structure to its initial state
+  either index is invalid. `IsConnected` returns false for invalid indexes, and
+  `ComponentSize` returns zero.
+- `Clear` restores the structure to its initial state
   with `Count` equal to the effective size.
 - Union-find objects are not thread-safe; even `Find` can mutate parent links
   through path compression.
 
 ### Zia Example
 
-```rust
+```zia
 module UnionFindDemo;
 
 bind Zanna.Collections;
@@ -571,17 +568,17 @@ func start() {
     SayInt(uf.Count);                            // 4
 
     // Check connectivity
-    SayBool(uf.Connected(0, 1));                 // 1
-    SayBool(uf.Connected(0, 2));                 // 0
+    SayBool(uf.IsConnected(0, 1));                 // 1
+    SayBool(uf.IsConnected(0, 2));                 // 0
 
     // Merge across groups
     uf.Union(1, 3);
-    SayBool(uf.Connected(0, 2));                 // 1 (now connected via 1-3)
+    SayBool(uf.IsConnected(0, 2));                 // 1 (now connected via 1-3)
     SayInt(uf.Count);                            // 3
 
     // Set sizes
-    SayInt(uf.SetSize(0));                       // 4 ({0,1,2,3})
-    SayInt(uf.SetSize(4));                       // 1 ({4} alone)
+    SayInt(uf.ComponentSize(0));                       // 4 ({0,1,2,3})
+    SayInt(uf.ComponentSize(4));                       // 1 ({4} alone)
 
     var root = uf.FindRoot(3);
     if root.IsSome {
@@ -589,9 +586,9 @@ func start() {
     }
 
     // Reset to individual sets
-    uf.Reset();
+    uf.Clear();
     SayInt(uf.Count);                            // 6
-    SayBool(uf.Connected(0, 1));                 // 0
+    SayBool(uf.IsConnected(0, 1));                 // 0
 }
 ```
 
@@ -607,7 +604,6 @@ DIM root AS OBJECT = uf.FindRoot(0)
 IF root.IsSome THEN
     PRINT root.UnwrapI64()   ' 0 (own representative)
 END IF
-PRINT uf.Find(3)             ' 3 (legacy -1 sentinel form)
 
 ' Merge sets
 PRINT uf.Union(0, 1)         ' 1 (merged)
@@ -617,29 +613,29 @@ PRINT uf.Count               ' 4
 PRINT uf.Union(0, 1)         ' 0 (already in same set)
 
 ' Check connectivity
-PRINT uf.Connected(0, 1)     ' 1 (same set)
-PRINT uf.Connected(0, 2)     ' 0 (different sets)
+PRINT uf.IsConnected(0, 1)     ' 1 (same set)
+PRINT uf.IsConnected(0, 2)     ' 0 (different sets)
 
 ' Merge across groups
 uf.Union(1, 3)
-PRINT uf.Connected(0, 2)     ' 1 (now connected)
+PRINT uf.IsConnected(0, 2)     ' 1 (now connected)
 PRINT uf.Count               ' 3
 
 ' Set sizes
-PRINT uf.SetSize(0)          ' 4 ({0,1,2,3})
-PRINT uf.SetSize(4)          ' 1 ({4} alone)
+PRINT uf.ComponentSize(0)          ' 4 ({0,1,2,3})
+PRINT uf.ComponentSize(4)          ' 1 ({4} alone)
 
 ' Merge all remaining
 uf.Union(4, 5)
 uf.Union(0, 4)
 PRINT uf.Count               ' 1
-PRINT uf.SetSize(0)          ' 6 (all connected)
+PRINT uf.ComponentSize(0)          ' 6 (all connected)
 
 ' Reset to individual sets
-uf.Reset()
+uf.Clear()
 PRINT uf.Count               ' 6
-PRINT uf.Connected(0, 1)     ' 0
-PRINT uf.SetSize(0)          ' 1
+PRINT uf.IsConnected(0, 1)     ' 0
+PRINT uf.ComponentSize(0)          ' 1
 ```
 
 ### Use Cases
@@ -674,11 +670,11 @@ set operations on integer-indexed elements.
 
 | Method        | Signature              | Description                                            |
 |---------------|------------------------|--------------------------------------------------------|
-| `Set(index)`  | `Void(Integer)`        | Set bit to 1; auto-grow for a non-negative index       |
-| `Clear(index)`| `Void(Integer)`        | Clear a bit; negative/out-of-range indexes are no-ops  |
-| `ClearAll()`  | `Void()`               | Clear all bits to 0                                    |
-| `Get(index)`  | `Boolean(Integer)`     | Get a bit; return false outside the logical length     |
-| `Toggle(index)` | `Void(Integer)`      | Flip a bit; auto-grow for a non-negative index        |
+| `SetBit(index)`  | `Void(Integer)`     | Set bit to 1; auto-grow for a non-negative index       |
+| `ClearBit(index)`| `Void(Integer)`     | Clear a bit; negative/out-of-range indexes are no-ops  |
+| `Clear()`     | `Void()`               | Clear all bits to 0                                    |
+| `GetBit(index)`  | `Boolean(Integer)`  | Get a bit; return false outside the logical length     |
+| `ToggleBit(index)` | `Void(Integer)`   | Flip a bit; auto-grow for a non-negative index        |
 | `SetAll()`    | `Void()`               | Set all bits to 1                                      |
 | `And(other)`  | `BitSet(BitSet)`       | Return new BitSet with bitwise AND of both sets        |
 | `Or(other)`   | `BitSet(BitSet)`       | Return new BitSet with bitwise OR of both sets         |
@@ -689,8 +685,8 @@ set operations on integer-indexed elements.
 ### Notes
 
 - The bitset auto-grows when setting or toggling beyond the current logical
-  `Length`; negative indexes are ignored. `Get` returns false outside the
-  current length, and `Clear` is a no-op there.
+  `Length`; negative indexes are ignored. `GetBit` returns false outside the
+  current length, and `ClearBit` is a no-op there.
 - `And`, `Or`, and `Xor` return new BitSets whose length is the longer input's
   length; missing bits in the shorter input are zero. `Not` preserves the input
   length. The originals are unchanged.
@@ -705,7 +701,7 @@ set operations on integer-indexed elements.
 
 ### Zia Example
 
-```rust
+```zia
 module BitSetDemo;
 
 bind Zanna.Collections;
@@ -717,16 +713,16 @@ func start() {
     var bs = BitSet.New(8);
 
     // Set some bits
-    bs.Set(0);
-    bs.Set(2);
-    bs.Set(7);
+    bs.SetBit(0);
+    bs.SetBit(2);
+    bs.SetBit(7);
     Say("Count: " + Fmt.Int(bs.Count));         // 3
-    Say("Get(2): " + Fmt.Bool(bs.Get(2)));       // true
-    Say("Get(1): " + Fmt.Bool(bs.Get(1)));       // false
+    Say("Get(2): " + Fmt.Bool(bs.GetBit(2)));       // true
+    Say("Get(1): " + Fmt.Bool(bs.GetBit(1)));       // false
 
     // Toggle a bit
-    bs.Toggle(2);
-    Say("After toggle Get(2): " + Fmt.Bool(bs.Get(2)));  // false
+    bs.ToggleBit(2);
+    Say("After toggle Get(2): " + Fmt.Bool(bs.GetBit(2)));  // false
 
     // Binary representation
     Say("Binary: " + bs.ToString());
@@ -734,11 +730,11 @@ func start() {
 
     // Bitwise operations
     var a = BitSet.New(8);
-    a.Set(0);
-    a.Set(1);
+    a.SetBit(0);
+    a.SetBit(1);
     var b = BitSet.New(8);
-    b.Set(1);
-    b.Set(2);
+    b.SetBit(1);
+    b.SetBit(2);
     var result = a.And(b);
     SayInt(result.Count);                        // 1 (only bit 1)
 }
@@ -751,16 +747,16 @@ DIM bs AS OBJECT
 bs = Zanna.Collections.BitSet.New(8)
 
 ' Set some bits
-bs.Set(0)
-bs.Set(2)
-bs.Set(7)
+bs.SetBit(0)
+bs.SetBit(2)
+bs.SetBit(7)
 PRINT "Count: "; bs.Count       ' Count: 3
-PRINT "Get(7): "; bs.Get(7)     ' Get(7): -1
-PRINT "Get(1): "; bs.Get(1)     ' Get(1): 0
+PRINT "Get(7): "; bs.GetBit(7)     ' Get(7): -1
+PRINT "Get(1): "; bs.GetBit(1)     ' Get(1): 0
 
 ' Toggle a bit
-bs.Toggle(7)
-PRINT "After toggle Get(7): "; bs.Get(7)  ' After toggle Get(7): 0
+bs.ToggleBit(7)
+PRINT "After toggle Get(7): "; bs.GetBit(7)  ' After toggle Get(7): 0
 
 PRINT "Len: "; bs.Length           ' Len: 8
 
@@ -769,22 +765,22 @@ PRINT bs.ToString()
 
 ' Bitwise AND
 DIM a AS OBJECT = Zanna.Collections.BitSet.New(8)
-a.Set(0)
-a.Set(1)
-a.Set(2)
+a.SetBit(0)
+a.SetBit(1)
+a.SetBit(2)
 DIM b AS OBJECT = Zanna.Collections.BitSet.New(8)
-b.Set(1)
-b.Set(2)
-b.Set(3)
+b.SetBit(1)
+b.SetBit(2)
+b.SetBit(3)
 DIM andResult AS OBJECT = a.And(b)
 PRINT andResult.Count            ' 2 (bits 1 and 2)
 
 ' Bitwise NOT
 DIM c AS OBJECT = Zanna.Collections.BitSet.New(4)
-c.Set(0)
-c.Set(2)
+c.SetBit(0)
+c.SetBit(2)
 DIM notResult AS OBJECT = c.Not()
-PRINT notResult.Get(1)           ' 1 (inverted)
+PRINT notResult.GetBit(1)           ' 1 (inverted)
 ```
 
 ### Use Cases
@@ -828,8 +824,7 @@ An efficient byte array for binary data. More memory-efficient than Seq for byte
 | `ToHex()`                                | `String()`                | Convert to lowercase hexadecimal string                               |
 | `ToBase64()`                             | `String()`                | Convert to RFC 4648 Base64 string (A-Z a-z 0-9 + /, with '=' padding) |
 | `Fill(value)`                            | `Void(Integer)`           | Set all bytes to the low 8 bits of value                              |
-| `Find(value)`                            | `Integer(Integer)`        | Find the low-8-bit value (-1 if not found)                            |
-| `FindOption(value)`                      | `Option[Integer](Integer)` | Find first occurrence as `Some(index)`, or `None` if not found        |
+| `Find(value)`                            | `Option[Integer](Integer)` | First index of the low-8-bit value as `Some(index)`, or `None` if not found |
 | `Clone()`                                | `Bytes()`                 | Create independent copy                                               |
 | `ReadI16LE(offset)`                      | `Integer(Integer)`        | Read 16-bit signed integer at offset (little-endian)                  |
 | `ReadI16BE(offset)`                      | `Integer(Integer)`        | Read 16-bit signed integer at offset (big-endian)                     |
@@ -867,13 +862,13 @@ An efficient byte array for binary data. More memory-efficient than Seq for byte
 - I16 and I32 writes keep only the low 16 or 32 bits respectively; I64 writes
   store all 64 bits.
 - Negative byte-array lengths trap. Raw byte inputs larger than the maximum runtime `Bytes` length, or null raw inputs with non-zero length, are rejected before allocation.
-- Prefer `FindOption()` for new code. `Find()` remains available for compatibility with existing `-1` checks.
+- `Find()` returns `Some(index)` for the first matching byte, or `None` when the value is not present.
 - Bytes objects are not thread-safe for concurrent mutation. Concurrent reads
   are safe only while no thread writes the object.
 
 ### Zia Example
 
-```rust
+```zia
 module BytesDemo;
 
 bind Zanna.Terminal;
@@ -934,7 +929,7 @@ slice = data.Slice(1, 3)  ' Bytes at indices 1 and 2
 PRINT slice.Length           ' Output: 2
 
 ' Find a byte
-DIM found AS OBJECT = data.FindOption(190)
+DIM found AS OBJECT = data.Find(190)
 IF found.IsSome THEN
     PRINT found.UnwrapI64()  ' Output: 2
 END IF

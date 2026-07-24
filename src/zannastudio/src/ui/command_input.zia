@@ -8,6 +8,7 @@
 // Key invariants:
 //   - The overlay captures command intent only; command modules perform effects.
 //   - Completed actions retain their value until the main loop consumes them.
+//   - Rejected actions reopen in place with the entered value and keyboard focus.
 //   - Command input owns the shell's sole focus-taking transient-surface slot.
 // Ownership/Lifetime:
 //   - GUI widgets are owned by the AppShell application root.
@@ -26,7 +27,6 @@ bind Str = Zanna.String;
 
 final COMMAND_INPUT_NONE: Integer = 0;
 final COMMAND_INPUT_GOTO_LINE: Integer = 1;
-final COMMAND_INPUT_ADD_WATCH: Integer = 2;
 final COMMAND_INPUT_FILTER_OUTPUT: Integer = 3;
 final COMMAND_INPUT_WORKSPACE_SYMBOLS: Integer = 4;
 final COMMAND_INPUT_RENAME_SYMBOL: Integer = 5;
@@ -46,8 +46,8 @@ final COMMAND_INPUT_MARGIN: Integer = 24;
 // PURPOSE: Non-modal replacement for short MessageBox.Prompt command workflows.
 //
 // WHERE-THIS-FITS: Command dispatch opens the overlay for workflows such as
-//          Go To Line and Add Watch. main.zia pumps it once per frame and applies
-//          the completed action through the existing command modules.
+//          Go To Line and workspace symbols. main.zia pumps it once per frame
+//          and applies the completed action through existing command modules.
 //
 // TEACHING-NOTE: Reusing one overlay for short command values keeps prompt
 //          behavior consistent and prevents every command from building its own
@@ -56,8 +56,8 @@ final COMMAND_INPUT_MARGIN: Integer = 24;
 
 /// @brief Reusable floating input surface for one-value commands.
 /// @details This class owns only UI state. It does not jump the editor, mutate
-///          debugger watches, or filter output directly; callers inspect the
-///          returned action and `ReadValue()` after `Pump()`.
+///          source, or filter output directly; callers inspect the returned
+///          action and `ReadValue()` after `Pump()`.
 class CommandInputOverlay {
     expose GUI.FloatingPanel panel;
     expose GUI.VBox root;
@@ -73,6 +73,7 @@ class CommandInputOverlay {
     expose Integer completedAction;
     expose String value;
     expose String applyLabel;
+    expose String validationMessage;
     hide app_shell.AppShell ownerShell;
 
     /// @brief Initialize the overlay with no pending command.
@@ -82,6 +83,7 @@ class CommandInputOverlay {
         completedAction = COMMAND_INPUT_NONE;
         value = "";
         applyLabel = "Apply";
+        validationMessage = "";
         ownerShell = null;
     }
 
@@ -107,6 +109,7 @@ class CommandInputOverlay {
 
         input = GUI.TextInput.New(root);
         input.SetPlaceholder("Value");
+        input.SetAccessibleName("Command value");
 
         detailLabel = GUI.Label.New(root, "");
         detailLabel.SetWordWrap(true);
@@ -119,8 +122,12 @@ class CommandInputOverlay {
         spacer.SetFlex(1.0);
         cancelButton = GUI.Button.New(footer, "Cancel");
         cancelButton.SetStyle(2);
+        cancelButton.SetAccessibleName("Cancel command");
+        cancelButton.SetTooltip("Close without applying");
         applyButton = GUI.Button.New(footer, "Apply");
         applyButton.SetStyle(1);
+        applyButton.SetAccessibleName("Apply command");
+        applyButton.SetTooltip("Apply the entered value");
     }
 
     /// @brief Open the overlay for the Go To Line command.
@@ -153,20 +160,6 @@ class CommandInputOverlay {
              "Line number",
              initial,
              "Go");
-    }
-
-    /// @brief Open the overlay for adding a debugger watch expression.
-    /// @param shell Workbench shell used for current viewport size.
-    /// @param initialExpression Optional expression prefilled from selection/cursor.
-    expose func OpenAddWatch(shell: app_shell.AppShell,
-                             initialExpression: String) {
-        Open(shell,
-             COMMAND_INPUT_ADD_WATCH,
-             "Add Watch",
-             "Evaluate this expression whenever the debugger stops.",
-             "Expression",
-             initialExpression,
-             "Watch");
     }
 
     /// @brief Open the overlay for filtering visible output rows.
@@ -252,7 +245,30 @@ class CommandInputOverlay {
         completedAction = COMMAND_INPUT_NONE;
         pendingAction = COMMAND_INPUT_NONE;
         value = "";
+        validationMessage = "";
         detailLabel.SetText("");
+    }
+
+    /// @brief Reopen a completed command with inline validation feedback.
+    /// @details Complete intentionally preserves the pending action and input
+    ///          text until callers either Finish or Reject. Rejection therefore
+    ///          restores the same form instead of forcing the user to invoke the
+    ///          command and retype a value.
+    /// @param shell Workbench shell used for focus ownership and positioning.
+    /// @param message User-facing reason the command could not be applied.
+    expose func Reject(shell: app_shell.AppShell,
+                       message: String) {
+        if pendingAction == COMMAND_INPUT_NONE { return; }
+        completedAction = COMMAND_INPUT_NONE;
+        value = "";
+        validationMessage = message;
+        detailLabel.SetText(message);
+        ownerShell = shell;
+        shell.ClaimTransientSurface(app_shell.TRANSIENT_SURFACE_COMMAND_INPUT,
+                                    panel);
+        visible = true;
+        Layout(shell);
+        input.Focus();
     }
 
     /// @brief Poll buttons and keyboard shortcuts for one frame.
@@ -315,12 +331,16 @@ class CommandInputOverlay {
         completedAction = COMMAND_INPUT_NONE;
         value = "";
         applyLabel = buttonLabel;
+        validationMessage = "";
         titleLabel.SetText(title);
         descriptionLabel.SetText(description);
         detailLabel.SetText("");
         input.SetPlaceholder(placeholder);
+        input.SetAccessibleName(title + " value");
+        input.SetTooltip(description);
         input.SetText(initialValue);
         applyButton.SetText(applyLabel);
+        applyButton.SetAccessibleName(buttonLabel + " command");
         ownerShell = shell;
         shell.ClaimTransientSurface(app_shell.TRANSIENT_SURFACE_COMMAND_INPUT,
                                     panel);
@@ -334,13 +354,13 @@ class CommandInputOverlay {
     hide func Complete() -> Integer {
         value = Str.Trim(input.Text);
         if value == "" and pendingAction != COMMAND_INPUT_FILTER_OUTPUT {
-            detailLabel.SetText("Enter a value.");
+            validationMessage = "Enter a value.";
+            detailLabel.SetText(validationMessage);
             input.Focus();
             return COMMAND_INPUT_NONE;
         }
         var action = pendingAction;
         visible = false;
-        pendingAction = COMMAND_INPUT_NONE;
         completedAction = action;
         panel.SetVisible(false);
         if ownerShell != null {

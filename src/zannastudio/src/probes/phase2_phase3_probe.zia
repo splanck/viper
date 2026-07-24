@@ -288,6 +288,12 @@ func main() {
                   and loadedBps.GetPath(0) == sourcePath
                   and loadedBps.GetLine(0) == 2,
                   "breakpoints persist by structured path and line") == false { return; }
+    if assertTrue(loadedBps.RemoveAtLocation(sourcePath, 999) == false
+                  and loadedBps.Count() == 1,
+                  "removing a stale breakpoint never toggles it on") == false { return; }
+    if assertTrue(loadedBps.RemoveAtLocation(sourcePath, 2)
+                  and loadedBps.Count() == 0,
+                  "exact breakpoint removal updates the durable store") == false { return; }
 
     var settingsOnlyPath = Path.Join(root, "settings-only.ini");
     File.WriteAllText(settingsOnlyPath, "[settings]\ntheme=dark\nfontSize=15\n");

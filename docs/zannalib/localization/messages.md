@@ -76,7 +76,7 @@ field caps.
 
 ### Zia Example
 
-```rust
+```zia
 module MessageBundleDemo;
 
 bind Zanna.Terminal;
@@ -103,7 +103,7 @@ func start() {
 
 Locale-qualified fallback example:
 
-```rust
+```zia
 module QualifiedMessages;
 
 bind Zanna.Terminal;
@@ -163,7 +163,7 @@ CLDR plural category selection for cardinal and ordinal numeric forms.
 
 ### Zia Example
 
-```rust
+```zia
 module PluralRulesDemo;
 
 bind Zanna.Terminal;

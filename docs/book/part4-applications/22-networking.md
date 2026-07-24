@@ -287,7 +287,7 @@ Programs can do all of this too. That's networking.
 
 The simplest networking is fetching web pages and APIs. HTTP (Hypertext Transfer Protocol) is the language of the web --- the format that browsers and servers use to communicate.
 
-```rust
+```zia
 bind Zanna.Network;
 bind Zanna.Terminal as Terminal;
 bind Fmt = Zanna.Text.Fmt;
@@ -330,14 +330,14 @@ HTTP defines several methods (also called verbs) for different purposes. Each me
 
 **GET**: Retrieve data. "Give me something." This should not modify anything on the server. Reading, not writing. Safe to repeat.
 
-```rust
+```zia
 // GET - retrieve data
 var users = Http.Get("https://api.example.com/users");
 ```
 
 **POST**: Create new data. "Here's something new." This typically modifies the server, adding new resources.
 
-```rust
+```zia
 // POST - send data to create something new
 var newUser = Http.Post(
     "https://api.example.com/users",
@@ -347,7 +347,7 @@ var newUser = Http.Post(
 
 **PUT**: Update existing data. "Replace what you have with this." Used to update resources that already exist.
 
-```rust
+```zia
 // PUT - update existing data
 var updated = Http.Put(
     "https://api.example.com/users/123",
@@ -357,7 +357,7 @@ var updated = Http.Put(
 
 **DELETE**: Remove data. "Get rid of this." Deletes resources from the server.
 
-```rust
+```zia
 // DELETE - remove data
 var deleted = Http.Delete("https://api.example.com/users/123");
 ```
@@ -375,9 +375,9 @@ These methods map to CRUD operations (Create, Read, Update, Delete) that are fun
 
 Most modern web APIs exchange data in JSON (JavaScript Object Notation) format. JSON is a text format for structured data that's easy for both humans and computers to read.
 
-```rust
+```zia
 bind Zanna.Network;
-bind Json = Zanna.Text.Json;
+bind Json = Zanna.Data.Json;
 bind Zanna.Terminal as Terminal;
 bind Fmt = Zanna.Text.Fmt;
 
@@ -464,7 +464,7 @@ A **socket** is an endpoint for communication --- like a telephone in the phone 
 
 Here's how to connect to a server and communicate:
 
-```rust
+```zia
 bind Zanna.Network;
 bind Zanna.Terminal as Terminal;
 bind Fmt = Zanna.Text.Fmt;
@@ -529,7 +529,7 @@ Step 4: socket.Close()
 
 A server listens for incoming connections instead of initiating them:
 
-```rust
+```zia
 bind Zanna.Network;
 bind Zanna.Terminal as Terminal;
 
@@ -622,7 +622,7 @@ When Alice sends "Hello":
 
 ### Chat Server
 
-```rust
+```zia
 module ChatServer;
 
 bind Zanna.Network;
@@ -761,7 +761,7 @@ Time 0:30 - Alice sends "/quit"
 
 ### Chat Client
 
-```rust
+```zia
 module ChatClient;
 
 bind Zanna.Network;
@@ -797,7 +797,7 @@ class ClientApp {
 
         while self.running {
             // Wait for user to type something
-            var input = Terminal.Ask("");
+            var input = Terminal.TryAsk("").UnwrapOrStr("");
 
             if input == "/quit" {
                 self.running = false;
@@ -860,7 +860,7 @@ UDP trades reliability for speed. When you can tolerate lost packets or have you
 
 ### Basic UDP Communication
 
-```rust
+```zia
 bind Zanna.Network;
 bind Zanna.Terminal as Terminal;
 bind Fmt = Zanna.Text.Fmt;
@@ -906,7 +906,7 @@ Notice the differences from TCP:
 
 Games often need to send player state many times per second. Lost packets don't matter because new state arrives constantly. Here's a typical pattern:
 
-```rust
+```zia
 bind Zanna.Network;
 bind Zanna.Time;
 bind Convert = Zanna.Core.Convert;
@@ -954,7 +954,7 @@ class GameNetwork {
             var state = unpackPlayerState(data);
 
             // Only use recent states - discard old ones
-            var now = Time.Clock.Ticks();
+            var now = Time.Clock.NowMs();
             if now - state.timestamp < 1000 {  // Less than 1 second old
                 states.Push(state);
             }
@@ -995,7 +995,7 @@ HTTP was designed for request-response: the client asks, the server answers, don
 
 **WebSockets** provide full-duplex communication over a single connection. After an initial HTTP handshake, the connection stays open and either side can send messages at any time.
 
-```rust
+```zia
 bind Zanna.Network;
 bind Zanna.Terminal as Terminal;
 
@@ -1076,7 +1076,7 @@ Networks are inherently unreliable. Connections drop. Servers go down. Packets g
 
 ### The Many Ways Networks Fail
 
-```rust
+```zia
 bind Zanna.Network;
 bind Zanna.Terminal as Terminal;
 bind Fmt = Zanna.Text.Fmt;
@@ -1118,7 +1118,7 @@ func demonstrateFailures() {
 
 For important operations, implement retry logic with exponential backoff:
 
-```rust
+```zia
 bind Zanna.Network;
 bind Zanna.Terminal as Terminal;
 bind Zanna.Time;
@@ -1423,7 +1423,7 @@ Network programming introduces security risks that don't exist in standalone pro
 
 HTTP sends data in plain text. Anyone on the network path can read it. HTTPS encrypts the connection.
 
-```rust
+```zia
 // BAD: Password sent in plain text!
 Http.Post("http://example.com/login",
           "{\"username\":\"alice\",\"password\":\"secret123\"}");
@@ -1441,7 +1441,7 @@ Always use `https://` for anything sensitive: logins, personal data, financial i
 
 HTTPS uses certificates to prove the server is who it claims to be. Don't disable certificate validation!
 
-```rust
+```zia
 // LOCAL TEST ONLY: disables security for self-signed fixtures
 var req = HttpReq.New("GET", url);
 req.AllowInsecureCertificatesForTesting();
@@ -1486,7 +1486,7 @@ var contents = File.ReadAllText("/data/" + filename);
 
 Without limits, attackers can flood your server with requests.
 
-```rust
+```zia
 bind Clock = Zanna.Time.Clock;
 
 class RateLimitedServer {
@@ -1497,13 +1497,13 @@ class RateLimitedServer {
 
     expose func init() {
         self.requestCounts = new Map();
-        self.lastReset = Clock.Ticks();
+        self.lastReset = Clock.NowMs();
         self.maxRequestsPerMinute = 100;
     }
 
     func handleRequest(client: Zanna.Network.Tcp) {
         var ip = client.Host;
-        var now = Clock.Ticks();
+        var now = Clock.NowMs();
 
         // Reset counts every minute
         if now - self.lastReset > 60000 {
@@ -1533,7 +1533,7 @@ class RateLimitedServer {
 
 Never embed passwords, API keys, or tokens in your source code.
 
-```rust
+```zia
 // BAD: API key in source code
 var hardCodedResponse = Http.Get("https://api.example.com/data?key=sk_live_abc123xyz");
 // If someone sees your code, they have your key
@@ -1553,7 +1553,7 @@ Network bugs are notoriously hard to track down. The problem might be in your co
 
 When network code doesn't work, add logging at every step:
 
-```rust
+```zia
 bind Zanna.Network;
 bind Zanna.Terminal as Terminal;
 bind Fmt = Zanna.Text.Fmt;
@@ -1591,7 +1591,7 @@ func debugFetch(url: String) -> String {
 Network communication involves multiple layers. Test each one:
 
 1. **Can you reach the host at all?**
-```rust
+```zia
 bind Zanna.Terminal;
 
 var socket = Tcp.ConnectFor(host, port, 3000);
@@ -1603,7 +1603,7 @@ if socket == null {
 ```
 
 2. **Can you send data?**
-```rust
+```zia
 bind Zanna.Terminal;
 
 socket.SendStr("test\n");
@@ -1612,7 +1612,7 @@ Terminal.Say("Data sent successfully");
 ```
 
 3. **Can you receive data?**
-```rust
+```zia
 bind Zanna.Terminal;
 
 var response = socket.RecvLine();
@@ -1626,7 +1626,7 @@ if response == null {
 
 Before debugging your code, verify the server works with known-good tools:
 
-```rust
+```zia
 // If Http.Get("https://api.example.com") fails...
 
 // Step 1: Can you reach the server at all?
@@ -1672,11 +1672,11 @@ Always test with realistic network conditions before deploying.
 
 Let's tie everything together with a complete, well-structured networking application:
 
-```rust
+```zia
 module WeatherDashboard;
 
 bind Zanna.Network;
-bind Json = Zanna.Text.Json;
+bind Json = Zanna.Data.Json;
 bind Clock = Zanna.Time.Clock;
 bind Zanna.Terminal as Terminal;
 bind Fmt = Zanna.Text.Fmt;
@@ -1722,7 +1722,7 @@ class WeatherService {
             var cached = self.cache.Get(city);
 
             if cached != null {
-                var age = Clock.Ticks() - cached.lastUpdated;
+                var age = Clock.NowMs() - cached.lastUpdated;
 
                 if age < self.cacheTimeout {
                     Terminal.Say("(Using cached data for " + city + ")");
@@ -1761,7 +1761,7 @@ class WeatherService {
             Json.GetStr(data, "conditions"),
             Json.GetInt(data, "humidity"),
             Json.GetInt(data, "windSpeed"),
-            Clock.Ticks()
+            Clock.NowMs()
         );
 
         // Update cache
@@ -1837,7 +1837,7 @@ This example demonstrates:
 ## The Two Languages
 
 **Zia**
-```rust
+```zia
 bind Zanna.Network;
 bind Zanna.Terminal as Terminal;
 

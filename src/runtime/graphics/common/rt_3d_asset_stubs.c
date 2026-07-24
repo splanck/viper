@@ -477,6 +477,44 @@ void *rt_material3d_get_color(void *o) {
     return NULL;
 }
 
+/// @brief Graphics-disabled material map inspection stubs.
+/// @details No decoded graphics resources exist in this build, so every read-only map-pixel
+///          property returns NULL without trapping.
+void *rt_material3d_get_texture_pixels(void *o) {
+    (void)o;
+    return NULL;
+}
+
+void *rt_material3d_get_normal_map_pixels(void *o) {
+    (void)o;
+    return NULL;
+}
+
+void *rt_material3d_get_specular_map_pixels(void *o) {
+    (void)o;
+    return NULL;
+}
+
+void *rt_material3d_get_emissive_map_pixels(void *o) {
+    (void)o;
+    return NULL;
+}
+
+void *rt_material3d_get_metallic_roughness_map_pixels(void *o) {
+    (void)o;
+    return NULL;
+}
+
+void *rt_material3d_get_ao_map_pixels(void *o) {
+    (void)o;
+    return NULL;
+}
+
+void *rt_material3d_get_lightmap_pixels(void *o) {
+    (void)o;
+    return NULL;
+}
+
 /// @brief Stub for `Material3D.SetTexture` — would normally bind a Pixels
 ///        surface as the diffuse texture (slot 0).
 ///

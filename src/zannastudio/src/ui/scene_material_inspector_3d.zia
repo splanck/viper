@@ -1,0 +1,375 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/ui/scene_material_inspector_3d.zia
+// Purpose: Compact, accessible PBR and texture-map controls for Studio's 3D
+//          scene inspector.
+// Key invariants:
+//   - This presentation object never mutates a SceneNode or Document.
+//   - Controls describe selection, sharing, and embedded-map state truthfully.
+//   - Assigned-map thumbnails come from the canonical live material, not paths.
+//   - Map selection remains keyboard-focusable without owning scene shortcuts.
+// Ownership/Lifetime: SceneEditor3D owns one inspector; GUI owns its widgets.
+// Links: zannastudio/src/ui/scene_editor_3d.zia,
+//        zannastudio/src/ui/scene_material_3d.zia
+//
+//===----------------------------------------------------------------------===//
+
+module scene_material_inspector_3d;
+
+bind "scene_material_3d";
+bind "scene_asset_browser";
+
+bind GUI = Zanna.GUI;
+bind SceneNode = Zanna.Graphics3D.SceneNode;
+bind Material3D = Zanna.Graphics3D.Material3D;
+bind Pixels = Zanna.Graphics.Pixels;
+
+// ============================================================================
+// MODULE: scene_material_inspector_3d
+// PURPOSE: Keep material presentation and responsive control state outside the
+//          already-large VSCN document controller.
+//
+// WHERE-THIS-FITS: SceneEditor3D supplies selection and history operations.
+//          scene_material_3d supplies copy-on-edit material values.
+//
+// TEACHING-NOTE: Widgets are a draft, never the model. Refresh always reads the
+//          selected runtime material, while button clicks return intent to the
+//          document controller for one canonical VSCN transaction.
+// ============================================================================
+
+/// @brief Presentation-only material inspector embedded in the 3D inspector.
+class SceneMaterialInspector3D {
+    expose GUI.GroupBox group;
+    expose GUI.Label summary;
+    expose GUI.ColorPicker colorPicker;
+    expose GUI.Spinner alpha;
+    expose GUI.Spinner metallic;
+    expose GUI.Spinner roughness;
+    expose GUI.Spinner ambientOcclusion;
+    expose GUI.Dropdown alphaMode;
+    expose GUI.Checkbox doubleSided;
+    expose GUI.Checkbox unlit;
+    expose GUI.Button applyButton;
+    expose GUI.Button removeButton;
+    expose GUI.GroupBox mapGroup;
+    expose GUI.Dropdown mapSlot;
+    expose GUI.Label mapSummary;
+    expose GUI.VBox mapPreviewStage;
+    expose GUI.Image mapPreviewImage;
+    expose Pixels mapPreviewPixels;
+    expose GUI.Button chooseMapButton;
+    expose GUI.Button clearMapButton;
+    expose scene_asset_browser.SceneAssetBrowser assetBrowser;
+    hide Material3D mapPreviewMaterial;
+    hide Pixels mapPreviewSource;
+    hide Integer mapPreviewSlot;
+
+    expose func init() {
+        group = null;
+        summary = null;
+        colorPicker = null;
+        alpha = null;
+        metallic = null;
+        roughness = null;
+        ambientOcclusion = null;
+        alphaMode = null;
+        doubleSided = null;
+        unlit = null;
+        applyButton = null;
+        removeButton = null;
+        mapGroup = null;
+        mapSlot = null;
+        mapSummary = null;
+        mapPreviewStage = null;
+        mapPreviewImage = null;
+        mapPreviewPixels = null;
+        chooseMapButton = null;
+        clearMapButton = null;
+        assetBrowser = new scene_asset_browser.SceneAssetBrowser();
+        mapPreviewMaterial = null;
+        mapPreviewSource = null;
+        mapPreviewSlot = -1;
+    }
+
+    /// @brief Build the complete material component surface.
+    expose func Setup(parent: GUI.VBox) {
+        group = GUI.GroupBox.New(parent, "Material component");
+        summary = GUI.Label.New(
+            group,
+            "No material component. Apply creates a node-local PBR material.");
+        summary.SetWordWrap(true);
+
+        colorPicker = GUI.ColorPicker.New(group);
+        colorPicker.SetAccessibleName("Node material base color");
+        colorPicker.SetAlphaEnabled(false);
+        colorPicker.SetColor(scene_material_3d.DEFAULT_COLOR);
+        colorPicker.SetTooltip(
+            "Base RGB color; opacity is edited separately below");
+
+        var scalarRow = GUI.HBox.New();
+        scalarRow.SetSpacing(4.0);
+        group.AddChild(scalarRow);
+        alpha = AddUnitSpinner(scalarRow, "Alpha", 1.0);
+        metallic = AddUnitSpinner(scalarRow, "Metal", 0.0);
+
+        var surfaceRow = GUI.HBox.New();
+        surfaceRow.SetSpacing(4.0);
+        group.AddChild(surfaceRow);
+        roughness = AddUnitSpinner(surfaceRow, "Rough", 0.5);
+        ambientOcclusion = AddUnitSpinner(surfaceRow, "AO", 1.0);
+
+        alphaMode = GUI.Dropdown.New(group);
+        alphaMode.SetAccessibleName("Material alpha mode");
+        alphaMode.AddItem("Opaque");
+        alphaMode.AddItem("Mask");
+        alphaMode.AddItem("Blend");
+        alphaMode.SetSelected(scene_material_3d.ALPHA_OPAQUE);
+        doubleSided = GUI.Checkbox.New(group, "Double-sided");
+        unlit = GUI.Checkbox.New(group, "Unlit");
+
+        var materialButtons = GUI.HBox.New();
+        materialButtons.SetSpacing(4.0);
+        group.AddChild(materialButtons);
+        applyButton = GUI.Button.New(materialButtons, "Create Material");
+        applyButton.SetTooltip(
+            "Create a node-local PBR material from these values");
+        removeButton = GUI.Button.New(materialButtons, "Remove");
+        removeButton.SetTooltip(
+            "Remove the material component while keeping the node and mesh");
+
+        mapGroup = GUI.GroupBox.New(group, "Texture maps");
+        mapSlot = GUI.Dropdown.New(mapGroup);
+        mapSlot.SetAccessibleName("Material texture map slot");
+        mapSlot.AddItem("Albedo");
+        mapSlot.AddItem("Normal");
+        mapSlot.AddItem("Metallic / Roughness");
+        mapSlot.AddItem("Ambient Occlusion");
+        mapSlot.AddItem("Emissive");
+        mapSlot.SetSelected(scene_material_3d.MAP_ALBEDO);
+        mapSummary = GUI.Label.New(
+            mapGroup,
+            "Albedo: no map. Choose an image to embed it in VSCN.");
+        mapSummary.SetWordWrap(true);
+
+        mapPreviewStage = GUI.VBox.New();
+        mapPreviewStage.SetAlign(GUI.Align.Center);
+        mapPreviewStage.SetPreferredSize(
+            0.0, scene_material_3d.MATERIAL_MAP_PREVIEW_EDGE + 4.0);
+        mapGroup.AddChild(mapPreviewStage);
+        mapPreviewImage = GUI.Image.New(mapPreviewStage);
+        mapPreviewImage.SetScaleMode(0);
+        mapPreviewImage.SetFilter(1);
+        mapPreviewImage.SetAccessibleName(
+            "Selected material texture map preview");
+        mapPreviewImage.SetVisible(false);
+        mapPreviewStage.SetVisible(false);
+
+        var mapButtons = GUI.HBox.New();
+        mapButtons.SetSpacing(4.0);
+        mapGroup.AddChild(mapButtons);
+        chooseMapButton = GUI.Button.New(mapButtons, "Choose Map...");
+        chooseMapButton.SetAccessibleName("Choose material texture map");
+        chooseMapButton.SetTooltip(
+            "Embed PNG, JPEG, BMP, GIF, or strict KTX2 in this material");
+        clearMapButton = GUI.Button.New(mapButtons, "Clear Map");
+        clearMapButton.SetAccessibleName("Clear selected material texture map");
+        clearMapButton.SetTooltip(
+            "Clear only the selected map slot; preserve every other map");
+        assetBrowser.Setup(
+            mapGroup,
+            "Project Texture Maps...",
+            ".png,.jpg,.jpeg,.bmp,.gif,.ktx2",
+            "Use Map");
+    }
+
+    /// @brief Refresh every material field from one selected runtime node.
+    expose func Refresh(node: SceneNode,
+                        usageCount: Integer,
+                        editorEnabled: Boolean) {
+        if colorPicker == null { return; }
+        var material: Material3D = null;
+        if node != null { material = node.Material; }
+        if material == null {
+            colorPicker.SetColor(scene_material_3d.DEFAULT_COLOR);
+            alpha.SetValue(scene_material_3d.DEFAULT_ALPHA);
+            metallic.SetValue(scene_material_3d.DEFAULT_METALLIC);
+            roughness.SetValue(scene_material_3d.DEFAULT_ROUGHNESS);
+            ambientOcclusion.SetValue(scene_material_3d.DEFAULT_AO);
+            alphaMode.SetSelected(scene_material_3d.ALPHA_OPAQUE);
+            doubleSided.SetChecked(false);
+            unlit.SetChecked(false);
+            if node == null {
+                summary.SetText("Select a node to edit its material.");
+            } else {
+                summary.SetText(
+                    "No material component. Apply or choose a map to create one.");
+            }
+        } else {
+            colorPicker.SetColor(scene_material_3d.PackedRgb(material));
+            alpha.SetValue(material.Alpha);
+            metallic.SetValue(material.Metallic);
+            roughness.SetValue(material.Roughness);
+            ambientOcclusion.SetValue(material.AmbientOcclusion);
+            alphaMode.SetSelected(
+                scene_material_3d.AlphaModeOrOpaque(material.AlphaMode));
+            doubleSided.SetChecked(material.DoubleSided);
+            unlit.SetChecked(material.Unlit);
+
+            var usage = "Node-local material";
+            if usageCount > 1 {
+                usage = "Shared by " + usageCount
+                    + " nodes; edits create a unique copy";
+            }
+            var mapCount = scene_material_3d.RetainedMapCount(material);
+            if mapCount == 1 {
+                usage = usage + " • 1 texture/map embedded";
+            } else if mapCount > 1 {
+                usage = usage + " • " + mapCount + " texture/maps embedded";
+            }
+            summary.SetText(usage);
+        }
+        RefreshMapSummary(node);
+        UpdateControls(editorEnabled, node, usageCount);
+    }
+
+    /// @brief Refresh the selected map slot without resetting scalar drafts.
+    expose func RefreshMapSummary(node: SceneNode) {
+        if mapSummary == null { return; }
+        var slot = mapSlot.Selected;
+        var slotName = scene_material_3d.MapSlotName(slot);
+        var material: Material3D = null;
+        if node != null { material = node.Material; }
+        if node == null {
+            mapSummary.SetText("Select a node to edit texture maps.");
+            ClearMapPreview();
+        } else if scene_material_3d.HasMap(material, slot) {
+            var source = scene_material_3d.MapPixels(material, slot);
+            if source == null {
+                mapSummary.SetText(
+                    slotName + ": embedded; decoded preview is unavailable.");
+                ClearMapPreview();
+            } else {
+                mapSummary.SetText(
+                    slotName + ": embedded • " + source.Width + " × "
+                    + source.Height + " pixels.");
+                EnsureMapPreview(material, slot, source, slotName);
+            }
+        } else {
+            mapSummary.SetText(
+                slotName + ": no map. Choose an image to embed it in VSCN.");
+            ClearMapPreview();
+        }
+        clearMapButton.SetEnabled(
+            node != null and scene_material_3d.HasMap(material, slot));
+    }
+
+    /// @brief Keep actions truthful for selection and material-sharing state.
+    expose func UpdateControls(editorEnabled: Boolean,
+                               node: SceneNode,
+                               usageCount: Integer) {
+        if colorPicker == null { return; }
+        var hasSelection = editorEnabled and node != null;
+        colorPicker.SetEnabled(hasSelection);
+        alpha.SetEnabled(hasSelection);
+        metallic.SetEnabled(hasSelection);
+        roughness.SetEnabled(hasSelection);
+        ambientOcclusion.SetEnabled(hasSelection);
+        alphaMode.SetEnabled(hasSelection);
+        doubleSided.SetEnabled(hasSelection);
+        unlit.SetEnabled(hasSelection);
+        applyButton.SetEnabled(hasSelection);
+        mapSlot.SetEnabled(hasSelection);
+        chooseMapButton.SetEnabled(hasSelection);
+
+        var hasMaterial = hasSelection and node.Material != null;
+        removeButton.SetEnabled(hasMaterial);
+        clearMapButton.SetEnabled(
+            hasSelection
+            and scene_material_3d.HasMap(node.Material, mapSlot.Selected));
+
+        if hasSelection == false {
+            applyButton.SetText("Apply Material");
+            applyButton.SetTooltip("Select a node before editing material");
+        } else if hasMaterial == false {
+            applyButton.SetText("Create Material");
+            applyButton.SetTooltip(
+                "Create a node-local PBR material from these values");
+        } else if usageCount > 1 {
+            applyButton.SetText("Apply as Unique");
+            applyButton.SetTooltip(
+                "Clone the shared material, preserving maps and other nodes");
+        } else {
+            applyButton.SetText("Apply Material");
+            applyButton.SetTooltip(
+                "Apply these values while preserving unexposed material data");
+        }
+    }
+
+    /// @brief Build at most one bounded thumbnail for the live map identity.
+    hide func EnsureMapPreview(material: Material3D,
+                              slot: Integer,
+                              source: Pixels,
+                              slotName: String) {
+        if mapPreviewImage == null or source == null { return; }
+        if material == mapPreviewMaterial
+           and source == mapPreviewSource
+           and slot == mapPreviewSlot {
+            mapPreviewStage.SetVisible(mapPreviewPixels != null);
+            mapPreviewImage.SetVisible(mapPreviewPixels != null);
+            return;
+        }
+
+        ClearMapPreview();
+        mapPreviewMaterial = material;
+        mapPreviewSource = source;
+        mapPreviewSlot = slot;
+        mapPreviewPixels =
+            scene_material_3d.MapPreviewPixels(material, slot);
+        if mapPreviewPixels == null { return; }
+
+        var width = mapPreviewPixels.Width;
+        var height = mapPreviewPixels.Height;
+        mapPreviewImage.SetPixels(mapPreviewPixels, width, height);
+        mapPreviewImage.SetSize(width, height);
+        mapPreviewImage.SetTooltip(
+            slotName + " texture preview • " + source.Width + " × "
+            + source.Height);
+        mapPreviewStage.SetSize(width, height);
+        mapPreviewStage.SetVisible(true);
+        mapPreviewImage.SetVisible(true);
+    }
+
+    /// @brief Release disposable thumbnail state without touching the material.
+    hide func ClearMapPreview() {
+        mapPreviewPixels = null;
+        mapPreviewMaterial = null;
+        mapPreviewSource = null;
+        mapPreviewSlot = -1;
+        if mapPreviewImage != null {
+            mapPreviewImage.Clear();
+            mapPreviewImage.SetVisible(false);
+        }
+        if mapPreviewStage != null {
+            mapPreviewStage.SetVisible(false);
+        }
+    }
+
+    /// @brief Configure one normalized scalar spinner.
+    hide func AddUnitSpinner(parent: GUI.HBox,
+                             label: String,
+                             value: Number) -> GUI.Spinner {
+        GUI.Label.New(parent, label);
+        var spinner = GUI.Spinner.New(parent);
+        spinner.SetRange(0.0, 1.0);
+        spinner.SetStep(0.05);
+        spinner.SetDecimals(2);
+        spinner.SetValue(value);
+        spinner.SetPreferredSize(68.0, 0.0);
+        return spinner;
+    }
+}

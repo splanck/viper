@@ -34,7 +34,7 @@ Learn Zia by example. For a complete reference, see **[Zia Reference](../languag
 
 Create a file named `hello.zia`:
 
-```rust
+```zia
 module Hello;
 
 bind Zanna.Terminal;
@@ -96,7 +96,7 @@ Type `.help` for available commands and `.quit` to exit. See the **[REPL Guide](
 Use `var` for mutable variables and `final` for constants. `let` is accepted as
 a compatibility alias for `final`:
 
-```rust
+```zia
 var x = 42;              // Type inferred as Integer
 var name: String = "Alice";  // Explicit type
 final PI = 3.14159;      // Immutable constant
@@ -126,7 +126,7 @@ Zanna runtime classes, collections, `Any`, and callback bridges.
 
 Embed expressions in strings with `${...}`:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 var name = "Alice";
@@ -140,7 +140,7 @@ Say("${name} is ${age} years old");
 
 ### If Statements
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 if score > 100 {
@@ -156,7 +156,7 @@ Note: Parentheses around conditions are optional.
 
 ### While Loops
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 var i = 0;
@@ -170,7 +170,7 @@ while i < 10 {
 
 C-style for loops:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 for (var i = 0; i < 10; i = i + 1) {
@@ -180,7 +180,7 @@ for (var i = 0; i < 10; i = i + 1) {
 
 ### For-In Loops (Ranges)
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 // Exclusive range: 0 to 9
@@ -207,7 +207,7 @@ compile time; dynamic non-positive steps trap before iteration starts.
 
 ### Basic Functions
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 func greet(name: String) {
@@ -236,7 +236,7 @@ func start() {
 Use `expose` before `func` to make a function visible to other modules in a
 mixed-language project:
 
-```rust
+```zia
 expose func calculateScore(x: Integer, y: Integer) -> Integer {
     return x * y + 10;
 }
@@ -251,7 +251,7 @@ expose async func fetchScore() -> Integer {
 Use `foreign func` to declare a function defined in another module (e.g., a
 BASIC library). Foreign declarations have no body:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 expose foreign func Factorial(n: Integer) -> Integer;
@@ -273,7 +273,7 @@ Classes are reference types with identity, inheritance, and methods.
 
 ### Defining a Class
 
-```rust
+```zia
 class Player {
     String name;
     Integer health;
@@ -311,7 +311,7 @@ class Player {
 
 ### Using Classes
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 func start() {
@@ -340,7 +340,7 @@ func start() {
 
 Struct types have copy semantics — assignments create copies.
 
-```rust
+```zia
 bind Zanna.Math;
 
 struct Point {
@@ -368,7 +368,7 @@ and `Set[T]`. These are distinct from the object-style runtime classes under
 
 ### Lists
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 // Create a list of integers
@@ -393,7 +393,7 @@ while i < numbers.count() {
 
 ### Maps
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 // Empty map literal: {}. Map literals also support {key: value, ...}.
@@ -414,7 +414,7 @@ if scores.has("Alice") {
 
 ### Class Instance Lists
 
-```rust
+```zia
 // List of class instances
 var players: List[Player] = [];
 
@@ -437,7 +437,7 @@ When you need the object-based runtime collection classes instead, bind
 
 Every file starts with a module declaration:
 
-```rust
+```zia
 module MyGame;
 ```
 
@@ -445,7 +445,7 @@ module MyGame;
 
 Bind other `.zia` files to use their types and functions:
 
-```rust
+```zia
 module Game;
 
 bind "./entities";    // binds entities.zia from same directory
@@ -461,7 +461,7 @@ func start() {
 If two bound files export the same top-level type name, qualify that type with
 the bound module name or alias:
 
-```rust
+```zia
 bind "./alpha"; // module Alpha; expose class WishDup { ... }
 bind "./beta";  // module Beta;  expose class WishDup { ... }
 
@@ -479,7 +479,7 @@ var b: Beta.WishDup = new Beta.WishDup();
 
 Bind Zanna runtime namespaces to use their functions without qualification:
 
-```rust
+```zia
 module Game;
 
 bind Zanna.Terminal;     // Import terminal functions
@@ -508,7 +508,7 @@ with `bind` or use fully qualified names; the exposed surface is generated from
 
 ### Terminal I/O
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 // Output
@@ -549,14 +549,14 @@ SetCursorVisible(false);    // Hide cursor
 
 ### Time Functions
 
-```rust
+```zia
 // SleepMs is available as Zanna.Time.Clock.Sleep (use fully qualified name or bind)
 Zanna.Time.Clock.Sleep(500);        // Sleep for 500 milliseconds
 ```
 
 ### Math Functions
 
-```rust
+```zia
 bind Zanna.Math;
 
 var abs = AbsInt(-42);                       // 42
@@ -570,7 +570,7 @@ var rand = Zanna.Math.Random.NextInt(100);   // Random 0-99
 
 Here's a complete mini-game demonstrating Zia features:
 
-```rust
+```zia
 module GuessGame;
 
 bind Zanna.Terminal;
@@ -650,7 +650,7 @@ For more complete examples, see the `examples/games/` directory:
 
 ### Program Structure
 
-```rust
+```zia
 module ModuleName;
 
 bind "./other";

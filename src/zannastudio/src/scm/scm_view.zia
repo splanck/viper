@@ -10,6 +10,8 @@
 // Key invariants:
 //   - Mutating Git jobs are serialized through a bounded visible queue.
 //   - Worktree diff reads are bounded and non-trapping.
+//   - Missing workspaces and non-repositories expose truthful disabled actions.
+//   - Sidebar controls wrap, remain keyboard reachable, and reflect live context.
 // Ownership/Lifetime: Owns queued jobs/widgets and borrows the diff overlay.
 // Links: zannastudio/src/scm/scm_git.zia,
 //        zannastudio/src/ui/diff_view.zia
@@ -26,6 +28,7 @@ bind Zanna.GUI as GUI;
 bind Str = Zanna.String;
 bind IO = Zanna.IO;
 bind Path = Zanna.IO.Path;
+bind Input = Zanna.Input;
 
 // ============================================================================
 // MODULE: scm_view
@@ -51,6 +54,12 @@ bind Path = Zanna.IO.Path;
 final HISTORY_PAGE_SIZE = 50;
 final MAX_PENDING_JOBS = 8;
 final MAX_SCM_DIFF_BYTES = 8000000;
+final SCM_CONTROLS_COMPACT_MAX_WIDTH = 360.0;
+
+/// @brief Return whether Source Control should use narrow action bases.
+func ScmUsesCompactControls(width: Number) -> Boolean {
+    return width > 0.0 and width <= SCM_CONTROLS_COMPACT_MAX_WIDTH;
+}
 
 /// @brief One queued SCM request waiting for the active job to finish.
 class PendingAction {
@@ -70,8 +79,10 @@ class ScmView {
     expose scm_git.Git git;
     expose scm_git.GitJob activeJob;
     expose scm_git.GitPtyJob activePtyJob;
+    expose GUI.VBox host;
     expose GUI.Label branchLabel;
     expose GUI.Label statusLabel;
+    expose GUI.Flex topRow;
     expose GUI.ListBox statusList;
     expose GUI.TextInput commitInput;
     expose GUI.Button refreshBtn;
@@ -83,10 +94,13 @@ class ScmView {
     expose GUI.Button stageBtn;
     expose GUI.Button unstageBtn;
     expose GUI.Button stageAllBtn;
+    expose GUI.Flex stageRow;
+    expose GUI.Flex commitRow;
     expose GUI.Button commitBtn;
     expose GUI.OutputPane diffPane;
     expose GUI.Button sideBySideButton;
-    expose GUI.HBox credRow;
+    expose GUI.VBox credRow;
+    expose GUI.Flex credActionRow;
     expose GUI.Label credLabel;
     expose GUI.TextInput credInput;
     expose GUI.Button credSendBtn;
@@ -94,6 +108,7 @@ class ScmView {
     expose diff_view.DiffView diffOverlay;
     expose Boolean ready;
     expose Boolean repoReady;
+    expose Boolean repoContextInitialized;
     expose String repoPath;
     expose String queuedDiffPath;
     expose List[PendingAction] pendingJobs;
@@ -102,13 +117,17 @@ class ScmView {
     expose String historySha;     // commit backing commitfiles mode
     expose String pendingOldText; // stash between showold and shownew jobs
     expose String pendingDiffFile;
+    expose scm_git.GitStatus lastStatus;
+    expose Boolean compactControls;
 
     expose func init() {
         git = new scm_git.Git();
         activeJob = null;
         activePtyJob = null;
+        host = null;
         ready = false;
         repoReady = false;
+        repoContextInitialized = false;
         repoPath = "";
         queuedDiffPath = "";
         pendingJobs = [];
@@ -117,65 +136,130 @@ class ScmView {
         historySha = "";
         pendingOldText = "";
         pendingDiffFile = "";
+        lastStatus = new scm_git.GitStatus();
+        compactControls = false;
     }
 
     /// @brief Build the Source Control widgets into @p host.
-    expose func Setup(host: GUI.VBox) {
-        if host == null { return; }
+    expose func Setup(hostArg: GUI.VBox) {
+        if hostArg == null { return; }
+        host = hostArg;
 
         branchLabel = GUI.Label.New(host, "Source Control");
         statusLabel = GUI.Label.New(host, "Idle");
 
-        var topRow = GUI.HBox.New();
+        topRow = GUI.Flex.New();
+        topRow.SetDirection(GUI.FlexDirection.Row);
+        topRow.SetWrap(GUI.FlexWrap.Wrap);
+        topRow.SetAlign(GUI.Align.Center);
+        topRow.SetGap(4.0);
         host.AddChild(topRow);
         refreshBtn = GUI.Button.New(topRow, "Refresh");
+        refreshBtn.SetAccessibleName("Refresh source control");
+        refreshBtn.SetTooltip("Refresh repository status");
         cancelBtn = GUI.Button.New(topRow, "Cancel");
+        cancelBtn.SetAccessibleName("Cancel source control jobs");
+        cancelBtn.SetTooltip("Cancel the active Git job and queued operations");
         pushBtn = GUI.Button.New(topRow, "Push");
+        pushBtn.SetAccessibleName("Push repository");
+        pushBtn.SetTooltip("Push the current branch");
         pullBtn = GUI.Button.New(topRow, "Pull");
+        pullBtn.SetAccessibleName("Pull repository");
+        pullBtn.SetTooltip("Pull the current branch");
         historyBtn = GUI.Button.New(topRow, "History");
+        historyBtn.SetAccessibleName("Toggle repository history");
+        historyBtn.SetTooltip("Switch between changes and commit history");
         loadMoreBtn = GUI.Button.New(topRow, "More");
+        loadMoreBtn.SetAccessibleName("Load more repository history");
+        loadMoreBtn.SetTooltip("Load the next page of commits");
         loadMoreBtn.SetVisible(false);
 
         statusList = GUI.ListBox.New(host);
         statusList.SetFlex(1.0);
+        statusList.SetAccessibleName("Source control changes and history");
 
-        var stageRow = GUI.HBox.New();
+        stageRow = GUI.Flex.New();
+        stageRow.SetDirection(GUI.FlexDirection.Row);
+        stageRow.SetWrap(GUI.FlexWrap.Wrap);
+        stageRow.SetAlign(GUI.Align.Center);
+        stageRow.SetGap(4.0);
         host.AddChild(stageRow);
         stageBtn = GUI.Button.New(stageRow, "Stage");
+        stageBtn.SetAccessibleName("Stage selected change");
+        stageBtn.SetTooltip(
+            "Stage the selected file; after resolving a conflict this marks it resolved");
         unstageBtn = GUI.Button.New(stageRow, "Unstage");
+        unstageBtn.SetAccessibleName("Unstage selected change");
+        unstageBtn.SetTooltip("Remove the selected file from the Git index");
         stageAllBtn = GUI.Button.New(stageRow, "Stage All");
+        stageAllBtn.SetAccessibleName("Stage all changes");
+        stageAllBtn.SetTooltip("Stage every current worktree change");
 
-        var commitRow = GUI.HBox.New();
+        commitRow = GUI.Flex.New();
+        commitRow.SetDirection(GUI.FlexDirection.Row);
+        commitRow.SetWrap(GUI.FlexWrap.Wrap);
+        commitRow.SetAlign(GUI.Align.Center);
+        commitRow.SetGap(4.0);
         host.AddChild(commitRow);
         commitInput = GUI.TextInput.New(commitRow);
         commitInput.SetFlex(1.0);
+        commitInput.SetPreferredSize(140.0, 0.0);
         commitInput.SetPlaceholder("Commit message");
+        commitInput.SetAccessibleName("Commit message");
+        commitInput.SetTooltip("Commit staged changes (Enter)");
         commitBtn = GUI.Button.New(commitRow, "Commit");
+        commitBtn.SetStyle(1);
+        commitBtn.SetAccessibleName("Commit staged changes");
+        commitBtn.SetTooltip("Commit staged changes with this message (Enter)");
 
         // Credential prompt row: hidden until an interactive push/pull asks a
         // question; the input masks itself for password/passphrase prompts.
-        credRow = GUI.HBox.New();
+        credRow = GUI.VBox.New();
+        credRow.SetSpacing(4.0);
         host.AddChild(credRow);
         credLabel = GUI.Label.New(credRow, "");
-        credInput = GUI.TextInput.New(credRow);
+        credActionRow = GUI.Flex.New();
+        credActionRow.SetDirection(GUI.FlexDirection.Row);
+        credActionRow.SetWrap(GUI.FlexWrap.Wrap);
+        credActionRow.SetAlign(GUI.Align.Center);
+        credActionRow.SetGap(4.0);
+        credRow.AddChild(credActionRow);
+        credInput = GUI.TextInput.New(credActionRow);
         credInput.SetFlex(1.0);
-        credSendBtn = GUI.Button.New(credRow, "Send");
-        credCancelBtn = GUI.Button.New(credRow, "Abort");
+        credInput.SetPreferredSize(120.0, 0.0);
+        credInput.SetAccessibleName("Git credential response");
+        credInput.SetTooltip("Response to the active Git prompt (Enter)");
+        credSendBtn = GUI.Button.New(credActionRow, "Send");
+        credSendBtn.SetStyle(1);
+        credSendBtn.SetAccessibleName("Send Git credential response");
+        credSendBtn.SetTooltip("Send this response to Git (Enter)");
+        credCancelBtn = GUI.Button.New(credActionRow, "Abort");
+        credCancelBtn.SetAccessibleName("Abort interactive Git operation");
+        credCancelBtn.SetTooltip("Abort the active push or pull");
         credRow.SetVisible(false);
 
         sideBySideButton = GUI.Button.New(host, "Side-by-Side Diff");
         sideBySideButton.SetIconName("split");
+        sideBySideButton.SetAccessibleName("Open side-by-side source control diff");
+        sideBySideButton.SetTooltip(
+            "Compare the selected worktree file with HEAD");
         diffPane = GUI.OutputPane.New(host);
         diffPane.SetFlex(1.0);
+        diffPane.SetAccessibleName("Source control diff and operation output");
 
         ready = true;
+        SetRepo("");
     }
 
     /// @brief Point the view at a repository root and refresh.
     /// @details Any in-flight or queued jobs belong to the previous repository
     ///          and are dropped so a stale mutation can never land here.
     expose func SetRepo(path: String) {
-        if path == repoPath and ready { return; }
+        if repoContextInitialized and path == repoPath and ready {
+            if path == "" { ShowNoWorkspaceState(); }
+            return;
+        }
+        repoContextInitialized = true;
         repoPath = path;
         repoReady = false;
         if activeJob != null { activeJob.Kill(); activeJob = null; }
@@ -185,15 +269,239 @@ class ScmView {
         historySha = "";
         historyLoaded = 0;
         HideCredRow();
+        lastStatus = new scm_git.GitStatus();
         if loadMoreBtn != null { loadMoreBtn.SetVisible(false); }
+        SetRepositoryActionsEnabled(false);
         git.SetRepo(path);
         if path == "" {
-            if statusList != null { statusList.Clear(); }
-            if diffPane != null { diffPane.Clear(); }
-            if statusLabel != null { statusLabel.SetText("Open a workspace to use source control"); }
+            ShowNoWorkspaceState();
             return;
         }
         Refresh();
+    }
+
+    /// @brief Render the intentional no-workspace state without spawning Git.
+    hide func ShowNoWorkspaceState() {
+        repoReady = false;
+        lastStatus = new scm_git.GitStatus();
+        if branchLabel != null { branchLabel.SetText("Source Control"); }
+        if statusList != null { statusList.Clear(); }
+        if diffPane != null { diffPane.Clear(); }
+        if statusLabel != null {
+            statusLabel.SetText("Open a workspace to use source control");
+        }
+        SetRepositoryActionsEnabled(false);
+    }
+
+    /// @brief Return whether Source Control currently uses compact controls.
+    expose func IsCompactControls() -> Boolean {
+        return compactControls;
+    }
+
+    /// @brief Reflow Source Control without replacing live input or job state.
+    /// @details The activity sidebar can be substantially narrower than the
+    ///          editor. Wrapped Flex rows and compact action bases prevent the
+    ///          fixed toolbar clipping that previously hid Push/Pull/History.
+    hide func ApplyResponsiveControls() {
+        if host == null or topRow == null { return; }
+        var width = host.GetLogicalWidth();
+        if width <= 0.0 { return; }
+        var compact = ScmUsesCompactControls(width);
+        if compact == compactControls { return; }
+        compactControls = compact;
+
+        if compactControls {
+            refreshBtn.SetFlex(1.0);
+            cancelBtn.SetFlex(1.0);
+            pushBtn.SetFlex(1.0);
+            pullBtn.SetFlex(1.0);
+            historyBtn.SetFlex(1.0);
+            loadMoreBtn.SetFlex(1.0);
+            stageBtn.SetFlex(1.0);
+            unstageBtn.SetFlex(1.0);
+            stageAllBtn.SetFlex(1.0);
+
+            refreshBtn.SetPreferredSize(60.0, 0.0);
+            cancelBtn.SetPreferredSize(56.0, 0.0);
+            pushBtn.SetPreferredSize(48.0, 0.0);
+            pullBtn.SetPreferredSize(48.0, 0.0);
+            historyBtn.SetPreferredSize(64.0, 0.0);
+            loadMoreBtn.SetPreferredSize(48.0, 0.0);
+            stageBtn.SetPreferredSize(56.0, 0.0);
+            unstageBtn.SetPreferredSize(64.0, 0.0);
+            stageAllBtn.SetPreferredSize(68.0, 0.0);
+            commitInput.SetMinSize(80.0, 0.0);
+            commitInput.SetPreferredSize(104.0, 0.0);
+            credInput.SetMinSize(80.0, 0.0);
+            credInput.SetPreferredSize(96.0, 0.0);
+        } else {
+            refreshBtn.SetFlex(0.0);
+            cancelBtn.SetFlex(0.0);
+            pushBtn.SetFlex(0.0);
+            pullBtn.SetFlex(0.0);
+            historyBtn.SetFlex(0.0);
+            loadMoreBtn.SetFlex(0.0);
+            stageBtn.SetFlex(0.0);
+            unstageBtn.SetFlex(0.0);
+            stageAllBtn.SetFlex(0.0);
+
+            refreshBtn.SetPreferredSize(0.0, 0.0);
+            cancelBtn.SetPreferredSize(0.0, 0.0);
+            pushBtn.SetPreferredSize(0.0, 0.0);
+            pullBtn.SetPreferredSize(0.0, 0.0);
+            historyBtn.SetPreferredSize(0.0, 0.0);
+            loadMoreBtn.SetPreferredSize(0.0, 0.0);
+            stageBtn.SetPreferredSize(0.0, 0.0);
+            unstageBtn.SetPreferredSize(0.0, 0.0);
+            stageAllBtn.SetPreferredSize(0.0, 0.0);
+            commitInput.SetMinSize(120.0, 0.0);
+            commitInput.SetPreferredSize(180.0, 0.0);
+            credInput.SetMinSize(120.0, 0.0);
+            credInput.SetPreferredSize(160.0, 0.0);
+        }
+        refreshBtn.SetMinSize(48.0, 0.0);
+        cancelBtn.SetMinSize(48.0, 0.0);
+        pushBtn.SetMinSize(44.0, 0.0);
+        pullBtn.SetMinSize(44.0, 0.0);
+        historyBtn.SetMinSize(56.0, 0.0);
+        loadMoreBtn.SetMinSize(44.0, 0.0);
+        stageBtn.SetMinSize(52.0, 0.0);
+        unstageBtn.SetMinSize(60.0, 0.0);
+        stageAllBtn.SetMinSize(64.0, 0.0);
+        commitBtn.SetMinSize(60.0, 0.0);
+        credSendBtn.SetMinSize(52.0, 0.0);
+        credCancelBtn.SetMinSize(56.0, 0.0);
+    }
+
+    /// @brief Enable repository-only controls only after a successful status.
+    hide func SetRepositoryActionsEnabled(enabled: Boolean) {
+        if refreshBtn != null { refreshBtn.SetEnabled(repoPath != ""); }
+        if pushBtn != null { pushBtn.SetEnabled(enabled); }
+        if pullBtn != null { pullBtn.SetEnabled(enabled); }
+        if historyBtn != null { historyBtn.SetEnabled(enabled); }
+        if stageBtn != null { stageBtn.SetEnabled(false); }
+        if unstageBtn != null { unstageBtn.SetEnabled(false); }
+        if stageAllBtn != null { stageAllBtn.SetEnabled(false); }
+        if commitInput != null { commitInput.SetEnabled(enabled); }
+        if commitBtn != null { commitBtn.SetEnabled(false); }
+        if sideBySideButton != null {
+            sideBySideButton.SetEnabled(false);
+        }
+        if cancelBtn != null { cancelBtn.SetEnabled(false); }
+    }
+
+    /// @brief Find the latest structured status entry for one repository path.
+    hide func EntryForPath(path: String) -> scm_git.GitEntry {
+        if path == "" or lastStatus == null { return null; }
+        var i = 0;
+        while i < lastStatus.entries.count() {
+            var entry = lastStatus.entries.get(i);
+            if entry.path == path { return entry; }
+            i = i + 1;
+        }
+        return null;
+    }
+
+    /// @brief Return the selected structured status entry, when any.
+    hide func SelectedEntry() -> scm_git.GitEntry {
+        if viewMode != "status" { return null; }
+        return EntryForPath(SelectedPath());
+    }
+
+    /// @brief Return whether an entry still has worktree state to stage.
+    hide func EntryCanStage(entry: scm_git.GitEntry) -> Boolean {
+        if entry == null { return false; }
+        return entry.conflicted or entry.untracked or entry.worktree != ".";
+    }
+
+    /// @brief Return whether any current entry can be staged.
+    hide func HasStageableChanges() -> Boolean {
+        if lastStatus == null { return false; }
+        var i = 0;
+        while i < lastStatus.entries.count() {
+            if EntryCanStage(lastStatus.entries.get(i)) { return true; }
+            i = i + 1;
+        }
+        return false;
+    }
+
+    /// @brief Return whether the index contains at least one staged change.
+    hide func HasStagedChanges() -> Boolean {
+        if lastStatus == null { return false; }
+        var i = 0;
+        while i < lastStatus.entries.count() {
+            if lastStatus.entries.get(i).staged { return true; }
+            i = i + 1;
+        }
+        return false;
+    }
+
+    /// @brief Return whether the current status still contains a conflict.
+    hide func HasConflicts() -> Boolean {
+        if lastStatus == null { return false; }
+        var i = 0;
+        while i < lastStatus.entries.count() {
+            if lastStatus.entries.get(i).conflicted { return true; }
+            i = i + 1;
+        }
+        return false;
+    }
+
+    /// @brief Synchronize every action with live repository and selection state.
+    /// @details This runs every frame so typed commit/credential text and list
+    ///          selection affect the controls without rebuilding their widgets.
+    hide func UpdateActionStates() {
+        var repository = ready and repoPath != "" and repoReady;
+        var statusMode = repository and viewMode == "status";
+        var selected = SelectedEntry();
+        var staged = HasStagedChanges();
+        var conflicts = HasConflicts();
+        var commitMessage = "";
+        if commitInput != null { commitMessage = Str.Trim(commitInput.get_Text()); }
+
+        if refreshBtn != null { refreshBtn.SetEnabled(ready and repoPath != ""); }
+        if cancelBtn != null {
+            cancelBtn.SetEnabled(Busy() or pendingJobs.count() > 0);
+        }
+        if pushBtn != null { pushBtn.SetEnabled(repository); }
+        if pullBtn != null { pullBtn.SetEnabled(repository); }
+        if historyBtn != null {
+            historyBtn.SetEnabled(repository);
+            if viewMode == "status" {
+                historyBtn.SetText("History");
+                historyBtn.SetTooltip("Show repository commit history");
+            } else {
+                historyBtn.SetText("Changes");
+                historyBtn.SetTooltip("Return to current worktree changes");
+            }
+        }
+        if loadMoreBtn != null {
+            loadMoreBtn.SetEnabled(repository and viewMode == "history");
+        }
+        if stageBtn != null {
+            stageBtn.SetEnabled(statusMode and EntryCanStage(selected));
+        }
+        if unstageBtn != null {
+            unstageBtn.SetEnabled(statusMode and selected != null and selected.staged);
+        }
+        if stageAllBtn != null {
+            stageAllBtn.SetEnabled(statusMode and HasStageableChanges());
+        }
+        if commitInput != null { commitInput.SetEnabled(statusMode); }
+        if commitBtn != null {
+            commitBtn.SetEnabled(statusMode and staged and conflicts == false
+                                 and commitMessage != "");
+        }
+        if sideBySideButton != null {
+            sideBySideButton.SetEnabled(statusMode and selected != null);
+        }
+        if credSendBtn != null {
+            credSendBtn.SetEnabled(credRow != null and credRow.IsVisible()
+                                   and Str.Trim(credInput.get_Text()) != "");
+        }
+        if credCancelBtn != null {
+            credCancelBtn.SetEnabled(credRow != null and credRow.IsVisible());
+        }
     }
 
     /// @brief Queue a background status refresh.
@@ -474,9 +782,11 @@ class ScmView {
     }
 
     hide func ApplyStatus(st: scm_git.GitStatus) {
+        lastStatus = st;
         statusList.Clear();
         if st.isRepo == false {
             repoReady = false;
+            SetRepositoryActionsEnabled(false);
             branchLabel.SetText("Not a git repository");
             statusLabel.SetText(st.errorText);
             if diffPane != null and st.errorText != "" {
@@ -486,6 +796,7 @@ class ScmView {
             return;
         }
         repoReady = true;
+        SetRepositoryActionsEnabled(true);
         if Str.get_Length(st.branch) > 0 {
             branchLabel.SetText("Branch: " + st.branch);
         } else {
@@ -535,12 +846,22 @@ class ScmView {
             StartJob(git.StartDiff(job.path, true), "Loading staged diff...");
             return;
         }
+        var entry = EntryForPath(job.path);
+        if entry != null and entry.conflicted {
+            diffPane.Append(
+                "Conflict: edit the conflict markers in this file, then Stage it "
+                + "to mark the conflict resolved.\n\n");
+        }
         if Str.get_Length(Str.Trim(job.stdoutText)) == 0 {
             diffPane.Append("(no diff)\n");
         } else {
             diffPane.Append(job.stdoutText);
         }
-        statusLabel.SetText("Diff: " + job.path);
+        if entry != null and entry.conflicted {
+            statusLabel.SetText("Conflict: " + job.path + " — edit, then Stage");
+        } else {
+            statusLabel.SetText("Diff: " + job.path);
+        }
     }
 
     /// @brief Two-char marker for a status entry.
@@ -609,11 +930,23 @@ class ScmView {
         if stillRunning {
             if activePtyJob.IsWaitingForInput() {
                 ShowCredRow(activePtyJob.promptText);
-                if credSendBtn != null and credSendBtn.WasClicked() {
-                    activePtyJob.SendInput(credInput.get_Text());
-                    credInput.SetText("");
-                    HideCredRow();
-                    statusLabel.SetText("Answer sent to git " + activePtyJob.kind + "...");
+                var sendCredential =
+                    credSendBtn != null and credSendBtn.WasClicked();
+                if credInput != null and credInput.IsFocused()
+                   and Input.Keyboard.WasPressed(Zanna.Input.Key.Enter) {
+                    sendCredential = true;
+                }
+                if sendCredential {
+                    var response = credInput.get_Text();
+                    if Str.Trim(response) == "" {
+                        statusLabel.SetText("Enter a response for the Git prompt");
+                    } else {
+                        activePtyJob.SendInput(response);
+                        credInput.SetText("");
+                        HideCredRow();
+                        statusLabel.SetText(
+                            "Answer sent to git " + activePtyJob.kind + "...");
+                    }
                 }
                 if credCancelBtn != null and credCancelBtn.WasClicked() {
                     var k = activePtyJob.kind;
@@ -648,16 +981,22 @@ class ScmView {
 
     hide func ShowCredRow(prompt: String) {
         if credRow == null { return; }
+        var newlyVisible = credRow.IsVisible() == false;
         credLabel.SetText(prompt);
+        credLabel.SetTooltip(prompt);
         credInput.SetPassword(scm_git.PromptWantsMask(prompt));
         credRow.SetVisible(true);
+        if newlyVisible { credInput.Focus(); }
     }
 
     hide func HideCredRow() {
         if credRow == null { return; }
+        var restoreListFocus =
+            credInput != null and credInput.IsFocused();
         credRow.SetVisible(false);
         credInput.SetText("");
         credInput.SetPassword(false);
+        if restoreListFocus and statusList != null { statusList.Focus(); }
     }
 
     /// @brief Enter or leave the commit-history view.
@@ -723,9 +1062,12 @@ class ScmView {
     ///        Safe when hidden.
     expose func HandleEvents() {
         if ready == false { return; }
+        ApplyResponsiveControls();
+        UpdateActionStates();
 
         if cancelBtn != null and cancelBtn.WasClicked() {
             CancelAll();
+            UpdateActionStates();
             return;
         }
 
@@ -759,9 +1101,19 @@ class ScmView {
             var p2 = SelectedPathForAction("unstage");
             if p2 != "" { RunOrQueue("unstage", p2, ""); }
         }
-        if commitBtn.WasClicked() and CanRunRepositoryAction("committing") {
+        var commitRequested = commitBtn.WasClicked();
+        if commitInput.IsFocused()
+           and Input.Keyboard.WasPressed(Zanna.Input.Key.Enter) {
+            commitRequested = true;
+        }
+        if commitRequested and CanRunRepositoryAction("committing") {
             var msg = commitInput.get_Text();
-            if Str.get_Length(Str.Trim(msg)) > 0 {
+            if HasConflicts() {
+                statusLabel.SetText(
+                    "Resolve and Stage every conflict before committing");
+            } else if HasStagedChanges() == false {
+                statusLabel.SetText("Stage at least one change before committing");
+            } else if Str.get_Length(Str.Trim(msg)) > 0 {
                 RunOrQueue("commit", "", msg);
             } else {
                 statusLabel.SetText("Enter a commit message");
@@ -773,9 +1125,11 @@ class ScmView {
         if statusList.WasSelectionChanged() {
             HandleSelection();
         }
+        UpdateActionStates();
 
         if activePtyJob != null {
             PumpPtyJob();
+            UpdateActionStates();
             return;
         }
 
@@ -785,10 +1139,12 @@ class ScmView {
             } else {
                 statusLabel.SetText(QueueSuffix("Running git " + activeJob.kind + "..."));
             }
+            UpdateActionStates();
             return;
         }
 
         DrainQueue();
+        UpdateActionStates();
     }
 
     hide func JobLabel(kind: String) -> String {

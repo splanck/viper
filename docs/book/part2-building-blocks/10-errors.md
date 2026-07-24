@@ -44,7 +44,7 @@ Not all errors are the same. Understanding the different types helps you diagnos
 
 Syntax errors happen when your code violates the rules of the language. It's like writing a sentence with the words in the wrong order — even if your meaning is clear to a human, the compiler can't understand it.
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 // Missing semicolon
@@ -78,7 +78,7 @@ Syntax errors are the easiest type to fix because:
 
 Runtime errors happen while your program is running. The syntax is valid — the compiler accepts your code — but when the program executes, something goes wrong.
 
-```rust
+```zia
 var x = 10 / 0;  // Division by zero — mathematically undefined
 
 var arr = [1, 2, 3];
@@ -101,7 +101,7 @@ Runtime errors occur because the code is syntactically correct but asks the comp
 
 Logic errors are the sneakiest. Your code is syntactically correct. It runs without crashing. But it produces the wrong result.
 
-```rust
+```zia
 // Trying to calculate the average
 func average(a: Integer, b: Integer) -> Integer {
     return a + b / 2;  // Oops! Division happens before addition
@@ -180,7 +180,7 @@ When you see an error, follow this process:
 
 This is crucial: the line where an error occurs is not always the line where the bug lives.
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 func processUser(user: User) {
@@ -204,7 +204,7 @@ Now that you understand what errors are and how to read error messages, let's le
 
 ### Basic Structure
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 try {
@@ -232,7 +232,7 @@ The `e` variable in `catch(e)` gives you access to information about the error �
 
 The `try` block should contain the "risky" code — the operations that might fail. When an error occurs, *nothing after that point in the try block runs*:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 try {
@@ -259,7 +259,7 @@ Step 2 and Step 3 never execute. The moment division by zero is attempted, execu
 
 A single try block might have multiple things that could go wrong:
 
-```rust
+```zia
 bind File = Zanna.IO.File;
 bind Convert = Zanna.Core.Convert;
 bind Zanna.Terminal;
@@ -277,7 +277,7 @@ try {
 If *any* of these three operations fails, the catch block runs. A plain
 `catch` handles every runtime error:
 
-```rust
+```zia
 bind File = Zanna.IO.File;
 bind Convert = Zanna.Core.Convert;
 bind Zanna.Terminal;
@@ -296,7 +296,7 @@ When you need different handling for different failure modes, Zia also supports
 typed catches for runtime error kinds such as `DivideByZero`, `Bounds`,
 string error messages:
 
-```rust
+```zia
 bind File = Zanna.IO.File;
 bind Convert = Zanna.Core.Convert;
 bind Zanna.Terminal;
@@ -319,7 +319,7 @@ If you want fine-grained recovery without multiple typed catches, structuring
 your code so that each risky operation is in its own try-catch is still a good
 approach:
 
-```rust
+```zia
 bind File = Zanna.IO.File;
 bind Convert = Zanna.Core.Convert;
 bind Zanna.Terminal;
@@ -366,7 +366,7 @@ Don't use try-catch when:
 2. **You can't handle the error:** If there's nothing useful to do, let it propagate (more on this soon)
 3. **For normal control flow:** Exceptions are for exceptional situations, not everyday logic
 
-```rust
+```zia
 // Unnecessary try-catch
 var arr = [10, 20, 30];
 var index = 5;
@@ -415,7 +415,7 @@ The stack trace is your roadmap for debugging. It answers:
 
 Often, the bug isn't in the function where the error occurred. Look back through the chain:
 
-```rust
+```zia
 func divide(a: Integer, b: Integer) -> Integer {
     return a / b;  // Error: division by zero
 }
@@ -451,7 +451,7 @@ The error appears in `divide`, but the bug is in `computeAverage` (or maybe `pro
 
 Sometimes you need to run cleanup code no matter what happens — whether the try block succeeds or fails:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 var connectionOpen = true;
@@ -483,7 +483,7 @@ Use `finally` for:
 
 You can signal errors from your own code using `throw`:
 
-```rust
+```zia
 func validateAge(age: Integer) -> Integer {
     if age < 0 {
         throw ("Age cannot be negative: " + age);
@@ -504,7 +504,7 @@ When your code encounters a situation it can't handle, throw an error. This:
 
 Since Zia uses a single `Error` type, write clear, descriptive messages that explain what went wrong:
 
-```rust
+```zia
 var input = "abc";
 
 throw ("File not found: config.txt");  // Error: example throw
@@ -514,7 +514,7 @@ throw ("Email address is invalid");  // Error: example throw
 
 Include relevant context in the message so the caller knows what happened:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 func loadConfiguration() {
@@ -546,7 +546,7 @@ The best error handling is *preventing* errors in the first place. Defensive pro
 
 Check that inputs are valid before using them:
 
-```rust
+```zia
 func processOrder(quantity: Integer, price: Number) {
     // Validate at the start
     if quantity <= 0 {
@@ -571,7 +571,7 @@ This is called "fail fast" — if something's wrong, you want to know immediatel
 
 Before performing dangerous operations, verify they'll succeed:
 
-```rust
+```zia
 var arr = [10, 20, 30];
 var index = 1;
 var a = 12;
@@ -602,7 +602,7 @@ if b != 0 {
 
 When missing values are acceptable, use defaults:
 
-```rust
+```zia
 func getConfig(key: String, defaultValue: String) -> String {
     if key == "timeout" {
         return "60";
@@ -619,7 +619,7 @@ var logLevel = getConfig("logLevel", "info");
 
 Handle error cases at the top of functions, then proceed with the main logic:
 
-```rust
+```zia
 func processFile(filename: String) {
     bind File = Zanna.IO.File;
     // Guard clauses handle all the edge cases
@@ -660,7 +660,7 @@ Catch an error when:
 - You need to log it but still continue
 - You're at the top level and need to report to the user
 
-```rust
+```zia
 bind File = Zanna.IO.File;
 
 func queryUser(id: Integer) -> String {
@@ -712,7 +712,7 @@ Let errors propagate when:
 - The caller is better positioned to handle it
 - It's a programming error (bug) that should crash
 
-```rust
+```zia
 bind File = Zanna.IO.File;
 bind Zanna.Terminal;
 
@@ -754,7 +754,7 @@ Logic errors don't produce error messages — they produce wrong results. Findin
 
 The simplest and most widely used technique: add print statements to see what's happening inside your code.
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 func mysteriouslyWrongResult(data: List[Integer]) -> Integer {
@@ -878,7 +878,7 @@ Let's look at errors you'll encounter in real programs and how to handle them.
 
 Networks are inherently unreliable. Connections drop, servers go down, requests time out.
 
-```rust
+```zia
 bind Zanna.Terminal;
 bind Zanna.Time;
 
@@ -912,7 +912,7 @@ Key strategies for network errors:
 
 Users will enter invalid data. Always. Count on it.
 
-```rust
+```zia
 bind Zanna.Terminal;
 bind Convert = Zanna.Core.Convert;
 bind Parse = Zanna.Core.Parse;
@@ -920,7 +920,7 @@ bind Parse = Zanna.Core.Parse;
 func getValidAge() -> Integer {
     while true {
         Print("Enter your age: ");
-        var input = InputLine().Trim();
+        var input = TryReadLine().UnwrapOrStr("").Trim();
 
         if !Parse.IsInt(input) {
             Say("That's not a valid number. Please try again.");
@@ -950,7 +950,7 @@ Principles for user input:
 
 Programs can run out of resources: memory, disk space, file handles, network connections.
 
-```rust
+```zia
 bind File = Zanna.IO.File;
 bind Zanna.Terminal;
 
@@ -980,7 +980,7 @@ Resource management tips:
 
 Programs often depend on files that might not exist:
 
-```rust
+```zia
 bind File = Zanna.IO.File;
 bind Zanna.Terminal;
 
@@ -1020,7 +1020,7 @@ File handling strategies:
 
 Let's put it all together with a program that demonstrates comprehensive error handling:
 
-```rust
+```zia
 module DataProcessor;
 
 bind File = Zanna.IO.File;
@@ -1145,7 +1145,7 @@ func start() {
 
     while true {
         Print("Enter filename (or 'quit' to exit): ");
-        var input = InputLine().Trim();
+        var input = TryReadLine().UnwrapOrStr("").Trim();
 
         if input.ToLower() == "quit" {
             Say("Goodbye!");
@@ -1171,7 +1171,7 @@ This program demonstrates:
 ## The Two Languages
 
 ### Zia
-```rust
+```zia
 bind Zanna.Terminal;
 
 func riskyOperation() {
@@ -1224,7 +1224,7 @@ BASIC uses `ON ERROR GOTO` for older-style error handling. The `ERR` variable co
 
 The worst thing you can do with exceptions:
 
-```rust
+```zia
 // TERRIBLE: Silently ignoring errors
 func riskyOperation() {
     throw ("operation failed");
@@ -1241,7 +1241,7 @@ func start() {
 
 This makes debugging nearly impossible. If something goes wrong, you'll never know. At minimum:
 
-```rust
+```zia
 func riskyOperation() {
     throw ("operation failed");
 }
@@ -1263,7 +1263,7 @@ func start() {
 
 Catching everything in one block can hide which operation failed:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 func complexOperation(data: String) -> String {
@@ -1292,7 +1292,7 @@ func start() {
 
 Better -- separate the operations so you know which one failed:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 func complexOperation(data: String) -> String {
@@ -1363,7 +1363,7 @@ Exceptions are slow compared to normal returns. Use them for errors, not everyda
 
 When catching and re-throwing, preserve the original error:
 
-```rust
+```zia
 func loadData() {
     throw ("disk error");
 }

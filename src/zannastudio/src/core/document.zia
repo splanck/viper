@@ -6,10 +6,12 @@
 //===----------------------------------------------------------------------===//
 //
 // File: zannastudio/src/core/document.zia
-// Purpose: Store one Studio editor document and its synchronized disk baseline.
+// Purpose: Store one Studio document, disk baseline, and per-surface view state.
 // Key invariants:
 //   - Named documents retain metadata and a content hash from one disk version.
 //   - Untitled documents never claim an on-disk baseline.
+//   - Editor and scene workspace state belongs to its document, never to the
+//     shared widget controller that happens to display the active tab.
 // Ownership/Lifetime:
 //   - DocumentManager owns instances for the lifetime of their editor tabs.
 // Links: zannastudio/src/core/document_manager.zia
@@ -17,6 +19,22 @@
 //===----------------------------------------------------------------------===//
 
 module document;
+
+// ============================================================================
+// MODULE: document
+// PURPOSE: Plain-data record representing one open file and its tab-local
+//          editor or visual-scene workspace state.
+//
+// WHERE-THIS-FITS: DocumentManager owns these records and synchronizes the
+//          active one with shared editor/scene controllers.
+//
+// KEY-DESIGN-CHOICES:
+//   * PUBLIC DATA RECORD. DocumentManager and controllers maintain invariants.
+//   * EMPTY filePath SIGNALS UNTITLED. Named files always have disk metadata.
+//   * VIEW STATE FOLLOWS THE TAB. Shared controllers cannot leak camera,
+//     selection, transform-tool, or inspector state between documents.
+//   * DISK BASELINES PROTECT SAVES. Metadata plus content hash detect changes.
+// ============================================================================
 
 bind "../services/file_utils";
 
@@ -28,39 +46,101 @@ final EXTERNAL_STATE_DELETED = 2;
 final EXTERNAL_STATE_RENAMED = 3;
 final EXTERNAL_STATE_MISSING = 4;
 
-// ============================================================================
-// MODULE: document
-// PURPOSE: Plain-data record representing a single open file in the IDE.
-//          One Document per editor tab. Owns the buffer text, file
-//          metadata, last-known cursor/scroll position, and disk
-//          modification metadata for external-change detection.
-//
-// WHERE-THIS-FITS: Leaf data type. Owned by `document_manager.DocumentManager`,
-//          which holds a `List[Document]` and synchronises tab state with
-//          the editor widget. Consumed read-only by the editor / hover /
-//          diagnostics / completion modules through `DocumentManager.GetActive`.
-//
-// KEY-DESIGN-CHOICES:
-//   * VALUE RECORD WITH PUBLIC FIELDS. All fields are `expose` so callers
-//     mutate them directly rather than going through setters. This is
-//     intentional: a Document is essentially a struct, and adding setters
-//     would be ceremony with no behavioural payoff. Invariants are
-//     maintained by the DocumentManager (e.g., `isModified` is set by the
-//     editor when text changes).
-//   * EMPTY filePath SIGNALS UNTITLED. `filePath == ""` is the canonical
-//     "this document has never been saved" marker. Combined with `isNew`
-//     it covers the full state space:
-//         filePath="", isNew=true   -> brand-new untitled
-//         filePath="", isNew=false  -> impossible (would be a bug)
-//         filePath=X,  isNew=true   -> impossible (would be a bug)
-//         filePath=X,  isNew=false  -> opened from disk
-//   * DISK VERSION BASELINE FOR EXTERNAL CHANGE DETECTION. Timestamp and size
-//     keep polling cheap; a SHA-256 of synchronized text protects save-time
-//     conflict checks when a filesystem timestamp is coarse or preserved.
-//   * REMEMBERED CURSOR. `cursorLine`, `cursorCol`, `scrollLine` let the
-//     editor restore the user's view when switching back to a tab. Saved
-//     when leaving a tab; restored when activating it.
-// ============================================================================
+/// @brief Per-document 2D authoring state retained across tab switches.
+/// @details Undo snapshots are intentionally process-local. The bounded scalar
+///          view fields may be serialized by SessionManager.
+class Scene2DWorkspaceState {
+    expose Boolean initialized;
+    expose Integer mode;
+    expose Integer zoomPercent;
+    expose Integer activeLayer;
+    expose Integer selectedObject;
+    expose List[Integer] selectedObjects;
+    expose Integer selectedObjectProperty;
+    expose Integer selectedCellX;
+    expose Integer selectedCellY;
+    expose Integer tileId;
+    expose Number splitPosition;
+    expose Number canvasScrollX;
+    expose Number canvasScrollY;
+    expose Number inspectorScrollY;
+    expose Boolean inspectorRequestedVisible;
+    expose Boolean compactInspectorShown;
+    expose List[String] undoStack;
+    expose List[String] redoStack;
+    expose String cleanSerialized;
+    expose String historyContent;
+
+    expose func init() {
+        initialized = false;
+        mode = 0;
+        zoomPercent = 100;
+        activeLayer = 0;
+        selectedObject = -1;
+        selectedObjects = [];
+        selectedObjectProperty = -1;
+        selectedCellX = -1;
+        selectedCellY = -1;
+        tileId = 1;
+        splitPosition = 0.68;
+        canvasScrollX = 0.0;
+        canvasScrollY = 0.0;
+        inspectorScrollY = 0.0;
+        inspectorRequestedVisible = true;
+        compactInspectorShown = false;
+        undoStack = [];
+        redoStack = [];
+        cleanSerialized = "";
+        historyContent = "";
+    }
+}
+
+/// @brief Per-document 3D hierarchy, camera, inspector, and history state.
+/// @details Camera targets remain Numbers in memory; SessionManager stores them
+///          as validated fixed-point integers to avoid locale-sensitive text.
+class Scene3DWorkspaceState {
+    expose Boolean initialized;
+    expose Integer selectedIndex;
+    expose List[Integer] selectedIndices;
+    expose Integer transformMode;
+    expose Boolean transformSnapEnabled;
+    expose Integer viewYawDegrees;
+    expose Integer viewPitchDegrees;
+    expose Integer viewScale;
+    expose Number viewTargetX;
+    expose Number viewTargetY;
+    expose Number viewTargetZ;
+    expose Number splitPosition;
+    expose Number inspectorScrollY;
+    expose Boolean inspectorRequestedVisible;
+    expose Boolean compactInspectorShown;
+    expose List[String] undoStack;
+    expose List[String] redoStack;
+    expose String cleanSerialized;
+    expose String historyContent;
+
+    expose func init() {
+        initialized = false;
+        selectedIndex = -1;
+        selectedIndices = [];
+        transformMode = 0;
+        transformSnapEnabled = false;
+        viewYawDegrees = 35;
+        viewPitchDegrees = -25;
+        viewScale = 28;
+        viewTargetX = 0.0;
+        viewTargetY = 0.0;
+        viewTargetZ = 0.0;
+        splitPosition = 0.65;
+        inspectorScrollY = 0.0;
+        inspectorRequestedVisible = true;
+        compactInspectorShown = false;
+        undoStack = [];
+        redoStack = [];
+        cleanSerialized = "";
+        historyContent = "";
+    }
+}
 
 /// @brief Single open file in the editor. One per tab.
 class Document {
@@ -86,6 +166,8 @@ class Document {
     expose Boolean hasPendingWorkspaceUndo; // Inactive workspace edit can be undone on activation.
     expose String pendingWorkspaceUndoContent; // Snapshot before the pending workspace edit.
     expose String pendingWorkspaceUndoLabel;   // User-facing name of the pending edit.
+    expose Scene2DWorkspaceState scene2DWorkspace; // Per-tab 2D canvas/inspector state.
+    expose Scene3DWorkspaceState scene3DWorkspace; // Per-tab 3D camera/inspector state.
 
     /// @brief Initialize as an untitled, empty, plain-text document.
     expose func init() {
@@ -110,5 +192,7 @@ class Document {
         hasPendingWorkspaceUndo = false;
         pendingWorkspaceUndoContent = "";
         pendingWorkspaceUndoLabel = "";
+        scene2DWorkspace = new Scene2DWorkspaceState();
+        scene3DWorkspace = new Scene3DWorkspaceState();
     }
 }

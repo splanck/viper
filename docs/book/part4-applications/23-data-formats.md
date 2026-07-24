@@ -20,7 +20,7 @@ This chapter is about the most important skill in practical programming: moving 
 
 Imagine you are building a game. Your player has a name, a level, health points, an inventory of items, and a position on the map:
 
-```rust
+```zia
 struct Player {
     name: String;
     level: Integer;
@@ -280,12 +280,12 @@ This single JSON document represents complex, deeply nested data:
 
 ### Parsing JSON in Zia
 
-> **Note:** The examples in this chapter use `bind Json = Zanna.Text.Json;` for JSON operations. Use `Json.GetStr()`, `Json.GetInt()`, `Json.GetBool()`, and the matching `Json.Set*()` helpers for object fields. See Appendix D for the complete runtime reference.
+> **Note:** The examples in this chapter use `bind Json = Zanna.Data.Json;` for JSON operations. Use `Json.GetStr()`, `Json.GetInt()`, `Json.GetBool()`, and the matching `Json.Set*()` helpers for object fields. See Appendix D for the complete runtime reference.
 
 Parsing means reading JSON text and creating program data structures from it:
 
-```rust
-bind Json = Zanna.Text.Json;
+```zia
+bind Json = Zanna.Data.Json;
 bind Zanna.Terminal as Terminal;
 bind Fmt = Zanna.Text.Fmt;
 
@@ -320,8 +320,8 @@ For dynamic values, use the `Zanna.Core.Box` conversion helpers or parse string 
 
 To save program data as JSON, you build a JSON structure programmatically:
 
-```rust
-bind Json = Zanna.Text.Json;
+```zia
+bind Json = Zanna.Data.Json;
 bind Zanna.Terminal as Terminal;
 
 func start() {
@@ -351,7 +351,7 @@ The output is compact --- no unnecessary whitespace. This is efficient for stora
 
 Compact JSON is hard to read. For debugging, logs, or configuration files that humans edit, use pretty-printing:
 
-```rust
+```zia
 var jsonText = Json.FormatPretty(player, 2);
 Terminal.Say(jsonText);
 ```
@@ -381,8 +381,8 @@ This is the same data, just formatted with indentation and newlines for human ey
 
 For clean code, add serialization methods to your entities:
 
-```rust
-bind Json = Zanna.Text.Json;
+```zia
+bind Json = Zanna.Data.Json;
 bind File = Zanna.IO.File;
 
 class Player {
@@ -491,8 +491,8 @@ But CSV has significant limitations:
 
 ### Reading CSV
 
-```rust
-bind Csv = Zanna.Text.Csv;
+```zia
+bind Csv = Zanna.Data.Csv;
 bind Zanna.Terminal as Terminal;
 bind Convert = Zanna.Core.Convert;
 bind Fmt = Zanna.Text.Fmt;
@@ -514,8 +514,8 @@ Step by step:
 
 ### Writing CSV
 
-```rust
-bind Csv = Zanna.Text.Csv;
+```zia
+bind Csv = Zanna.Data.Csv;
 bind Seq = Zanna.Collections.Seq;
 bind Zanna.Terminal as Terminal;
 
@@ -557,7 +557,7 @@ The entire multi-line value is quoted.
 
 The CSV library handles these automatically:
 
-```rust
+```zia
 var row = csv.createRow();
 row.Set("name", "Doe, John");       // Has comma, will be quoted
 row.Set("quote", "He said \"hi\""); // Has quotes, will be escaped
@@ -592,7 +592,7 @@ Understanding data formats deeply requires tracing through the process step by s
 
 We start with a Player class in memory:
 
-```rust
+```zia
 var player = Player();
 player.name = "Hero";
 player.level = 5;
@@ -809,10 +809,10 @@ Different formats suit different needs. Here is a comprehensive comparison:
 
 Let us build a complete application that manages contacts, demonstrating serialization and parsing in a real context:
 
-```rust
+```zia
 module ContactManager;
 
-bind Json = Zanna.Text.Json;
+bind Json = Zanna.Data.Json;
 bind Seq = Zanna.Collections.Seq;
 bind File = Zanna.IO.File;
 bind Zanna.Terminal as Terminal;
@@ -949,15 +949,15 @@ Data format handling is rife with subtle bugs. Here are the most common mistakes
 
 ### Mistake: Not Validating Input
 
-```rust
+```zia
 // DANGEROUS: Assumes the structure exists
 var name = JsonPath.GetStr(data, "$.player.stats.name");  // Empty if missing
 ```
 
 If `data` does not have a `"player"` key, or if `player` does not have `"stats"`, silently using an empty default can hide bad input. Always validate:
 
-```rust
-bind JsonPath = Zanna.Text.JsonPath;
+```zia
+bind JsonPath = Zanna.Data.JsonPath;
 
 // SAFE: Check before using the nested value
 if JsonPath.Has(data, "$.player.stats.name") {
@@ -980,16 +980,16 @@ var name = getNestedString(data, "$.player.stats.name", "Unknown");
 
 JSON numbers can be integers or floats, but your code might expect one or the other:
 
-```rust
+```zia
 // PROBLEM: What if level is "5" (string) instead of 5 (number)?
 var level = Json.GetInt(data, "level");  // Returns 0 when the field is not numeric
 ```
 
 Defensive approach:
 
-```rust
-bind Json = Zanna.Text.Json;
-bind JsonPath = Zanna.Text.JsonPath;
+```zia
+bind Json = Zanna.Data.Json;
+bind JsonPath = Zanna.Data.JsonPath;
 bind Convert = Zanna.Core.Convert;
 
 func safeGetInt(data: Any, key: String, defaultValue: Integer) -> Integer {
@@ -1013,7 +1013,7 @@ func safeGetInt(data: Any, key: String, defaultValue: Integer) -> Integer {
 
 Text files have encodings. The same bytes can mean different characters depending on the encoding:
 
-```rust
+```zia
 // PROBLEM: Incorrectly converts raw bytes to string without encoding
 var bytes = File.ReadAllBytes(filename);
 // bytes.ToString() is not a valid conversion. Use File.ReadAllText for UTF-8 text.
@@ -1026,7 +1026,7 @@ Modern systems generally use UTF-8, and Zanna's text file API reads UTF-8. Keep 
 
 ### Mistake: Not Handling Missing Files
 
-```rust
+```zia
 // CRASH: What if the file doesn't exist?
 var json = File.ReadAllText("config.json");
 var data = Json.Parse(json);
@@ -1034,7 +1034,7 @@ var data = Json.Parse(json);
 
 Always check:
 
-```rust
+```zia
 if File.Exists("config.json") {
     var json = File.ReadAllText("config.json");
     var data = Json.Parse(json);
@@ -1049,7 +1049,7 @@ if File.Exists("config.json") {
 
 Your data format will evolve. Today's save file format might not match tomorrow's:
 
-```rust
+```zia
 // VERSION 1: Just name and level
 {"name": "Hero", "level": 5}
 
@@ -1074,8 +1074,8 @@ Solution: Include a version number:
 }
 ```
 
-```rust
-bind Json = Zanna.Text.Json;
+```zia
+bind Json = Zanna.Data.Json;
 
 func loadPlayer(data: Any) -> Player {
     var version = 1;  // Default for old files without version
@@ -1107,15 +1107,15 @@ func loadPlayer(data: Any) -> Player {
 
 What if someone gives you invalid JSON?
 
-```rust
+```zia
 // CRASH: Invalid JSON causes parse to fail
 var data = Json.Parse("this is { not valid json");
 ```
 
 Handle parse errors:
 
-```rust
-bind Json = Zanna.Text.Json;
+```zia
+bind Json = Zanna.Data.Json;
 bind Zanna.Terminal;
 
 if !Json.IsValid(jsonText) {
@@ -1158,7 +1158,7 @@ When data does not parse correctly, systematic debugging helps.
 
 Before parsing, see exactly what you received:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 var jsonText = File.ReadAllText("data.json");
@@ -1184,9 +1184,9 @@ Paste your JSON into a validator to get precise error messages.
 
 After parsing, inspect what you got:
 
-```rust
+```zia
 bind Zanna.Terminal;
-bind Json = Zanna.Text.Json;
+bind Json = Zanna.Data.Json;
 
 func debugJSON(data: Any) {
     Terminal.Say("type: " + Json.TypeOf(data));
@@ -1202,7 +1202,7 @@ This shows you the structure and types of everything in the parsed data.
 
 Create data, serialize it, parse it back, and compare:
 
-```rust
+```zia
 var original = new Player();
 original.name = "Test";
 original.level = 5;
@@ -1228,8 +1228,8 @@ If round-trip works, your serialization is correct. If it fails, you know where 
 
 Instead of crashing on bad data, log the problem and continue:
 
-```rust
-bind Json = Zanna.Text.Json;
+```zia
+bind Json = Zanna.Data.Json;
 bind Zanna.Terminal;
 
 func loadPlayerSafe(filename: String) -> Player? {
@@ -1270,8 +1270,8 @@ func start() {
 ## The Two Languages
 
 **Zia**
-```rust
-bind Json = Zanna.Text.Json;
+```zia
+bind Json = Zanna.Data.Json;
 
 var data = Json.Parse("{\"name\": \"test\", \"value\": 42}");
 var name = Json.GetStr(data, "name");
@@ -1295,7 +1295,7 @@ DIM json AS STRING
 json = JSON_TOSTRING(obj)
 ```
 
-The current JSON runtime is exposed through Zia under `Zanna.Text.Json`. The BASIC-style block is conceptual pseudocode.
+The current JSON runtime is exposed through Zia under `Zanna.Data.Json`. The BASIC-style block is conceptual pseudocode.
 
 ---
 
@@ -1315,12 +1315,12 @@ Sometimes text formats are too slow or too large. Binary formats pack data effic
 A well-designed binary format includes:
 
 **1. Magic number** --- A unique identifier that tells you "this is a ZannaSave file"
-```rust
+```zia
 final MAGIC = 0x56535631;  // "VSV1" in ASCII
 ```
 
 **2. Version number** --- Allows format evolution
-```rust
+```zia
 final VERSION = 1;
 ```
 
@@ -1330,7 +1330,7 @@ final VERSION = 1;
 
 Here is a complete binary save example:
 
-```rust
+```zia
 bind Buffer = Zanna.IO.BinaryBuffer;
 bind File = Zanna.IO.File;
 bind Zanna.Terminal;
@@ -1411,10 +1411,10 @@ The resulting file is much smaller than JSON and loads faster, but you cannot op
 
 Here is a production-quality configuration system that demonstrates everything we have learned:
 
-```rust
+```zia
 module ConfigSystem;
 
-bind Json = Zanna.Text.Json;
+bind Json = Zanna.Data.Json;
 bind File = Zanna.IO.File;
 bind Fmt = Zanna.Text.Fmt;
 bind Zanna.Terminal as Terminal;

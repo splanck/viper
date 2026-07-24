@@ -1,0 +1,79 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/ui/notification_policy.zia
+// Purpose: Decide when Studio feedback may interrupt the user with a toast.
+// Key invariants:
+//   - Background results with a durable owning surface never create a popup.
+//   - Immediate user-action failures may use warning or error popups.
+//   - External-state warnings interrupt only when they affect the active item.
+// Ownership/Lifetime: Stateless UI policy shared by command controllers.
+// Links: zannastudio/src/commands/build_commands.zia,
+//        zannastudio/src/commands/search_commands.zia
+//
+//===----------------------------------------------------------------------===//
+
+module notification_policy;
+
+bind GUI = Zanna.GUI;
+
+// ============================================================================
+// MODULE: notification_policy
+// PURPOSE: Keep transient notifications contextual. Command controllers retain
+//          durable status and result details on their owning surfaces, then use
+//          this boundary only for failures tied to the action in progress.
+//
+// WHERE-THIS-FITS: UI policy sits between command controllers and GUI.Toast.
+//          It does not own status text, result rows, or background job state.
+//
+// KEY-DESIGN-CHOICES:
+//   * DURABLE RESULTS STAY QUIET. Output, Problems, Search, and similar panels
+//     remain inspectable after completion, so duplicating them in a toast only
+//     interrupts whatever the user started doing next.
+//   * ACTION FAILURES ARE CONTEXTUAL. A warning or error caused directly by the
+//     current click or command is eligible because the user is awaiting it.
+//   * EXTERNAL STATE FOLLOWS ACTIVE OWNERSHIP. An out-of-process change matters
+//     immediately only when it affects the resource the user is editing.
+// ============================================================================
+
+final EVENT_ACTION_FAILURE: Integer = 1;
+final EVENT_BACKGROUND_RESULT: Integer = 2;
+final EVENT_EXTERNAL_CHANGE: Integer = 3;
+
+/// @brief Return whether an event is eligible for a transient popup.
+/// @param eventKind One of the EVENT_* policy constants.
+/// @param hasDurableSurface True when a panel/status surface retains the result.
+/// @param affectsActiveResource True when the event still owns user context.
+/// @return True only for contextual events that need transient interruption.
+func ShouldShowPopup(eventKind: Integer,
+                     hasDurableSurface: Boolean,
+                     affectsActiveResource: Boolean) -> Boolean {
+    if eventKind == EVENT_ACTION_FAILURE { return true; }
+    if eventKind == EVENT_EXTERNAL_CHANGE {
+        return affectsActiveResource;
+    }
+    if eventKind == EVENT_BACKGROUND_RESULT {
+        return hasDurableSurface == false and affectsActiveResource;
+    }
+    return false;
+}
+
+/// @brief Show a warning caused directly by the user's current action.
+func ActionWarning(message: String) {
+    if message == "" { return; }
+    if ShouldShowPopup(EVENT_ACTION_FAILURE, false, true) {
+        GUI.Toast.Warning(message);
+    }
+}
+
+/// @brief Show an error caused directly by the user's current action.
+func ActionError(message: String) {
+    if message == "" { return; }
+    if ShouldShowPopup(EVENT_ACTION_FAILURE, false, true) {
+        GUI.Toast.Error(message);
+    }
+}

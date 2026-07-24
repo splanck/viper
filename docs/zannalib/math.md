@@ -46,7 +46,7 @@ Bit manipulation utilities for working with 64-bit integers at the bit level.
 | `ShiftRightLogical(val, count)` | `Integer(Integer, Integer)` | Logical shift right (zero-fill) |
 | `RotateLeft(val, count)` | `Integer(Integer, Integer)` | Rotate left                            |
 | `RotateRight(val, count)` | `Integer(Integer, Integer)` | Rotate right                           |
-| `Count(val)`       | `Integer(Integer)`      | Population count (number of 1 bits)    |
+| `CountOnes(val)`   | `Integer(Integer)`      | Population count (number of 1 bits)    |
 | `CountLeadingZeros(val)` | `Integer(Integer)` | Count leading zeros                    |
 | `CountTrailingZeros(val)` | `Integer(Integer)` | Count trailing zeros                   |
 | `Flip(val)`        | `Integer(Integer)`      | Reverse all 64 bits                    |
@@ -77,7 +77,7 @@ Rotate counts are normalized to 0-63 (count MOD 64).
 
 #### Bit Counting
 
-- **Count** — Population count (popcount). Returns the number of 1 bits.
+- **CountOnes** — Population count (popcount). Returns the number of 1 bits.
 - **CountLeadingZeros** — Count leading zeros. Returns 64 for zero, 0 for negative values.
 - **CountTrailingZeros** — Count trailing zeros. Returns 64 for zero.
 
@@ -91,7 +91,7 @@ Set/Clear/Toggle) or false (for Get).
 
 ### Zia Example
 
-```rust
+```zia
 module BitsDemo;
 
 bind Zanna.Terminal;
@@ -103,7 +103,7 @@ func start() {
     Say("Or: " + Fmt.Int(Bits.Or(12, 10)));        // 14
     Say("Xor: " + Fmt.Int(Bits.Xor(12, 10)));     // 6
     Say("Shl: " + Fmt.Int(Bits.Shl(1, 4)));       // 16
-    Say("Count: " + Fmt.Int(Bits.Count(255)));     // 8
+    Say("Count: " + Fmt.Int(Bits.CountOnes(255)));     // 8
     Say("Leading zeros: " + Fmt.Int(Bits.CountLeadingZeros(1))); // 63
 }
 ```
@@ -125,7 +125,7 @@ PRINT Zanna.Math.Bits.Shr(16, 2)    ' 4
 
 ' Count set bits
 DIM mask AS INTEGER = 255
-PRINT Zanna.Math.Bits.Count(mask)   ' 8
+PRINT Zanna.Math.Bits.CountOnes(mask)   ' 8
 
 ' Work with individual bits
 DIM flags AS INTEGER = 0
@@ -252,7 +252,7 @@ Mathematical functions and constants.
 
 ### Zia Example
 
-```rust
+```zia
 module MathDemo;
 
 bind Zanna.Terminal;
@@ -287,7 +287,7 @@ PRINT Zanna.Math.Abs(-42.5)      ' Output: 42.5
 PRINT Zanna.Math.Floor(2.7)      ' Output: 2.0
 PRINT Zanna.Math.Ceil(2.1)       ' Output: 3.0
 PRINT Zanna.Math.Round(2.5)      ' Output: 3.0
-PRINT Zanna.Math.Trunc(-2.7)     ' Output: -2.0
+PRINT Zanna.Math.Truncate(-2.7)     ' Output: -2.0
 
 ' Trigonometry (radians)
 PRINT Zanna.Math.Sin(Zanna.Math.Pi / 2)  ' Output: 1.0
@@ -324,8 +324,7 @@ Random number generation with uniform and distribution-based functions.
 | Method         | Signature          | Description                                     |
 |----------------|--------------------|-------------------------------------------------|
 | `Seed(value)`  | `Void(Integer)`    | Seeds the random number generator               |
-| `Next()`       | `Double()`         | Returns a random double in the range [0.0, 1.0) |
-| `NextDouble()` | `Double()`         | Instance-only alias for `Next()`                  |
+| `NextDouble()` | `Double()`         | Returns a random double in the range [0.0, 1.0) |
 | `NextInt(max)` | `Integer(Integer)` | Returns a random integer in the range [0, max)  |
 
 ### Distribution Methods
@@ -342,7 +341,7 @@ Random number generation with uniform and distribution-based functions.
 
 ### Zia Example
 
-```rust
+```zia
 module RandomDemo;
 
 bind Zanna.Terminal;
@@ -351,7 +350,7 @@ bind Zanna.Text.Fmt as Fmt;
 
 func start() {
     Say("Range(1,100): " + Fmt.Int(Random.Range(1, 100)));
-    Say("Float: " + Fmt.NumFixed(Random.Next(), 4));
+    Say("Float: " + Fmt.NumFixed(Random.NextDouble(), 4));
     Say("Dice d6: " + Fmt.Int(Random.Dice(6)));
 }
 ```
@@ -364,7 +363,7 @@ Zanna.Math.Random.Seed(12345)
 
 ' Random float between 0 and 1
 DIM r AS DOUBLE
-r = Zanna.Math.Random.Next()
+r = Zanna.Math.Random.NextDouble()
 PRINT r  ' Output: 0.123... (varies)
 
 ' Random integer 0-99
@@ -411,10 +410,11 @@ Zanna.Math.Random.Shuffle(seq)  ' Now shuffled: e.g., [3, 1, 5, 2, 4]
 ### Notes
 
 - Static calls use the active runtime context's LCG state; separate runtime contexts have separate
-  sequences. A constructed `Random` has independent state but exposes only `Next`, `NextDouble`,
+  sequences. A constructed `Random` has independent state and exposes `NextDouble()`,
   `NextInt(max)`, `Range(min,max)`, and `Seed` as instance methods.
-- There is no static `NextDouble()` and no two-argument `NextInt` overload. Use static `Next()` or
-  instance `NextDouble()`, and use `Range(min,max)` for an inclusive range.
+- `NextDouble()`, `NextInt(max)`, and `Range(min,max)` are available both as static calls and as
+  instance methods. There is no two-argument `NextInt` overload — use `Range(min,max)` for a bounded
+  range.
 - Sequences are deterministic for a given seed. `NextInt(max)` and `Range(min,max)` use rejection
   sampling to avoid modulo bias; `Range` swaps inverted bounds and supports the full signed i64
   range.
@@ -481,7 +481,7 @@ Zanna.Math.Random.Shuffle(seq)  ' Now shuffled: e.g., [3, 1, 5, 2, 4]
 
 ### Zia Example
 
-```rust
+```zia
 module Vec2Demo;
 
 bind Zanna.Terminal;
@@ -610,7 +610,7 @@ END IF
 
 ### Zia Example
 
-```rust
+```zia
 module Vec3Demo;
 
 bind Zanna.Terminal;
@@ -732,7 +732,7 @@ smooth interpolation via SLERP.
 
 ### Zia Example
 
-```rust
+```zia
 module QuaternionDemo;
 
 bind Zanna.Math;
@@ -757,7 +757,7 @@ func start() {
 
     // Interpolate (slerp)
     var halfway = Quat.Slerp(id, q90, 0.5);
-    SayNum(Quat.Len(halfway));     // 1.0
+    SayNum(Quat.Length(halfway));     // 1.0
 
     // Inverse (q * q^-1 = identity)
     var inv = Quat.Inverse(q90);
@@ -810,39 +810,36 @@ overshoot `[0,1]` even for valid input.
 | Method           | Signature    | Description                                  |
 |------------------|-------------|----------------------------------------------|
 | `Linear(t)`      | `Double(Double)` | Linear (no easing)                       |
-| `InQuad(t)`      | `Double(Double)` | Quadratic ease in (accelerate)           |
-| `EaseInQuad(t)`  | `Double(Double)` | Alias for `InQuad(t)`                    |
-| `OutQuad(t)`     | `Double(Double)` | Quadratic ease out (decelerate)          |
-| `EaseOutQuad(t)` | `Double(Double)` | Alias for `OutQuad(t)`                   |
-| `InOutQuad(t)`   | `Double(Double)` | Quadratic ease in-out                    |
-| `EaseInOutQuad(t)` | `Double(Double)` | Alias for `InOutQuad(t)`               |
-| `InCubic(t)`     | `Double(Double)` | Cubic ease in                            |
-| `OutCubic(t)`    | `Double(Double)` | Cubic ease out                           |
-| `InOutCubic(t)`  | `Double(Double)` | Cubic ease in-out                        |
-| `InQuart(t)`     | `Double(Double)` | Quartic ease in                          |
-| `OutQuart(t)`    | `Double(Double)` | Quartic ease out                         |
-| `InSine(t)`      | `Double(Double)` | Sinusoidal ease in                       |
-| `OutSine(t)`     | `Double(Double)` | Sinusoidal ease out                      |
-| `InOutSine(t)`   | `Double(Double)` | Sinusoidal ease in-out                   |
-| `InExpo(t)`      | `Double(Double)` | Exponential ease in                      |
-| `OutExpo(t)`     | `Double(Double)` | Exponential ease out                     |
-| `InOutExpo(t)`   | `Double(Double)` | Exponential ease in-out                  |
-| `InCirc(t)`      | `Double(Double)` | Circular ease in                         |
-| `OutCirc(t)`     | `Double(Double)` | Circular ease out                        |
-| `InOutCirc(t)`   | `Double(Double)` | Circular ease in-out                     |
-| `InBack(t)`      | `Double(Double)` | Back ease in (overshoots start)          |
-| `OutBack(t)`     | `Double(Double)` | Back ease out (overshoots end)           |
-| `InOutBack(t)`   | `Double(Double)` | Back ease in-out                         |
-| `InElastic(t)`   | `Double(Double)` | Elastic ease in (spring-like)            |
-| `OutElastic(t)`  | `Double(Double)` | Elastic ease out                         |
-| `InOutElastic(t)`| `Double(Double)` | Elastic ease in-out                      |
-| `InBounce(t)`    | `Double(Double)` | Bounce ease in                           |
-| `OutBounce(t)`   | `Double(Double)` | Bounce ease out                          |
-| `InOutBounce(t)` | `Double(Double)` | Bounce ease in-out                       |
+| `EaseInQuad(t)`      | `Double(Double)` | Quadratic ease in (accelerate)           |
+| `EaseOutQuad(t)`     | `Double(Double)` | Quadratic ease out (decelerate)          |
+| `EaseInOutQuad(t)`   | `Double(Double)` | Quadratic ease in-out                    |
+| `EaseInCubic(t)`     | `Double(Double)` | Cubic ease in                            |
+| `EaseOutCubic(t)`    | `Double(Double)` | Cubic ease out                           |
+| `EaseInOutCubic(t)`  | `Double(Double)` | Cubic ease in-out                        |
+| `EaseInQuart(t)`     | `Double(Double)` | Quartic ease in                          |
+| `EaseOutQuart(t)`    | `Double(Double)` | Quartic ease out                         |
+| `EaseInSine(t)`      | `Double(Double)` | Sinusoidal ease in                       |
+| `EaseOutSine(t)`     | `Double(Double)` | Sinusoidal ease out                      |
+| `EaseInOutSine(t)`   | `Double(Double)` | Sinusoidal ease in-out                   |
+| `EaseInExpo(t)`      | `Double(Double)` | Exponential ease in                      |
+| `EaseOutExpo(t)`     | `Double(Double)` | Exponential ease out                     |
+| `EaseInOutExpo(t)`   | `Double(Double)` | Exponential ease in-out                  |
+| `EaseInCirc(t)`      | `Double(Double)` | Circular ease in                         |
+| `EaseOutCirc(t)`     | `Double(Double)` | Circular ease out                        |
+| `EaseInOutCirc(t)`   | `Double(Double)` | Circular ease in-out                     |
+| `EaseInBack(t)`      | `Double(Double)` | Back ease in (overshoots start)          |
+| `EaseOutBack(t)`     | `Double(Double)` | Back ease out (overshoots end)           |
+| `EaseInOutBack(t)`   | `Double(Double)` | Back ease in-out                         |
+| `EaseInElastic(t)`   | `Double(Double)` | Elastic ease in (spring-like)            |
+| `EaseOutElastic(t)`  | `Double(Double)` | Elastic ease out                         |
+| `EaseInOutElastic(t)`| `Double(Double)` | Elastic ease in-out                      |
+| `EaseInBounce(t)`    | `Double(Double)` | Bounce ease in                           |
+| `EaseOutBounce(t)`   | `Double(Double)` | Bounce ease out                          |
+| `EaseInOutBounce(t)` | `Double(Double)` | Bounce ease in-out                       |
 
 ### Zia Example
 
-```rust
+```zia
 module EasingDemo;
 
 bind Zanna.Math;
@@ -855,29 +852,29 @@ func start() {
     SayNum(Easing.Linear(1.0));   // 1.0
 
     // Quadratic
-    SayNum(Easing.InQuad(0.5));      // 0.25
-    SayNum(Easing.OutQuad(0.5));     // 0.75
-    SayNum(Easing.InOutQuad(0.5));   // 0.5
+    SayNum(Easing.EaseInQuad(0.5));      // 0.25
+    SayNum(Easing.EaseOutQuad(0.5));     // 0.75
+    SayNum(Easing.EaseInOutQuad(0.5));   // 0.5
 
     // Cubic
-    SayNum(Easing.InCubic(0.5));     // 0.125
-    SayNum(Easing.OutCubic(0.5));    // 0.875
+    SayNum(Easing.EaseInCubic(0.5));     // 0.125
+    SayNum(Easing.EaseOutCubic(0.5));    // 0.875
 
     // Sine
-    SayNum(Easing.InSine(0.0));      // 0.0
-    SayNum(Easing.OutSine(1.0));     // 1.0
+    SayNum(Easing.EaseInSine(0.0));      // 0.0
+    SayNum(Easing.EaseOutSine(1.0));     // 1.0
 
     // Elastic and Bounce
-    SayNum(Easing.InElastic(0.0));   // 0.0
-    SayNum(Easing.OutBounce(1.0));   // 1.0
+    SayNum(Easing.EaseInElastic(0.0));   // 0.0
+    SayNum(Easing.EaseOutBounce(1.0));   // 1.0
 
     // Back (overshoots slightly)
-    SayNum(Easing.InBack(0.0));      // 0.0
-    SayNum(Easing.OutBack(1.0));     // 1.0
+    SayNum(Easing.EaseInBack(0.0));      // 0.0
+    SayNum(Easing.EaseOutBack(1.0));     // 1.0
 
     // Quart
-    SayNum(Easing.InQuart(0.5));     // 0.0625
-    SayNum(Easing.OutQuart(0.5));    // 0.9375
+    SayNum(Easing.EaseInQuart(0.5));     // 0.0625
+    SayNum(Easing.EaseOutQuart(0.5));    // 0.9375
 }
 ```
 
@@ -888,7 +885,7 @@ func start() {
 DIM t AS DOUBLE
 FOR i = 0 TO 10
     t = i / 10.0
-    DIM eased AS DOUBLE = Zanna.Math.Easing.OutCubic(t)
+    DIM eased AS DOUBLE = Zanna.Math.Easing.EaseOutCubic(t)
     PRINT "t="; t; " eased="; eased
 NEXT
 
@@ -896,7 +893,7 @@ NEXT
 DIM startX AS DOUBLE = 0.0
 DIM endX AS DOUBLE = 100.0
 DIM progress AS DOUBLE = 0.5
-DIM smoothX AS DOUBLE = Zanna.Math.Lerp(startX, endX, Zanna.Math.Easing.InOutQuad(progress))
+DIM smoothX AS DOUBLE = Zanna.Math.Lerp(startX, endX, Zanna.Math.Easing.EaseInOutQuad(progress))
 ```
 
 ---
@@ -949,7 +946,7 @@ not accepted by the current BASIC frontend.
 
 ### Zia Example
 
-```rust
+```zia
 module SplineDemo;
 
 bind Zanna.Math;
@@ -1074,7 +1071,7 @@ Perlin noise generator for procedural content generation. Produces smooth, conti
 
 ### Zia Example
 
-```rust
+```zia
 module PerlinDemo;
 
 bind Zanna.Terminal;
@@ -1182,8 +1179,8 @@ constructors. Pass the bigint object explicitly as the first argument to instanc
 
 | Method           | Signature                    | Description                           |
 |------------------|------------------------------|---------------------------------------|
-| `Cmp(a, b)`      | `Integer(Object, Object)`    | -1 if a < b, 0 if equal, 1 if a > b  |
-| `Eq(a, b)`       | `Boolean(Object, Object)`    | True if a equals b                    |
+| `Compare(a, b)`      | `Integer(Object, Object)`    | -1 if a < b, 0 if equal, 1 if a > b  |
+| `Equals(a, b)`       | `Boolean(Object, Object)`    | True if a equals b                    |
 | `IsZero(n)`      | `Boolean(Object)`            | True if n == 0                        |
 | `IsNegative(n)`  | `Boolean(Object)`            | True if n < 0                         |
 | `Sign(n)`        | `Integer(Object)`            | -1, 0, or 1                           |
@@ -1232,7 +1229,7 @@ constructors. Pass the bigint object explicitly as the first argument to instanc
 
 ### Zia Example
 
-```rust
+```zia
 module BigIntDemo;
 
 bind Zanna.Terminal;
@@ -1286,7 +1283,7 @@ PRINT Zanna.Math.BigInt.ToString(g)   ' 12
 ' Comparison
 DIM x AS OBJECT = Zanna.Math.BigInt.FromStr("100000000000000000000")
 DIM y AS OBJECT = Zanna.Math.BigInt.FromStr("99999999999999999999")
-PRINT Zanna.Math.BigInt.Cmp(x, y)    ' 1 (x > y)
+PRINT Zanna.Math.BigInt.Compare(x, y)    ' 1 (x > y)
 
 ' Bitwise ops
 DIM n AS OBJECT = Zanna.Math.BigInt.FromInt(255)
@@ -1348,7 +1345,7 @@ values are opaque objects. Pass the matrix as the first argument to instance-sty
 | `Neg(m)`            | `Object(Object)`             | Negate every element                  |
 | `Transpose(m)`      | `Object(Object)`             | Transpose rows and columns            |
 | `Inverse(m)`        | `Object(Object)`             | Matrix inverse (traps if singular)    |
-| `Det(m)`            | `Double(Object)`                | Determinant                           |
+| `Determinant(m)`    | `Double(Object)`                | Determinant                           |
 
 ### Transform Application
 
@@ -1356,7 +1353,7 @@ values are opaque objects. Pass the matrix as the first argument to instance-sty
 |------------------------|--------------------------|--------------------------------------------------|
 | `TransformPoint(m, v)` | `Object(Object, Object)` | Transform a Vec2 point (applies translation)     |
 | `TransformVector(m, v)`   | `Object(Object, Object)` | Transform a Vec2 direction (ignores translation) |
-| `Eq(a, b, eps)`        | `Boolean(Object, Object, f64)` | True if every absolute difference is at most the effective tolerance |
+| `ApproxEquals(a, b, eps)`        | `Boolean(Object, Object, f64)` | True if every absolute difference is at most the effective tolerance |
 
 ### Notes
 
@@ -1373,7 +1370,7 @@ values are opaque objects. Pass the matrix as the first argument to instance-sty
 
 ### Zia Example
 
-```rust
+```zia
 module Mat3Demo;
 
 bind Zanna.Terminal;
@@ -1402,7 +1399,7 @@ func start() {
     Say("Rotated Y: " + Fmt.NumFixed(Vec2.get_Y(rd), 1));  // ~1.0
 
     // Determinant and inverse
-    Say("Det: " + Fmt.NumFixed(Mat3.Det(m), 1));   // 4.0 (scale factor²)
+    Say("Det: " + Fmt.NumFixed(Mat3.Determinant(m), 1));   // 4.0 (scale factor²)
     var inv = Mat3.Inverse(m);
     var chk = Mat3.Mul(m, inv);
     Say("[0,0] should be 1: " + Fmt.NumFixed(Mat3.Get(chk, 0, 0), 4));
@@ -1427,12 +1424,12 @@ PRINT "x="; Zanna.Math.Vec2.get_X(out); " y="; Zanna.Math.Vec2.get_Y(out)
 
 ' Identity check
 DIM id AS OBJECT = Zanna.Math.Mat3.Identity()
-PRINT "Det(I): "; Zanna.Math.Mat3.Det(id)   ' 1.0
+PRINT "Det(I): "; Zanna.Math.Mat3.Determinant(id)   ' 1.0
 
 ' Epsilon comparison
 DIM a AS OBJECT = Zanna.Math.Mat3.Identity()
 DIM b AS OBJECT = Zanna.Math.Mat3.Mul(a, Zanna.Math.Mat3.Identity())
-PRINT Zanna.Math.Mat3.Eq(a, b, 0.0001)   ' True
+PRINT Zanna.Math.Mat3.ApproxEquals(a, b, 0.0001)   ' True
 
 ' Row and column extraction
 DIM row0 AS OBJECT = Zanna.Math.Mat3.Row(id, 0)
@@ -1473,7 +1470,7 @@ matrix values are opaque objects. Pass the matrix as the first argument to insta
 | Method                              | Signature                               | Description                              |
 |-------------------------------------|-----------------------------------------|------------------------------------------|
 | `Perspective(fov, aspect, near, far)` | `Object(f64, f64, f64, f64)`          | Right-handed perspective projection (vertical fov in radians) |
-| `Ortho(l, r, b, t, near, far)`      | `Object(f64, f64, f64, f64, f64, f64)` | Orthographic projection matrix           |
+| `Orthographic(l, r, b, t, near, far)`      | `Object(f64, f64, f64, f64, f64, f64)` | Orthographic projection matrix           |
 | `LookAt(eye, center, up)`           | `Object(Object, Object, Object)`        | View matrix from eye/center/up (Vec3)    |
 
 ### Element Access and Math
@@ -1488,8 +1485,8 @@ matrix values are opaque objects. Pass the matrix as the first argument to insta
 | `Neg(m)`            | `Object(Object)`                   | Negate every element                  |
 | `Transpose(m)`      | `Object(Object)`                   | Transpose rows and columns            |
 | `Inverse(m)`        | `Object(Object)`                   | Matrix inverse (traps if singular)             |
-| `Det(m)`            | `Double(Object)`                      | Determinant                           |
-| `Eq(a, b, eps)`     | `Boolean(Object, Object, f64)`     | True if every absolute difference is at most the effective tolerance |
+| `Determinant(m)`    | `Double(Object)`                      | Determinant                           |
+| `ApproxEquals(a, b, eps)`     | `Boolean(Object, Object, f64)`     | True if every absolute difference is at most the effective tolerance |
 
 ### Transform Application
 
@@ -1514,12 +1511,12 @@ matrix values are opaque objects. Pass the matrix as the first argument to insta
   identity as an error sentinel, so its failure contract matches `Mat3.Inverse`.
 - `Eq` uses `1e-9` when `eps <= 0` or non-finite, accepts equality at the tolerance, and treats a
   NaN component as unequal (never equal, including to itself), the same NaN-safe contract as
-  `Mat3.Eq`.
+  `Mat3.ApproxEquals`.
 - Composing transforms: `Mul(B, A)` applies A first, then B (right-to-left).
 
 ### Zia Example
 
-```rust
+```zia
 module Mat4Demo;
 
 bind Zanna.Terminal;
@@ -1589,8 +1586,8 @@ PRINT "NDC X: "; Zanna.Math.Vec3.get_X(out)
 PRINT "NDC Y: "; Zanna.Math.Vec3.get_Y(out)
 
 ' Orthographic projection for 2D/UI overlay
-DIM ortho AS OBJECT = Zanna.Math.Mat4.Ortho(0.0, 1920.0, 0.0, 1080.0, -1.0, 1.0)
-PRINT "Det(ortho): "; Zanna.Math.Mat4.Det(ortho)
+DIM ortho AS OBJECT = Zanna.Math.Mat4.Orthographic(0.0, 1920.0, 0.0, 1080.0, -1.0, 1.0)
+PRINT "Det(ortho): "; Zanna.Math.Mat4.Determinant(ortho)
 
 ' Rotate around arbitrary axis
 DIM axis    AS OBJECT = Zanna.Math.Vec3.New(1.0, 1.0, 0.0)

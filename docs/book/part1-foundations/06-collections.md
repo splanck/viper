@@ -8,7 +8,7 @@ last-verified: 2026-07-16
 
 You're building a student grade tracker. You need to store grades for 30 students. With what we know so far, you'd create 30 variables:
 
-```rust
+```zia
 var grade1 = 85;
 var grade2 = 92;
 var grade3 = 78;
@@ -18,7 +18,7 @@ var grade30 = 91;
 
 Then to find the average, you'd add them all up manually:
 
-```rust
+```zia
 var sum = grade1 + grade2 + grade3 + /* ... */ grade30;
 var average = sum / 30;
 ```
@@ -73,7 +73,7 @@ Think about the data you encounter in everyday life. It's rarely a single, isola
 
 In every case, you have *multiple related values* that belong together. You could create separate variables for each:
 
-```rust
+```zia
 var item1 = "Sword";
 var item2 = "Shield";
 var item3 = "Health Potion";
@@ -101,7 +101,7 @@ Collections solve all of these problems. An array lets you store any number of v
 
 An array is a numbered list of values stored under a single name. Instead of having separate boxes labeled `score1`, `score2`, `score3`, you have one big row of boxes labeled `scores`, and each box has a number.
 
-```rust
+```zia
 var scores = [85, 92, 78, 95, 88];
 ```
 
@@ -163,7 +163,7 @@ Column A is index 0, column B is index 1, and so on. The array is the row; the i
 
 To access an individual element, use the array name followed by the index in square brackets:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 var scores = [85, 92, 78, 95, 88];
@@ -247,7 +247,7 @@ Now you might wonder: when should I use an array versus individual variables?
 1. **You have a fixed, small number of distinct things.** A game character might have `health`, `mana`, and `stamina` — three different attributes that serve different purposes. Using an array `[100, 50, 75]` would be confusing because you'd have to remember that index 0 is health, index 1 is mana, and so on.
 
 2. **The values represent different concepts.** A `width` and a `height` are both numbers, but they mean different things. Separate variables make the code clearer:
-   ```rust
+   ```zia
    var width = 800;
    var height = 600;
    // Much clearer than dimensions[0] and dimensions[1]
@@ -279,7 +279,7 @@ There are several ways to create arrays, depending on what you need.
 
 The most common way is to list the values inside square brackets:
 
-```rust
+```zia
 var names = ["Alice", "Bob", "Carol"];
 var primes = [2, 3, 5, 7, 11, 13];
 var flags = [true, false, true];
@@ -292,7 +292,7 @@ The array's type is inferred from the values. An array of strings, an array of i
 
 Sometimes you want to start with nothing and add items later:
 
-```rust
+```zia
 var numbers: List[Integer] = [];  // Empty array of integers
 var words: List[String] = []; // Empty array of strings
 ```
@@ -303,7 +303,7 @@ When creating an empty array, you must specify the type because Zanna can't infe
 
 If you need many copies of the same value, build the array with a loop:
 
-```rust
+```zia
 var zeros: List[Integer] = [];
 for i in 0..10 {
     zeros.Push(0);           // Ten zeros
@@ -318,7 +318,7 @@ This is especially useful for initializing game boards, buffers, or any structur
 
 Every array knows how many elements it contains. Access this with the `.Length` property:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 var names = ["Alice", "Bob", "Carol"];
@@ -333,7 +333,7 @@ Say(empty.Length);   // 0
 
 The length is crucial for working with arrays safely. The valid indices always go from 0 to `length - 1`. Trying to access any index outside this range is an error.
 
-```rust
+```zia
 var scores = [85, 92, 78, 95, 88];
 // Valid indices: 0, 1, 2, 3, 4
 // scores.Length is 5
@@ -346,7 +346,7 @@ var scores = [85, 92, 78, 95, 88];
 
 Arrays are mutable — you can change individual elements after creation:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 var scores = [85, 92, 78, 95, 88];
@@ -363,7 +363,7 @@ scores[4] = 91;
 
 You can also use an element's current value in the calculation:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 var counts = [10, 20, 30];
@@ -384,7 +384,7 @@ Unlike the fixed arrays in some languages, Zanna arrays can grow and shrink dyna
 
 The `push` operation adds an element to the end of an array:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 var names = ["Alice", "Bob"];
@@ -405,7 +405,7 @@ Think of `push` like adding a new car to the end of a train — the train gets l
 
 The `pop` operation removes the last element and returns it:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 var numbers = [1, 2, 3, 4, 5];
@@ -425,14 +425,14 @@ Pop is like detaching the last car from a train — the train gets shorter, and 
 
 **Warning:** Calling `pop` on an empty array is an error — there's nothing to remove!
 
-```rust
+```zia
 var empty: List[Integer] = [];
 var x = empty.Pop();  // Error! Can't pop from empty array
 ```
 
 Always check that the array has elements before popping:
 
-```rust
+```zia
 var numbers = [1, 2, 3];
 if numbers.Length > 0 {
     var last = numbers.Pop();
@@ -444,7 +444,7 @@ if numbers.Length > 0 {
 
 These operations let you build arrays piece by piece:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 var userInputs: List[Integer] = [];
@@ -452,7 +452,7 @@ var userInputs: List[Integer] = [];
 Say("Enter numbers (0 to stop):");
 
 while true {
-    var num = Zanna.Core.Convert.ToInt64(InputLine());
+    var num = Zanna.Core.Convert.ToInt64(TryReadLine().UnwrapOrStr(""));
     if num == 0 {
         break;
     }
@@ -474,7 +474,7 @@ A common task is searching for a value in an array.
 
 The simplest approach is to check each element one by one:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 var names = ["Alice", "Bob", "Carol", "Dave", "Eve"];
@@ -503,7 +503,7 @@ This is called *linear search* because you go through the array in a line, one e
 
 Sometimes you just need to know yes or no, not where:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 var numbers = [10, 25, 30, 45, 50];
@@ -528,7 +528,7 @@ if found {
 
 How many times does a value appear?
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 var grades = ["A", "B", "A", "C", "A", "B", "A", "D"];
@@ -553,7 +553,7 @@ Sorting puts array elements in order — smallest to largest (ascending) or larg
 
 Zanna provides a built-in sort method:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 var numbers = [64, 34, 25, 12, 22, 11, 90];
@@ -567,7 +567,7 @@ for n in numbers {
 
 For strings, sort orders alphabetically:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 var names = ["Charlie", "Alice", "Bob", "Diana"];
@@ -591,7 +591,7 @@ Imagine you have a hand of playing cards and want to sort them. One approach:
 
 This is called *selection sort*. Here's what it looks like:
 
-```rust
+```zia
 // Selection sort (for understanding — use built-in sort in practice)
 var arr = [64, 34, 25, 12, 22];
 
@@ -622,7 +622,7 @@ Processing every element in an array is so common that there are several pattern
 
 The cleanest way when you just need each value:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 var fruits = ["apple", "banana", "cherry", "date"];
@@ -640,7 +640,7 @@ The variable `fruit` takes on each value in sequence: first "apple", then "banan
 
 When you need to know *where* each element is:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 var scores = [85, 92, 78, 95, 88];
@@ -671,7 +671,7 @@ Notice `i + 1` to display human-friendly numbering (1, 2, 3) while using program
 
 Sometimes you need more control than a for loop provides:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 var numbers = [10, 20, 30, 40, 50];
@@ -689,7 +689,7 @@ while i < numbers.Length {
 
 To process elements from last to first:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 var countdown = [5, 4, 3, 2, 1];
@@ -717,7 +717,7 @@ while j >= 0 {
 
 Skip elements as needed:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 var numbers = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
@@ -745,7 +745,7 @@ while i < numbers.Length {
 
 Stop early when you find what you need:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 var values = [10, 20, -5, 30, 40];
@@ -762,7 +762,7 @@ for v in values {
 
 Or skip certain elements:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 var numbers = [1, -2, 3, -4, 5, -6];
@@ -782,7 +782,7 @@ for n in numbers {
 
 What happens if you try to access an index that doesn't exist?
 
-```rust
+```zia
 var arr = [10, 20, 30, 40, 50];  // Valid indices: 0-4
 
 // These are all errors:
@@ -815,14 +815,14 @@ Zanna's bounds checking catches these mistakes immediately, making bugs much eas
 ### Common Causes of Index Errors
 
 **Off-by-one with length:**
-```rust
+```zia
 var arr = [1, 2, 3, 4, 5];
 var last = arr[arr.Length];  // Error! length is 5, but valid indices are 0-4
 var last = arr[arr.Length - 1];  // Correct: gets arr[4] = 5
 ```
 
 **Empty array access:**
-```rust
+```zia
 var empty: List[Integer] = [];
 var x = empty[0];  // Error! Array is empty, no index 0
 ```
@@ -831,7 +831,7 @@ var x = empty[0];  // Error! Array is empty, no index 0
 
 This version is expected to trap at runtime:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 var arr = [1, 2, 3];
@@ -842,7 +842,7 @@ for i in 0..=arr.Length {  // Wrong! 0..= includes the endpoint
 
 This version uses the half-open range and should run:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 var arr = [1, 2, 3];
@@ -852,21 +852,21 @@ for i in 0..arr.Length {   // Correct! 0.. excludes the endpoint
 ```
 
 **Calculated index going wrong:**
-```rust
+```zia
 bind Zanna.Terminal;
 
 var arr = [10, 20, 30];
-var userInput = Zanna.Core.Convert.ToInt64(InputLine());
+var userInput = Zanna.Core.Convert.ToInt64(TryReadLine().UnwrapOrStr(""));
 var value = arr[userInput];  // Dangerous! User might enter 999
 ```
 
 To prevent this, validate indices before using them:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 var arr = [10, 20, 30];
-var userInput = Zanna.Core.Convert.ToInt64(InputLine());
+var userInput = Zanna.Core.Convert.ToInt64(TryReadLine().UnwrapOrStr(""));
 
 if userInput >= 0 && userInput < arr.Length {
     var value = arr[userInput];
@@ -882,7 +882,7 @@ if userInput >= 0 && userInput < arr.Length {
 
 Arrays can hold any type. Strings are especially common:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 var fruits = ["apple", "banana", "cherry", "date", "elderberry"];
@@ -912,7 +912,7 @@ String arrays are how you'd store:
 
 ### Working with String Arrays
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 var words = ["The", "quick", "brown", "fox"];
@@ -950,7 +950,7 @@ You can create these using *arrays of arrays* — an array where each element is
 
 ### Creating a 2D Array
 
-```rust
+```zia
 var grid = [
     [1, 2, 3],
     [4, 5, 6],
@@ -975,7 +975,7 @@ Row 2   |   7    |   8    |   9    |
 
 Use two indices: the first selects the row (which inner array), the second selects the column (which element within that row):
 
-```rust
+```zia
 var grid = [
     [1, 2, 3],
     [4, 5, 6],
@@ -989,7 +989,7 @@ Let's break down `grid[1][2]`:
 1. `grid[1]` gets the second row: `[4, 5, 6]`
 2. `[2]` gets the third element of that row: `6`
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 var grid = [
@@ -1007,7 +1007,7 @@ Say(grid[1][1]);  // 5 (center)
 
 ### Modifying Elements
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 var grid = [
@@ -1025,7 +1025,7 @@ Say(grid[1][1]);  // 50
 
 To visit every element, you need nested loops — one for rows, one for columns:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 var grid = [
@@ -1051,7 +1051,7 @@ Output:
 
 ### Example: Tic-Tac-Toe Board
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 // Print the board nicely
@@ -1093,7 +1093,7 @@ Output:
 
 ### Example: Multiplication Table
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 // Create a 10x10 multiplication table
@@ -1129,7 +1129,7 @@ for i in 0..table.Length {
 
 A grayscale image is just a 2D array of brightness values (0 = black, 255 = white):
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 // A tiny 5x5 "image" of a plus sign
@@ -1169,7 +1169,7 @@ Output:
 
 Let's build a functional todo list manager:
 
-```rust
+```zia
 module TodoList;
 bind Zanna.Terminal;
 
@@ -1183,14 +1183,14 @@ func start() {
 
     while true {
         Print("> ");
-        var input = InputLine();
+        var input = TryReadLine().UnwrapOrStr("");
 
         if input == "quit" {
             Say("Goodbye!");
             break;
         } else if input == "add" {
             Print("Task: ");
-            var task = InputLine();
+            var task = TryReadLine().UnwrapOrStr("");
             tasks.Push(task);
             completed.Push(false);
             Say("Added: " + task);
@@ -1209,7 +1209,7 @@ func start() {
             }
         } else if input == "done" {
             Print("Task number to mark done: ");
-            var num = Zanna.Core.Convert.ToInt64(InputLine());
+            var num = Zanna.Core.Convert.ToInt64(TryReadLine().UnwrapOrStr(""));
             if num >= 1 && num <= tasks.Length {
                 completed[num - 1] = true;  // Convert to zero-based index
                 Say("Marked done: " + tasks[num - 1]);
@@ -1218,7 +1218,7 @@ func start() {
             }
         } else if input == "remove" {
             Print("Task number to remove: ");
-            var num = Zanna.Core.Convert.ToInt64(InputLine());
+            var num = Zanna.Core.Convert.ToInt64(TryReadLine().UnwrapOrStr(""));
             if num >= 1 && num <= tasks.Length {
                 // Rebuild arrays without this task
                 var newTasks: List[String] = [];
@@ -1287,7 +1287,7 @@ Goodbye!
 
 A simple game inventory:
 
-```rust
+```zia
 module Inventory;
 bind Zanna.Terminal;
 
@@ -1303,7 +1303,7 @@ func start() {
 
     while true {
         Print("Command> ");
-        var cmd = InputLine();
+        var cmd = TryReadLine().UnwrapOrStr("");
 
         if cmd == "quit" {
             break;
@@ -1311,21 +1311,21 @@ func start() {
             showInventory(items, quantities);
         } else if cmd == "pickup" {
             Print("Item name: ");
-            var item = InputLine();
+            var item = TryReadLine().UnwrapOrStr("");
             Print("Quantity: ");
-            var qty = Zanna.Core.Convert.ToInt64(InputLine());
+            var qty = Zanna.Core.Convert.ToInt64(TryReadLine().UnwrapOrStr(""));
 
             pickupItem(items, quantities, item, qty, maxSlots);
         } else if cmd == "drop" {
             Print("Item name: ");
-            var item = InputLine();
+            var item = TryReadLine().UnwrapOrStr("");
             Print("Quantity: ");
-            var qty = Zanna.Core.Convert.ToInt64(InputLine());
+            var qty = Zanna.Core.Convert.ToInt64(TryReadLine().UnwrapOrStr(""));
 
             dropItem(items, quantities, item, qty);
         } else if cmd == "use" {
             Print("Item name: ");
-            var item = InputLine();
+            var item = TryReadLine().UnwrapOrStr("");
 
             useItem(items, quantities, item);
         } else {
@@ -1426,7 +1426,7 @@ func useItem(items: List[String], quantities: List[Integer], name: String) {
 
 ## Practical Example: High Score Table
 
-```rust
+```zia
 module HighScores;
 bind Zanna.Terminal;
 
@@ -1444,9 +1444,9 @@ func start() {
     // Add a new score
     Say("");
     Print("Enter your name: ");
-    var playerName = InputLine();
+    var playerName = TryReadLine().UnwrapOrStr("");
     Print("Enter your score: ");
-    var playerScore = Zanna.Core.Convert.ToInt64(InputLine());
+    var playerScore = Zanna.Core.Convert.ToInt64(TryReadLine().UnwrapOrStr(""));
 
     // Find where to insert
     var insertPos = -1;
@@ -1514,7 +1514,7 @@ func displayScores(names: List[String], scores: List[Integer]) {
 Different languages handle arrays with different syntax, but the concepts are identical.
 
 **Zia**
-```rust
+```zia
 bind Zanna.Terminal;
 
 var numbers = [10, 20, 30];
@@ -1570,7 +1570,7 @@ BASIC uses parentheses `()` instead of brackets `[]` for array access. Arrays mu
 
 This is the most common array bug:
 
-```rust
+```zia
 var arr = [1, 2, 3, 4, 5];  // Length is 5
 
 // WRONG: arr[5] doesn't exist
@@ -1584,7 +1584,7 @@ Remember: Length tells you *how many* elements. The highest index is always one 
 
 ### Forgetting Zero-Based Indexing
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 var scores = [85, 92, 78];
@@ -1599,7 +1599,7 @@ When using indices, programmers say "0, 1, 2..."
 
 ### Empty Array Access
 
-```rust
+```zia
 var arr: List[Integer] = [];
 var x = arr[0];  // Error! No elements exist
 
@@ -1613,7 +1613,7 @@ if arr.Length > 0 {
 
 This version is expected to trap at runtime:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 var arr = [1, 2, 3, 4, 5];
@@ -1626,7 +1626,7 @@ for i in 0..=arr.Length {
 
 This version uses the half-open range and should run:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 var arr = [1, 2, 3, 4, 5];
@@ -1639,7 +1639,7 @@ for i in 0..arr.Length {
 
 ### Modifying Array While Iterating
 
-```rust
+```zia
 var nums = [1, 2, 3, 4, 5];
 
 // Dangerous: adding while iterating can cause infinite loops
@@ -1654,12 +1654,12 @@ for n in nums {
 
 ### Index From User Input Without Validation
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 var items = ["Sword", "Shield", "Potion"];
 Print("Choose item (1-3): ");
-var choice = Zanna.Core.Convert.ToInt64(InputLine());
+var choice = Zanna.Core.Convert.ToInt64(TryReadLine().UnwrapOrStr(""));
 
 // WRONG: User might enter 0, 99, or -5
 var item = items[choice - 1];
@@ -1679,7 +1679,7 @@ if choice >= 1 && choice <= items.Length {
 
 Let's build a comprehensive grade tracker that brings everything together:
 
-```rust
+```zia
 module GradeTracker;
 bind Zanna.Terminal;
 
@@ -1693,7 +1693,7 @@ func start() {
     // Collect grades with validation
     while true {
         Print("Grade: ");
-        var input = Zanna.Core.Convert.ToInt64(InputLine());
+        var input = Zanna.Core.Convert.ToInt64(TryReadLine().UnwrapOrStr(""));
 
         if input == -1 {
             break;

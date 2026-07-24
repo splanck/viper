@@ -1,0 +1,348 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/probes/debug_tool_surfaces_probe.zia
+// Purpose: Exercise state-aware Call Stack and Debug Console workbench surfaces.
+// Key invariants:
+//   - Filtered stack rows retain original debugger-frame identities.
+//   - Debug filtering/wrapping never changes complete-text copy behavior.
+//   - Clearing program output retains debugger stop/status information.
+//   - Both toolbars remain usable in zoomed side docks.
+// Ownership/Lifetime: The probe owns and destroys its shell and fake session.
+// Links: zannastudio/src/ui/tool_panel_shell.zia,
+//        zannastudio/src/commands/debug_commands.zia
+//
+//===----------------------------------------------------------------------===//
+
+module debug_tool_surfaces_probe;
+
+bind "../build/debug_session";
+bind "../commands/debug_commands";
+bind "../ui/app_shell";
+bind "../ui/tool_panel_shell";
+
+bind Convert = Zanna.Core.Convert;
+bind GUI = Zanna.GUI;
+bind Map = Zanna.Collections.Map;
+bind Seq = Zanna.Collections.Seq;
+bind Str = Zanna.String;
+bind Terminal = Zanna.Terminal;
+
+/// @brief Return whether one rendered child stays inside its panel bounds.
+func ContainsWidget(parent: GUI.Widget,
+                    child: GUI.Widget) -> Boolean {
+    if parent == null or child == null { return false; }
+    return child.GetScreenX() >= parent.GetScreenX() - 1.0
+        and child.GetScreenY() >= parent.GetScreenY() - 1.0
+        and child.GetScreenX() + child.GetScreenWidth()
+            <= parent.GetScreenX() + parent.GetScreenWidth() + 1.0
+        and child.GetScreenY() + child.GetScreenHeight()
+            <= parent.GetScreenY() + parent.GetScreenHeight() + 1.0;
+}
+
+/// @brief Convert public logical widget geometry to harness framebuffer pixels.
+func HarnessCoordinate(shell: app_shell.AppShell,
+                       logical: Number) -> Integer {
+    var scale = shell.app.GetEffectiveScale();
+    if scale <= 0.0 { scale = 1.0; }
+    return Convert.NumToInt(logical * scale);
+}
+
+/// @brief Dispatch one real pointer click to a rendered widget center.
+func Click(shell: app_shell.AppShell,
+           harness: GUI.TestHarness,
+           widget: GUI.Widget) {
+    var x = HarnessCoordinate(shell,
+        widget.GetScreenX() + widget.GetScreenWidth() / 2.0);
+    var y = HarnessCoordinate(shell,
+        widget.GetScreenY() + widget.GetScreenHeight() / 2.0);
+    harness.SendMouse("move", x, y, 0);
+    harness.SendMouse("down", x, y, 0);
+    harness.SendMouse("up", x, y, 0);
+    harness.DispatchPending();
+}
+
+/// @brief Run one ordinary tool-panel frame after authored input.
+func Pump(shell: app_shell.AppShell) {
+    shell.toolPanels.PumpToolTabs();
+    shell.Render();
+    shell.Poll();
+}
+
+func Fail(shell: app_shell.AppShell,
+          harness: GUI.TestHarness,
+          reason: String) {
+    if harness != null { harness.UnbindApp(); }
+    if shell != null { shell.Destroy(); }
+    Terminal.Say("RESULT: fail " + reason);
+}
+
+/// @brief Create one adapter-shaped frame map.
+func Frame(functionName: String,
+           path: String,
+           line: Integer) -> Any {
+    var frame = Map.New();
+    Map.SetStr(frame, "function", functionName);
+    Map.SetStr(frame, "path", path);
+    Map.SetInt(frame, "line", line);
+    return frame;
+}
+
+/// @brief Seed a paused three-frame snapshot without starting a process.
+func SeedPausedStack(session: debug_session.DebugSession) {
+    session.hasSession = true;
+    session.stopped = true;
+    session.terminated = false;
+    session.lastType = "stopped";
+    session.lastReason = "breakpoint";
+    session.stopFrames = Seq.New();
+    Seq.Push(session.stopFrames, Frame("main", "/workspace/main.zia", 12));
+    Seq.Push(session.stopFrames, Frame("worker", "/workspace/jobs.zia", 27));
+    Seq.Push(session.stopFrames, Frame("dispatch", "/workspace/lib.zia", 44));
+}
+
+func main() {
+    if tool_panel_shell.DebugConsoleUsesCompactControls(520.0) == false
+       or tool_panel_shell.DebugConsoleUsesCompactControls(520.01)
+       or tool_panel_shell.CallStackUsesCompactControls(440.0) == false
+       or tool_panel_shell.CallStackUsesCompactControls(440.01) {
+        Terminal.Say("RESULT: fail debugger toolbar policy helpers");
+        return;
+    }
+
+    var shell = new app_shell.AppShell();
+    shell.Build("Zanna Studio Debug Tool Surfaces Probe", 880, 620);
+    shell.Poll();
+    shell.Render();
+    var session = new debug_session.DebugSession();
+
+    var harness = GUI.TestHarness.New();
+    if harness.BindApp(shell.app) == false {
+        Fail(shell, harness, "automation app binding");
+        return;
+    }
+
+    // Idle Call Stack is a real state-aware surface, not a fake list row.
+    debug_commands.PopulateDebugPanels(shell, session);
+    shell.toolPanels.ShowCallStackPanel();
+    Pump(shell);
+    if shell.toolPanels.IsCallStackPanelActive() == false
+       or shell.toolPanels.callStackPanel.IsVisible() == false
+       or shell.toolPanels.callStackToolbar.IsVisible() == false
+       or shell.toolPanels.callStackListBox.IsVisible()
+       or shell.toolPanels.callStackEmptyLabel.IsVisible() == false
+       or shell.toolPanels.callStackStateText != "Idle"
+       or shell.toolPanels.callStackCopyButton.IsEnabled() {
+        Fail(shell, harness, "idle Call Stack state");
+        return;
+    }
+
+    SeedPausedStack(session);
+    debug_commands.PopulateDebugPanels(shell, session);
+    Pump(shell);
+    if shell.toolPanels.callStackStateText != "Paused"
+       or shell.toolPanels.callStackRows.Count() != 3
+       or shell.toolPanels.visibleCallStackFrameCount != 3
+       or shell.toolPanels.callStackListBox.Count != 3
+       or shell.toolPanels.callStackListBox.IsVisible() == false
+       or shell.toolPanels.callStackEmptyLabel.IsVisible()
+       or shell.toolPanels.callStackCopyButton.IsEnabled() == false {
+        Fail(shell, harness, "paused Call Stack snapshot");
+        return;
+    }
+
+    // Filtering keeps the original frame index rather than remapping row zero.
+    shell.toolPanels.callStackFilterInput.Focus();
+    shell.toolPanels.callStackFilterInput.SetText("worker");
+    Pump(shell);
+    shell.toolPanels.callStackListBox.SelectIndex(0);
+    if shell.toolPanels.visibleCallStackFrameCount != 1
+       or shell.toolPanels.callStackListBox.Count != 1
+       or shell.toolPanels.GetSelectedCallStackFrameIndex() != 1
+       or shell.toolPanels.callStackFilterInput.IsFocused() == false {
+        Fail(shell, harness, "filtered Call Stack frame identity");
+        return;
+    }
+
+    GUI.ClipboardText.Clear();
+    Click(shell, harness, shell.toolPanels.callStackCopyButton);
+    Pump(shell);
+    var copiedStack = GUI.ClipboardText.GetText();
+    if Str.Contains(copiedStack, "#0  main") == false
+       or Str.Contains(copiedStack, "#1  worker") == false
+       or Str.Contains(copiedStack, "#2  dispatch") == false {
+        Fail(shell, harness, "Call Stack Copy omitted filtered-out frames");
+        return;
+    }
+    Click(shell, harness, shell.toolPanels.callStackFilterClearButton);
+    Pump(shell);
+    if shell.toolPanels.callStackFilterText != ""
+       or shell.toolPanels.callStackListBox.Count != 3
+       or shell.toolPanels.callStackFilterInput.IsFocused() == false {
+        Fail(shell, harness, "pointer Call Stack filter reset");
+        return;
+    }
+
+    // Debug Console separates program output from non-clearable debugger status.
+    session.programOutput =
+        "first line\nwarning: slow frame\nerror: sample trap\n";
+    session.consoleText = "[debug] stopped at breakpoint";
+    shell.toolPanels.UpdateDebugOutputParts(
+        session.programOutput, session.FormatConsole());
+    shell.toolPanels.ShowDebugPanel();
+    Pump(shell);
+    if shell.toolPanels.IsDebugPanelActive() == false
+       or shell.toolPanels.debugPanel.IsVisible() == false
+       or shell.toolPanels.debugToolbar.IsVisible() == false
+       or shell.toolPanels.debugConsoleLineCount != 4
+       or shell.toolPanels.visibleDebugConsoleLineCount != 4
+       or shell.toolPanels.debugListBox.Count != 4
+       or shell.toolPanels.debugCopyButton.IsEnabled() == false
+       or shell.toolPanels.debugClearButton.IsEnabled() == false {
+        Fail(shell, harness, "structured Debug Console state");
+        return;
+    }
+
+    shell.toolPanels.debugFilterInput.Focus();
+    shell.toolPanels.debugFilterInput.SetText("warning");
+    Pump(shell);
+    if shell.toolPanels.debugFilterText != "warning"
+       or shell.toolPanels.visibleDebugConsoleLineCount != 1
+       or shell.toolPanels.debugListBox.Count != 1
+       or shell.toolPanels.debugFilterInput.IsFocused() == false {
+        Fail(shell, harness, "live Debug Console filter");
+        return;
+    }
+
+    GUI.ClipboardText.Clear();
+    Click(shell, harness, shell.toolPanels.debugCopyButton);
+    Pump(shell);
+    var copiedDebug = GUI.ClipboardText.GetText();
+    if Str.Contains(copiedDebug, "warning: slow frame") == false
+       or Str.Contains(copiedDebug, "error: sample trap") == false
+       or Str.Contains(copiedDebug, "[debug] stopped") == false {
+        Fail(shell, harness, "Debug Copy omitted unfiltered text");
+        return;
+    }
+
+    Click(shell, harness, shell.toolPanels.debugFilterClearButton);
+    Pump(shell);
+    session.programOutput =
+        "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+        + "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+        + "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789\n";
+    shell.toolPanels.UpdateDebugOutputParts(
+        session.programOutput, session.FormatConsole());
+    Click(shell, harness, shell.toolPanels.debugWrapCheck);
+    Pump(shell);
+    if shell.toolPanels.debugWrapLines == false
+       or shell.toolPanels.debugWrapCheck.IsChecked() == false
+       or shell.toolPanels.debugListBox.Count
+          <= shell.toolPanels.visibleDebugConsoleLineCount {
+        Fail(shell, harness, "pointer Debug Console wrapping");
+        return;
+    }
+
+    // Clear is routed back to the session, then status remains visible.
+    Click(shell, harness, shell.toolPanels.debugClearButton);
+    shell.toolPanels.PumpToolTabs();
+    if shell.toolPanels.TakeDebugConsoleClearRequest() == false {
+        Fail(shell, harness, "Debug Clear request edge");
+        return;
+    }
+    debug_commands.handleClearDebugConsole(shell, session);
+    Pump(shell);
+    if session.programOutput != ""
+       or shell.toolPanels.IsDebugPanelActive() == false
+       or shell.toolPanels.debugConsoleCanClear
+       or shell.toolPanels.debugClearButton.IsEnabled()
+       or shell.toolPanels.debugConsoleLineCount != 1
+       or Str.Contains(shell.toolPanels.debugConsoleSource,
+                       "[debug] stopped") == false {
+        Fail(shell, harness, "Debug Clear discarded or re-created status");
+        return;
+    }
+
+    // Running and terminated snapshots replace stale frame rows immediately.
+    session.stopped = false;
+    session.stopFrames = null;
+    session.lastType = "running";
+    debug_commands.PopulateDebugPanels(shell, session);
+    shell.toolPanels.ShowCallStackPanel();
+    Pump(shell);
+    if shell.toolPanels.callStackStateText != "Running"
+       or shell.toolPanels.callStackRows.Count() != 0
+       or shell.toolPanels.callStackListBox.IsVisible()
+       or shell.toolPanels.callStackEmptyLabel.IsVisible() == false {
+        Fail(shell, harness, "running Call Stack retained stale frames");
+        return;
+    }
+    session.hasSession = false;
+    session.terminated = true;
+    session.lastType = "terminated";
+    debug_commands.PopulateDebugPanels(shell, session);
+    Pump(shell);
+    if shell.toolPanels.callStackStateText != "Terminated"
+       or shell.toolPanels.callStackListBox.IsVisible()
+       or shell.toolPanels.callStackEmptyLabel.IsVisible() == false {
+        Fail(shell, harness, "terminated Call Stack state");
+        return;
+    }
+
+    // Both stable widget trees reflow and preserve filter focus through docks.
+    SeedPausedStack(session);
+    debug_commands.PopulateDebugPanels(shell, session);
+    shell.toolPanels.ShowCallStackPanel();
+    shell.toolPanels.callStackFilterInput.Focus();
+    shell.app.SetUiScale(1.5);
+    shell.app.SetWindowSize(880, 620);
+    shell.toolPanels.SetDockLocationName("right");
+    shell.Poll();
+    Pump(shell);
+    if shell.toolPanels.IsCallStackToolbarCompact() == false
+       or shell.toolPanels.callStackFilterInput.IsFocused() == false
+       or ContainsWidget(shell.toolPanels.callStackPanel,
+                         shell.toolPanels.callStackFilterInput) == false
+       or ContainsWidget(shell.toolPanels.callStackPanel,
+                         shell.toolPanels.callStackFilterClearButton) == false
+       or ContainsWidget(shell.toolPanels.callStackPanel,
+                         shell.toolPanels.callStackCopyButton) == false
+       or shell.toolPanels.callStackToolbar.GetScreenY()
+              + shell.toolPanels.callStackToolbar.GetScreenHeight()
+          > shell.toolPanels.callStackListBox.GetScreenY() + 1.0 {
+        Fail(shell, harness, "Call Stack controls overflowed zoomed side dock");
+        return;
+    }
+
+    shell.toolPanels.ShowDebugPanel();
+    shell.toolPanels.debugFilterInput.Focus();
+    shell.toolPanels.SetDockLocationName("left");
+    shell.Poll();
+    Pump(shell);
+    if shell.toolPanels.IsDebugConsoleToolbarCompact() == false
+       or shell.toolPanels.debugFilterInput.IsFocused() == false
+       or ContainsWidget(shell.toolPanels.debugPanel,
+                         shell.toolPanels.debugFilterInput) == false
+       or ContainsWidget(shell.toolPanels.debugPanel,
+                         shell.toolPanels.debugFilterClearButton) == false
+       or ContainsWidget(shell.toolPanels.debugPanel,
+                         shell.toolPanels.debugWrapCheck) == false
+       or ContainsWidget(shell.toolPanels.debugPanel,
+                         shell.toolPanels.debugCopyButton) == false
+       or ContainsWidget(shell.toolPanels.debugPanel,
+                         shell.toolPanels.debugClearButton) == false
+       or shell.toolPanels.debugToolbar.GetScreenY()
+              + shell.toolPanels.debugToolbar.GetScreenHeight()
+          > shell.toolPanels.debugListBox.GetScreenY() + 1.0 {
+        Fail(shell, harness, "Debug controls overflowed zoomed side dock");
+        return;
+    }
+
+    harness.UnbindApp();
+    shell.Destroy();
+    Terminal.Say("RESULT: ok");
+}

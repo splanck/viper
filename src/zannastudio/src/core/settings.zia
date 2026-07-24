@@ -14,6 +14,8 @@
 //     environment assumptions.
 //   - Oversized shared state is rejected before parsing, and successful saves
 //     replace the prior complete file atomically.
+//   - Workspace visibility, sidebar placement/view, and panel selection accept
+//     only built-in stable IDs; grouped panel layout is bounded before replay.
 // Ownership/Lifetime: SettingsManager owns only value state, never OS handles.
 // Links: zannastudio/src/app/settings_applier.zia,
 //        zannastudio/src/core/session.zia
@@ -30,6 +32,7 @@ bind Zanna.System.Environment as Env;
 bind Machine = Zanna.System.Machine;
 bind Parse = Zanna.Core.Parse;
 bind Obj = Zanna.Core.Object;
+bind Str = Zanna.String;
 bind Zanna.GUI as GUI;
 bind "../services/safe_io";
 
@@ -93,6 +96,20 @@ class SettingsManager {
     expose Integer renderWhitespaceMode; // Whitespace markers: 0=none, 1=boundary, 2=all.
     expose Integer wheelSpeedPct;  // Mouse-wheel scroll sensitivity, percent (100 = 1.0x).
     expose Integer bottomPanelSplitPct; // Editor's share of the editor/panel split, percent (default 70).
+    expose String panelDockPosition; // "bottom", "left", or "right".
+    expose String toolPanelGroupLayout; // Canonical attached/floating membership.
+    expose Integer sidePanelWidthPct; // Tool panel's share of a side split.
+    expose Integer floatingToolPanelX; // Floating tool window X in UI units.
+    expose Integer floatingToolPanelY; // Floating tool window Y in UI units.
+    expose Integer floatingToolPanelWidth; // Floating tool window width.
+    expose Integer floatingToolPanelHeight; // Floating tool window height.
+    expose String primarySidebarPosition; // "left" or "right".
+    expose Integer sidebarWidthPct; // Explorer/sidebar share of the workbench split.
+    expose Boolean sidebarVisible; // User-requested sidebar state when a project exists.
+    expose String activeSidebarViewId; // "explorer", "scm", or "run-debug".
+    expose Integer editorSplitPct; // Primary editor's share of a two-pane split.
+    expose String toolPanelTabOrder; // Comma-separated stable tool-tab IDs.
+    expose String activeToolPanelId; // Stable visible panel ID, or "none".
     expose Boolean lineNumbers;    // Whether the editor gutter shows line numbers.
     expose Boolean insertSpaces;   // Whether Tab inserts spaces instead of a hard tab.
     expose Boolean trimTrailingWhitespace; // Trim trailing spaces/tabs when saving.
@@ -128,6 +145,21 @@ class SettingsManager {
         renderWhitespaceMode = 0;
         wheelSpeedPct  = 100;
         bottomPanelSplitPct = 70;
+        panelDockPosition = "bottom";
+        toolPanelGroupLayout = ""; // Empty migrates the legacy dock and order.
+        sidePanelWidthPct = 30;
+        floatingToolPanelX = 96;
+        floatingToolPanelY = 88;
+        floatingToolPanelWidth = 680;
+        floatingToolPanelHeight = 420;
+        primarySidebarPosition = "left";
+        sidebarWidthPct = 24;
+        sidebarVisible = true;
+        activeSidebarViewId = "explorer";
+        editorSplitPct = 50;
+        toolPanelTabOrder =
+            "problems,output,search,references,variables,call-stack,debug-console,terminal";
+        activeToolPanelId = "none";
         lineNumbers    = true;
         insertSpaces   = true;
         trimTrailingWhitespace = false;
@@ -269,6 +301,104 @@ class SettingsManager {
             if bp >= 30 and bp <= 95 { bottomPanelSplitPct = bp; }
         }
 
+        var dockStr = Ini.Get(ini, "settings", "panelDockPosition");
+        if dockStr == "bottom" or dockStr == "left" or dockStr == "right" {
+            panelDockPosition = dockStr;
+        }
+
+        var groupLayoutStr =
+            Ini.Get(ini, "settings", "toolPanelGroupLayout");
+        if Str.get_Length(groupLayoutStr) <= 320 {
+            toolPanelGroupLayout = groupLayoutStr;
+        }
+
+        var sideWidthStr = Ini.Get(ini, "settings", "sidePanelWidth");
+        if sideWidthStr != "" {
+            var sideWidth = Parse.IntOr(sideWidthStr, sidePanelWidthPct);
+            if sideWidth >= 20 and sideWidth <= 55 {
+                sidePanelWidthPct = sideWidth;
+            }
+        }
+
+        var floatingXStr =
+            Ini.Get(ini, "settings", "floatingToolPanelX");
+        if floatingXStr != "" {
+            var floatingX =
+                Parse.IntOr(floatingXStr, floatingToolPanelX);
+            if floatingX >= 0 and floatingX <= 20000 {
+                floatingToolPanelX = floatingX;
+            }
+        }
+        var floatingYStr =
+            Ini.Get(ini, "settings", "floatingToolPanelY");
+        if floatingYStr != "" {
+            var floatingY =
+                Parse.IntOr(floatingYStr, floatingToolPanelY);
+            if floatingY >= 0 and floatingY <= 20000 {
+                floatingToolPanelY = floatingY;
+            }
+        }
+        var floatingWidthStr =
+            Ini.Get(ini, "settings", "floatingToolPanelWidth");
+        if floatingWidthStr != "" {
+            var floatingWidth =
+                Parse.IntOr(floatingWidthStr, floatingToolPanelWidth);
+            if floatingWidth >= 1 and floatingWidth <= 20000 {
+                floatingToolPanelWidth = floatingWidth;
+            }
+        }
+        var floatingHeightStr =
+            Ini.Get(ini, "settings", "floatingToolPanelHeight");
+        if floatingHeightStr != "" {
+            var floatingHeight =
+                Parse.IntOr(floatingHeightStr, floatingToolPanelHeight);
+            if floatingHeight >= 1 and floatingHeight <= 20000 {
+                floatingToolPanelHeight = floatingHeight;
+            }
+        }
+
+        var primarySidebarStr =
+            Ini.Get(ini, "settings", "primarySidebarPosition");
+        if primarySidebarStr == "left" or primarySidebarStr == "right" {
+            primarySidebarPosition = primarySidebarStr;
+        }
+
+        var sidebarWidthStr = Ini.Get(ini, "settings", "sidebarWidth");
+        if sidebarWidthStr != "" {
+            var sidebarWidth = Parse.IntOr(sidebarWidthStr, sidebarWidthPct);
+            if sidebarWidth >= 15 and sidebarWidth <= 45 {
+                sidebarWidthPct = sidebarWidth;
+            }
+        }
+
+        var sidebarVisibleStr = Ini.Get(ini, "settings", "sidebarVisible");
+        if sidebarVisibleStr == "1" { sidebarVisible = true; }
+        else if sidebarVisibleStr == "0" { sidebarVisible = false; }
+
+        var activeSidebarViewStr =
+            Ini.Get(ini, "settings", "activeSidebarView");
+        if IsValidSidebarViewId(activeSidebarViewStr) {
+            activeSidebarViewId = activeSidebarViewStr;
+        }
+
+        var editorSplitStr = Ini.Get(ini, "settings", "editorSplit");
+        if editorSplitStr != "" {
+            var editorSplit = Parse.IntOr(editorSplitStr, editorSplitPct);
+            if editorSplit >= 20 and editorSplit <= 80 {
+                editorSplitPct = editorSplit;
+            }
+        }
+
+        var tabOrderStr = Ini.Get(ini, "settings", "toolPanelTabOrder");
+        if tabOrderStr != "" and Str.get_Length(tabOrderStr) <= 160 {
+            toolPanelTabOrder = tabOrderStr;
+        }
+
+        var activeToolPanelStr = Ini.Get(ini, "settings", "activeToolPanel");
+        if IsValidActiveToolPanelId(activeToolPanelStr) {
+            activeToolPanelId = activeToolPanelStr;
+        }
+
         var lnStr = Ini.Get(ini, "settings", "lineNumbers");
         if lnStr != "" {
             lineNumbers = lnStr == "1";
@@ -394,6 +524,40 @@ class SettingsManager {
         Ini.Set(ini, "settings", "renderWhitespace", "" + renderWhitespaceMode);
         Ini.Set(ini, "settings", "wheelSpeed", "" + wheelSpeedPct);
         Ini.Set(ini, "settings", "bottomPanelSplit", "" + bottomPanelSplitPct);
+        Ini.Set(ini, "settings", "panelDockPosition", panelDockPosition);
+        Ini.Set(ini, "settings", "toolPanelGroupLayout",
+                toolPanelGroupLayout);
+        Ini.Set(ini, "settings", "sidePanelWidth", "" + sidePanelWidthPct);
+        Ini.Set(ini, "settings", "floatingToolPanelX",
+                "" + floatingToolPanelX);
+        Ini.Set(ini, "settings", "floatingToolPanelY",
+                "" + floatingToolPanelY);
+        Ini.Set(ini, "settings", "floatingToolPanelWidth",
+                "" + floatingToolPanelWidth);
+        Ini.Set(ini, "settings", "floatingToolPanelHeight",
+                "" + floatingToolPanelHeight);
+        if primarySidebarPosition != "left"
+           and primarySidebarPosition != "right" {
+            primarySidebarPosition = "left";
+        }
+        Ini.Set(ini, "settings", "primarySidebarPosition",
+                primarySidebarPosition);
+        Ini.Set(ini, "settings", "sidebarWidth", "" + sidebarWidthPct);
+        if sidebarVisible {
+            Ini.Set(ini, "settings", "sidebarVisible", "1");
+        } else {
+            Ini.Set(ini, "settings", "sidebarVisible", "0");
+        }
+        if IsValidSidebarViewId(activeSidebarViewId) == false {
+            activeSidebarViewId = "explorer";
+        }
+        Ini.Set(ini, "settings", "activeSidebarView", activeSidebarViewId);
+        Ini.Set(ini, "settings", "editorSplit", "" + editorSplitPct);
+        Ini.Set(ini, "settings", "toolPanelTabOrder", toolPanelTabOrder);
+        if IsValidActiveToolPanelId(activeToolPanelId) == false {
+            activeToolPanelId = "none";
+        }
+        Ini.Set(ini, "settings", "activeToolPanel", activeToolPanelId);
         if lineNumbers {
             Ini.Set(ini, "settings", "lineNumbers", "1");
         } else {
@@ -455,6 +619,39 @@ class SettingsManager {
             GUI.Theme.SetDark();
         }
     }
+}
+
+/// @brief Validate one stable persisted activity-bar view selection.
+/// @details Core settings stays independent of UI modules; these IDs form the
+///          small serialized schema shared with activity_bar.
+func IsValidSidebarViewId(id: String) -> Boolean {
+    return id == "explorer" or id == "scm" or id == "run-debug";
+}
+
+/// @brief Validate one stable persisted tool-panel selection.
+/// @details Core settings intentionally does not depend on UI modules; these
+///          durable IDs are the serialized schema shared with tool_panel_model.
+func IsValidActiveToolPanelId(id: String) -> Boolean {
+    return id == "none"
+        or id == "problems"
+        or id == "output"
+        or id == "search"
+        or id == "references"
+        or id == "variables"
+        or id == "call-stack"
+        or id == "debug-console"
+        or id == "terminal";
+}
+
+/// @brief Resolve requested sidebar visibility for one startup workspace/view.
+/// @details Empty Explorer/SCM views are suppressed when no project was
+///          restored. Run and Debug remains useful for a restored standalone
+///          source file, so its persisted visible request is honored.
+expose func EffectiveSidebarVisibility(projectOpen: Boolean,
+                                       requestedVisible: Boolean,
+                                       activeViewId: String) -> Boolean {
+    if requestedVisible == false { return false; }
+    return projectOpen or activeViewId == "run-debug";
 }
 
 /// @brief Return the native per-user configuration directory for Zanna Studio.

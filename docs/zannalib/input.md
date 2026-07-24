@@ -196,7 +196,7 @@ properties below remain as compatibility aliases for existing programs.
 
 ### Zia Example: Basic Game Input
 
-```rust
+```zia
 module GameInput;
 
 bind Zanna.Terminal;
@@ -413,7 +413,7 @@ configurable timing windows.
 
 ### Zia Example
 
-```rust
+```zia
 module KeyChordDemo;
 
 bind Zanna.Input;
@@ -523,8 +523,8 @@ coordinate system: the origin is at the top left and positive Y points down.
 |-------------|-------------|-------------------------------------------------------|
 | `DeltaX()`  | `Integer()` | Horizontal movement since last frame                  |
 | `DeltaY()`  | `Integer()` | Vertical movement since last frame                    |
-| `DeltaXF()` | `Float()`   | Sub-pixel horizontal movement (relative mouse mode)   |
-| `DeltaYF()` | `Float()`   | Sub-pixel vertical movement (relative mouse mode)     |
+| `DeltaXFloat()` | `Float()`   | Sub-pixel horizontal movement (relative mouse mode)   |
+| `DeltaYFloat()` | `Float()`   | Sub-pixel vertical movement (relative mouse mode)     |
 | `X()`       | `Integer()` | Current X position relative to the canvas             |
 | `Y()`       | `Integer()` | Current Y position relative to the canvas             |
 
@@ -553,8 +553,8 @@ coordinate system: the origin is at the top left and positive Y points down.
 |-------------|-------------|-------------------------------------------------------|
 | `WheelX()`  | `Integer()` | Horizontal scroll sum, truncated toward zero          |
 | `WheelY()`  | `Integer()` | Vertical scroll sum, truncated toward zero (+ = up)   |
-| `WheelXF()` | `Double()`  | Horizontal scroll sum with fractional precision       |
-| `WheelYF()` | `Double()`  | Vertical scroll sum with fractional precision (+ = up)|
+| `WheelXFloat()` | `Double()`  | Horizontal scroll sum with fractional precision       |
+| `WheelYFloat()` | `Double()`  | Vertical scroll sum with fractional precision (+ = up)|
 
 ### Cursor Control Methods
 
@@ -580,7 +580,7 @@ The GUI application poll records the request and hides the cursor but does not e
 relative input or the center-warp fallback.
 
 While relative mode is engaged, the absolute position freezes and motion is exposed through
-`DeltaXF()`/`DeltaYF()`; `DeltaX()`/`DeltaY()` return rounded integer deltas.
+`DeltaXFloat()`/`DeltaYFloat()`; `DeltaX()`/`DeltaY()` return rounded integer deltas.
 
 Both canvas polls use Windows raw input, macOS cursor dissociation, or Linux XInput2 when
 available. If native relative input cannot be enabled, they fall back to warping to the window
@@ -601,8 +601,8 @@ bind Zanna.Input.Mouse as Mouse;
 func start() {
     Mouse.SetRelativeMode(true);  // request mouse-look
     // Each frame after Canvas.Poll() or Canvas3D.Poll():
-    var lookX = Mouse.DeltaXF();  // sub-pixel, unbounded
-    var lookY = Mouse.DeltaYF();
+    var lookX = Mouse.DeltaXFloat();  // sub-pixel, unbounded
+    var lookY = Mouse.DeltaYFloat();
     Mouse.SetRelativeMode(false); // back to a normal cursor
 }
 ```
@@ -624,7 +624,7 @@ normal cursor back); it resumes when the window regains focus.
 
 ### Zia Example: Mouse Drawing
 
-```rust
+```zia
 module MouseDraw;
 
 bind Zanna.Graphics.Canvas as Canvas;
@@ -770,8 +770,8 @@ DO WHILE NOT canvas.ShouldClose
     canvas.Poll()
 
     ' Use mouse delta for camera rotation
-    DIM dx AS DOUBLE = Zanna.Input.Mouse.DeltaXF()
-    DIM dy AS DOUBLE = Zanna.Input.Mouse.DeltaYF()
+    DIM dx AS DOUBLE = Zanna.Input.Mouse.DeltaXFloat()
+    DIM dy AS DOUBLE = Zanna.Input.Mouse.DeltaYFloat()
 
     cameraYaw = cameraYaw + dx * sensitivity
     cameraPitch = cameraPitch - dy * sensitivity
@@ -814,9 +814,9 @@ DO WHILE NOT canvas.ShouldClose
     canvas.Clear(0)
 
     ' Draw something at zoom level
-    DIM size AS INTEGER = zoom / 2
-    DIM cx AS INTEGER = 400 - size / 2
-    DIM cy AS INTEGER = 300 - size / 2
+    DIM size AS INTEGER = zoom \ 2
+    DIM cx AS INTEGER = 400 - size \ 2
+    DIM cy AS INTEGER = 300 - size \ 2
     canvas.Box(cx, cy, size, size, 65280)
 
     canvas.Flip()
@@ -945,7 +945,7 @@ Standard gamepad layout compatible with Xbox and PlayStation controllers:
 
 ### Zia Example: Controller Movement
 
-```rust
+```zia
 module PadDemo;
 
 bind Zanna.Terminal;
@@ -1307,7 +1307,7 @@ actions are retained; compatible preset bindings are added to them instead of re
 | `"fps3d"` | `jump`, `sprint`, `crouch`, `interact`, `fire`, `aim`, `pause`; axes `move_x/y` | Space/Shift/Ctrl/E, mouse buttons, WASD; A/LB/B/X/Start, left stick |
 
 #### Example
-```rust
+```zia
 module PresetDemo;
 
 bind Zanna.Input.Action as Action;
@@ -1338,7 +1338,7 @@ func start() {
 
 ### Zia Example: Action Mapping
 
-```rust
+```zia
 module ActionDemo;
 
 bind Zanna.Terminal;
@@ -1630,7 +1630,7 @@ controller. Axis and trigger methods pass the index directly to `Pad`; `-1` retu
 
 ### Zia Example: Menu Navigation
 
-```rust
+```zia
 module MenuDemo;
 
 bind Zanna.Terminal;

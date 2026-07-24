@@ -167,7 +167,7 @@ palette, scale, accessibility, or followed System appearance change.
 
 ## Example
 
-```rust
+```zia
 bind Zanna.GUI.Theme as Theme;
 bind Zanna.GUI.ThemePalette as ThemePalette;
 

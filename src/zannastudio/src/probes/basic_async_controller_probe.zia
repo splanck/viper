@@ -65,6 +65,10 @@ func main() {
     shell.workbench.minimap.BindEditor(engine.editor);
     shell.Poll();
     shell.Render();
+    // Production startup focuses the editor before language controllers begin
+    // accepting requests. Preserve that precondition while exercising async
+    // ownership; losing focus is covered independently by terminal_open_probe.
+    engine.editor.Focus();
 
     // Completion: switch the source/path before the first worker is pumped.
     // The old synchronous implementation has no pending generation here and

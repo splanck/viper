@@ -25,6 +25,7 @@
 
 #include "rt_gui_internal.h"
 #include "rt_platform.h"
+#include "rt_seq.h"
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -578,6 +579,29 @@ rt_string rt_listbox_get_selected_text(void *listbox) {
     return result;
 }
 
+/// @brief Return byte-exact data for selected retained rows, in row order.
+void *rt_listbox_get_selected_data(void *listbox) {
+    RT_ASSERT_MAIN_THREAD();
+    void *result = rt_seq_new_owned();
+    if (!result)
+        return NULL;
+
+    vg_listbox_t *lb = rt_listbox_checked(listbox);
+    if (!lb || lb->virtual_mode)
+        return result;
+
+    for (vg_listbox_item_t *item = lb->first_item; item; item = item->next) {
+        if (!item->selected)
+            continue;
+        rt_string data = item->user_data && item->owns_user_data
+                             ? rt_gui_string_data_to_rt_string(item->user_data)
+                             : rt_str_empty();
+        rt_seq_push(result, data);
+        rt_str_release_maybe(data);
+    }
+    return result;
+}
+
 /// @brief Check if the listbox selection changed since the last call (edge-triggered).
 int64_t rt_listbox_was_selection_changed(void *listbox) {
     RT_ASSERT_MAIN_THREAD();
@@ -920,6 +944,12 @@ void rt_listbox_set_multi_select(void *listbox, int64_t enabled) {
 rt_string rt_listbox_get_selected_text(void *listbox) {
     (void)listbox;
     return rt_str_empty();
+}
+
+/// @brief Stub: graphics disabled — no selected retained-row data exists.
+void *rt_listbox_get_selected_data(void *listbox) {
+    (void)listbox;
+    return rt_seq_new_owned();
 }
 
 /// @brief Check if the listbox selection changed since the last call (edge-triggered).

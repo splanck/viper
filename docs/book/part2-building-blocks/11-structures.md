@@ -8,7 +8,7 @@ last-verified: 2026-07-16
 
 You're building a game. Your player has a name, a health value, an x position, a y position, and a score. So you create five variables:
 
-```rust
+```zia
 var playerName = "Hero";
 var playerHealth = 100;
 var playerX = 50.0;
@@ -18,7 +18,7 @@ var playerScore = 0;
 
 Now you need an enemy. Five more variables:
 
-```rust
+```zia
 var enemyName = "Goblin";
 var enemyHealth = 30;
 var enemyX = 100.0;
@@ -28,7 +28,7 @@ var enemyScore = 0;  // Wait, enemies don't have scores...
 
 You add a second enemy. Five more. A third enemy. Five more. Then you realize: you need to pass all this information to a function that handles combat. Your function signature becomes a nightmare:
 
-```rust
+```zia
 func attack(attackerName: String, attackerHealth: Integer, attackerX: Number, attackerY: Number,
             defenderName: String, defenderHealth: Integer, defenderX: Number, defenderY: Number,
             ...) {
@@ -38,7 +38,7 @@ func attack(attackerName: String, attackerHealth: Integer, attackerX: Number, at
 
 And when you call it:
 
-```rust
+```zia
 attack(playerName, playerHealth, playerX, playerY, enemyName, enemyHealth, enemyX, enemyY, ...);
 ```
 
@@ -62,7 +62,7 @@ Let's look more closely at what goes wrong when we use separate variables for re
 
 Consider tracking a point in 2D space:
 
-```rust
+```zia
 var pointX = 10.5;
 var pointY = 20.3;
 ```
@@ -71,7 +71,7 @@ These two variables are intimately related — they describe the same point. But
 
 This disconnect causes problems. What if you accidentally write:
 
-```rust
+```zia
 var pointX = 10.5;
 var pointY = 20.3;
 var pointZ = 15.0;  // Wait, is this 3D now? Or is this a different point?
@@ -83,7 +83,7 @@ Nothing enforces that points have exactly two coordinates, or that `pointX` and 
 
 Every function that works with a point needs two parameters:
 
-```rust
+```zia
 bind Zanna.Math as Math;
 bind Zanna.Terminal;
 
@@ -96,7 +96,7 @@ func distance(x1: Number, y1: Number, x2: Number, y2: Number) -> Number {
 
 That's four parameters for two points. What about three points?
 
-```rust
+```zia
 func triangleArea(x1: Number, y1: Number, x2: Number, y2: Number, x3: Number, y3: Number) -> Number {
     // Six parameters!
     ...
@@ -105,7 +105,7 @@ func triangleArea(x1: Number, y1: Number, x2: Number, y2: Number, x3: Number, y3
 
 This quickly becomes unmanageable. And it's easy to make mistakes:
 
-```rust
+```zia
 // Did I mean distance from A to B, or B to A?
 // Are these in the right order?
 var d = distance(ax, ay, bx, by);
@@ -116,7 +116,7 @@ var d = distance(ax, bx, ay, by);  // Oops! Compiler doesn't catch this.
 
 How do you create an array of points with separate variables?
 
-```rust
+```zia
 // Array of x coordinates
 var xs = [10.5, 20.0, 35.5, 40.0];
 
@@ -152,7 +152,7 @@ This approach simply doesn't work for real programs.
 
 A *structure* (sometimes called a *struct*, *record*, or *value type*) lets you create a new type that bundles multiple pieces of data together. Here's our point:
 
-```rust
+```zia
 struct Point {
     expose Number x;
     expose Number y;
@@ -163,14 +163,14 @@ This defines a new type called `Point`. It has two *fields*: `x` and `y`, both f
 
 Now we can create points:
 
-```rust
+```zia
 var origin = new Point(0.0, 0.0);
 var position = new Point(10.5, 20.3);
 ```
 
 Each variable holds a complete point — both coordinates bundled together. You access individual fields with dot notation:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 Say(position.x);  // 10.5
@@ -179,7 +179,7 @@ Say(position.y);  // 20.3
 
 And you can modify fields:
 
-```rust
+```zia
 position.x = 15.0;
 position.y = 25.0;
 ```
@@ -239,7 +239,7 @@ Before we dive into syntax details, let's see why structures match how we think 
 
 In real life, you don't think of a person as "a name floating in space, plus an age floating somewhere else, plus an email living in another dimension." A person is a unified whole with various attributes. Alice is not three separate things — she's one person who has a name (Alice), an age (30), and an email (alice@example.com).
 
-```rust
+```zia
 struct Person {
     expose String name;
     expose Integer age;
@@ -255,7 +255,7 @@ Now `alice` is one thing — a person — that you can store, pass around, and w
 
 A rectangle isn't "a width" and "a height." It's a shape that has both properties:
 
-```rust
+```zia
 struct Rectangle {
     expose Number width;
     expose Number height;
@@ -268,7 +268,7 @@ var screen = new Rectangle(1920.0, 1080.0);
 
 January 15, 2024 isn't three separate numbers. It's a date — one conceptual unit:
 
-```rust
+```zia
 struct Date {
     expose Integer year;
     expose Integer month;
@@ -282,7 +282,7 @@ var birthday = new Date(1990, 7, 4);
 
 A color like "coral" isn't separate red, green, and blue values. It's one color composed of those components:
 
-```rust
+```zia
 struct Color {
     expose Integer red;
     expose Integer green;
@@ -302,7 +302,7 @@ The pattern is universal: whenever multiple pieces of data describe a single con
 
 Use the `struct` keyword to define a new structure type:
 
-```rust
+```zia
 struct TypeName {
     expose Type1 field1;
     expose Type2 field2;
@@ -312,7 +312,7 @@ struct TypeName {
 
 Each field has a type and a name, prefixed with `expose` to make it accessible. Fields are separated by semicolons.
 
-```rust
+```zia
 struct Book {
     expose String title;
     expose String author;
@@ -325,7 +325,7 @@ struct Book {
 
 To create a value of your structure type, use `new` and pass the field values in order:
 
-```rust
+```zia
 var myBook = new Book(
     "The Zanna Programming Guide",
     "Jane Developer",
@@ -336,7 +336,7 @@ var myBook = new Book(
 
 You must provide values for all fields, in the order they are declared:
 
-```rust
+```zia
 var book1 = new Book("A", "B", 100, 9.99);
 ```
 
@@ -344,7 +344,7 @@ var book1 = new Book("A", "B", 100, 9.99);
 
 Use dot notation to read field values:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 Say(myBook.title);      // "The Zanna Programming Guide"
@@ -357,7 +357,7 @@ Say(myBook.price);      // 29.99
 
 Use dot notation to change field values:
 
-```rust
+```zia
 myBook.price = 24.99;  // Sale price!
 myBook.pageCount = 475;  // Added an appendix
 ```
@@ -370,7 +370,7 @@ One of the most important concepts to understand about structures is *value sema
 
 ### Assignment Creates a Copy
 
-```rust
+```zia
 struct Point {
     expose Number x;
     expose Number y;
@@ -409,7 +409,7 @@ Original p1:          After p2 = p1:           After p2.x = 99:
 
 When you pass a structure to a function, the function receives a copy:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 func tryToModify(point: Point) {
@@ -428,7 +428,7 @@ The function can modify its copy all it wants, but the original in the calling c
 
 If a function needs to modify a structure and have the caller see the changes, return the modified version:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 func moveRight(point: Point, amount: Number) -> Point {
@@ -465,7 +465,7 @@ So far, we've defined structures with data. But behavior is just as important. A
 
 You can define *methods* inside a structure — functions that operate on that structure's data:
 
-```rust
+```zia
 struct Rectangle {
     expose Number width;
     expose Number height;
@@ -482,7 +482,7 @@ struct Rectangle {
 
 Now you can call these methods on any `Rectangle`:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 var rect = new Rectangle(10.0, 5.0);
@@ -494,7 +494,7 @@ Say(rect.perimeter());  // 30.0
 
 Inside a method, `self` refers to the specific instance the method was called on. When you write `rect.area()`, inside the `area` method, `self` is `rect`. So `self.width` is `rect.width` (10.0) and `self.height` is `rect.height` (5.0).
 
-```rust
+```zia
 var small = new Rectangle(3.0, 2.0);
 var large = new Rectangle(100.0, 50.0);
 
@@ -506,7 +506,7 @@ large.area();  // Inside: self is large, returns 5000.0
 
 Without methods, you'd write standalone functions:
 
-```rust
+```zia
 func rectangleArea(rect: Rectangle) -> Number {
     return rect.width * rect.height;
 }
@@ -516,7 +516,7 @@ var area = rectangleArea(rect);
 
 With methods:
 
-```rust
+```zia
 var area = rect.area();
 ```
 
@@ -534,7 +534,7 @@ Methods have advantages:
 
 Methods can have parameters in addition to the implicit `self`:
 
-```rust
+```zia
 bind Zanna.Math as Math;
 bind Zanna.Terminal;
 
@@ -567,7 +567,7 @@ Say(mid.y);  // 2.0
 
 Methods can change the structure's fields:
 
-```rust
+```zia
 struct Counter {
     expose Integer count;
 
@@ -603,7 +603,7 @@ Say(c.count);  // 0
 
 A common pattern is methods that return a new structure rather than modifying the original:
 
-```rust
+```zia
 struct Point {
     expose Number x;
     expose Number y;
@@ -641,7 +641,7 @@ Structures can contain other structures. This lets you build complex data models
 
 Consider modeling an address:
 
-```rust
+```zia
 struct Address {
     expose String street;
     expose String city;
@@ -652,7 +652,7 @@ struct Address {
 
 Now a `Person` can include an `Address`:
 
-```rust
+```zia
 struct Person {
     expose String name;
     expose Integer age;
@@ -664,7 +664,7 @@ var alice = new Person("Alice", 30, new Address("123 Main St", "Springfield", "I
 
 Access nested fields with chained dots:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 Say(alice.name);           // "Alice"
@@ -686,7 +686,7 @@ Nesting provides several benefits:
 
 Let's model a game with nested structures:
 
-```rust
+```zia
 bind Zanna.Math as Math;
 
 struct Vec2 {
@@ -756,7 +756,7 @@ struct Player {
 
 Now creating a player is clean and structured:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 var hero = new Player("Hero", new Vec2(0.0, 0.0), new Health(100, 100), 0);
@@ -771,7 +771,7 @@ Say(hero.health.percentage());  // 75.0
 
 You can modify nested fields directly:
 
-```rust
+```zia
 alice.home.city = "Chicago";
 alice.home.zipCode = "60601";
 
@@ -789,7 +789,7 @@ When creating structures, you must provide values for all fields. But sometimes 
 
 Create a function that returns a structure with default values:
 
-```rust
+```zia
 struct Config {
     expose Integer volume;
     expose Integer difficulty;
@@ -814,7 +814,7 @@ mySettings.fullscreen = true;
 
 You can have different functions for different scenarios:
 
-```rust
+```zia
 struct Rectangle {
     expose Number width;
     expose Number height;
@@ -848,7 +848,7 @@ var display = screen("1080p");
 
 Some structures benefit from having an `init` method pattern:
 
-```rust
+```zia
 struct Circle {
     expose Number centerX;
     expose Number centerY;
@@ -885,7 +885,7 @@ func unitCircle() -> Circle {
 **Small is usually better.** Most well-designed structures have 2-6 fields. If you have 15 fields, consider whether some should be grouped into nested structures.
 
 Too many fields:
-```rust
+```zia
 // This is unwieldy
 struct Person {
     expose String firstName;
@@ -906,7 +906,7 @@ struct Person {
 ```
 
 Better with nesting:
-```rust
+```zia
 struct Date {
     expose Integer year;
     expose Integer month;
@@ -969,7 +969,7 @@ Let's see structures in action with several complete examples.
 
 ### Example: Playing Cards
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 struct Card {
@@ -1030,7 +1030,7 @@ func start() {
 
 ### Example: 2D Geometry
 
-```rust
+```zia
 bind Zanna.Math as Math;
 bind Zanna.Terminal;
 
@@ -1097,7 +1097,7 @@ func start() {
 
 ### Example: Student Grades
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 struct Student {
@@ -1187,7 +1187,7 @@ func start() {
 
 ### Example: Simple Inventory System
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 struct Item {
@@ -1284,7 +1284,7 @@ func start() {
 
 Let's put everything together in a more complex game example:
 
-```rust
+```zia
 module GameDemo;
 
 bind Zanna.Math as Math;
@@ -1509,7 +1509,7 @@ This example demonstrates:
 ## The Two Languages
 
 **Zia**
-```rust
+```zia
 bind Zanna.Math as Math;
 bind Zanna.Terminal;
 
@@ -1567,7 +1567,7 @@ For now, structures handle most cases beautifully. They're simpler, safer, and s
 
 Create instances with validated or computed values:
 
-```rust
+```zia
 bind Zanna.Math as Math;
 
 func createPoint(x: Number, y: Number) -> Point {
@@ -1581,7 +1581,7 @@ func pointFromAngle(angle: Number, distance: Number) -> Point {
 
 ### Default Configurations
 
-```rust
+```zia
 struct Config {
     expose Integer volume;
     expose Integer difficulty;
@@ -1600,7 +1600,7 @@ func hardConfig() -> Config {
 
 For structures with many optional fields, build them step by step:
 
-```rust
+```zia
 struct Character {
     expose Integer archetype;
     expose Integer health;
@@ -1629,7 +1629,7 @@ rogue.speed = 20;
 
 ### Comparing Structures
 
-```rust
+```zia
 func pointsEqual(a: Point, b: Point) -> Boolean {
     return a.x == b.x && a.y == b.y;
 }
@@ -1641,7 +1641,7 @@ func pointsNearlyEqual(a: Point, b: Point, tolerance: Number) -> Boolean {
 
 ### Converting to String
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 struct Person {
@@ -1663,7 +1663,7 @@ Say(p.toString());  // "Alice (age 30)"
 
 ### Forgetting to Initialize All Fields
 
-```rust
+```zia
 var p = new Point(5.0);       // Error: missing second argument
 var p = new Point(5.0, 0.0);  // Correct: all fields provided
 ```
@@ -1672,7 +1672,7 @@ Every field must have a value. If you want "optional" fields, use default values
 
 ### Confusing the Type and an Instance
 
-```rust
+```zia
 Point.x = 5.0;  // Wrong: Point is the type, not an instance
 var p = new Point(5.0, 3.0);  // Create an instance
 p.x = 5.0;  // Now you can access fields
@@ -1682,7 +1682,7 @@ p.x = 5.0;  // Now you can access fields
 
 ### Expecting Changes to Persist Through Functions
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 func birthday(person: Person) {
@@ -1696,7 +1696,7 @@ Say(alice.age);  // Still 30!
 
 Remember value semantics: the function gets a copy. To actually update:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 func birthday(person: Person) -> Person {
@@ -1711,7 +1711,7 @@ Say(alice.age);  // 31
 
 ### Misspelling Field Names
 
-```rust
+```zia
 p.Y = 3.0;  // Error: 'Y' is not a field (it's 'y')
 ```
 
@@ -1719,7 +1719,7 @@ Field names are case-sensitive. The compiler will catch this.
 
 ### Modifying Through the Wrong Variable
 
-```rust
+```zia
 var p1 = new Point(10.0, 20.0);
 var p2 = p1;  // Copy
 p2.x = 99.0;

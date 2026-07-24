@@ -57,7 +57,7 @@ as `1`. JSON strings are runtime string handles, not `Box.Str` values, so the st
 
 ### Zia Example
 
-```rust
+```zia
 module JsonDemo;
 
 bind Zanna.Terminal;
@@ -193,7 +193,7 @@ JSONPath-like query expressions for navigating parsed JSON objects. Works with o
 
 ### Zia Example
 
-```rust
+```zia
 module JsonPathDemo;
 
 bind Zanna.Terminal;
@@ -324,7 +324,7 @@ Pull-based JSON tokenizer for processing a complete JSON string without building
 
 ### Zia Example
 
-```rust
+```zia
 module JsonStreamDemo;
 
 bind Zanna.Terminal;
@@ -461,7 +461,7 @@ quoting plus configurable-delimiter and line-ending extensions.
 
 ### Zia Example
 
-```rust
+```zia
 module CsvDemo;
 
 bind Zanna.Terminal;
@@ -588,7 +588,7 @@ either version.
 
 ### Zia Example
 
-```rust
+```zia
 module TomlDemo;
 
 bind Zanna.Terminal;
@@ -678,7 +678,7 @@ INI-style configuration parsing and manipulation. The accepted dialect uses `[se
 
 ### Zia Example
 
-```rust
+```zia
 module IniDemo;
 
 bind Zanna.Terminal;
@@ -981,7 +981,7 @@ child manipulation, and simple slash-path queries. All node values are opaque ob
 
 ### Zia Example
 
-```rust
+```zia
 module XmlDemo;
 
 bind Zanna.Terminal;
@@ -1130,7 +1130,7 @@ Zanna strings, integers, doubles, booleans, NULL, Maps, and Seqs.
 
 ### Zia Example
 
-```rust
+```zia
 module YamlDemo;
 
 bind Zanna.Terminal;

@@ -3919,6 +3919,22 @@ static void test_model3d_roundtrips_vscn_assets() {
                 "InstantiateScene preserves top-level node grouping");
     EXPECT_TRUE(rt_scene3d_find(inst_scene, rt_const_cstr("child")) != nullptr,
                 "InstantiateScene preserves node searchability");
+
+    auto *name_node = static_cast<rt_scene_node3d *>(rt_scene_node3d_new());
+    const char *long_name_text = "SceneNode retained public name result beyond inline storage";
+    rt_string long_name = rt_string_from_bytes(long_name_text, std::strlen(long_name_text));
+    rt_scene_node3d_set_name(name_node, long_name);
+    rt_string_unref(long_name);
+    rt_string returned_name = rt_scene_node3d_get_name(name_node);
+    EXPECT_TRUE(returned_name == name_node->name,
+                "SceneNode.Name returns the stored byte-exact name");
+    rt_string_unref(returned_name);
+    returned_name = rt_scene_node3d_get_name(name_node);
+    EXPECT_TRUE(std::strcmp(rt_string_cstr(returned_name), long_name_text) == 0,
+                "Repeated SceneNode.Name reads remain valid");
+    rt_string_unref(returned_name);
+    if (rt_obj_release_check0(name_node))
+        rt_obj_free(name_node);
 }
 
 static void test_model3d_find_node_rejects_wrong_string_handles() {

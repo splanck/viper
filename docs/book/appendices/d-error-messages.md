@@ -78,7 +78,7 @@ Error: SyntaxError at main.zia:5:5
 
 **Fix examples:**
 
-```rust
+```zia
 // Problem: Missing braces
 if x > 0
     doSomething();
@@ -96,7 +96,7 @@ if x > 0 {
 if x > 0 { doSomething(); } else { doOther(); }
 ```
 
-```rust
+```zia
 // Problem: Missing parentheses
 if x > 0 && y < 10 {  // OK in Zanna, but...
 
@@ -131,7 +131,7 @@ Error: SyntaxError at main.zia:10:1
 
 **Fix examples:**
 
-```rust
+```zia
 // Problem: Missing semicolon
 var x = 10
 var y = 20;    // Error reported here, but problem is line above
@@ -141,7 +141,7 @@ var x = 10;
 var y = 20;
 ```
 
-```rust
+```zia
 // Problem: Multi-line statement broken incorrectly
 var result = someFunction(arg1, arg2)
     + anotherFunction(arg3);  // Error: unexpected '+'
@@ -171,7 +171,7 @@ Error: SyntaxError at main.zia:EOF
 
 **Fix examples:**
 
-```rust
+```zia
 // Problem: Missing closing brace
 func calculate(x: Integer) -> Integer {
     if x > 0 {
@@ -212,7 +212,7 @@ Error: SyntaxError at main.zia:3:15
 
 **Fix examples:**
 
-```rust
+```zia
 // Problem: Smart quotes from word processor
 var message = "Hello";  // Uses curly quotes
 
@@ -220,7 +220,7 @@ var message = "Hello";  // Uses curly quotes
 var message = "Hello";
 ```
 
-```rust
+```zia
 // Problem: Invalid symbol
 var email = user@domain.com;  // @ isn't valid here
 
@@ -248,7 +248,7 @@ Error: SyntaxError at main.zia:7:20
 
 **Fix examples:**
 
-```rust
+```zia
 // Problem: Missing closing quote
 var message = "Hello, world!;
 
@@ -256,7 +256,7 @@ var message = "Hello, world!;
 var message = "Hello, world!";
 ```
 
-```rust
+```zia
 // Problem: Quote inside String
 var quote = "She said "Hello"";  // Inner quotes end the String early
 
@@ -264,7 +264,7 @@ var quote = "She said "Hello"";  // Inner quotes end the String early
 var quote = "She said \"Hello\"";
 ```
 
-```rust
+```zia
 // Problem: Unintended line break
 var text = "This is a very long message that
 continues on the next line";  // Error on first line
@@ -300,7 +300,7 @@ Error: SyntaxError at main.zia:5:5
 
 **Fix examples:**
 
-```rust
+```zia
 // Problem: Name starts with number
 var 2ndPlace = "Silver";  // Error
 
@@ -309,7 +309,7 @@ var secondPlace = "Silver";
 var _2ndPlace = "Silver";
 ```
 
-```rust
+```zia
 // Problem: Using keyword as name
 var func = 10;    // Error: 'func' is a keyword
 var if = true;    // Error: 'if' is a keyword
@@ -349,7 +349,7 @@ Error: TypeError at main.zia:7:14
 
 **Fix examples:**
 
-```rust
+```zia
 // Problem: Wrong type assignment
 var count: Integer = "hello";  // Can't put String in Integer variable
 
@@ -364,7 +364,7 @@ bind Convert = Zanna.Core.Convert;
 var count: Integer = Convert.ToInt64("42");
 ```
 
-```rust
+```zia
 // Problem: Wrong parameter type
 bind Zanna.Terminal;
 
@@ -379,7 +379,7 @@ greet("Alice");
 // Convert if needed: bind Zanna.Text.Fmt as Fmt; greet(Fmt.Int(42));
 ```
 
-```rust
+```zia
 // Problem: Wrong return type
 func getAge() -> Integer {
     return "twenty-five";  // Error: expected Integer
@@ -410,7 +410,7 @@ Error: TypeError at main.zia:12:1
 
 **Fix examples:**
 
-```rust
+```zia
 // Problem: Modifying constant
 final MAX_SCORE = 100;
 MAX_SCORE = 200;  // Error: cannot assign to constant
@@ -424,7 +424,7 @@ final MAX_SCORE = 100;
 var currentMax = MAX_SCORE + 100;  // OK: new variable
 ```
 
-```rust
+```zia
 // Problem: Should be var, not final
 final counter = 0;
 counter = counter + 1;  // Error: counter is final
@@ -456,7 +456,7 @@ Error: TypeError at main.zia:8:20
 
 **Fix examples:**
 
-```rust
+```zia
 // Problem: Adding String and number
 var result = "Value: " + 42;  // May error depending on context
 
@@ -468,7 +468,7 @@ var result = "Value: " + Fmt.Int(42);
 var result = "Value: ${42}";
 ```
 
-```rust
+```zia
 // Problem: Comparing incompatible types
 var name = "Alice";
 var age = 30;
@@ -482,7 +482,7 @@ if name.Length > age {  // Compare two numbers
 }
 ```
 
-```rust
+```zia
 // Problem: Arithmetic on strings
 var a = "5";
 var b = "3";
@@ -515,7 +515,7 @@ Error: TypeError at main.zia:15:12
 
 **Fix examples:**
 
-```rust
+```zia
 // Problem: Parsing non-number
 bind Convert = Zanna.Core.Convert;
 bind Zanna.Terminal;
@@ -531,7 +531,7 @@ try {
 }
 ```
 
-```rust
+```zia
 // Problem: Trailing characters
 bind Convert = Zanna.Core.Convert;
 
@@ -566,7 +566,7 @@ Error: NullPointerError at main.zia:15:18
 
 **Fix examples:**
 
-```rust
+```zia
 // Problem: Using null value
 bind Zanna.Terminal;
 
@@ -588,7 +588,7 @@ var name = user?.name ?? "Unknown";
 var user = findUser(id) ?? defaultUser;
 ```
 
-```rust
+```zia
 // Problem: Array element might be null
 var item = inventory[index];
 item.use();  // Error if slot is empty (null)
@@ -631,7 +631,7 @@ Error: NameError at main.zia:15:20
 
 **Fix examples:**
 
-```rust
+```zia
 // Problem: Typo
 bind Zanna.Terminal;
 
@@ -642,7 +642,7 @@ Say(counte);  // Error: typo in name
 Say(counter);
 ```
 
-```rust
+```zia
 // Problem: Used before declaration
 bind Zanna.Terminal;
 
@@ -654,7 +654,7 @@ var score = 100;
 Say(score);
 ```
 
-```rust
+```zia
 // Problem: Out of scope
 bind Zanna.Terminal;
 
@@ -695,7 +695,7 @@ Error: NameError at main.zia:20:5
 
 **Fix examples:**
 
-```rust
+```zia
 // Problem: Typo
 var result = calulate(5, 3);  // Should be 'calculate'
 
@@ -703,16 +703,16 @@ var result = calulate(5, 3);  // Should be 'calculate'
 var result = calculate(5, 3);
 ```
 
-```rust
+```zia
 // Problem: Missing import
 var data = Json.Parse(text);  // Error: Json not defined
 
 // Solution: Import the module
-bind Json = Zanna.Text.Json;
+bind Json = Zanna.Data.Json;
 var data = Json.Parse(text);
 ```
 
-```rust
+```zia
 // Problem: Using undefined function name
 var length = length(myString);  // Error: 'length' is not a function
 
@@ -740,7 +740,7 @@ Error: NameError at main.zia:30:6
 
 **Fix examples:**
 
-```rust
+```zia
 // Problem: Same function defined twice
 func calculate(x: Integer) -> Integer {
     return x * 2;
@@ -769,7 +769,7 @@ func calculate(x: Integer, y: Integer) -> Integer {
 }
 ```
 
-```rust
+```zia
 // Problem: Variable declared twice
 var count = 0;
 // ... later ...
@@ -784,7 +784,7 @@ count = 10;  // No 'var', just assignment
 **Enum variant duplicates** are a special case of this error. Each variant name within an enum must be unique:
 
 **Zia:**
-```rust
+```zia
 // Problem: Duplicate variant
 enum Color { Red, Green, Red }  // Error: duplicate variant 'Red'
 
@@ -824,7 +824,7 @@ Error: NameError at main.zia:5:12
 
 **Fix:**
 
-```rust
+```zia
 // Problem: Usage before declaration
 bind Zanna.Terminal;
 
@@ -849,7 +849,7 @@ Error: NameError at main.zia:12:9
 
 **Fix examples:**
 
-```rust
+```zia
 // Problem: Shadowing outer variable
 var count = 0;
 for i in 0..10 {
@@ -887,7 +887,7 @@ Error: ArgumentError at main.zia:10:5
 
 **Fix examples:**
 
-```rust
+```zia
 // The function definition
 func add(a: Integer, b: Integer) -> Integer {
     return a + b;
@@ -906,7 +906,7 @@ var result = add(1);  // Error: expects 2, got 1
 var result = add(1, 0);  // OK
 ```
 
-```rust
+```zia
 // If you need variable arguments, use an array
 func sum(numbers: List[Integer]) -> Integer {
     var total = 0;
@@ -934,7 +934,7 @@ Error: TypeError at main.zia:25:1
 
 **Fix examples:**
 
-```rust
+```zia
 // Problem: No return statement
 func getValue() -> Integer {
     var x = 42;
@@ -948,7 +948,7 @@ func getValue() -> Integer {
 }
 ```
 
-```rust
+```zia
 // Problem: Return only in some branches
 func getStatus(code: Integer) -> String {
     if code == 0 {
@@ -985,7 +985,7 @@ Error: TypeError at main.zia:8:5
 
 **Fix examples:**
 
-```rust
+```zia
 // Problem: Returning from void function
 bind Zanna.Terminal;
 
@@ -1020,7 +1020,7 @@ Error: TypeError at main.zia:15:12
 
 **Fix examples:**
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 func greet(name: String) {
@@ -1056,7 +1056,7 @@ Error: TypeError at main.zia:20:8
 
 **Fix examples:**
 
-```rust
+```zia
 interface Drawable {
     func draw();
     func getColor() -> String;
@@ -1104,7 +1104,7 @@ Error: AccessError at main.zia:30:15
 
 **Fix examples:**
 
-```rust
+```zia
 class BankAccount {
     hide balance: Number;  // Hidden field
 
@@ -1140,7 +1140,7 @@ Error: TypeError at main.zia:25:5
 
 **Fix examples:**
 
-```rust
+```zia
 class Animal {
     func speak() -> String {
         return "...";
@@ -1182,7 +1182,7 @@ Error: TypeError at main.zia:15:12
 
 **Fix examples:**
 
-```rust
+```zia
 class Player {
     name: String;
     health: Integer;
@@ -1213,7 +1213,7 @@ Error: ContextError at main.zia:12:16
 
 **Fix examples:**
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 class Counter {
@@ -1271,7 +1271,7 @@ Error: IndexError at main.zia:20:15
 
 **Fix examples:**
 
-```rust
+```zia
 // Problem: Index too high
 var items = [1, 2, 3, 4, 5];  // Indices 0-4
 var x = items[5];  // Error: index 5 doesn't exist
@@ -1280,7 +1280,7 @@ var x = items[5];  // Error: index 5 doesn't exist
 var x = items[4];  // OK: last valid index
 ```
 
-```rust
+```zia
 // Problem: Off-by-one in loop
 bind Zanna.Terminal;
 
@@ -1300,7 +1300,7 @@ for item in items {
 }
 ```
 
-```rust
+```zia
 // Problem: Not checking for empty array
 var scores: List[Integer] = [];
 var first = scores[0];  // Error: array is empty
@@ -1330,7 +1330,7 @@ Error: ArithmeticError at main.zia:12:16
 
 **Fix examples:**
 
-```rust
+```zia
 // Problem: Literal division by zero
 var result = 10 / 0;  // Error
 
@@ -1349,7 +1349,7 @@ if count != 0 {
 }
 ```
 
-```rust
+```zia
 // Solution: Provide default for zero divisor
 func safeDivide(a: Integer, b: Integer, default: Integer) -> Integer {
     if b == 0 {
@@ -1376,7 +1376,7 @@ Error: OverflowError at main.zia:8:12
 
 **Fix examples:**
 
-```rust
+```zia
 // Problem: Result too large
 var big = 9223372036854775807;  // Max Integer
 var bigger = big + 1;  // Error: overflow
@@ -1409,7 +1409,7 @@ Error: CastError at main.zia:30:12
 
 **Fix examples:**
 
-```rust
+```zia
 // Problem: Invalid cast
 var animal: Animal = Dog("Rex");
 var cat = animal as Cat;  // Error: it's a Dog, not a Cat!
@@ -1424,7 +1424,7 @@ if animal is Cat {
 }
 ```
 
-```rust
+```zia
 // Solution: Use pattern matching
 bind Zanna.Terminal;
 
@@ -1461,7 +1461,7 @@ Error: StackOverflowError at main.zia:15:5
 
 **Fix examples:**
 
-```rust
+```zia
 // Problem: Infinite recursion (no base case)
 bind Zanna.Terminal;
 
@@ -1480,7 +1480,7 @@ func countdown(n: Integer) {
 }
 ```
 
-```rust
+```zia
 // Problem: Base case never reached
 func factorial(n: Integer) -> Integer {
     return n * factorial(n - 1);  // n keeps decreasing forever!
@@ -1495,7 +1495,7 @@ func factorial(n: Integer) -> Integer {
 }
 ```
 
-```rust
+```zia
 // Problem: Recursion too deep even with base case
 func processDeep(depth: Integer) {
     if depth == 0 { return; }
@@ -1538,7 +1538,7 @@ Error: FileError at main.zia:5:20
 
 **Fix examples:**
 
-```rust
+```zia
 // Problem: File doesn't exist
 bind Zanna.IO;
 bind Zanna.Terminal;
@@ -1587,7 +1587,7 @@ Error: FileError at main.zia:10:5
 
 **Fix examples:**
 
-```rust
+```zia
 // Problem: Writing to protected location
 bind File = Zanna.IO.File;
 bind Zanna.System.Machine as Machine;
@@ -1617,7 +1617,7 @@ Error: FileError at main.zia:15:5
 
 **Fix examples:**
 
-```rust
+```zia
 // Problem: You want to create a file only when it does not already exist
 bind File = Zanna.IO.File;
 bind Zanna.Terminal;
@@ -1636,7 +1636,7 @@ if File.Exists("output.txt") {
 
 // Solution 2: Generate unique name
 // Generate unique name using a tick counter
-var filename = "output_" + Convert.ToStringInt(Time.Clock.Ticks()) + ".txt";
+var filename = "output_" + Convert.ToStringInt(Time.Clock.NowMs()) + ".txt";
 File.WriteAllText(filename, data);
 ```
 
@@ -1653,9 +1653,9 @@ Error: ParseError at main.zia:8:25
 
 **Fix examples:**
 
-```rust
+```zia
 // Problem: Invalid JSON
-bind Json = Zanna.Text.Json;
+bind Json = Zanna.Data.Json;
 bind Zanna.Terminal;
 
 var data = Json.Parse("{invalid json}");  // Parse error
@@ -1700,7 +1700,7 @@ Error: MemoryError at main.zia:50:5
 
 **Fix examples:**
 
-```rust
+```zia
 // Problem: Array too large
 var huge = Array.new(1000000000);  // 1 billion elements
 
@@ -1714,7 +1714,7 @@ func processLargeData(source: DataSource) {
 }
 ```
 
-```rust
+```zia
 // Problem: Loading huge file into memory
 bind File = Zanna.IO.File;
 
@@ -1761,7 +1761,7 @@ Error: DeadlockError at runtime
 
 **Fix examples:**
 
-```rust
+```zia
 // Problem: Lock ordering causes deadlock
 // Thread 1: lock(A) then lock(B)
 // Thread 2: lock(B) then lock(A)
@@ -1807,7 +1807,7 @@ Warning: DataRaceWarning at main.zia:45:12
 
 **Fix examples:**
 
-```rust
+```zia
 bind Thread = Zanna.Threads.Thread;
 bind SafeI64 = Zanna.Threads.SafeI64;
 
@@ -1875,7 +1875,7 @@ Error: ImportError at main.zia:3:8
 
 **Fix examples:**
 
-```rust
+```zia
 // Problem: Module name doesn't match file
 bind Utils;  // Looking for Utils.zia, but file is utilities.zia
 
@@ -1904,7 +1904,7 @@ Error: ImportError at moduleA.zia:2:8
 
 **Fix examples:**
 
-```rust
+```zia
 // Problem: A imports B, B imports A
 // moduleA.zia
 bind ModuleB;
@@ -1935,7 +1935,7 @@ Error: ImportError at main.zia:5:12
 
 **Fix examples:**
 
-```rust
+```zia
 // In Utils module:
 func internalFunc() { ... }  // Not exported (hidden by default)
 expose func publicFunc() { ... }  // Exported
@@ -1983,7 +1983,7 @@ When you encounter an error:
 
 ### Validate Early
 
-```rust
+```zia
 func processOrder(quantity: Integer, price: Number) {
     // Validate at the start
     if quantity <= 0 {
@@ -2001,7 +2001,7 @@ func processOrder(quantity: Integer, price: Number) {
 
 ### Provide Helpful Messages
 
-```rust
+```zia
 // Unhelpful
 throw ("Invalid input");
 
@@ -2011,7 +2011,7 @@ throw ("Invalid age: " + age + ". Age must be between 0 and 150.");
 
 ### Handle Specific Errors
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 try {
@@ -2030,7 +2030,7 @@ try {
 
 ### Don't Ignore Errors
 
-```rust
+```zia
 // WRONG: Silent failure
 try {
     riskyOperation();

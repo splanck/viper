@@ -62,7 +62,7 @@ Save keys must be non-empty valid UTF-8 strings without embedded NUL bytes. `Set
 
 ## Example
 
-```rust
+```zia
 module SaveDemo;
 
 bind Zanna.IO;

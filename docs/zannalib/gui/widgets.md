@@ -46,7 +46,7 @@ label = NEW Zanna.GUI.Label(root, "Hello!")
 label.SetColor(4294901760)  ' Red text
 ```
 
-```rust
+```zia
 // Zia
 var label = Label.New(root, "Hello!");
 label.SetColor(0xFFFF0000);  // Red text
@@ -82,7 +82,7 @@ IF saveBtn.WasClicked() THEN
 END IF
 ```
 
-```rust
+```zia
 // Zia
 var saveBtn = Button.New(root, "Save");
 saveBtn.SetStyle(1);  // Primary style
@@ -126,7 +126,7 @@ DIM name AS STRING
 name = nameInput.Text
 ```
 
-```rust
+```zia
 // Zia
 var nameInput = TextInput.New(root);
 nameInput.SetPlaceholder("Enter your name...");
@@ -161,7 +161,7 @@ IF rememberMe.IsChecked() THEN
 END IF
 ```
 
-```rust
+```zia
 // Zia
 var rememberMe = Checkbox.New(root, "Remember me");
 
@@ -225,7 +225,7 @@ optC = NEW Zanna.GUI.RadioButton(root, "Option C", group)
 optA.SetSelected(true)
 ```
 
-```rust
+```zia
 // Zia
 var group = RadioGroup.New();
 var optA = RadioButton.New(root, "Option A", group);
@@ -264,7 +264,7 @@ volume.SetSize(200, 20)
 Zanna.Audio.Mixer.SetMasterVolume(INT(volume.Value))
 ```
 
-```rust
+```zia
 // Zia
 var volume = Slider.New(root, 1);  // Horizontal
 volume.SetRange(0.0, 100.0);
@@ -306,7 +306,7 @@ quantity.SetDecimals(0)
 quantity.SetValue(1)
 ```
 
-```rust
+```zia
 // Zia
 var quantity = Spinner.New(root);
 quantity.SetRange(1.0, 100.0);
@@ -346,7 +346,7 @@ progress.SetSize(300, 20)
 progress.SetValue(0.5)
 ```
 
-```rust
+```zia
 // Zia
 var progress = ProgressBar.New(root);
 progress.SetSize(300, 20);
@@ -376,7 +376,7 @@ Item additions, removals, selection changes, and font changes invalidate the wid
 | `SetPlaceholder(text)` | `Void(String)`     | Set placeholder text            |
 | `SetSelected(index)`   | `Void(Integer)`    | Set selected index              |
 
-```rust
+```zia
 // Zia example
 var dropdown = Dropdown.New(root);
 dropdown.SetPlaceholder("Pick one...");
@@ -438,6 +438,7 @@ removal and `Clear()` calls that remove a selection.
 |---------------------------|------------------------|-----------------------------------|
 | `AddItem(text)`           | `Object(String)`       | Add item, returns item handle     |
 | `Clear()`                 | `Void()`               | Remove all items                  |
+| `GetSelectedData()`       | `Seq[String]()`        | Copy selected retained-row data in row order |
 | `GetSelectedText()`       | `String()`             | Get selected text, or empty if none |
 | `ItemGetData(item)`       | `String(Object)`       | Get item user data                |
 | `ItemGetText(item)`       | `String(Object)`       | Get item display text             |
@@ -456,6 +457,10 @@ removal and `Clear()` calls that remove a selection.
 | `GetVisibleFirst()`       | `Integer()`            | First model row intersecting the viewport |
 | `GetVisibleCount()`       | `Integer()`            | Number of rows requested for this viewport |
 | `WasSelectionChanged()`   | `Boolean()`            | True if selection changed this frame |
+
+`GetSelectedData()` preserves one entry per selected retained row, including an
+empty string for a row without item data. It returns an empty sequence for
+virtual lists; use the bound `VirtualList` model's stable row IDs in that mode.
 
 ### Example
 
@@ -527,7 +532,7 @@ IF fileList.WasSelectionChanged() THEN
 END IF
 ```
 
-```rust
+```zia
 // Zia
 var fileList = ListBox.New(root);
 fileList.SetSize(200, 300);
@@ -574,7 +579,7 @@ objects. It invokes the model provider only during viewport painting. `GetVisibl
 the renderer. `SetRowText` replaces embedded NUL bytes with visible U+FFFD so the C renderer cannot
 silently truncate the rest of a runtime string.
 
-```rust
+```zia
 // Zia — a 100k-row model with only the visible text populated.
 var rows = VirtualList.New(100000, 24, 480);
 rows.SetRowId(42000, "search-result:42000");
@@ -645,7 +650,7 @@ you need a particular face such as a monospace terminal font.
 
 ### Example
 
-```rust
+```zia
 // Zia — size a terminal grid from the real font instead of guessing 8x18 px.
 var pane = OutputPane.New(root);
 pane.SetFont(monoFont, 14.0);
@@ -694,7 +699,7 @@ preview.SetScaleMode(1)  ' Fit
 preview.LoadFile("photo.png")
 ```
 
-```rust
+```zia
 // Zia
 var preview = Image.New(root);
 preview.SetSize(200, 200);
@@ -769,7 +774,7 @@ validate an index before `GetColorAt()` when black (`0`) must be distinguished f
 | `WasChanged()` | `Boolean()` | Consume an RGB-or-alpha component edge |
 | `GetRevision()` | `Integer()` | Read the non-consuming state revision |
 
-```rust
+```zia
 // Zia — a compact palette feeding a full keyboard-accessible picker.
 var palette = ColorPalette.New(root);
 palette.AddColor(0x2D7FF9);
@@ -872,7 +877,7 @@ independent consume-on-read edge and does not hide another event kind or reduce 
 
 ### Example
 
-```rust
+```zia
 // Zia — large sparse table with external sort/edit handling.
 var grid = Grid.New(panel);
 grid.SetColumns(2);
@@ -932,7 +937,7 @@ reads `WasAccepted` to perform the insertion, and hides the popup on edit or esc
 
 ### Example
 
-```rust
+```zia
 // Zia — a caret-anchored completion popup.
 var popup = PopupList.New(root);
 popup.AddItem("Console");
@@ -963,7 +968,7 @@ selection APIs). One method worth calling out for snippet-style insertion:
 Use it to drop the caret *inside* a multi-line insertion instead of at its end — e.g. inserting
 `"if  {\n\n}"` and placing the caret after `if ` — without walking the inserted text by hand.
 
-```rust
+```zia
 // Zia — insert a snippet and land the caret between the braces.
 editor.InsertAndPlaceCursor("if () {\n    \n}", 4); // caret after "if ("
 ```

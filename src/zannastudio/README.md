@@ -44,11 +44,33 @@ Zanna BASIC. It includes:
 - Rebindable keyboard shortcuts, settings search, session restore, settings
   persistence, external-change detection, and crash-recovery snapshots for
   small modified text buffers.
+- Direct persisted workspace layout: drag the primary sidebar and its activity
+  rail between left and right, drag/merge the primary tool group, split selected
+  tools into simultaneous left/bottom/right groups or one movable, resizable
+  in-window floating group from their headers or the Command Palette, reorder
+  tabs within groups, resize active splits, or recover the defaults with Reset
+  Workspace Layout.
 
-The app is not yet a full visual scene editor. `.scene` and `.level` files are
-recognized as scene documents, but they still open in the text editor. There is
-no `Zanna.GUI.SceneView`, no scene-specific document state, and no visual tile
-or object-editing surface in Zanna Studio today.
+The app includes built-in visual authoring surfaces for `.scene`/`.level` and
+`.vscn` documents. The 2D editor covers layers, real atlas rendering, a tile
+palette, paint/erase, placed objects, typed properties, stable multi-object
+selection, focus-safe pixel/tile nudging, primary-axis alignment, deterministic
+distribution, batch drag/duplicate/delete and typed-property set/remove, Tiled
+import, and document history. The
+3D editor covers hierarchy, primitive/model import, camera framing,
+multi-node Move/Rotate/Scale, relative numeric batch transforms, subtree-aware
+batch duplicate/delete, cycle-safe existing-node reparenting, compact PBR
+materials, embedded texture maps, and history. Both can search supported assets
+from the open multi-root workspace without leaving the inspector, while native
+file pickers remain available. Standard Cut, Copy, Paste, and Select All
+commands follow the active visual editor. Duplicate Selection
+(`Ctrl`/`Cmd`+`Shift`+`D`) and Delete also target a scene selection while its
+hierarchy or viewport owns focus, without escaping inspector text fields. A
+typed, bounded clipboard envelope
+supports same-kind cross-document object or subtree transfer with one-step
+history and exact rollback. These are practical v1 scene editors, not yet
+replacements for the advanced animation, collision/metadata, component,
+lighting, and gizmo tooling of a mature game engine.
 
 ## Reading The Documentation
 

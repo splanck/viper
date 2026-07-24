@@ -133,7 +133,10 @@ func main() {
     shell.SetCommandContextAvailable(false, false, false, false);
 
     var wv = new welcome_view.WelcomeView();
-    wv.Setup(shell.workbench.welcomeHost, shell.workbench.editorRow);
+    wv.Setup(shell.workbench.welcomeHost,
+             shell.workbench.editorRow,
+             shell.workbench.scene2DHost,
+             shell.workbench.scene3DHost);
     var overlays = new ide_overlays.IdeOverlays();
     overlays.Setup(shell);
     var commandOverlay = new command_input.CommandInputOverlay();
@@ -195,6 +198,7 @@ func main() {
     shell.Poll();
     shell.Render();
     if wv.startupMode == false or wv.actionRow.IsVisible()
+        or wv.sceneActionRow.IsVisible()
         or wv.recentHeader.IsVisible() or wv.recentList.IsVisible()
         or wv.emptyRecentLabel.IsVisible() or wv.hintLabel.IsVisible()
         or wv.startupProgressText != "Restoring your workspace: 2/5"
@@ -205,6 +209,7 @@ func main() {
     }
     wv.SetStartupMode(false);
     if wv.startupMode or wv.actionRow.IsVisible() == false
+        or wv.sceneActionRow.IsVisible() == false
         or wv.recentHeader.IsVisible() == false
         or wv.emptyRecentLabel.IsVisible() == false
         or wv.hintLabel.IsVisible() == false {
@@ -321,7 +326,8 @@ func main() {
         fail(shell, "native workbench minimum size was not enforced");
         return;
     }
-    var constrainedHostHeight = shell.workbench.welcomeHost.GetHeight();
+    var constrainedHostHeight =
+        shell.workbench.welcomeHost.GetLogicalHeight();
     if welcome_view.CanShowCompactRecents(constrainedHostHeight)
        and (wv.recentHeader.IsVisible() == false
             or wv.emptyRecentLabel.IsVisible() == false) {
@@ -482,7 +488,12 @@ func main() {
         or welcome_view.CanShowCompactRecents(shell.workbench.welcomeHost.GetLogicalHeight())
         or wv.recentHeader.IsVisible() or wv.recentList.IsVisible()
         or wv.emptyRecentLabel.IsVisible() or wv.hintLabel.IsVisible() {
-        fail(shell, "compact welcome leaves clipped secondary content");
+        fail(shell, "compact welcome leaves clipped secondary content: height="
+             + shell.workbench.welcomeHost.GetLogicalHeight()
+             + " header=" + wv.recentHeader.IsVisible()
+             + " list=" + wv.recentList.IsVisible()
+             + " empty=" + wv.emptyRecentLabel.IsVisible()
+             + " hint=" + wv.hintLabel.IsVisible());
         return;
     }
 

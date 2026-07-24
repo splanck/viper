@@ -47,7 +47,7 @@ Type conversion utilities.
 
 ### Zia Example
 
-```rust
+```zia
 module ConvertDemo;
 
 bind Zanna.Terminal;
@@ -139,7 +139,7 @@ String formatting utilities for converting values to formatted strings.
 
 ### Zia Example
 
-```rust
+```zia
 module FmtDemo;
 
 bind Zanna.Terminal;
@@ -242,7 +242,7 @@ Structured logging with configurable log levels.
 
 ### Zia Example
 
-```rust
+```zia
 module LogDemo;
 
 bind Zanna.Terminal;
@@ -334,7 +334,7 @@ graceful error handling.
 
 ### Zia Example
 
-```rust
+```zia
 module ParseDemo;
 
 bind Zanna.Terminal;

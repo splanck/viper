@@ -59,7 +59,7 @@ A *bottleneck* is the narrowest point in your program's flow. Everything queues 
 
 Sometimes slow code triggers more slow code. Reading a file slowly means processing starts late. Slow processing means the network sits idle waiting. Slow network means the user stares at a spinner.
 
-```rust
+```zia
 func processReport() {
     var data = readLargeFile();     // If this takes 10 seconds...
     var analyzed = analyze(data);    // ...this waits 10 seconds to start
@@ -99,16 +99,16 @@ Your intuition about what's slow is probably wrong. Programmers routinely spend 
 
 The simplest way to measure is with a stopwatch:
 
-```rust
+```zia
 bind Zanna.Time;
 bind Zanna.Terminal;
 
 func start() {
-    var startTime = Time.Clock.Ticks();
+    var startTime = Time.Clock.NowMs();
 
     doExpensiveWork();
 
-    var elapsed = Time.Clock.Ticks() - startTime;
+    var elapsed = Time.Clock.NowMs() - startTime;
     Terminal.Say("Took " + elapsed + " ms");
 }
 ```
@@ -119,31 +119,31 @@ This tells you how long `doExpensiveWork` takes. But what if `doExpensiveWork` c
 
 You can time individual sections:
 
-```rust
+```zia
 bind Zanna.Time;
 bind Zanna.Terminal;
 
 func processData(data: List[Record]) {
-    var t0 = Time.Clock.Ticks();
+    var t0 = Time.Clock.NowMs();
 
     var parsed = parseRecords(data);
 
-    var t1 = Time.Clock.Ticks();
+    var t1 = Time.Clock.NowMs();
     Terminal.Say("Parsing: " + (t1 - t0) + " ms");
 
     var validated = validateRecords(parsed);
 
-    var t2 = Time.Clock.Ticks();
+    var t2 = Time.Clock.NowMs();
     Terminal.Say("Validation: " + (t2 - t1) + " ms");
 
     var results = computeResults(validated);
 
-    var t3 = Time.Clock.Ticks();
+    var t3 = Time.Clock.NowMs();
     Terminal.Say("Computation: " + (t3 - t2) + " ms");
 
     writeResults(results);
 
-    var t4 = Time.Clock.Ticks();
+    var t4 = Time.Clock.NowMs();
     Terminal.Say("Writing: " + (t4 - t3) + " ms");
 }
 ```
@@ -162,7 +162,7 @@ Now you know: validation is the bottleneck. Optimizing parsing or computation wo
 
 Let's make timing reusable:
 
-```rust
+```zia
 bind Zanna.Time;
 bind Zanna.Terminal;
 
@@ -266,7 +266,7 @@ Big O describes how the work required grows as input size grows. It answers: "If
 
 Consider searching for a name in a list:
 
-```rust
+```zia
 func findPerson(people: List[String], name: String) -> Integer {
     for i in 0..people.Length {
         if people[i] == name {
@@ -316,7 +316,7 @@ The differences are dramatic at large scales:
 
 The work doesn't depend on input size. Array indexing is O(1):
 
-```rust
+```zia
 func getFirst(items: List[Integer]) -> Integer {
     return items[0];  // Same speed whether array has 10 or 10 million items
 }
@@ -326,7 +326,7 @@ func getFirst(items: List[Integer]) -> Integer {
 
 Each step eliminates half the remaining work. Binary search is O(log n):
 
-```rust
+```zia
 func binarySearch(sorted: List[Integer], target: Integer) -> Integer {
     var low = 0;
     var high = sorted.Length - 1;
@@ -350,7 +350,7 @@ func binarySearch(sorted: List[Integer], target: Integer) -> Integer {
 
 Examine each item once. Summing an array is O(n):
 
-```rust
+```zia
 func sum(items: List[Integer]) -> Integer {
     var total = 0;
     for item in items {
@@ -364,7 +364,7 @@ func sum(items: List[Integer]) -> Integer {
 
 Common in efficient sorting algorithms. Each element is touched, but processing is organized cleverly:
 
-```rust
+```zia
 // Merge sort, quicksort, and other efficient sorts are O(n log n)
 var sorted = items.sorted();
 ```
@@ -405,7 +405,7 @@ To determine Big O, count loops:
 
 But watch for hidden loops:
 
-```rust
+```zia
 bind Zanna.Terminal as Terminal;
 
 func sneakyQuadratic(items: List[String]) {
@@ -426,7 +426,7 @@ Let's see Big O in action with a real problem: checking if a list has any duplic
 
 ### Approach 1: Check Every Pair (O(n²))
 
-```rust
+```zia
 func hasDuplicates_slow(items: List[Integer]) -> Boolean {
     for i in 0..items.Length {
         for j in (i+1)..items.Length {
@@ -446,7 +446,7 @@ With 1,000,000 items: ~500,000,000,000 comparisons (could take minutes)
 
 ### Approach 2: Sort First (O(n log n))
 
-```rust
+```zia
 func hasDuplicates_medium(items: List[Integer]) -> Boolean {
     var sorted: List[Integer] = [];
     for item in items {
@@ -470,7 +470,7 @@ With 1,000,000 items: ~20,000,000 comparisons (milliseconds)
 
 ### Approach 3: Use a Set (O(n))
 
-```rust
+```zia
 func hasDuplicates_fast(items: List[Integer]) -> Boolean {
     var seen = new Set[Integer]();
 
@@ -493,7 +493,7 @@ With 1,000,000 items: ~1,000,000 operations (very fast)
 
 Let's benchmark all three:
 
-```rust
+```zia
 bind Zanna.Time;
 bind Zanna.Terminal;
 
@@ -505,17 +505,17 @@ func start() {
 
         Terminal.Say("\n--- Size: " + size + " ---");
 
-        var t0 = Time.Clock.Ticks();
+        var t0 = Time.Clock.NowMs();
         hasDuplicates_slow(data);
-        Terminal.Say("O(n²):      " + (Time.Clock.Ticks() - t0) + " ms");
+        Terminal.Say("O(n²):      " + (Time.Clock.NowMs() - t0) + " ms");
 
-        var t1 = Time.Clock.Ticks();
+        var t1 = Time.Clock.NowMs();
         hasDuplicates_medium(data);
-        Terminal.Say("O(n log n): " + (Time.Clock.Ticks() - t1) + " ms");
+        Terminal.Say("O(n log n): " + (Time.Clock.NowMs() - t1) + " ms");
 
-        var t2 = Time.Clock.Ticks();
+        var t2 = Time.Clock.NowMs();
         hasDuplicates_fast(data);
-        Terminal.Say("O(n):       " + (Time.Clock.Ticks() - t2) + " ms");
+        Terminal.Say("O(n):       " + (Time.Clock.NowMs() - t2) + " ms");
     }
 }
 ```
@@ -551,7 +551,7 @@ Beyond Big O, certain patterns reliably cause performance problems. Learn to spo
 The loop multiplies any inefficiency inside it:
 
 **Slow:**
-```rust
+```zia
 for i in 0..1000000 {
     var config = loadConfig();  // Reading file 1,000,000 times!
     process(data[i], config);
@@ -559,7 +559,7 @@ for i in 0..1000000 {
 ```
 
 **Fast:**
-```rust
+```zia
 var config = loadConfig();  // Read once
 for i in 0..1000000 {
     process(data[i], config);
@@ -577,7 +577,7 @@ This applies to any "invariant" work that doesn't depend on the loop variable:
 Using the wrong data structure can turn O(1) operations into O(n):
 
 **Slow: Searching a List**
-```rust
+```zia
 var users: List[User] = [];
 
 func findUser(id: Integer) -> User? {
@@ -591,7 +591,7 @@ func findUser(id: Integer) -> User? {
 ```
 
 **Fast: Using a Map**
-```rust
+```zia
 var users: Map[Integer, User] = new Map();
 
 func findUser(id: Integer) -> User? {
@@ -602,7 +602,7 @@ func findUser(id: Integer) -> User? {
 Similarly for membership testing:
 
 **Slow:**
-```rust
+```zia
 var seen: List[String] = [];
 if !contains(seen, item) {       // O(n) each time
     seen.Push(item);
@@ -610,7 +610,7 @@ if !contains(seen, item) {       // O(n) each time
 ```
 
 **Fast:**
-```rust
+```zia
 var seen: Set[String] = new Set();
 if !seen.Contains(item) {        // O(1) each time
     seen.Add(item);
@@ -633,7 +633,7 @@ if !seen.Contains(item) {        // O(1) each time
 Strings are immutable in Zanna. Each concatenation creates a new String:
 
 **Slow:**
-```rust
+```zia
 bind Fmt = Zanna.Text.Fmt;
 
 func buildSlow() -> String {
@@ -648,7 +648,7 @@ func buildSlow() -> String {
 Each `+=` creates a new String, copies all existing content, adds the new part. This is O(n²) in total!
 
 **Fast:**
-```rust
+```zia
 bind Builder = Zanna.Text.StringBuilder;
 bind Fmt = Zanna.Text.Fmt;
 
@@ -670,7 +670,7 @@ StringBuilder accumulates efficiently, creating only one final String.
 Don't compute the same thing twice:
 
 **Slow:**
-```rust
+```zia
 func processExpensiveData(items: List[Item]) {
     for item in items {
         if computeExpensiveValue(item) > threshold {
@@ -681,7 +681,7 @@ func processExpensiveData(items: List[Item]) {
 ```
 
 **Fast:**
-```rust
+```zia
 func processExpensiveData(items: List[Item]) {
     for item in items {
         var value = computeExpensiveValue(item);  // Compute once
@@ -696,7 +696,7 @@ func processExpensiveData(items: List[Item]) {
 
 For functions called repeatedly with the same arguments, remember results:
 
-```rust
+```zia
 class FibonacciCalculator {
     hide cache: Map[Integer, Integer];
 
@@ -744,7 +744,7 @@ Every allocation has overhead:
 In tight loops, allocations add up:
 
 **Slow:**
-```rust
+```zia
 func processFrames() {
     while running {
         var buffer = [Integer](1000);  // Allocating every frame!
@@ -756,7 +756,7 @@ func processFrames() {
 ```
 
 **Fast:**
-```rust
+```zia
 func processFrames() {
     var buffer = [Integer](1000);  // Allocate once
     while running {
@@ -772,7 +772,7 @@ func processFrames() {
 Copying large data structures is expensive:
 
 **Slow:**
-```rust
+```zia
 func processData(data: List[Integer]) -> List[Integer] {
     var result = data.clone();  // Copies entire array!
     for i in 0..result.Length {
@@ -785,7 +785,7 @@ func processData(data: List[Integer]) -> List[Integer] {
 If the caller doesn't need the original, modify in place:
 
 **Fast:**
-```rust
+```zia
 func processData(data: List[Integer]) {
     for i in 0..data.Length {
         data[i] *= 2;
@@ -799,7 +799,7 @@ func processData(data: List[Integer]) {
 Sometimes you can trade memory for speed, or vice versa.
 
 **Trade Memory for Speed (Caching):**
-```rust
+```zia
 class ImageProcessor {
     hide thumbnailCache: Map[String, Image];
 
@@ -816,7 +816,7 @@ class ImageProcessor {
 ```
 
 **Trade Speed for Memory (Lazy Loading):**
-```rust
+```zia
 class Document {
     hide path: String;
     hide contentLoaded: Boolean;
@@ -834,7 +834,7 @@ class Document {
 ```
 
 **Trade Speed for Memory (Streaming):**
-```rust
+```zia
 // Memory-heavy: Load everything
 func processFile_memory(path: String) {
     var lines = File.readAllLines(path);  // Entire file in memory!
@@ -867,7 +867,7 @@ I/O (input/output) operations are often the slowest part of a program. Disk acce
 System calls have overhead. Minimize them:
 
 **Slow:**
-```rust
+```zia
 var file = File.open("data.txt", "r");
 while !file.eof() {
     var char = file.readChar();  // System call per character!
@@ -878,7 +878,7 @@ while !file.eof() {
 Reading one character at a time makes thousands of system calls for a typical file.
 
 **Fast:**
-```rust
+```zia
 var file = BufferedReader(File.open("data.txt", "r"));
 while !file.eof() {
     var line = file.ReadLine();  // Reads chunks internally
@@ -893,14 +893,14 @@ BufferedReader reads large chunks into memory, then returns pieces. Far fewer sy
 Network round-trips are expensive:
 
 **Slow:**
-```rust
+```zia
 for item in items {
     database.Insert(item);  // 1000 network round-trips!
 }
 ```
 
 **Fast:**
-```rust
+```zia
 database.insertBatch(items);  // 1 network round-trip
 ```
 
@@ -911,7 +911,7 @@ Batching reduces 1000 round-trips to 1, potentially 1000x faster.
 When waiting for I/O, your CPU is idle. Do multiple operations concurrently:
 
 **Slow: Sequential**
-```rust
+```zia
 var data1 = Http.Get(url1);  // Wait 200ms
 var data2 = Http.Get(url2);  // Wait 200ms
 var data3 = Http.Get(url3);  // Wait 200ms
@@ -919,7 +919,7 @@ var data3 = Http.Get(url3);  // Wait 200ms
 ```
 
 **Fast: Parallel** *(see [Chapter 24](../part4-applications/24-concurrency.md))*
-```rust
+```zia
 bind Async = Zanna.Threads.Async;
 bind Future = Zanna.Threads.Future;
 bind Http = Zanna.Network.Http;
@@ -1108,13 +1108,13 @@ Premature optimization is a famous trap. Here's when to resist the urge:
 ### Don't Optimize Before Measuring
 
 **Bad:**
-```rust
+```zia
 // "I think this will be faster"
 var x = ((n >> 1) & 1) ^ (n & 1);  // Cryptic bit manipulation
 ```
 
 **Good:**
-```rust
+```zia
 // Clear code first
 var x = if n % 2 == 0 { 0 } else { 1 };
 // Measure, and only optimize if this is actually slow
@@ -1130,7 +1130,7 @@ Always let measurements guide you.
 
 ### Don't Sacrifice Correctness
 
-```rust
+```zia
 // "Optimized" code that's actually broken
 func fastSum(items: List[Integer]) -> Integer {
     // Skip null check for speed
@@ -1146,7 +1146,7 @@ A fast program that crashes is worse than a slow program that works.
 
 ### Don't Optimize One-Time Code
 
-```rust
+```zia
 // This runs once at startup
 func initializeSystem() {
     loadConfiguration();
@@ -1235,24 +1235,24 @@ func benchmark(name: String, iterations: Integer, work: func()) {
 5. **Watch for dead code elimination**: Make sure results are actually used
 
 **Bad benchmark:**
-```rust
+```zia
 func badBenchmark() {
-    var start = Time.Clock.Ticks();
+    var start = Time.Clock.NowMs();
     compute(data);  // Compiler might optimize this away!
-    var end = Time.Clock.Ticks();
+    var end = Time.Clock.NowMs();
     Terminal.Say("Took " + (end - start));
 }
 ```
 
 **Good benchmark:**
-```rust
+```zia
 func goodBenchmark() {
     var result = 0;
-    var start = Time.Clock.Ticks();
+    var start = Time.Clock.NowMs();
     for i in 0..1000 {
         result += compute(data);  // Result is used, can't be optimized away
     }
-    var end = Time.Clock.Ticks();
+    var end = Time.Clock.NowMs();
     Terminal.Say("Took " + ((end - start) / 1000.0) + " ms/iter");
     Terminal.Say("Checksum: " + result);  // Actually use the result
 }
@@ -1268,15 +1268,15 @@ When your program is slow but you're not sure why, follow this systematic approa
 
 First, create a test case that reliably shows the problem:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 func reproduceSlowness() {
     var testData = loadTestData("large_dataset.json");
 
-    var start = Time.Clock.Ticks();
+    var start = Time.Clock.NowMs();
     processData(testData);
-    var elapsed = Time.Clock.Ticks() - start;
+    var elapsed = Time.Clock.NowMs() - start;
 
     Terminal.Say("Processing took: " + elapsed + " ms");
     // Run multiple times, should see consistent results
@@ -1291,28 +1291,28 @@ Use manual timing (as shown earlier) or inspect the compiled output with `--dump
 zia --dump-il-opt slowprogram.zia
 ```
 
-Add `Time.Clock.Ticks()` measurements around suspect sections. Is the hotspot what you expected? Often it's not.
+Add `Time.Clock.NowMs()` measurements around suspect sections. Is the hotspot what you expected? Often it's not.
 
 ### Step 3: Narrow Down
 
 If the profiler points to a large function, add internal timing:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 func processData(data: List[Record]) {
-    var t0 = Time.Clock.Ticks();
+    var t0 = Time.Clock.NowMs();
 
     // Section A
     ...
 
-    var t1 = Time.Clock.Ticks();
+    var t1 = Time.Clock.NowMs();
     Terminal.Say("Section A: " + (t1 - t0) + " ms");
 
     // Section B
     ...
 
-    var t2 = Time.Clock.Ticks();
+    var t2 = Time.Clock.NowMs();
     Terminal.Say("Section B: " + (t2 - t1) + " ms");
 
     // etc.
@@ -1330,7 +1330,7 @@ Based on your measurements, hypothesize what's wrong:
 
 Make a targeted change and measure:
 
-```rust
+```zia
 // Before (hypothesis: this Set creation is expensive)
 for item in items {
     var matches = new Set[Integer]();  // Creating every iteration?
@@ -1382,11 +1382,11 @@ bind Zanna.Time;
 bind Zanna.Terminal;
 
 func benchmark(name: String, work: func()) {
-    var start = Time.Clock.Ticks();
+    var start = Time.Clock.NowMs();
     for i in 0..1000 {
         work();
     }
-    var elapsed = Time.Clock.Ticks() - start;
+    var elapsed = Time.Clock.NowMs() - start;
     Terminal.Say(name + ": " + elapsed + " ms total");
 }
 ```
@@ -1438,11 +1438,11 @@ Remember:
 
 **Exercise 26.1 (Measure)**: Take any program you've written previously. Add timing measurements to find where it spends time. Did the results match your expectations?
 
-**Exercise 26.2 (Profile)**: Add `Time.Clock.Ticks()` timing measurements to a program that processes a file. Identify the top 3 time-consuming sections. Which one would you optimize first and why? Use `zia --dump-il-opt` to examine the optimized IL and look for missed optimizations.
+**Exercise 26.2 (Profile)**: Add `Time.Clock.NowMs()` timing measurements to a program that processes a file. Identify the top 3 time-consuming sections. Which one would you optimize first and why? Use `zia --dump-il-opt` to examine the optimized IL and look for missed optimizations.
 
 **Exercise 26.3 (Big O)**: What is the time complexity of each function?
 
-```rust
+```zia
 // Function A
 func mystery1(n: Integer) -> Integer {
     var sum = 0;
@@ -1474,7 +1474,7 @@ func mystery3(n: Integer) -> Integer {
 
 **Exercise 26.4 (Data Structure)**: Rewrite this slow code to use appropriate data structures:
 
-```rust
+```zia
 func findCommon(list1: List[Integer], list2: List[Integer]) -> List[Integer] {
     var common: List[Integer] = [];
     for item in list1 {
@@ -1492,7 +1492,7 @@ Benchmark both versions with lists of 10,000 items.
 
 **Exercise 26.5 (Memory)**: This code creates too many objects. Rewrite it to minimize allocations:
 
-```rust
+```zia
 func generateReport(records: List[Record]) -> String {
     var output = "";
     for record in records {
@@ -1507,7 +1507,7 @@ func generateReport(records: List[Record]) -> String {
 
 **Exercise 26.6 (I/O)**: Convert this sequential code to parallel:
 
-```rust
+```zia
 func fetchAllData(urls: List[String]) -> List[String] {
     var results: List[String] = [];
     for url in urls {
@@ -1522,7 +1522,7 @@ Measure the speedup with 10 URLs that each take ~100ms to fetch.
 
 **Exercise 26.7 (Caching)**: Implement a memoized version of this function:
 
-```rust
+```zia
 func expensiveComputation(x: Integer, y: Integer) -> Integer {
     // Simulate expensive work
     Time.Clock.Sleep(100);
@@ -1534,7 +1534,7 @@ Your solution should return instantly for repeated calls with the same arguments
 
 **Exercise 26.8 (Complete Optimization)**: Profile this word-counting function, identify all performance issues, and fix them. Document each change and its impact:
 
-```rust
+```zia
 func countWordFrequencies(filePath: String) -> Map[String, Integer] {
     var file = File.open(filePath, "r");
     var text = "";
@@ -1567,7 +1567,7 @@ func countWordFrequencies(filePath: String) -> Map[String, Integer] {
 - Average time per call
 - Percentage of total program time
 
-```rust
+```zia
 // Your profiler should enable code like:
 var profiler = Profiler.create();
 var trackedFunction = profiler.track("myFunction", originalFunction);

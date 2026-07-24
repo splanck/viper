@@ -36,7 +36,7 @@ entity even with zero vertical displacement — so edge reversal reads a stable 
 
 ## Example
 
-```rust
+```zia
 module BehaviorExample;
 
 func start() {

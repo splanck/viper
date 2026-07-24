@@ -11,6 +11,8 @@
 // Key invariants:
 //   - Canceled/rejected commands do not mutate dependent controller state.
 //   - Workspace changes keep indexing and terminal context synchronized.
+//   - Scene selection shortcuts never escape hierarchy/viewport focus, while
+//     explicit palette selections remain executable after focus moves.
 // Ownership/Lifetime: Stateless dispatcher borrowing one CommandContext.
 // Links: zannastudio/src/commands/command_context.zia,
 //        zannastudio/src/main.zia
@@ -53,6 +55,7 @@ bind "../editor/project_index";
 bind "../editor/zia_workspace_query_job";
 bind "../editor/signature";
 bind "../editor/symbols";
+bind "../services/file_utils";
 bind "../services/locations";
 bind "../services/safe_io";
 bind "../terminal/terminal_controller";
@@ -60,6 +63,7 @@ bind "../ui/app_shell";
 bind "../ui/debug_breakpoint_overlay";
 bind "../ui/explorer_actions";
 bind "../ui/ide_overlays";
+bind "../ui/workspace_dock";
 
 bind Zanna.GUI;
 bind IO = Zanna.IO;
@@ -305,14 +309,12 @@ expose func RemoveWorkspaceFolder(ctx: command_context.CommandContext,
     if ctx.buildSys != null and ctx.buildSys.IsActive() {
         if ctx.shell != null {
             ctx.shell.SetStatusLeft("Stop the running job before changing workspace folders");
-            GUI.Toast.Info("Stop the running job before removing a workspace folder");
         }
         return false;
     }
     if ctx.dbgSession != null and ctx.dbgSession.IsActive() {
         if ctx.shell != null {
             ctx.shell.SetStatusLeft("Stop debugging before changing workspace folders");
-            GUI.Toast.Info("Stop debugging before removing a workspace folder");
         }
         return false;
     }
@@ -321,7 +323,6 @@ expose func RemoveWorkspaceFolder(ctx: command_context.CommandContext,
     if rootPath == "" {
         if ctx.shell != null {
             ctx.shell.SetStatusLeft("Select a workspace folder to remove");
-            GUI.Toast.Info("Select a workspace folder in Explorer first");
         }
         return false;
     }
@@ -334,7 +335,6 @@ expose func RemoveWorkspaceFolder(ctx: command_context.CommandContext,
         if CloseOpenWorkspace(ctx) == false { return false; }
         if ctx.shell != null {
             ctx.shell.SetStatusLeft("Removed workspace folder: " + rootName);
-            GUI.Toast.Success("Workspace folder removed");
         }
         return true;
     }
@@ -366,7 +366,6 @@ expose func RemoveWorkspaceFolder(ctx: command_context.CommandContext,
     ActivateOpenWorkspace(ctx, true);
     if ctx.shell != null {
         ctx.shell.SetStatusLeft("Removed workspace folder: " + rootName);
-        GUI.Toast.Success("Workspace folder removed");
     }
     return true;
 }
@@ -378,6 +377,12 @@ expose func RemoveWorkspaceFolder(ctx: command_context.CommandContext,
 hide func DispatchFileCommands(ctx: command_context.CommandContext,
                                cpSelected: String) -> Boolean {
     if dispatch_helpers.Triggered("new", ctx.shell.menuChrome.miNew, ctx.shell.menuChrome.tbNew, cpSelected)      { file_commands.handleNew(ctx.shell, ctx.docMgr, ctx.engine, ctx.tabs); }
+    if dispatch_helpers.Triggered("newscene2d", ctx.shell.menuChrome.miNewScene2D, null, cpSelected) {
+        file_commands.handleNewScene2D(ctx.shell, ctx.docMgr, ctx.engine, ctx.tabs);
+    }
+    if dispatch_helpers.Triggered("newscene3d", ctx.shell.menuChrome.miNewScene3D, null, cpSelected) {
+        file_commands.handleNewScene3D(ctx.shell, ctx.docMgr, ctx.engine, ctx.tabs);
+    }
     if dispatch_helpers.Triggered("open", ctx.shell.menuChrome.miOpen, ctx.shell.menuChrome.tbOpen, cpSelected) {
         if file_commands.handleOpen(ctx.shell, ctx.docMgr, ctx.engine, ctx.tabs) {
             explorer_action_runner.RecordActiveFile(ctx.sessionMgr, ctx.docMgr);
@@ -512,18 +517,30 @@ hide func PumpFileTreeOpen(ctx: command_context.CommandContext,
 /// @param cpSelected Normalized command-palette selection id for this frame.
 hide func DispatchEditCommands(ctx: command_context.CommandContext,
                                cpSelected: String) {
-    if dispatch_helpers.Triggered("undo", ctx.shell.menuChrome.miUndo, null, cpSelected)           { edit_commands.handleUndo(ctx.engine, ctx.docMgr); }
-    if dispatch_helpers.Triggered("redo", ctx.shell.menuChrome.miRedo, null, cpSelected)           { edit_commands.handleRedo(ctx.engine); }
-    if dispatch_helpers.Triggered("cut", ctx.shell.menuChrome.miCut, null, cpSelected)             { edit_commands.handleCut(ctx.engine); }
-    if dispatch_helpers.Triggered("copy", ctx.shell.menuChrome.miCopy, null, cpSelected)           { edit_commands.handleCopy(ctx.engine); }
-    if dispatch_helpers.Triggered("paste", ctx.shell.menuChrome.miPaste, null, cpSelected)         { edit_commands.handlePaste(ctx.engine); }
-    if dispatch_helpers.Triggered("selectall", ctx.shell.menuChrome.miSelectAll, null, cpSelected) { edit_commands.handleSelectAll(ctx.engine); }
+    if dispatch_helpers.Triggered("undo", ctx.shell.menuChrome.miUndo, null, cpSelected) {
+        HandleSurfaceHistory(ctx, false);
+    }
+    if dispatch_helpers.Triggered("redo", ctx.shell.menuChrome.miRedo, null, cpSelected) {
+        HandleSurfaceHistory(ctx, true);
+    }
+    if dispatch_helpers.Triggered("cut", ctx.shell.menuChrome.miCut, null, cpSelected) {
+        HandleSurfaceCut(ctx);
+    }
+    if dispatch_helpers.Triggered("copy", ctx.shell.menuChrome.miCopy, null, cpSelected) {
+        HandleSurfaceCopy(ctx);
+    }
+    if dispatch_helpers.Triggered("paste", ctx.shell.menuChrome.miPaste, null, cpSelected) {
+        HandleSurfacePaste(ctx);
+    }
+    if dispatch_helpers.Triggered("selectall", ctx.shell.menuChrome.miSelectAll, null, cpSelected) {
+        HandleSurfaceSelectAll(ctx);
+    }
     if dispatch_helpers.Triggered("find", ctx.shell.menuChrome.miFind, ctx.shell.menuChrome.tbFind, cpSelected)    { edit_commands.handleFind(ctx.shell); }
     if dispatch_helpers.TriggeredMenu("goto", ctx.shell.menuChrome.miGoToLine, cpSelected) {
         if ctx.commandInputOverlay != null and ctx.engine != null and ctx.engine.editor != null {
             ctx.commandInputOverlay.OpenGoToLine(ctx.shell, ctx.engine.editor.CursorLine + 1);
         } else {
-            edit_commands.handleGoToLine(ctx.shell, ctx.engine);
+            ctx.shell.SetStatusLeft("Go To Line input is unavailable");
         }
     }
     if dispatch_helpers.TriggeredMenu("gotodef", ctx.shell.menuChrome.miGoToDefinition, cpSelected)  { RunOrQueueSemanticCommand(ctx, "gotodef", "Go to definition"); }
@@ -534,7 +551,7 @@ hide func DispatchEditCommands(ctx: command_context.CommandContext,
         if ctx.commandInputOverlay != null {
             ctx.commandInputOverlay.OpenRenameSymbol(ctx.shell, edit_commands.IdentifierAtCursor(ctx.engine));
         } else {
-            RunOrQueueSemanticCommand(ctx, "rename", "Rename");
+            ctx.shell.SetStatusLeft("Rename input is unavailable");
         }
     }
     if dispatch_helpers.TriggeredNoMenu("addnextoccurrence", cpSelected)              { edit_commands.handleAddNextOccurrence(ctx.shell, ctx.engine); }
@@ -545,7 +562,22 @@ hide func DispatchEditCommands(ctx: command_context.CommandContext,
     if dispatch_helpers.TriggeredNoMenu("shrinkselection", cpSelected)                { edit_commands.handleShrinkSelection(ctx.shell, ctx.engine); }
     if dispatch_helpers.TriggeredNoMenu("togglelinecomment", cpSelected)              { edit_commands.handleToggleLineComment(ctx.shell, ctx.docMgr, ctx.engine); }
     if dispatch_helpers.TriggeredNoMenu("toggleblockcomment", cpSelected)             { edit_commands.handleToggleBlockComment(ctx.shell, ctx.docMgr, ctx.engine); }
-    if dispatch_helpers.TriggeredNoMenu("duplicateline", cpSelected)                  { edit_commands.handleDuplicateLine(ctx.shell, ctx.engine); }
+    var duplicateMenuClicked =
+        ctx.shell.menuChrome.miDuplicateSelection.WasClicked();
+    if duplicateMenuClicked or Shortcuts.WasTriggered("duplicateline")
+       or cpSelected == "duplicateline" {
+        HandleSurfaceDuplicate(
+            ctx, duplicateMenuClicked or cpSelected == "duplicateline");
+    }
+    var deleteSceneMenuClicked =
+        ctx.shell.menuChrome.miDeleteSceneSelection.WasClicked();
+    if deleteSceneMenuClicked
+       or Shortcuts.WasTriggered("deletesceneselection")
+       or cpSelected == "deletesceneselection" {
+        HandleSceneSelectionDelete(
+            ctx, deleteSceneMenuClicked
+                 or cpSelected == "deletesceneselection");
+    }
     if dispatch_helpers.TriggeredNoMenu("movelineup", cpSelected)                     { edit_commands.handleMoveLineUp(ctx.shell, ctx.engine); }
     if dispatch_helpers.TriggeredNoMenu("movelinedown", cpSelected)                   { edit_commands.handleMoveLineDown(ctx.shell, ctx.engine); }
     if dispatch_helpers.TriggeredNoMenu("organizebinds", cpSelected)                  { edit_commands.handleOrganizeBinds(ctx.shell, ctx.docMgr, ctx.engine); }
@@ -553,14 +585,14 @@ hide func DispatchEditCommands(ctx: command_context.CommandContext,
         if ctx.commandInputOverlay != null {
             ctx.commandInputOverlay.OpenExtractLocal(ctx.shell);
         } else {
-            edit_commands.handleExtractLocalVariable(ctx.shell, ctx.docMgr, ctx.engine);
+            ctx.shell.SetStatusLeft("Extract Local input is unavailable");
         }
     }
     if dispatch_helpers.TriggeredNoMenu("extractfunction", cpSelected) {
         if ctx.commandInputOverlay != null {
             ctx.commandInputOverlay.OpenExtractFunction(ctx.shell);
         } else {
-            edit_commands.handleExtractFunction(ctx.shell, ctx.docMgr, ctx.engine);
+            ctx.shell.SetStatusLeft("Extract Function input is unavailable");
         }
     }
     if dispatch_helpers.TriggeredNoMenu("inlinelocal", cpSelected)                    { edit_commands.handleInlineLocalVariable(ctx.shell, ctx.docMgr, ctx.engine); }
@@ -623,12 +655,353 @@ hide func DispatchEditCommands(ctx: command_context.CommandContext,
     }
 }
 
+/// @brief Route standard undo/redo to the visible editor surface.
+hide func HandleSurfaceHistory(ctx: command_context.CommandContext,
+                               redo: Boolean) {
+    var doc = ctx.docMgr.GetActive();
+    if doc != null and doc!.kind == file_utils.DOC_KIND_SCENE_2D
+       and ctx.scene2DEditor != null {
+        var changed = false;
+        if redo { changed = ctx.scene2DEditor.Redo(); }
+        else { changed = ctx.scene2DEditor.Undo(); }
+        if changed {
+            ctx.tabs.SetModified(ctx.docMgr.activeIndex, doc!.isModified);
+            var action = "undone";
+            if redo { action = "redone"; }
+            ctx.shell.SetStatusLeft("2D scene " + action);
+        }
+        return;
+    }
+    if doc != null and doc!.kind == file_utils.DOC_KIND_SCENE_3D
+       and ctx.scene3DEditor != null {
+        var changed3D = false;
+        if redo { changed3D = ctx.scene3DEditor.Redo(); }
+        else { changed3D = ctx.scene3DEditor.Undo(); }
+        if changed3D {
+            ctx.tabs.SetModified(ctx.docMgr.activeIndex, doc!.isModified);
+            var action3D = "undone";
+            if redo { action3D = "redone"; }
+            ctx.shell.SetStatusLeft("3D scene " + action3D);
+        }
+        return;
+    }
+    if redo {
+        edit_commands.handleRedo(ctx.engine);
+    } else {
+        edit_commands.handleUndo(ctx.engine, ctx.docMgr);
+    }
+}
+
+/// @brief Route standard Cut to the active editable surface.
+hide func HandleSurfaceCut(ctx: command_context.CommandContext) {
+    var doc = ctx.docMgr.GetActive();
+    if doc != null and doc!.kind == file_utils.DOC_KIND_SCENE_2D
+       and ctx.scene2DEditor != null {
+        if ctx.scene2DEditor.CutSelectedSceneObjects() {
+            ctx.tabs.SetModified(ctx.docMgr.activeIndex, doc!.isModified);
+            ctx.shell.SetStatusLeft("Cut 2D scene selection");
+        } else {
+            ctx.shell.SetStatusLeft(
+                "Select one or more 2D scene objects to cut");
+        }
+        return;
+    }
+    if doc != null and doc!.kind == file_utils.DOC_KIND_SCENE_3D
+       and ctx.scene3DEditor != null {
+        if ctx.scene3DEditor.CutSelectedNodes() {
+            ctx.tabs.SetModified(ctx.docMgr.activeIndex, doc!.isModified);
+            ctx.shell.SetStatusLeft("Cut 3D scene selection");
+        } else {
+            ctx.shell.SetStatusLeft(
+                "Select one or more 3D scene nodes to cut");
+        }
+        return;
+    }
+    if doc != null and doc!.isReadOnlyPreview {
+        ctx.shell.SetStatusLeft("Cut is unavailable in read-only previews");
+        return;
+    }
+    edit_commands.handleCut(ctx.engine);
+}
+
+/// @brief Route standard Copy to the active editable surface.
+hide func HandleSurfaceCopy(ctx: command_context.CommandContext) {
+    var doc = ctx.docMgr.GetActive();
+    if doc != null and doc!.kind == file_utils.DOC_KIND_SCENE_2D
+       and ctx.scene2DEditor != null {
+        if ctx.scene2DEditor.CopySelectedSceneObjects() {
+            ctx.shell.SetStatusLeft("Copied 2D scene selection");
+        } else {
+            ctx.shell.SetStatusLeft(
+                "Select one or more 2D scene objects to copy");
+        }
+        return;
+    }
+    if doc != null and doc!.kind == file_utils.DOC_KIND_SCENE_3D
+       and ctx.scene3DEditor != null {
+        if ctx.scene3DEditor.CopySelectedNodes() {
+            ctx.shell.SetStatusLeft("Copied 3D scene selection");
+        } else {
+            ctx.shell.SetStatusLeft(
+                "Select one or more 3D scene nodes to copy");
+        }
+        return;
+    }
+    if doc != null and doc!.isReadOnlyPreview {
+        ctx.shell.SetStatusLeft("Copy is unavailable in read-only previews");
+        return;
+    }
+    edit_commands.handleCopy(ctx.engine);
+}
+
+/// @brief Route standard Paste to the active editable surface.
+hide func HandleSurfacePaste(ctx: command_context.CommandContext) {
+    var doc = ctx.docMgr.GetActive();
+    if doc != null and doc!.kind == file_utils.DOC_KIND_SCENE_2D
+       and ctx.scene2DEditor != null {
+        if ctx.scene2DEditor.PasteSceneObjectsFromClipboard() {
+            ctx.tabs.SetModified(ctx.docMgr.activeIndex, doc!.isModified);
+            ctx.shell.SetStatusLeft("Pasted into 2D scene");
+        } else {
+            ctx.shell.SetStatusLeft(
+                "Clipboard has no compatible 2D scene objects");
+        }
+        return;
+    }
+    if doc != null and doc!.kind == file_utils.DOC_KIND_SCENE_3D
+       and ctx.scene3DEditor != null {
+        if ctx.scene3DEditor.PasteSceneNodesFromClipboard() {
+            ctx.tabs.SetModified(ctx.docMgr.activeIndex, doc!.isModified);
+            ctx.shell.SetStatusLeft("Pasted into 3D scene");
+        } else {
+            ctx.shell.SetStatusLeft(
+                "Clipboard has no compatible 3D scene nodes");
+        }
+        return;
+    }
+    if doc != null and doc!.isReadOnlyPreview {
+        ctx.shell.SetStatusLeft("Paste is unavailable in read-only previews");
+        return;
+    }
+    edit_commands.handlePaste(ctx.engine);
+}
+
+/// @brief Route standard Select All to the active editable surface.
+hide func HandleSurfaceSelectAll(ctx: command_context.CommandContext) {
+    var doc = ctx.docMgr.GetActive();
+    if doc != null and doc!.kind == file_utils.DOC_KIND_SCENE_2D
+       and ctx.scene2DEditor != null {
+        if ctx.scene2DEditor.SelectAllSceneObjects() {
+            ctx.shell.SetStatusLeft("Selected all 2D scene objects");
+        } else {
+            ctx.shell.SetStatusLeft("This 2D scene has no objects to select");
+        }
+        return;
+    }
+    if doc != null and doc!.kind == file_utils.DOC_KIND_SCENE_3D
+       and ctx.scene3DEditor != null {
+        if ctx.scene3DEditor.SelectAllSceneNodes() {
+            ctx.shell.SetStatusLeft("Selected all 3D scene nodes");
+        } else {
+            ctx.shell.SetStatusLeft("This 3D scene has no nodes to select");
+        }
+        return;
+    }
+    if doc != null and doc!.isReadOnlyPreview {
+        ctx.shell.SetStatusLeft(
+            "Select All is unavailable in read-only previews");
+        return;
+    }
+    edit_commands.handleSelectAll(ctx.engine);
+}
+
+/// @brief Route Duplicate Selection without escaping scene-owned focus.
+/// @param ctx Active command dependencies and visible document.
+/// @param explicitInvocation True for command-palette invocation.
+/// @details Palette selection is deliberate even though opening the palette
+///          moves focus. Keyboard dispatch requires hierarchy or viewport
+///          focus so an inspector input can never duplicate scene content.
+hide func HandleSurfaceDuplicate(ctx: command_context.CommandContext,
+                                 explicitInvocation: Boolean) {
+    var doc = ctx.docMgr.GetActive();
+    if doc != null and doc!.kind == file_utils.DOC_KIND_SCENE_2D
+       and ctx.scene2DEditor != null {
+        if explicitInvocation == false
+           and ctx.scene2DEditor.SceneSelectionCommandsOwnFocus() == false {
+            return;
+        }
+        var duplicated = ctx.scene2DEditor.DuplicateSelectedSceneObjects();
+        if duplicated > 0 {
+            ctx.tabs.SetModified(ctx.docMgr.activeIndex, doc!.isModified);
+            ctx.shell.SetStatusLeft(
+                "Duplicated " + duplicated + " 2D scene object(s)");
+        } else if explicitInvocation {
+            ctx.shell.SetStatusLeft(
+                "Select one or more 2D scene objects to duplicate");
+        }
+        return;
+    }
+    if doc != null and doc!.kind == file_utils.DOC_KIND_SCENE_3D
+       and ctx.scene3DEditor != null {
+        if explicitInvocation == false
+           and ctx.scene3DEditor.SceneSelectionCommandsOwnFocus() == false {
+            return;
+        }
+        var duplicated3D = ctx.scene3DEditor.DuplicateSelectedNodes();
+        if duplicated3D > 0 {
+            ctx.tabs.SetModified(ctx.docMgr.activeIndex, doc!.isModified);
+            ctx.shell.SetStatusLeft(
+                "Duplicated " + duplicated3D + " 3D scene node(s)");
+        } else if explicitInvocation {
+            ctx.shell.SetStatusLeft(
+                "Select one or more 3D scene nodes to duplicate");
+        }
+        return;
+    }
+    edit_commands.handleDuplicateLine(ctx.shell, ctx.engine);
+}
+
+/// @brief Delete a visual-scene selection without hijacking text input Delete.
+/// @param ctx Active command dependencies and visible document.
+/// @param explicitInvocation True for command-palette invocation.
+hide func HandleSceneSelectionDelete(
+    ctx: command_context.CommandContext,
+    explicitInvocation: Boolean) {
+    var doc = ctx.docMgr.GetActive();
+    if doc != null and doc!.kind == file_utils.DOC_KIND_SCENE_2D
+       and ctx.scene2DEditor != null {
+        if explicitInvocation == false
+           and ctx.scene2DEditor.SceneSelectionCommandsOwnFocus() == false {
+            return;
+        }
+        if ctx.scene2DEditor.RemoveSelectedSceneObjects() {
+            ctx.tabs.SetModified(ctx.docMgr.activeIndex, doc!.isModified);
+            ctx.shell.SetStatusLeft("Deleted 2D scene selection");
+        } else if explicitInvocation {
+            ctx.shell.SetStatusLeft(
+                "Select one or more 2D scene objects to delete");
+        }
+        return;
+    }
+    if doc != null and doc!.kind == file_utils.DOC_KIND_SCENE_3D
+       and ctx.scene3DEditor != null {
+        if explicitInvocation == false
+           and ctx.scene3DEditor.SceneSelectionCommandsOwnFocus() == false {
+            return;
+        }
+        if ctx.scene3DEditor.DeleteSelectedNodes() {
+            ctx.tabs.SetModified(ctx.docMgr.activeIndex, doc!.isModified);
+            ctx.shell.SetStatusLeft("Deleted 3D scene selection");
+        } else if explicitInvocation {
+            ctx.shell.SetStatusLeft(
+                "Select one or more 3D scene nodes to delete");
+        }
+    }
+}
+
 /// @brief Dispatch workbench, output, explorer-palette, quick-open, and search commands.
 /// @param ctx Named dependency bundle assembled by main.zia.
 /// @param cpSelected Normalized command-palette selection id for this frame.
 hide func DispatchViewSearchCommands(ctx: command_context.CommandContext,
                                      cpSelected: String) {
     if dispatch_helpers.Triggered("togglesidebar", ctx.shell.menuChrome.miToggleSidebar, null, cpSelected) { view_commands.handleToggleSidebar(ctx.shell); }
+    if dispatch_helpers.TriggeredNoMenu("movesidebarleft", cpSelected) {
+        if ctx.shell.workbench.GetSidebarPositionName() == "left" {
+            ctx.shell.SetStatusLeft("Primary sidebar is already on the left");
+        } else {
+            ctx.shell.workbench.MoveSidebarTo(workspace_dock.DOCK_LEFT);
+            ctx.shell.SetStatusLeft("Primary sidebar moved left");
+        }
+    }
+    if dispatch_helpers.TriggeredNoMenu("movesidebarright", cpSelected) {
+        if ctx.shell.workbench.GetSidebarPositionName() == "right" {
+            ctx.shell.SetStatusLeft("Primary sidebar is already on the right");
+        } else {
+            ctx.shell.workbench.MoveSidebarTo(workspace_dock.DOCK_RIGHT);
+            ctx.shell.SetStatusLeft("Primary sidebar moved right");
+        }
+    }
+    if dispatch_helpers.TriggeredNoMenu("dockpanelsleft", cpSelected) {
+        if ctx.shell.toolPanels.GetDockLocationName() == "left" {
+            ctx.shell.SetStatusLeft(
+                "Primary panel group is already on the left");
+        } else {
+            ctx.shell.toolPanels.MovePanelTo(workspace_dock.DOCK_LEFT);
+            ctx.shell.SetStatusLeft("Primary panel group docked left");
+        }
+    }
+    if dispatch_helpers.TriggeredNoMenu("dockpanelsbottom", cpSelected) {
+        if ctx.shell.toolPanels.GetDockLocationName() == "bottom" {
+            ctx.shell.SetStatusLeft(
+                "Primary panel group is already at the bottom");
+        } else {
+            ctx.shell.toolPanels.MovePanelTo(workspace_dock.DOCK_BOTTOM);
+            ctx.shell.SetStatusLeft(
+                "Primary panel group docked at bottom");
+        }
+    }
+    if dispatch_helpers.TriggeredNoMenu("dockpanelsright", cpSelected) {
+        if ctx.shell.toolPanels.GetDockLocationName() == "right" {
+            ctx.shell.SetStatusLeft(
+                "Primary panel group is already on the right");
+        } else {
+            ctx.shell.toolPanels.MovePanelTo(workspace_dock.DOCK_RIGHT);
+            ctx.shell.SetStatusLeft("Primary panel group docked right");
+        }
+    }
+    if dispatch_helpers.TriggeredNoMenu("floatpanelgroup", cpSelected) {
+        if ctx.shell.toolPanels.FloatPrimaryToolPanelGroup() {
+            ctx.shell.SetStatusLeft("Primary panel group is now floating");
+        } else {
+            ctx.shell.SetStatusLeft(
+                "Open a tool in the primary panel group first");
+        }
+    }
+    if dispatch_helpers.TriggeredNoMenu("movetoolleft", cpSelected) {
+        if ctx.shell.toolPanels.MoveActiveToolPanelTo(
+               workspace_dock.DOCK_LEFT) {
+            ctx.shell.SetStatusLeft("Active tool moved left");
+        } else {
+            ctx.shell.SetStatusLeft(
+                "Select a tool outside the left group first");
+        }
+    }
+    if dispatch_helpers.TriggeredNoMenu("movetoolbottom", cpSelected) {
+        if ctx.shell.toolPanels.MoveActiveToolPanelTo(
+               workspace_dock.DOCK_BOTTOM) {
+            ctx.shell.SetStatusLeft("Active tool moved to bottom");
+        } else {
+            ctx.shell.SetStatusLeft(
+                "Select a tool outside the bottom group first");
+        }
+    }
+    if dispatch_helpers.TriggeredNoMenu("movetoolright", cpSelected) {
+        if ctx.shell.toolPanels.MoveActiveToolPanelTo(
+               workspace_dock.DOCK_RIGHT) {
+            ctx.shell.SetStatusLeft("Active tool moved right");
+        } else {
+            ctx.shell.SetStatusLeft(
+                "Select a tool outside the right group first");
+        }
+    }
+    if dispatch_helpers.TriggeredNoMenu("movetoolfloating", cpSelected) {
+        if ctx.shell.toolPanels.MoveActiveToolPanelTo(
+               workspace_dock.DOCK_FLOATING) {
+            ctx.shell.SetStatusLeft("Active tool moved to floating window");
+        } else {
+            ctx.shell.SetStatusLeft(
+                "Select a tool outside the floating group first");
+        }
+    }
+    if dispatch_helpers.Triggered(
+           "resetworkspacelayout",
+           ctx.shell.menuChrome.miResetWorkspaceLayout,
+           null,
+           cpSelected) {
+        view_commands.handleResetWorkspaceLayout(
+            ctx.shell, ctx.engine, ctx.appSettings, ctx.activityBarCtrl,
+            ctx.projMgr != null and ctx.projMgr.IsOpen());
+    }
     if dispatch_helpers.TriggeredMenu("statusbar", ctx.shell.menuChrome.miToggleStatusBar, cpSelected)     { view_commands.handleToggleStatusBar(ctx.shell, ctx.appSettings); }
     if dispatch_helpers.Triggered("zoomin", ctx.shell.menuChrome.miZoomIn, null, cpSelected)               { view_commands.handleZoomIn(ctx.shell, ctx.engine, ctx.appSettings); }
     if dispatch_helpers.Triggered("zoomout", ctx.shell.menuChrome.miZoomOut, null, cpSelected)             { view_commands.handleZoomOut(ctx.shell, ctx.engine, ctx.appSettings); }
@@ -648,7 +1021,7 @@ hide func DispatchViewSearchCommands(ctx: command_context.CommandContext,
         if ctx.commandInputOverlay != null {
             ctx.commandInputOverlay.OpenFilterOutput(ctx.shell, ctx.shell.toolPanels.outputFilterText);
         } else {
-            view_commands.handleFilterOutput(ctx.shell);
+            ctx.shell.SetStatusLeft("Output filter input is unavailable");
         }
     }
     if dispatch_helpers.TriggeredNoMenu("toggleoutputwrap", cpSelected)                         { view_commands.handleToggleOutputWrap(ctx.shell); }
@@ -676,14 +1049,12 @@ hide func DispatchViewSearchCommands(ctx: command_context.CommandContext,
             ctx.paletteCtrl.BeginQuickOpen();
         }
     }
-    if dispatch_helpers.TriggeredMenu("searchproject", ctx.shell.menuChrome.miSearchProject, cpSelected) { search_commands.handleProjectSearchAsync(ctx.shell, ctx.projMgr, ctx.docMgr, ctx.engine, ctx.locStore, ctx.searcher); }
+    if dispatch_helpers.TriggeredMenu("searchproject", ctx.shell.menuChrome.miSearchProject, cpSelected) { search_commands.handleProjectSearchAsync(ctx.shell, ctx.projMgr, ctx.docMgr, ctx.engine, ctx.searcher); }
     if dispatch_helpers.TriggeredMenu("workspacesymbols", ctx.shell.menuChrome.miWorkspaceSymbols, cpSelected) {
         if ctx.commandInputOverlay != null {
             ctx.commandInputOverlay.OpenWorkspaceSymbols(ctx.shell, "");
         } else {
-            search_commands.handleWorkspaceSymbolsAsync(ctx.shell, ctx.projMgr,
-                                                        ctx.docMgr, ctx.engine,
-                                                        ctx.locStore, ctx.searcher);
+            ctx.shell.SetStatusLeft("Workspace Symbols input is unavailable");
         }
     }
     if dispatch_helpers.TriggeredMenu("symboloutline", ctx.shell.menuChrome.miSymbolOutline, cpSelected) { ctx.symbolOutline.toggle(); }
@@ -758,12 +1129,8 @@ hide func DispatchBuildDebugCommands(ctx: command_context.CommandContext,
                                          ctx.engine, ctx.dbgSession);
     }
     if dispatch_helpers.TriggeredNoMenu("debugaddwatch", cpSelected) {
-        if ctx.commandInputOverlay != null {
-            ctx.commandInputOverlay.OpenAddWatch(ctx.shell,
-                                                debug_commands.DebugExpressionFromEditor(ctx.engine));
-        } else {
-            debug_commands.handleAddWatch(ctx.shell, ctx.dbgSession);
-        }
+        debug_commands.OpenWatchInput(
+            ctx.shell, debug_commands.DebugExpressionFromEditor(ctx.engine));
     }
     if dispatch_helpers.TriggeredNoMenu("debugremovewatch", cpSelected) {
         debug_commands.handleRemoveSelectedWatch(ctx.shell, ctx.dbgSession);
@@ -828,10 +1195,7 @@ hide func RunOrQueueSemanticCommand(ctx: command_context.CommandContext,
     if doc != null and doc!.language == "zia"
        and ctx.ziaWorkspaceCommands != null {
         if commandId == "rename" {
-            var newName = GUI.MessageBox.Prompt("Rename Symbol", "New name:");
-            ctx.ziaWorkspaceCommands.StartRename(
-                newName, ctx.shell, ctx.docMgr, ctx.projMgr, ctx.engine,
-                ctx.indexer);
+            ctx.shell.SetStatusLeft("Rename input is unavailable");
             return;
         }
         var kind = 0;
@@ -874,13 +1238,10 @@ hide func StartBasicSemanticCommand(ctx: command_context.CommandContext,
                                     label: String) {
     if ctx.basicWorkspaceCommands == null {
         ctx.shell.SetStatusLeft(label + " is unavailable");
-        GUI.Toast.Info(label + " is unavailable");
         return;
     }
     if commandId == "rename" {
-        var newName = GUI.MessageBox.Prompt("Rename Symbol", "New name:");
-        ctx.basicWorkspaceCommands.StartRename(newName, ctx.shell, ctx.docMgr,
-                                               ctx.projMgr, ctx.engine);
+        ctx.shell.SetStatusLeft("Rename input is unavailable");
         return;
     }
     var kind = 0;
@@ -920,7 +1281,6 @@ hide func QueuePendingSemanticCommand(ctx: command_context.CommandContext,
     var msg = label + " queued while indexing ("
               + ctx.indexer.WorkspaceIndexProgressText() + ")";
     ctx.shell.SetStatusLeft(msg);
-    GUI.Toast.Info(msg);
 }
 
 /// @brief Advance a queued semantic command and execute it when the index is ready.
@@ -1003,8 +1363,12 @@ hide func ExecuteSemanticCommand(ctx: command_context.CommandContext,
         edit_commands.handleOutgoingCalls(ctx.shell, ctx.docMgr, ctx.engine,
                                           ctx.indexer, ctx.locStore);
     } else if commandId == "rename" {
-        edit_commands.handleRenameSymbol(ctx.shell, ctx.docMgr, ctx.engine,
-                                         ctx.tabs, ctx.indexer);
+        if ctx.commandInputOverlay != null {
+            ctx.commandInputOverlay.OpenRenameSymbol(
+                ctx.shell, edit_commands.IdentifierAtCursor(ctx.engine));
+        } else {
+            ctx.shell.SetStatusLeft("Rename input is unavailable");
+        }
     }
 }
 
@@ -1017,7 +1381,7 @@ hide func NavigateDiagnostic(ctx: command_context.CommandContext,
                              direction: Integer) {
     var count = ctx.shell.toolPanels.diagListBox.Count;
     if count <= 1 {
-        GUI.Toast.Info("No diagnostics");
+        ctx.shell.SetStatusLeft("No diagnostics");
         return;
     }
 

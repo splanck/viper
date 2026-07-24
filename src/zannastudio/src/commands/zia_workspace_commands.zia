@@ -10,7 +10,9 @@
 // Key invariants:
 //   - Project-index parsing never runs in a command or frame callback.
 //   - Results apply only to their original path/revision/caret/index generation.
+//   - Rename results open a non-modal preview before any edit is applied.
 //   - Reference rows and preview source reads obey per-frame budgets.
+//   - Result publication respects tool-panel choices made after query start.
 // Ownership/Lifetime: Main owns one controller and drains its worker on exit.
 // Links: zannastudio/src/editor/zia_workspace_query_job.zia,
 //        zannastudio/src/commands/main_command_dispatcher.zia
@@ -19,7 +21,6 @@
 
 module zia_workspace_commands;
 
-bind "../commands/edit_commands";
 bind "../commands/file_commands";
 bind "../core/document_manager";
 bind "../core/project_manager";
@@ -29,8 +30,8 @@ bind "../editor/project_index";
 bind "../editor/zia_workspace_query_job";
 bind "../services/locations";
 bind "../services/safe_io";
-bind "../services/workspace_edits";
 bind "../ui/app_shell";
+bind "../ui/workspace_edit_preview";
 bind "../zia/identifier_utils";
 bind "../zia/source_scan";
 
@@ -71,6 +72,8 @@ class ZiaWorkspaceCommandController {
     expose Integer waitingLine;
     expose Integer waitingCol;
     expose String waitingWorkspaceSignature;
+    expose Integer resultPanelSelectionRevision;
+    expose workspace_edit_preview.WorkspaceEditPreview renamePreview;
 
     expose func init() {
         job = new zia_workspace_query_job.ZiaWorkspaceQueryJob();
@@ -97,6 +100,8 @@ class ZiaWorkspaceCommandController {
         waitingLine = 1;
         waitingCol = 0;
         waitingWorkspaceSignature = "";
+        resultPanelSelectionRevision = -1;
+        renamePreview = null;
     }
 
     expose func Start(kind: Integer,
@@ -116,10 +121,14 @@ class ZiaWorkspaceCommandController {
                             projMgr: project_manager.ProjectManager,
                             engine: editor_engine.EditorEngine,
                             indexer: project_index.ProjectIndexer) -> Boolean {
+        if renamePreview != null and renamePreview.HasPendingRename() {
+            shell.SetStatusLeft("Finish the current rename preview first");
+            return false;
+        }
         var newName = Str.Trim(newNameText);
         if newName == "" { return false; }
         if identifier_utils.IsValidIdentifier(newName) == false {
-            GUI.Toast.Warning("Invalid identifier");
+            shell.SetStatusLeft("Enter a valid Zia identifier");
             return false;
         }
         return StartWithText(zia_workspace_query_job.ZIA_QUERY_RENAME,
@@ -195,7 +204,7 @@ class ZiaWorkspaceCommandController {
         }
         if kind == zia_workspace_query_job.ZIA_QUERY_RENAME
            and doc!.filePath == "" {
-            GUI.Toast.Info("Save the Zia file before renaming across the workspace");
+            shell.SetStatusLeft("Save the Zia file before renaming across the workspace");
             return false;
         }
         if indexer.workspaceIndexTruncated {
@@ -229,6 +238,8 @@ class ZiaWorkspaceCommandController {
             shell.toolPanels.ClearToolRows(shell.toolPanels.referencesListBox);
             shell.toolPanels.HideReferencesPanel();
         }
+        resultPanelSelectionRevision =
+            shell.toolPanels.GetPanelSelectionRevision();
         if indexer.workspaceIndexComplete == false {
             waitingKind = kind;
             waitingLabel = label;
@@ -374,7 +385,7 @@ class ZiaWorkspaceCommandController {
             return;
         }
         if request.kind == zia_workspace_query_job.ZIA_QUERY_RENAME {
-            ApplyRename(shell, docMgr, engine, tabs, indexer, request);
+            OpenRenamePreview(shell, indexer, request);
             return;
         }
         BeginRendering(shell, request);
@@ -387,7 +398,7 @@ class ZiaWorkspaceCommandController {
                               locStore: locations.LocationStore,
                               definition: Any) {
         if Map.GetBool(definition, "found") == false {
-            GUI.Toast.Info("Definition not found");
+            shell.SetStatusLeft("Definition not found");
             return;
         }
         var line = Map.GetInt(definition, "line");
@@ -402,11 +413,11 @@ class ZiaWorkspaceCommandController {
         }
     }
 
-    hide func ApplyRename(
+    /// @brief Hand a complete rename result to the shared non-modal preview.
+    /// @details Workspace files remain untouched until main consumes the
+    ///          preview's explicit Apply action.
+    hide func OpenRenamePreview(
         shell: app_shell.AppShell,
-        docMgr: document_manager.DocumentManager,
-        engine: editor_engine.EditorEngine,
-        tabs: editor_tabs.EditorTabs,
         indexer: project_index.ProjectIndexer,
         request: zia_workspace_query_job.ZiaWorkspaceQueryRequest) {
         var rename = request.result;
@@ -422,22 +433,14 @@ class ZiaWorkspaceCommandController {
             GUI.Toast.Warning("Rename failed: no references found");
             return;
         }
-        var preview = workspace_edits.PreviewRenameEdits(edits, 20);
-        if GUI.MessageBox.Confirm("Rename Preview", preview) == 0 {
-            shell.SetStatusLeft("Rename canceled");
+        if renamePreview == null
+           or renamePreview.OpenRename(shell, edits, indexer.rootPaths,
+                                       request.newName) == false {
+            shell.SetStatusLeft("Rename preview is unavailable");
             return;
         }
-        var result = workspace_edits.ApplyRenameEdits(edits, docMgr,
-                                                      indexer.rootPaths);
-        if result.success == false {
-            shell.SetStatusLeft("Rename canceled: " + result.message);
-            GUI.Toast.Error(result.message);
-            return;
-        }
-        edit_commands.ApplyActiveDocumentContentToEditor(docMgr, engine, tabs);
-        indexer.SyncActiveNow(docMgr, engine);
-        shell.SetStatusLeft("Renamed to " + request.newName);
-        GUI.Toast.Success("Rename complete");
+        shell.SetStatusLeft("Review " + Seq.get_Count(edits)
+                            + " rename edits");
     }
 
     hide func BeginRendering(
@@ -456,7 +459,6 @@ class ZiaWorkspaceCommandController {
         cachedSourcePath = request.path;
         cachedSource = request.source;
         shell.toolPanels.ClearToolRows(shell.toolPanels.referencesListBox);
-        shell.toolPanels.HideReferencesPanel();
         if renderItems == null or renderLimit <= 0 {
             ResetRendering();
             ReportNoResults(shell, request.kind, request.reason);
@@ -495,8 +497,10 @@ class ZiaWorkspaceCommandController {
             ReportNoResults(shell, completedKind, "no_references");
             return;
         }
-        shell.toolPanels.referencesListBox.SetVisible(true);
-        shell.toolPanels.ShowReferencesPanel();
+        if shell.toolPanels.GetPanelSelectionRevision()
+           == resultPanelSelectionRevision {
+            shell.toolPanels.ShowReferencesPanel();
+        }
         var status = "Found " + renderedRows + " " + ResultNoun(renderKind);
         if renderTruncated { status = status + " (limited)"; }
         shell.SetStatusLeft(status);
@@ -592,7 +596,8 @@ class ZiaWorkspaceCommandController {
         var row = shell.toolPanels.AddToolLocationRow(
             shell.toolPanels.referencesListBox, rowKind, "zia",
             "" + rowLine + ":" + rowCol, marker, preview, "");
-        GUI.ListBox.ItemSetData(row, id);
+        shell.toolPanels.SetAddedToolRowLocationData(
+            shell.toolPanels.referencesListBox, row, id);
         renderedRows = renderedRows + 1;
     }
 
@@ -609,6 +614,7 @@ class ZiaWorkspaceCommandController {
         renderOriginSource = "";
         cachedSourcePath = "";
         cachedSource = "";
+        resultPanelSelectionRevision = -1;
     }
 }
 
@@ -655,7 +661,6 @@ func ReportNoResults(shell: app_shell.AppShell,
         }
     }
     shell.SetStatusLeft(message);
-    GUI.Toast.Info(message);
 }
 
 func ResultNoun(kind: Integer) -> String {

@@ -17,7 +17,7 @@ The Zanna GUI library provides a comprehensive set of widgets for building deskt
 
 ### Basic Structure (Zia)
 
-```rust
+```zia
 module GuiDemo;
 
 bind Zanna.Terminal;
@@ -238,7 +238,7 @@ DO WHILE NOT app.ShouldClose
 LOOP
 ```
 
-```rust
+```zia
 // Zia
 var app = App.New("Calculator", 300, 400);
 var root = app.get_Root();
@@ -293,7 +293,7 @@ font = Zanna.GUI.Font.Load("fonts/roboto.ttf")
 app.SetFont(font, 14)  ' A failed/stale font handle is ignored safely
 ```
 
-```rust
+```zia
 // Zia
 var font = Font.Load("fonts/roboto.ttf");
 app.SetFont(font, 14);
@@ -408,7 +408,7 @@ IF button.WasClicked() THEN
 END IF
 ```
 
-```rust
+```zia
 // Zia
 var btn = Button.New(root, "Submit");
 btn.SetSize(120, 32);

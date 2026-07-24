@@ -10,6 +10,7 @@
 // Key invariants:
 //   - Every confirmed exit persists one recovery-free clean session.
 //   - Crash markers are cleared only after services have stopped successfully.
+//   - Teardown never creates transient UI that is destroyed before it is useful.
 // Ownership/Lifetime:
 //   - Borrows application-owned controllers for the duration of each operation.
 // Links: zannastudio/src/main.zia, zannastudio/src/core/recovery_store.zia
@@ -87,15 +88,26 @@ expose func CleanupIde(shell: app_shell.AppShell,
     if breakpointStore != null {
         if breakpointStore.Save() == false and shell != null {
             shell.SetStatusLeft("Could not save breakpoints");
-            GUI.Toast.Error("Could not save breakpoints");
         }
     }
     var sessionSaved = true;
     if sessionMgr != null {
+        if engine != null and engine.PaneCount() >= 2 {
+            var firstPaneDocument = engine.PrimaryDocument();
+            var secondPaneDocument = engine.SecondaryDocument();
+            if firstPaneDocument != null and secondPaneDocument != null {
+                sessionMgr.CaptureSplitState(firstPaneDocument!,
+                                             secondPaneDocument!,
+                                             engine.secondaryFocused);
+            } else {
+                sessionMgr.ClearSplitState();
+            }
+        } else {
+            sessionMgr.ClearSplitState();
+        }
         sessionSaved = sessionMgr.SaveCleanExit(docMgr, projMgr);
         if sessionSaved == false and shell != null {
             shell.SetStatusLeft("Could not save session; recovery data retained");
-            GUI.Toast.Error("Could not save Studio session");
         }
     }
     if buildSys != null and buildSys.IsActive() {

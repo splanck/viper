@@ -95,7 +95,7 @@ After playing a sound, you receive a voice ID that can be used with `Zanna.Audio
 
 ### Zia Example
 
-```rust
+```zia
 module SoundDemo;
 
 bind Zanna.Terminal;
@@ -215,7 +215,7 @@ inert, so load a new Music object after reinitializing audio.
 
 ### Zia Example
 
-```rust
+```zia
 module MusicDemo;
 
 bind Zanna.Terminal;
@@ -343,7 +343,7 @@ value. This makes it suitable for lip-sync rather than output-bus metering.
 
 ### Zia Example
 
-```rust
+```zia
 module VoiceDemo;
 
 bind Zanna.Terminal;
@@ -427,7 +427,7 @@ flag. `StopAllSounds()` affects Sound voices only; it does not stop Music or pla
 
 ### Zia Example
 
-```rust
+```zia
 module AudioDemo;
 
 bind Zanna.Terminal;
@@ -538,7 +538,7 @@ permutation slot. Playlist objects are not thread-safe.
 
 ### Zia Example
 
-```rust
+```zia
 module PlaylistDemo;
 
 bind Zanna.Terminal;
@@ -613,7 +613,7 @@ removing or clearing the bank does not invalidate references already returned to
 
 ### Zia Example
 
-```rust
+```zia
 module BankDemo;
 
 bind Zanna.Audio;
@@ -688,7 +688,7 @@ the same playback/lifetime rules as file-loaded Sounds. Use `Sound.PlayEx`, `Sou
 
 ### Zia Example
 
-```rust
+```zia
 module SynthDemo;
 
 bind Zanna.Audio;
@@ -833,7 +833,7 @@ values produce brighter hi-hat/cymbal noise.
 
 ### Zia Example
 
-```rust
+```zia
 module MusicDemo;
 
 bind Zanna.Audio;
@@ -1023,7 +1023,7 @@ practical value.
 
 ### Zia Example
 
-```rust
+```zia
 module AudioFxDemo;
 
 bind Zanna.Audio.Mixer as Audio;
@@ -1143,7 +1143,7 @@ successfully—otherwise the playlist swaps or stops without a fade.
 
 ### Example
 
-```rust
+```zia
 bind Zanna.Audio;
 
 // Set up volume sliders

@@ -335,7 +335,7 @@ Use `--dump-trap` to ensure trap messages are printed to stderr even when the pr
 
 The runtime provides a leveled logging system accessible from both Zia and BASIC:
 
-```rust
+```zia
 Zanna.Diagnostics.Log.Debug("detailed info")
 Zanna.Diagnostics.Log.Info("normal info")
 Zanna.Diagnostics.Log.Warn("potential issue")

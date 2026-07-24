@@ -17,7 +17,8 @@
 //   - Input runtime strings are borrowed for the duration of each call.
 //
 // Links: rt_scene_editor.cpp, rt_tiled_import.cpp,
-//   docs/adr/0140-tiled-map-and-scene-import.md
+//   docs/adr/0140-tiled-map-and-scene-import.md,
+//   docs/adr/0155-scene-object-authoring-metadata-and-duplication.md
 //
 //===----------------------------------------------------------------------===//
 
@@ -94,7 +95,9 @@ rt_string rt_game_scene_object_type(void *scene, int64_t index);
 rt_string rt_game_scene_object_id(void *scene, int64_t index);
 int64_t rt_game_scene_object_x(void *scene, int64_t index);
 int64_t rt_game_scene_object_y(void *scene, int64_t index);
+void rt_game_scene_set_object_metadata(void *scene, int64_t index, rt_string type, rt_string id);
 void rt_game_scene_set_object_position(void *scene, int64_t index, int64_t x, int64_t y);
+int64_t rt_game_scene_duplicate_object(void *scene, int64_t index, rt_string id);
 void rt_game_scene_set_object_property(void *scene, int64_t index, rt_string key, rt_string value);
 rt_string rt_game_scene_get_object_property(void *scene, int64_t index, rt_string key);
 void rt_game_scene_delete_object_property(void *scene, int64_t index, rt_string key);
@@ -103,7 +106,9 @@ rt_string rt_game_scene_object_get_str(void *scene, int64_t index, rt_string key
 double rt_game_scene_object_get_float(void *scene, int64_t index, rt_string key, double def);
 int8_t rt_game_scene_object_get_bool(void *scene, int64_t index, rt_string key, int8_t def);
 int8_t rt_game_scene_object_has(void *scene, int64_t index, rt_string key);
+rt_string rt_game_scene_object_property_kind(void *scene, int64_t index, rt_string key);
 void *rt_game_scene_object_keys(void *scene, int64_t index);
+void rt_game_scene_object_set_null(void *scene, int64_t index, rt_string key);
 void rt_game_scene_object_set_int(void *scene, int64_t index, rt_string key, int64_t value);
 void rt_game_scene_object_set_str(void *scene, int64_t index, rt_string key, rt_string value);
 void rt_game_scene_object_set_float(void *scene, int64_t index, rt_string key, double value);

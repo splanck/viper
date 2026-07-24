@@ -1,0 +1,201 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/ui/run_debug_support.zia
+// Purpose: Shared action, breakpoint-row, and responsive-layout helpers for
+//          the Run and Debug activity view.
+// Key invariants:
+//   - Action ids remain stable across view and command modules.
+//   - Breakpoint search/labels are derived from copied presentation records.
+//   - Layout helpers operate only on GUI presentation state.
+// Ownership/Lifetime: Records are owned by RunDebugView; widgets are borrowed.
+// Links: zannastudio/src/ui/run_debug_view.zia,
+//        zannastudio/src/commands/debug_commands.zia
+//
+//===----------------------------------------------------------------------===//
+
+module run_debug_support;
+
+bind GUI = Zanna.GUI;
+bind Convert = Zanna.Core.Convert;
+bind Path = Zanna.IO.Path;
+bind Str = Zanna.String;
+
+// ============================================================================
+// MODULE: run_debug_support
+// PURPOSE: Keep stable Run/Debug presentation contracts out of the view
+//          controller without depending on build or debugger ownership.
+//
+// WHERE-THIS-FITS: RunDebugView uses these records and layout helpers;
+//          debug_commands consumes the stable action ids.
+//
+// TEACHING-NOTE: A filtered row is presentation, not identity. Retain the
+//          original store index and source location in every copied record.
+// ============================================================================
+
+final RUN_DEBUG_ACTION_NONE: Integer = 0;
+final RUN_DEBUG_ACTION_START: Integer = 1;
+final RUN_DEBUG_ACTION_CONTINUE: Integer = 2;
+final RUN_DEBUG_ACTION_PAUSE: Integer = 3;
+final RUN_DEBUG_ACTION_RESTART: Integer = 4;
+final RUN_DEBUG_ACTION_STOP: Integer = 5;
+final RUN_DEBUG_ACTION_STEP_OVER: Integer = 6;
+final RUN_DEBUG_ACTION_STEP_IN: Integer = 7;
+final RUN_DEBUG_ACTION_STEP_OUT: Integer = 8;
+final RUN_DEBUG_ACTION_OPEN_VARIABLES: Integer = 9;
+final RUN_DEBUG_ACTION_OPEN_CALL_STACK: Integer = 10;
+final RUN_DEBUG_ACTION_OPEN_CONSOLE: Integer = 11;
+final RUN_DEBUG_ACTION_OPEN_BREAKPOINT: Integer = 12;
+final RUN_DEBUG_ACTION_REMOVE_BREAKPOINT: Integer = 13;
+final RUN_DEBUG_ACTION_EDIT_CONDITION: Integer = 14;
+final RUN_DEBUG_ACTION_EDIT_LOGPOINT: Integer = 15;
+
+final MAX_VISIBLE_BREAKPOINTS: Integer = 1000;
+final RUN_DEBUG_CONTROLS_COMPACT_MAX_WIDTH = 360.0;
+
+/// @brief One durable breakpoint record copied into the presentation boundary.
+class BreakpointViewRecord {
+    expose Integer storeIndex;
+    expose String path;
+    expose Integer line;
+    expose String condition;
+    expose String logMessage;
+    expose String searchText;
+
+    expose func init() {
+        storeIndex = -1;
+        path = "";
+        line = 0;
+        condition = "";
+        logMessage = "";
+        searchText = "";
+    }
+}
+
+/// @brief Create one complete copied breakpoint presentation record.
+func NewBreakpointRecord(storeIndex: Integer,
+                         path: String,
+                         line: Integer,
+                         condition: String,
+                         logMessage: String) -> BreakpointViewRecord {
+    var record = new BreakpointViewRecord();
+    record.storeIndex = storeIndex;
+    record.path = path;
+    record.line = line;
+    record.condition = condition;
+    record.logMessage = logMessage;
+    record.searchText = Str.ToLower(
+        path + " " + Path.Name(path) + " " + line + " "
+        + condition + " " + logMessage);
+    return record;
+}
+
+/// @brief Return whether Run and Debug should use compact wrapped controls.
+func RunDebugUsesCompactControls(width: Number) -> Boolean {
+    return width > 0.0 and width <= RUN_DEBUG_CONTROLS_COMPACT_MAX_WIDTH;
+}
+
+/// @brief Return whether one breakpoint record passes a lower-case filter.
+func BreakpointMatches(record: BreakpointViewRecord,
+                       filterText: String) -> Boolean {
+    if record == null { return false; }
+    return filterText == "" or Str.Contains(record.searchText, filterText);
+}
+
+/// @brief Format one compact breakpoint list label.
+func BreakpointLabel(record: BreakpointViewRecord) -> String {
+    var label = Path.Name(record.path) + ":" + record.line;
+    if record.condition != "" {
+        label = label + "  if " + CompactText(record.condition, 54);
+    }
+    if record.logMessage != "" {
+        label = label + "  log " + CompactText(record.logMessage, 54);
+    }
+    return label;
+}
+
+/// @brief Format complete/filtered/realized breakpoint count text.
+func BreakpointCountText(total: Integer,
+                         visible: Integer,
+                         realized: Integer,
+                         filterText: String) -> String {
+    var text = "" + total + " breakpoint";
+    if total != 1 { text = text + "s"; }
+    if filterText != "" { text = visible + " of " + total; }
+    if visible > realized {
+        text = "Showing " + realized + " of " + visible + " matches";
+    }
+    return text;
+}
+
+/// @brief Resolve ListBox row data back into one copied durable record.
+func FindBreakpointRecord(records: List[BreakpointViewRecord],
+                          rowData: String) -> BreakpointViewRecord {
+    if rowData == "" { return null; }
+    var storeIndex = Convert.ToInt64(rowData);
+    var i = 0;
+    while i < records.count() {
+        var record = records.get(i);
+        if record.storeIndex == storeIndex { return record; }
+        i = i + 1;
+    }
+    return null;
+}
+
+/// @brief Format selection detail without making it row identity.
+func BreakpointDetail(record: BreakpointViewRecord) -> String {
+    if record == null { return "Select a breakpoint"; }
+    var detail = record.path + ":" + record.line;
+    if record.condition != "" {
+        detail = detail + "\nCondition: " + record.condition;
+    }
+    if record.logMessage != "" {
+        detail = detail + "\nLogpoint: " + record.logMessage;
+    }
+    return detail;
+}
+
+/// @brief Apply one responsive button basis with a minimum hit target.
+func ApplyButtonBasis(button: GUI.Button,
+                      compact: Boolean,
+                      wideWidth: Number,
+                      compactWidth: Number) {
+    if button == null { return; }
+    if compact {
+        button.SetFlex(1.0);
+        button.SetPreferredSize(compactWidth, 0.0);
+    } else {
+        button.SetFlex(0.0);
+        button.SetPreferredSize(wideWidth, 0.0);
+    }
+    button.SetMinSize(48.0, 0.0);
+}
+
+/// @brief Promote the laid-out final row into a HiDPI-safe scroll extent.
+/// @return The current or newly applied logical content height.
+func RefreshScrollExtent(content: GUI.VBox,
+                         finalRow: GUI.Widget,
+                         currentHeight: Number) -> Number {
+    if content == null or finalRow == null { return currentHeight; }
+    var requiredHeight =
+        finalRow.GetScreenY() - content.GetScreenY()
+        + finalRow.GetScreenHeight() + 8.0;
+    if requiredHeight <= 0.0 { return currentHeight; }
+    var delta = requiredHeight - currentHeight;
+    if delta < 0.0 { delta = 0.0 - delta; }
+    if delta <= 0.5 { return currentHeight; }
+    content.SetMinSize(0.0, requiredHeight);
+    return requiredHeight;
+}
+
+/// @brief Bound authored metadata before adding it to one concrete row.
+hide func CompactText(value: String,
+                      maxChars: Integer) -> String {
+    if Str.get_Length(value) <= maxChars { return value; }
+    if maxChars <= 1 { return "…"; }
+    return Str.Left(value, maxChars - 1) + "…";
+}

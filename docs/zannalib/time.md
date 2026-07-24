@@ -56,7 +56,7 @@ Basic timing utilities for sleeping and measuring elapsed time.
 
 ### Zia Example
 
-```rust
+```zia
 module ClockDemo;
 
 bind Zanna.Terminal;
@@ -152,7 +152,7 @@ interval has expired.
 
 ### Zia Example
 
-```rust
+```zia
 module CountdownDemo;
 
 bind Zanna.Terminal;
@@ -237,7 +237,7 @@ Date and time operations. Timestamps are Unix timestamps (seconds since January 
 | `ToIso8601(timestamp)`               | `String(Integer)`           | Returns ISO 8601 formatted string in UTC (with Z suffix) |
 | `FormatLocal(timestamp)`             | `String(Integer)`           | Returns ISO 8601 formatted string in local time (no Z)   |
 | `ToZone(timestamp, zone)`        | `String(Integer, TimeZone)` | Returns ISO 8601 local wall time plus numeric zone offset |
-| `Create(y, m, d, h, min, s)`     | `Integer(Integer...)`       | Creates a timestamp from local time components           |
+| `FromParts(y, m, d, h, min, s)`     | `Integer(Integer...)`       | Creates a timestamp from local time components           |
 | `AddSeconds(timestamp, seconds)` | `Integer(Integer, Integer)` | Adds seconds to a timestamp                              |
 | `AddDays(timestamp, days)`       | `Integer(Integer, Integer)` | Adds days to a timestamp                                 |
 | `Diff(t1, t2)`                   | `Integer(Integer, Integer)` | Returns the difference in seconds between two timestamps |
@@ -310,7 +310,7 @@ Date and time operations. Timestamps are Unix timestamps (seconds since January 
 
 ### Zia Example
 
-```rust
+```zia
 module DateTimeDemo;
 
 bind Zanna.Terminal;
@@ -331,7 +331,7 @@ func start() {
     Say("UTC: " + DateTime.ToIso8601(now));
 
     // Create a specific date and format it
-    var christmas = DateTime.Create(2025, 12, 25, 12, 0, 0);
+    var christmas = DateTime.FromParts(2025, 12, 25, 12, 0, 0);
     Say("Christmas: " + DateTime.FormatLocal(christmas));
 }
 ```
@@ -360,7 +360,7 @@ PRINT Zanna.Time.DateTime.ToIso8601(now)
 
 ' Create a specific local date
 DIM birthday AS INTEGER
-birthday = Zanna.Time.DateTime.Create(1990, 6, 15, 0, 0, 0)
+birthday = Zanna.Time.DateTime.FromParts(1990, 6, 15, 0, 0, 0)
 
 ' Elapsed-time arithmetic
 DIM tomorrow AS INTEGER
@@ -394,7 +394,7 @@ extensions or localized text across hosts.
 
 ### Named-zone Example
 
-```rust
+```zia
 module TimeZoneDemo;
 
 bind Zanna.Terminal;
@@ -523,7 +523,7 @@ elapsed values down to nanosecond units.
 
 ### Zia Example
 
-```rust
+```zia
 module StopwatchDemo;
 
 bind Zanna.Terminal;
@@ -576,13 +576,13 @@ PRINT "New timing: "; sw.ElapsedMs; " ms"
 
 Date-only type for working with calendar dates without time components. Represents a year, month, and day.
 
-**Type:** Instance class (requires `Create(year, month, day)`, `Today()`, `Parse(str)`, or `FromDays(i64)`)
+**Type:** Instance class (requires `FromParts(year, month, day)`, `Today()`, `Parse(str)`, or `FromDays(i64)`)
 
 ### Constructors
 
 | Method                   | Signature                       | Description                                            |
 |--------------------------|---------------------------------|--------------------------------------------------------|
-| `Create(year, month, day)` | `DateOnly(Integer, Integer, Integer)` | Create a date, or `Nothing` for a year outside `[0,9999]` or an invalid month/day |
+| `FromParts(year, month, day)` | `DateOnly(Integer, Integer, Integer)` | Create a date, or `Nothing` for a year outside `[0,9999]` or an invalid month/day |
 | `Today()`                | `DateOnly()`                    | Return today's local date, or `Nothing` if conversion fails |
 | `Parse(str)`             | `DateOnly(String)`              | Parse exact `YYYY-MM-DD`, or return `Nothing` on failure |
 | `FromDays(days)`         | `DateOnly(Integer)`             | Create a date from a day count (days since epoch)      |
@@ -643,7 +643,7 @@ Date-only type for working with calendar dates without time components. Represen
 
 ### Zia Example
 
-```rust
+```zia
 module DateOnlyDemo;
 
 bind Zanna.Terminal;
@@ -651,7 +651,7 @@ bind Zanna.Time.DateOnly as DateOnly;
 bind Zanna.Text.Fmt as Fmt;
 
 func start() {
-    var d = DateOnly.Create(2025, 6, 15);
+    var d = DateOnly.FromParts(2025, 6, 15);
     Say("Year: " + Fmt.Int(d.get_Year()));           // 2025
     Say("Month: " + Fmt.Int(d.get_Month()));         // 6
     Say("Day: " + Fmt.Int(d.get_Day()));             // 15
@@ -670,7 +670,7 @@ func start() {
 
 ```basic
 ' Create a specific date
-DIM d AS OBJECT = Zanna.Time.DateOnly.Create(2025, 6, 15)
+DIM d AS OBJECT = Zanna.Time.DateOnly.FromParts(2025, 6, 15)
 
 PRINT "Year: "; d.Year           ' Output: 2025
 PRINT "Month: "; d.Month         ' Output: 6
@@ -718,7 +718,7 @@ Duration type for representing and manipulating time spans. Duration is a static
 | `FromMinutes(m)`                    | `Integer(Integer)`                              | Create duration from minutes                 |
 | `FromHours(h)`                      | `Integer(Integer)`                              | Create duration from hours                   |
 | `FromDays(d)`                       | `Integer(Integer)`                              | Create duration from days                    |
-| `Create(days, hours, min, sec, ms)` | `Integer(Integer, Integer, Integer, Integer, Integer)` | Create from individual components    |
+| `FromParts(days, hours, min, sec, ms)` | `Integer(Integer, Integer, Integer, Integer, Integer)` | Create from individual components    |
 | `Zero()`                            | `Integer()`                                     | Returns zero duration (0)                    |
 
 ### Total Extraction Methods
@@ -779,7 +779,7 @@ Duration type for representing and manipulating time spans. Duration is a static
 
 ### Zia Example
 
-```rust
+```zia
 module DurationDemo;
 
 bind Zanna.Terminal;
@@ -807,7 +807,7 @@ PRINT "ToString: "; Zanna.Time.Duration.ToString(d)    ' Output: 02:00:00
 PRINT "ToISO: "; Zanna.Time.Duration.ToIso8601(d)          ' Output: PT2H
 
 ' Create from components
-DIM d2 AS INTEGER = Zanna.Time.Duration.Create(1, 2, 30, 0, 0)
+DIM d2 AS INTEGER = Zanna.Time.Duration.FromParts(1, 2, 30, 0, 0)
 PRINT "Complex: "; Zanna.Time.Duration.ToString(d2)    ' Output: 1.02:30:00
 
 ' Arithmetic
@@ -873,7 +873,7 @@ A time range defined by start and end timestamps (in seconds). Useful for repres
 
 ### Zia Example
 
-```rust
+```zia
 module DateRangeDemo;
 
 bind Zanna.Terminal;
@@ -952,7 +952,7 @@ Formats time durations and timestamps into human-readable relative descriptions.
 
 ### Zia Example
 
-```rust
+```zia
 module RelativeTimeDemo;
 
 bind Zanna.Terminal;

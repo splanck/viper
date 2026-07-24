@@ -1,0 +1,548 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/ui/scene_tileset_2d.zia
+// Purpose: Bounded tileset loading, palette rendering, and canvas blitting for
+//          Studio's editable 2D scene surface.
+// Key invariants:
+//   - Authored relative paths resolve beside the saved scene document.
+//   - Image source, decoded-pixel, palette, and scaled-tile caches are bounded.
+//   - Translucent frames composite source-over; opaque frames use a fast copy.
+//   - Invalid or missing assets produce ordinary inline state, never traps.
+//   - Tile IDs remain SceneDocument's one-based tileset frame indexes.
+// Ownership/Lifetime: SceneEditor2D owns one library; entries own decoded
+//                     Pixels handles until the scene or layer assets change.
+// Links: zannastudio/src/ui/scene_editor_2d.zia,
+//        zannastudio/src/probes/scene_editor_2d_probe.zia,
+//        docs/zannalib/game/scene.md
+//
+//===----------------------------------------------------------------------===//
+
+module scene_tileset_2d;
+
+bind "../services/safe_io";
+
+bind SceneDocument = Zanna.Game2D.SceneDocument;
+bind Pixels = Zanna.Graphics.Pixels;
+bind Color = Zanna.Graphics.Color;
+bind Map = Zanna.Collections.Map;
+bind Path = Zanna.IO.Path;
+bind Str = Zanna.String;
+bind Clock = Zanna.Time.Clock;
+
+// ============================================================================
+// MODULE: scene_tileset_2d
+// PURPOSE: Turn SceneDocument layer asset references into bounded visual
+//          previews without adding filesystem or cache policy to SceneEditor2D.
+//
+// WHERE-THIS-FITS: SceneDocument remains the canonical model and stores only
+//          paths/tile IDs. SceneEditor2D owns widgets, history, and selection.
+//
+// TEACHING-NOTE: A layer image is an external editor preview dependency, not
+//          embedded scene data. Loading failure must therefore leave the
+//          authored JSON untouched and render a deterministic fallback.
+// ============================================================================
+
+final MAX_TILESET_SOURCE_BYTES: Integer = 16000000;
+final MAX_TILESET_SOURCE_PIXELS: Integer = 4194304;
+final MAX_SCENE_TILESET_PIXELS: Integer = 8388608;
+final MAX_SCALED_CACHE_PIXELS: Integer = 8388608;
+final MAX_PALETTE_TILES: Integer = 512;
+final PALETTE_COLUMNS: Integer = 8;
+final PALETTE_TILE_SIZE: Integer = 28;
+final PALETTE_STRIDE: Integer = 30;
+
+/// @brief One decoded layer tileset plus truthful load metadata.
+class TilesetEntry2D {
+    expose String authoredPath;
+    expose String resolvedPath;
+    expose Pixels pixels;
+    expose Integer width;
+    expose Integer height;
+    expose Integer tileWidth;
+    expose Integer tileHeight;
+    expose Integer columns;
+    expose Integer rows;
+    expose Integer tileCount;
+    expose Integer sourceBytes;
+    expose Integer sourceModified;
+    expose String error;
+    expose String warning;
+
+    expose func init() {
+        authoredPath = "";
+        resolvedPath = "";
+        pixels = null;
+        width = 0;
+        height = 0;
+        tileWidth = 0;
+        tileHeight = 0;
+        columns = 0;
+        rows = 0;
+        tileCount = 0;
+        sourceBytes = -1;
+        sourceModified = -1;
+        error = "";
+        warning = "";
+    }
+}
+
+/// @brief One scaled frame plus the compositing decision cached with it.
+class ScaledTile2D {
+    expose Pixels pixels;
+    expose Boolean hasTransparency;
+
+    expose func init() {
+        pixels = null;
+        hasTransparency = false;
+    }
+}
+
+/// @brief Resolve one authored path without changing the persisted spelling.
+expose func ResolveAssetPath(authoredPath: String,
+                             documentPath: String) -> String {
+    var clean = Str.Trim(authoredPath);
+    if clean == "" { return ""; }
+    try {
+        if Path.IsAbsolute(clean) {
+            return Path.Normalize(clean);
+        }
+        if Str.Trim(documentPath) != "" {
+            return Path.Normalize(
+                Path.Join(Path.Directory(documentPath), clean));
+        }
+        return Path.Normalize(Path.Absolute(clean));
+    } catch {
+        return "";
+    }
+    return "";
+}
+
+/// @brief Convert a palette-local point to a one-based tile ID.
+/// @return Zero when the point is outside the bounded visible palette.
+expose func PaletteTileAt(tileCount: Integer,
+                          x: Integer,
+                          y: Integer) -> Integer {
+    if tileCount <= 0 or x < 0 or y < 0 { return 0; }
+    var column = x / PALETTE_STRIDE;
+    var row = y / PALETTE_STRIDE;
+    if column < 0 or column >= PALETTE_COLUMNS { return 0; }
+    var tile = row * PALETTE_COLUMNS + column + 1;
+    var shown = tileCount;
+    if shown > MAX_PALETTE_TILES { shown = MAX_PALETTE_TILES; }
+    if tile < 1 or tile > shown { return 0; }
+    return tile;
+}
+
+/// @brief Decoded asset library and bounded scaled-tile cache for one scene.
+class SceneTilesetLibrary2D {
+    expose List[TilesetEntry2D] entries;
+    expose String documentPath;
+    expose Integer sourcePixelCount;
+    expose Integer revision;
+    expose Boolean cacheSaturated;
+    hide Map scaledTileCache;
+    hide Integer cacheCellSize;
+    hide Integer cachedPixelCount;
+    hide Integer lastExternalPollMs;
+    hide Integer externalPollLayer;
+
+    expose func init() {
+        entries = [];
+        documentPath = "";
+        sourcePixelCount = 0;
+        revision = 0;
+        cacheSaturated = false;
+        scaledTileCache = Map.New();
+        cacheCellSize = 0;
+        cachedPixelCount = 0;
+        lastExternalPollMs = -1;
+        externalPollLayer = 0;
+    }
+
+    /// @brief Rebuild every layer preview from the current canonical scene.
+    expose func Reload(scene: SceneDocument, nextDocumentPath: String) {
+        entries = [];
+        documentPath = nextDocumentPath;
+        sourcePixelCount = 0;
+        revision = revision + 1;
+        ClearScaledCache();
+        lastExternalPollMs = Clock.NowMs();
+        externalPollLayer = 0;
+        if scene == null { return; }
+
+        var layer = 0;
+        while layer < scene.LayerCount() {
+            var entry = DecodeEntry(
+                scene.LayerAsset(layer),
+                nextDocumentPath,
+                scene.TileWidth,
+                scene.TileHeight);
+            if entry.pixels != null {
+                var pixelCount = entry.width * entry.height;
+                if sourcePixelCount + pixelCount
+                   > MAX_SCENE_TILESET_PIXELS {
+                    entry.pixels = null;
+                    entry.columns = 0;
+                    entry.rows = 0;
+                    entry.tileCount = 0;
+                    entry.error =
+                        "Scene tileset previews exceed the 32 MB decoded limit.";
+                } else {
+                    sourcePixelCount = sourcePixelCount + pixelCount;
+                }
+            }
+            entries.add(entry);
+            layer = layer + 1;
+        }
+    }
+
+    /// @brief Check one referenced image for an external metadata change.
+    /// @details At most one filesystem entry is statted per eligible call.
+    ///          The caller owns reloading because this check never mutates the
+    ///          decoded library or authored scene state.
+    expose func PollExternalChanges(intervalMs: Integer) -> Boolean {
+        var interval = intervalMs;
+        if interval < 0 { interval = 0; }
+        var now = Clock.NowMs();
+        if lastExternalPollMs >= 0
+           and now - lastExternalPollMs < interval {
+            return false;
+        }
+        lastExternalPollMs = now;
+        if entries.count() == 0 { return false; }
+
+        var visited = 0;
+        while visited < entries.count() {
+            if externalPollLayer >= entries.count() {
+                externalPollLayer = 0;
+            }
+            var entry = entries.get(externalPollLayer);
+            externalPollLayer = externalPollLayer + 1;
+            visited = visited + 1;
+            if entry != null and entry.authoredPath != "" {
+                return safe_io.SizeBytes(entry.resolvedPath)
+                           != entry.sourceBytes
+                    or safe_io.Modified(entry.resolvedPath)
+                           != entry.sourceModified;
+            }
+        }
+        return false;
+    }
+
+    /// @brief Decode a candidate without changing the loaded scene library.
+    expose func ValidateCandidate(authoredPath: String,
+                                  nextDocumentPath: String,
+                                  tileWidth: Integer,
+                                  tileHeight: Integer) -> TilesetEntry2D {
+        return DecodeEntry(
+            authoredPath, nextDocumentPath, tileWidth, tileHeight);
+    }
+
+    /// @brief Validate a replacement against the scene-wide decoded budget.
+    expose func ValidateCandidateForLayer(
+        layer: Integer,
+        authoredPath: String,
+        nextDocumentPath: String,
+        tileWidth: Integer,
+        tileHeight: Integer) -> TilesetEntry2D {
+        var candidate = ValidateCandidate(
+            authoredPath, nextDocumentPath, tileWidth, tileHeight);
+        if candidate.pixels == null { return candidate; }
+        var retainedPixels = sourcePixelCount;
+        var current = Entry(layer);
+        if current != null and current.pixels != null {
+            retainedPixels =
+                retainedPixels - current.width * current.height;
+        }
+        if retainedPixels + candidate.width * candidate.height
+           > MAX_SCENE_TILESET_PIXELS {
+            candidate.pixels = null;
+            candidate.columns = 0;
+            candidate.rows = 0;
+            candidate.tileCount = 0;
+            candidate.error =
+                "Scene tileset previews exceed the 32 MB decoded limit.";
+        }
+        return candidate;
+    }
+
+    /// @brief Return one layer entry, or null when the layer is invalid.
+    expose func Entry(layer: Integer) -> TilesetEntry2D {
+        if layer < 0 or layer >= entries.count() { return null; }
+        return entries.get(layer);
+    }
+
+    /// @brief Return the number of usable one-based frames for one layer.
+    expose func TileCount(layer: Integer) -> Integer {
+        var entry = Entry(layer);
+        if entry == null { return 0; }
+        return entry.tileCount;
+    }
+
+    /// @brief Return a compact, truthful inspector summary for one layer.
+    expose func Status(layer: Integer) -> String {
+        var entry = Entry(layer);
+        if entry == null or entry.authoredPath == "" {
+            return "No tileset image. Choose one to preview and paint visually.";
+        }
+        if entry.error != "" { return entry.error; }
+        var status = Path.Name(entry.resolvedPath)
+            + "  •  " + entry.width + "x" + entry.height
+            + "  •  " + entry.tileCount + " tiles ("
+            + entry.columns + "x" + entry.rows + ")";
+        if entry.tileCount > MAX_PALETTE_TILES {
+            status = status + "  •  showing first " + MAX_PALETTE_TILES;
+        }
+        if entry.warning != "" { status = status + "\n" + entry.warning; }
+        return status;
+    }
+
+    /// @brief Render a scrollable, bounded palette for one layer.
+    expose func RenderPalette(layer: Integer,
+                              selectedTile: Integer) -> Pixels {
+        var entry = Entry(layer);
+        if entry == null or entry.pixels == null or entry.tileCount <= 0 {
+            return null;
+        }
+        var shown = entry.tileCount;
+        if shown > MAX_PALETTE_TILES { shown = MAX_PALETTE_TILES; }
+        var rowCount = (shown + PALETTE_COLUMNS - 1) / PALETTE_COLUMNS;
+        var width = PALETTE_COLUMNS * PALETTE_STRIDE;
+        var height = rowCount * PALETTE_STRIDE;
+        var palette = Pixels.New(width, height);
+        if palette == null { return null; }
+        palette.FillColor(Color.RGB(29, 34, 43));
+
+        var tile = 1;
+        while tile <= shown {
+            var index = tile - 1;
+            var column = index % PALETTE_COLUMNS;
+            var row = index / PALETTE_COLUMNS;
+            var x = column * PALETTE_STRIDE;
+            var y = row * PALETTE_STRIDE;
+            palette.DrawFrame(
+                x, y, PALETTE_STRIDE, PALETTE_STRIDE,
+                Color.RGB(68, 76, 90));
+            if DrawTile(
+                   palette, layer, tile, x + 1, y + 1,
+                   PALETTE_TILE_SIZE) == false {
+                palette.DrawBox(
+                    x + 2, y + 2,
+                    PALETTE_TILE_SIZE - 2, PALETTE_TILE_SIZE - 2,
+                    Color.RGB(87, 58, 92));
+            }
+            if tile == selectedTile {
+                palette.DrawFrame(
+                    x, y, PALETTE_STRIDE, PALETTE_STRIDE,
+                    Color.RGB(104, 220, 255));
+                palette.DrawFrame(
+                    x + 1, y + 1,
+                    PALETTE_STRIDE - 2, PALETTE_STRIDE - 2,
+                    Color.RGB(255, 255, 255));
+            }
+            tile = tile + 1;
+        }
+        return palette;
+    }
+
+    /// @brief Blit one tileset frame into a square editor-preview cell.
+    /// @return False for missing assets, invalid IDs, or exhausted cache budget.
+    expose func DrawTile(destination: Pixels,
+                         layer: Integer,
+                         tileId: Integer,
+                         x: Integer,
+                         y: Integer,
+                         cellSize: Integer) -> Boolean {
+        var entry = Entry(layer);
+        if destination == null or entry == null or entry.pixels == null
+           or cellSize <= 0 or tileId <= 0 or tileId > entry.tileCount {
+            return false;
+        }
+        if cacheCellSize != cellSize {
+            ClearScaledCache();
+            cacheCellSize = cellSize;
+        }
+
+        var key = layer + ":" + tileId;
+        var cachedTile: ScaledTile2D = null;
+        if Map.Has(scaledTileCache, key) {
+            cachedTile = Map.Get(scaledTileCache, key) as ScaledTile2D;
+        } else {
+            var neededPixels = cellSize * cellSize;
+            if neededPixels <= 0
+               or cachedPixelCount + neededPixels
+                  > MAX_SCALED_CACHE_PIXELS {
+                cacheSaturated = true;
+                return false;
+            }
+            var scaled = ScaleTile(entry, tileId, cellSize);
+            if scaled == null { return false; }
+            cachedTile = new ScaledTile2D();
+            cachedTile.pixels = scaled;
+            cachedTile.hasTransparency =
+                HasTransparency(scaled, cellSize);
+            Map.Set(scaledTileCache, key, cachedTile);
+            cachedPixelCount = cachedPixelCount + neededPixels;
+        }
+        if cachedTile == null or cachedTile.pixels == null { return false; }
+        if cachedTile.hasTransparency {
+            CompositeTile(
+                destination, cachedTile.pixels, x, y, cellSize);
+        } else {
+            destination.Copy(
+                x, y, cachedTile.pixels, 0, 0, cellSize, cellSize);
+        }
+        return true;
+    }
+
+    /// @brief Drop scaled previews after an asset or zoom change.
+    expose func ClearScaledCache() {
+        scaledTileCache = Map.New();
+        cacheCellSize = 0;
+        cachedPixelCount = 0;
+        cacheSaturated = false;
+    }
+
+    /// @brief Extract and nearest-scale one source frame without leaking traps.
+    hide func ScaleTile(entry: TilesetEntry2D,
+                        tileId: Integer,
+                        cellSize: Integer) -> Pixels {
+        try {
+            var source = Pixels.New(entry.tileWidth, entry.tileHeight);
+            if source == null { return null; }
+            var sourceIndex = tileId - 1;
+            var sourceX =
+                (sourceIndex % entry.columns) * entry.tileWidth;
+            var sourceY =
+                (sourceIndex / entry.columns) * entry.tileHeight;
+            source.Copy(
+                0, 0, entry.pixels,
+                sourceX, sourceY, entry.tileWidth, entry.tileHeight);
+            if entry.tileWidth == cellSize
+               and entry.tileHeight == cellSize {
+                return source;
+            }
+            return source.Scale(cellSize, cellSize);
+        } catch {
+            return null;
+        }
+        return null;
+    }
+
+    /// @brief Decide once whether a cached frame needs source-over blending.
+    hide func HasTransparency(pixels: Pixels,
+                              cellSize: Integer) -> Boolean {
+        if pixels == null or cellSize <= 0 { return true; }
+        var y = 0;
+        while y < cellSize {
+            var x = 0;
+            while x < cellSize {
+                if pixels.GetRgba(x, y) % 256 < 255 { return true; }
+                x = x + 1;
+            }
+            y = y + 1;
+        }
+        return false;
+    }
+
+    /// @brief Composite a translucent cached frame over existing layer pixels.
+    hide func CompositeTile(destination: Pixels,
+                            source: Pixels,
+                            destinationX: Integer,
+                            destinationY: Integer,
+                            cellSize: Integer) {
+        var y = 0;
+        while y < cellSize {
+            var x = 0;
+            while x < cellSize {
+                var rgba = source.GetRgba(x, y);
+                var alpha = rgba % 256;
+                if alpha > 0 {
+                    destination.BlendPixel(
+                        destinationX + x,
+                        destinationY + y,
+                        rgba / 256,
+                        alpha);
+                }
+                x = x + 1;
+            }
+            y = y + 1;
+        }
+    }
+
+    /// @brief Decode and validate one image independently of scene mutation.
+    hide func DecodeEntry(authoredPath: String,
+                          nextDocumentPath: String,
+                          tileWidth: Integer,
+                          tileHeight: Integer) -> TilesetEntry2D {
+        var entry = new TilesetEntry2D();
+        entry.authoredPath = Str.Trim(authoredPath);
+        entry.tileWidth = tileWidth;
+        entry.tileHeight = tileHeight;
+        if entry.authoredPath == "" { return entry; }
+        if tileWidth <= 0 or tileHeight <= 0 {
+            entry.error = "The scene has invalid tile dimensions.";
+            return entry;
+        }
+
+        entry.resolvedPath = ResolveAssetPath(
+            entry.authoredPath, nextDocumentPath);
+        if entry.resolvedPath == "" {
+            entry.error = "The tileset path could not be resolved.";
+            return entry;
+        }
+        entry.sourceBytes = safe_io.SizeBytes(entry.resolvedPath);
+        entry.sourceModified = safe_io.Modified(entry.resolvedPath);
+        if entry.sourceBytes < 0 {
+            entry.error = "Tileset image is missing or unreadable: "
+                + entry.authoredPath;
+            return entry;
+        }
+        if entry.sourceBytes > MAX_TILESET_SOURCE_BYTES {
+            entry.error = "Tileset image exceeds the 16 MB source limit.";
+            return entry;
+        }
+
+        try {
+            entry.pixels = Pixels.Load(entry.resolvedPath);
+        } catch {
+            entry.pixels = null;
+        }
+        if entry.pixels == null {
+            entry.error =
+                "Tileset is not a valid PNG, JPEG, BMP, or GIF image.";
+            return entry;
+        }
+        entry.width = entry.pixels.Width;
+        entry.height = entry.pixels.Height;
+        if entry.width <= 0 or entry.height <= 0
+           or entry.width * entry.height > MAX_TILESET_SOURCE_PIXELS {
+            entry.pixels = null;
+            entry.error =
+                "Tileset exceeds the 4,194,304 decoded-pixel limit.";
+            return entry;
+        }
+        entry.columns = entry.width / tileWidth;
+        entry.rows = entry.height / tileHeight;
+        entry.tileCount = entry.columns * entry.rows;
+        if entry.tileCount <= 0 {
+            entry.pixels = null;
+            entry.columns = 0;
+            entry.rows = 0;
+            entry.error =
+                "Tileset is smaller than the scene's tile dimensions.";
+            return entry;
+        }
+        if entry.width % tileWidth != 0 or entry.height % tileHeight != 0 {
+            entry.warning =
+                "Partial edge pixels are ignored because the image is not an "
+                + "exact multiple of the scene tile size.";
+        }
+        return entry;
+    }
+}

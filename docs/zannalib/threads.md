@@ -123,7 +123,7 @@ been cleaned cannot be rebound until it is initialized again.
 
 In safe Zia, use a function reference and a typed callback parameter:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 func worker(arg: Any) {
@@ -148,7 +148,7 @@ interpreter traps through the same safe-thread boundary.
 
 After the thread finishes, check `HasError` and `Error` on the returned handle:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 func worker(arg: Any) {
@@ -211,7 +211,7 @@ duration. This cross-platform discrepancy is tracked in the review findings.
 
 ### Zia Example
 
-```rust
+```zia
 module ThreadDemo;
 
 bind Zanna.Threads;
@@ -349,7 +349,7 @@ FIFO-serialized “safe variable” for shared counters and flags.
 
 ### Zia Example
 
-```rust
+```zia
 module SafeI64Demo;
 
 bind Zanna.Terminal;
@@ -437,7 +437,7 @@ FIFO-fair permit gate (semaphore concept).
 
 ### Zia Example
 
-```rust
+```zia
 module GateDemo;
 
 bind Zanna.Terminal;
@@ -518,7 +518,7 @@ Reusable N-party barrier.
 
 ### Zia Example
 
-```rust
+```zia
 module BarrierDemo;
 
 bind Zanna.Terminal;
@@ -600,7 +600,7 @@ Writer-preference reader-writer lock.
 
 ### Zia Example
 
-```rust
+```zia
 module RwLockDemo;
 
 bind Zanna.Terminal;
@@ -731,7 +731,7 @@ or native submission/backpressure behavior is required.
 
 ### Zia Example
 
-```rust
+```zia
 func work(arg: Any) {
     // ...
 }
@@ -1071,7 +1071,7 @@ Zanna.Threads.Parallel.For(0, 100, ADDRESSOF ProcessIndex)
 
 ### Invoke Example (Zia)
 
-```rust
+```zia
 func taskA() {}
 func taskB() {}
 func taskC() {}
@@ -1577,7 +1577,7 @@ Thread-safe string-keyed hash map for concurrent access from multiple threads.
 
 ### Zia Example
 
-```rust
+```zia
 module ConcMapDemo;
 
 bind Zanna.Terminal;
@@ -1694,7 +1694,7 @@ Thread-safe FIFO queue for concurrent access from multiple threads.
 
 ### Zia Example
 
-```rust
+```zia
 module ConcQueueDemo;
 
 bind Zanna.Terminal;
@@ -1843,7 +1843,7 @@ Thread-safe bounded channel for inter-thread communication. Supports blocking, n
 
 ### Zia Example
 
-```rust
+```zia
 module ChannelDemo;
 
 bind Zanna.Terminal;

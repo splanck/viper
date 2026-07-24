@@ -376,15 +376,15 @@ same source line, `zanna` reports the breakpoint once per line until control tra
 #### Examples
 
 ```sh
-# Path normalization: break at the first PRINT in math_basics.bas
-zanna build ./examples/basic/../basic/math_basics.bas -o /tmp/math_basics.il
-zanna -run /tmp/math_basics.il \
-  --break-src ./examples/basic/../basic/math_basics.bas:4 --trace=src
+# Path normalization: build through a `..` segment, then break by source line
+zanna build ./examples/vbasic/../vbasic/ex2_sum_1_to_10.bas -o /tmp/ex2_sum.il
+zanna -run /tmp/ex2_sum.il \
+  --break-src ./examples/vbasic/../vbasic/ex2_sum_1_to_10.bas:4 --trace=src
 
 # Basename fallback with the explicit flag
-zanna build examples/basic/sine_cosine.bas -o /tmp/sine_cosine.il
-zanna -run /tmp/sine_cosine.il \
-  --break-src sine_cosine.bas:5 --trace=src
+zanna build examples/vbasic/ex3_for_table.bas -o /tmp/ex3_for.il
+zanna -run /tmp/ex3_for.il \
+  --break-src ex3_for_table.bas:5 --trace=src
 ```
 
 ### Verifying INKEY$/GETKEY$ Locally

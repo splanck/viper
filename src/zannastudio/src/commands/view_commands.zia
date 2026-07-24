@@ -23,6 +23,7 @@
 module view_commands;
 
 bind "../ui/app_shell";
+bind "../ui/activity_bar";
 bind "../core/settings";
 bind "../core/session";
 bind "../editor/editor_engine";
@@ -196,6 +197,23 @@ func applyPersistentSettings(shell: app_shell.AppShell,
     engine.editor.SetWhitespaceMode(appSettings.renderWhitespaceMode);
     shell.app.SetWheelSpeed(appSettings.wheelSpeedPct / 100.0);
     shell.toolPanels.SetBottomSplitPct(appSettings.bottomPanelSplitPct);
+    shell.toolPanels.SetSidePanelWidthPct(appSettings.sidePanelWidthPct);
+    shell.toolPanels.SetFloatingToolPanelBounds(
+        appSettings.floatingToolPanelX,
+        appSettings.floatingToolPanelY,
+        appSettings.floatingToolPanelWidth,
+        appSettings.floatingToolPanelHeight);
+    shell.toolPanels.SetToolPanelGroupLayout(
+        appSettings.toolPanelGroupLayout,
+        appSettings.panelDockPosition,
+        appSettings.toolPanelTabOrder);
+    appSettings.toolPanelGroupLayout =
+        shell.toolPanels.GetToolPanelGroupLayout();
+    appSettings.toolPanelTabOrder = shell.toolPanels.GetToolTabOrder();
+    shell.workbench.SetSidebarPositionName(
+        appSettings.primarySidebarPosition);
+    shell.workbench.SetSidebarWidthPct(appSettings.sidebarWidthPct);
+    engine.SetSplitPositionPct(appSettings.editorSplitPct);
     if appSettings.lineNumbers {
         engine.editor.SetShowLineNumbers(true);
     } else {
@@ -234,6 +252,51 @@ func applyPersistentSettings(shell: app_shell.AppShell,
 /// @brief Toggle the file-tree sidebar visibility.
 func handleToggleSidebar(shell: app_shell.AppShell) {
     shell.ToggleSidebar();
+}
+
+/// @brief Restore a predictable default workbench and persist it.
+/// @details Keeps panel contents and the active document intact while restoring
+///          Explorer selection, sidebar width/visibility, tool-dock geometry,
+///          tool-tab order, and a single editor pane.
+func handleResetWorkspaceLayout(shell: app_shell.AppShell,
+                                engine: editor_engine.EditorEngine,
+                                appSettings: settings.SettingsManager,
+                                activityBarCtrl: activity_bar.ActivityBar,
+                                projectOpen: Boolean) {
+    shell.workbench.ResetSidebarLayout(projectOpen);
+    if activityBarCtrl != null {
+        activityBarCtrl.ShowView(activity_bar.VIEW_EXPLORER);
+    }
+    shell.toolPanels.ResetWorkspaceLayout();
+    if engine != null {
+        engine.SetSplitPositionPct(50);
+        engine.CloseSplit();
+    }
+
+    appSettings.sidebarWidthPct = 24;
+    appSettings.primarySidebarPosition = "left";
+    appSettings.bottomPanelSplitPct = 70;
+    appSettings.sidePanelWidthPct = 30;
+    appSettings.floatingToolPanelX =
+        shell.toolPanels.GetFloatingToolPanelX();
+    appSettings.floatingToolPanelY =
+        shell.toolPanels.GetFloatingToolPanelY();
+    appSettings.floatingToolPanelWidth =
+        shell.toolPanels.GetFloatingToolPanelWidth();
+    appSettings.floatingToolPanelHeight =
+        shell.toolPanels.GetFloatingToolPanelHeight();
+    appSettings.panelDockPosition = "bottom";
+    appSettings.toolPanelGroupLayout =
+        shell.toolPanels.GetToolPanelGroupLayout();
+    appSettings.sidebarVisible = true;
+    appSettings.activeSidebarViewId = activity_bar.VIEW_EXPLORER;
+    appSettings.editorSplitPct = 50;
+    appSettings.toolPanelTabOrder = shell.toolPanels.GetToolTabOrder();
+    appSettings.activeToolPanelId =
+        shell.toolPanels.GetActiveToolPanelId();
+    if PersistSettings(shell, appSettings) {
+        shell.SetStatusLeft("Workspace layout reset");
+    }
 }
 
 /// @brief Toggle status bar visibility and persist the new state.
@@ -340,15 +403,14 @@ func handleToggleTheme(shell: app_shell.AppShell,
     if appSettings.theme == "dark" {
         GUI.Theme.SetLight();
         appSettings.theme = "light";
-        GUI.Toast.Info("Switched to light theme");
     } else {
         GUI.Theme.SetDark();
         appSettings.theme = "dark";
-        GUI.Toast.Info("Switched to dark theme");
     }
     applyShellFont(shell);
     applyPersistentSettings(shell, engine, liveDiag, appSettings);
     PersistSettings(shell, appSettings);
+    shell.SetStatusLeft("Switched to " + appSettings.theme + " theme");
 }
 
 /// @brief Cycle whitespace-marker rendering (off -> boundary -> all -> off) on
@@ -374,7 +436,7 @@ func handleToggleRenderWhitespace(shell: app_shell.AppShell,
 func handleKeybindings(shell: app_shell.AppShell,
                        registry: command_registry.CommandRegistry) {
     if shell == null or registry == null { return; }
-    shell.toolPanels.BeginOutputRows();
+    shell.toolPanels.BeginGeneratedOutputRows();
     var conflictCount = registry.ShortcutConflictCount();
     if conflictCount == 0 {
         shell.toolPanels.AddOutputDisplayLine("Keyboard Shortcuts - no conflicts");
@@ -404,35 +466,23 @@ func handleKeybindings(shell: app_shell.AppShell,
 
 func handleCopyToolSelection(shell: app_shell.AppShell) {
     if shell.toolPanels.CopySelectedToolRow() {
-        GUI.Toast.Success("Copied selected rows");
         shell.SetStatusLeft("Copied selected tool rows");
     } else {
-        GUI.Toast.Info("No tool row selected");
+        shell.SetStatusLeft("No tool row selected");
     }
 }
 
 func handleCopyOutputText(shell: app_shell.AppShell) {
     if shell.toolPanels.CopyOutputText() {
-        GUI.Toast.Success("Copied output text");
         shell.SetStatusLeft("Copied full output");
     } else {
-        GUI.Toast.Info("No output to copy");
+        shell.SetStatusLeft("No output to copy");
     }
 }
 
 func handleClearOutput(shell: app_shell.AppShell) {
     shell.toolPanels.ClearOutputPanel();
     shell.SetStatusLeft("Output cleared");
-}
-
-func handleFilterOutput(shell: app_shell.AppShell) {
-    var filter = GUI.MessageBox.Prompt("Filter Output", "Show output rows containing:");
-    shell.toolPanels.SetOutputFilter(filter);
-    if filter == "" {
-        shell.SetStatusLeft("Output filter cleared");
-    } else {
-        shell.SetStatusLeft("Output filter: " + filter);
-    }
 }
 
 func handleToggleOutputWrap(shell: app_shell.AppShell) {
@@ -453,7 +503,7 @@ func handleToggleOutputAutoScroll(shell: app_shell.AppShell) {
 
 func handleRecentFiles(shell: app_shell.AppShell,
                        sessionMgr: session.SessionManager) {
-    shell.toolPanels.BeginOutputRows();
+    shell.toolPanels.BeginGeneratedOutputRows();
     var count = sessionMgr.RecentFileCount();
     if count <= 0 {
         shell.toolPanels.AddOutputDisplayLine("Recent Files - none");
@@ -505,83 +555,4 @@ func handleToggleMinimap(shell: app_shell.AppShell,
     }
     PersistSettings(shell, appSettings);
     return nowVisible;
-}
-
-/// @brief Show settings cheat sheet; prompt for new font size and path.
-/// @details Three-panel UX: info dialog with current values + keyboard
-///          shortcuts, then prompt for font size (validated 6..72), then
-///          prompt for font path ("default" resets to OS fallback).
-func handleSettings(shell: app_shell.AppShell,
-                    engine: editor_engine.EditorEngine,
-                    appSettings: settings.SettingsManager) {
-    var fontPathDisplay = appSettings.fontPath;
-    if fontPathDisplay == "" {
-        fontPathDisplay = "(system default)";
-    }
-
-    var settingsInfo = "Editor settings\n\n";
-    settingsInfo = settingsInfo + "Font size: " + appSettings.fontSize + " pt\n";
-    settingsInfo = settingsInfo + "Font path: " + fontPathDisplay + "\n";
-    settingsInfo = settingsInfo + "Theme: " + appSettings.theme + "\n";
-    settingsInfo = settingsInfo + "Tab width: " + appSettings.tabWidth + "\n";
-    settingsInfo = settingsInfo + "Code folding: " + appSettings.codeFolding + "\n";
-    settingsInfo = settingsInfo + "Status bar: " + appSettings.statusBarVisible + "\n";
-    settingsInfo = settingsInfo + "Fullscreen: " + appSettings.fullscreen + "\n";
-    settingsInfo = settingsInfo + "Live diagnostics: " + appSettings.autoCheckOnSave + "\n";
-    settingsInfo = settingsInfo + "\nQuick controls\n";
-    settingsInfo = settingsInfo + "Ctrl+= / Ctrl+-  Zoom in or out\n";
-    settingsInfo = settingsInfo + "Ctrl+0           Reset font size\n";
-    settingsInfo = settingsInfo + "Ctrl+Shift+T     Toggle theme\n";
-    settingsInfo = settingsInfo + "Ctrl+Shift+M     Toggle minimap\n";
-    settingsInfo = settingsInfo + "F11              Toggle fullscreen\n";
-    settingsInfo = settingsInfo + "F12              Go to definition\n";
-    settingsInfo = settingsInfo + "F8 / Shift+F8    Next / previous error\n";
-    settingsInfo = settingsInfo + "Ctrl+Shift+F     Search in project\n";
-    settingsInfo = settingsInfo + "Ctrl+Shift+O     Symbol outline\n";
-    settingsInfo = settingsInfo + "\nThe next two dialogs let you update the editor font size and optional font path.";
-    GUI.MessageBox.Info("Settings", settingsInfo);
-
-    var sizePrompt = "Current size: " + appSettings.fontSize + " pt\n\n";
-    sizePrompt = sizePrompt + "Enter a font size from 6 to 72.\n";
-    sizePrompt = sizePrompt + "Leave this blank to keep the current value.";
-    var sizeText = GUI.MessageBox.Prompt("Editor Font Size", sizePrompt);
-    if sizeText != "" {
-        var requestedSize = Convert.ToInt64(sizeText);
-        if requestedSize >= 6 and requestedSize <= 72 {
-            appSettings.fontSize = requestedSize;
-            applyEditorFont(engine, appSettings);
-            PersistSettings(shell, appSettings);
-            shell.SetStatusLeft("Font size: " + appSettings.fontSize);
-        } else {
-            GUI.Toast.Warning("Font size must be between 6 and 72");
-        }
-    }
-
-    var fontPrompt = "Current path: " + fontPathDisplay + "\n\n";
-    fontPrompt = fontPrompt + "Enter a .ttf or .ttc file path.\n";
-    fontPrompt = fontPrompt + "Enter default to go back to the system font.\n";
-    fontPrompt = fontPrompt + "Leave this blank to keep the current path.";
-    var fontText = GUI.MessageBox.Prompt("Editor Font Path", fontPrompt);
-    if fontText == "default" {
-        appSettings.fontPath = "";
-        applyEditorFont(engine, appSettings);
-        PersistSettings(shell, appSettings);
-        shell.SetStatusLeft("Using default editor font");
-    } else if fontText != "" {
-        appSettings.fontPath = fontText;
-        applyEditorFont(engine, appSettings);
-        PersistSettings(shell, appSettings);
-        shell.SetStatusLeft("Using custom editor font");
-    }
-}
-
-/// @brief "About Zanna Studio" message box.
-func handleAbout() {
-    GUI.MessageBox.Info("About Zanna Studio",
-        "Zanna Studio\n\n"
-        + "A lightweight IDE for Zia and Zanna BASIC, built on the Zanna Runtime.\n\n"
-        + "Demo highlights\n"
-        + "- Docked panels, toolbars, menus, and dialogs\n"
-        + "- Code editor, project search, Zia diagnostics, and minimap\n"
-        + "- Persistent editor settings for fonts, theme, tabs, and visibility");
 }

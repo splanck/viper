@@ -63,7 +63,7 @@ Why start at 0? It comes from how computers calculate memory addresses. If the s
 
 You can access individual characters:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 var word = "Hello";
@@ -84,7 +84,7 @@ Before diving into string operations, let's master working with individual chara
 
 Every character in a string has a position (index), starting from 0:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 var name = "Alice";
@@ -95,7 +95,7 @@ Say(name[4]);  // e (fifth/last character)
 
 You can use any expression as an index:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 var text = "Programming";
@@ -110,7 +110,7 @@ Say(text[lastIndex]);  // g (last character)
 
 To process every character, loop through the indices:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 var text = "Zanna";
@@ -130,7 +130,7 @@ Character 4: r
 
 This pattern is fundamental. Want to count uppercase letters? Loop through each character and check. Want to find all positions of a letter? Loop and record indices where it matches.
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 // Count uppercase letters
@@ -154,7 +154,7 @@ func start() {
 
 You can construct strings by starting empty and adding characters:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 // Reverse a string
@@ -174,7 +174,7 @@ func start() {
 
 Or filter characters based on criteria:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 // Keep only letters
@@ -203,7 +203,7 @@ func start() {
 
 The `.Length` property tells you how many characters a string contains:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 Say("Hello".Length);     // 5
@@ -213,7 +213,7 @@ Say("Hi there!".Length); // 9 (space counts)
 
 **Every character counts** — letters, numbers, spaces, punctuation, even invisible characters like tabs and newlines:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 Say("A B".Length);    // 3 (A, space, B)
@@ -225,7 +225,7 @@ Say("A\nB".Length);   // 3 (A, newline, B)
 
 Length is essential for loops:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 var text = "Zanna";
@@ -236,7 +236,7 @@ for i in 0..text.Length {
 
 And for validation:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 func validatePassword(password: String) -> Boolean {
@@ -254,7 +254,7 @@ func validatePassword(password: String) -> Boolean {
 
 And for safe indexing:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 var text = "Hello";
@@ -274,7 +274,7 @@ if index >= 0 && index < text.Length {
 
 Here's a crucial concept that surprises many beginners: **strings are immutable** — you cannot change them after they're created.
 
-```rust
+```zia
 var text = "Hello";
 text[0] = "J";  // Error! Cannot modify string characters
 ```
@@ -285,7 +285,7 @@ This isn't a limitation — it's a deliberate design choice with important benef
 
 **Safety**: When you pass a string to a function, you know it won't be modified unexpectedly.
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 func showUsername(name: String) {
@@ -301,7 +301,7 @@ func start() {
 
 **Sharing**: The same string can be shared by multiple variables without copying.
 
-```rust
+```zia
 var a = "Hello";
 var b = a;  // Both point to the same string in memory
 // This is safe because neither can modify it
@@ -313,7 +313,7 @@ var b = a;  // Both point to the same string in memory
 
 When you appear to modify a string, you're actually creating a *new* string:
 
-```rust
+```zia
 var text = "Hello";
 text = "J" + text.Substring(1, text.Length - 1);  // Creates new string "Jello"
 // The old "Hello" string still exists (until garbage collected)
@@ -321,7 +321,7 @@ text = "J" + text.Substring(1, text.Length - 1);  // Creates new string "Jello"
 
 Think of it like editing a document on paper versus on a computer. With paper (mutable), you erase and write over. With strings (immutable), you create a fresh copy with changes.
 
-```rust
+```zia
 var name = "alice";
 var properName = name[0].ToUpper() + name.Substring(1, name.Length - 1);
 // name is still "alice"
@@ -332,7 +332,7 @@ var properName = name[0].ToUpper() + name.Substring(1, name.Length - 1);
 
 Because every "modification" creates a new string, repeatedly modifying strings can be slow:
 
-```rust
+```zia
 // Inefficient: Creates many intermediate strings
 var result = "";
 for i in 0..1000 {
@@ -348,7 +348,7 @@ This creates 1000 intermediate strings that are immediately discarded. For build
 
 The `+` operator joins strings together:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 var first = "Hello";
@@ -359,7 +359,7 @@ Say(greeting);  // Hello, World!
 
 When you "add" a string and a number, the number is converted to a string:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 var score = 42;
@@ -370,7 +370,7 @@ Say("Your score: " + score);  // Your score: 42
 
 Because conversion happens automatically, order can be surprising:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 // String first: concatenation
@@ -389,7 +389,7 @@ The rule: operations are evaluated left to right. Once you hit a string, everyth
 
 Concatenation is intuitive for simple cases:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 func formatName(first: String, middle: String, last: String) -> String {
@@ -410,7 +410,7 @@ But for many operations, it can be slow due to immutability. We'll cover better 
 
 Often you need just part of a string. The `Substring` method extracts a portion:
 
-```rust
+```zia
 var text = "Hello, World!";
 var hello = text.Substring(0, 5);    // "Hello" (from 0, length 5)
 var world = text.Substring(7, 5);    // "World" (from 7, length 5)
@@ -422,7 +422,7 @@ The first argument is the starting position, the second is how many characters t
 
 Think of `Substring(start, length)` as answering: "Starting at position `start`, give me `length` characters."
 
-```rust
+```zia
 var text = "ABCDEFGHIJ";
 //          0123456789
 
@@ -435,7 +435,7 @@ text.Substring(7, 3);   // "HIJ" - from position 7, take 3
 
 If you request more characters than exist, you get what's available:
 
-```rust
+```zia
 var text = "Hi";
 text.Substring(0, 10);  // "Hi" - only 2 characters exist
 text.Substring(1, 10);  // "i" - only 1 character from position 1
@@ -443,7 +443,7 @@ text.Substring(1, 10);  // "i" - only 1 character from position 1
 
 ### Convenient Shortcuts
 
-```rust
+```zia
 var text = "Hello, World!";
 
 // First N characters
@@ -459,7 +459,7 @@ var rest = text.Substring(7, text.Length - 7);     // "World!"
 ### Practical Examples
 
 **Extract file extension:**
-```rust
+```zia
 bind Zanna.Terminal;
 
 func getExtension(filename: String) -> String {
@@ -478,7 +478,7 @@ func start() {
 ```
 
 **Extract domain from email:**
-```rust
+```zia
 bind Zanna.Terminal;
 
 func getEmailDomain(email: String) -> String {
@@ -495,7 +495,7 @@ func start() {
 ```
 
 **Truncate with ellipsis:**
-```rust
+```zia
 bind Zanna.Terminal;
 
 func truncate(text: String, maxLength: Integer) -> String {
@@ -519,7 +519,7 @@ Finding text within text is one of the most common string operations.
 
 `IndexOf` returns the position of the first occurrence, or -1 if not found:
 
-```rust
+```zia
 var text = "Hello, World!";
 var pos = text.IndexOf("World");  // 7
 var notFound = text.IndexOf("xyz");  // -1 (not found)
@@ -531,7 +531,7 @@ Why -1 for "not found"? Because 0 is a valid position (the start of the string),
 
 Always check if the search succeeded:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 var email = "user@example.com";
@@ -551,7 +551,7 @@ if atPos == -1 {
 
 When a substring appears multiple times, `LastIndexOf` finds the last one:
 
-```rust
+```zia
 var path = "/home/user/documents/file.txt";
 var lastSlash = path.LastIndexOf("/");  // 20
 var filename = path.Substring(lastSlash + 1, path.Length - lastSlash - 1);  // file.txt
@@ -561,7 +561,7 @@ var filename = path.Substring(lastSlash + 1, path.Length - lastSlash - 1);  // f
 
 When you only care whether something exists, not where:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 var text = "The quick brown fox";
@@ -577,7 +577,7 @@ This is cleaner than checking `IndexOf(...) != 0`.
 
 Check the beginning or end of a string:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 var filename = "report.pdf";
@@ -592,7 +592,7 @@ if filename.StartsWith("report") {
 ```
 
 **File type detection:**
-```rust
+```zia
 func getFileType(filename: String) -> String {
     if filename.EndsWith(".jpg") || filename.EndsWith(".png") {
         return "image";
@@ -608,7 +608,7 @@ func getFileType(filename: String) -> String {
 ```
 
 **URL validation:**
-```rust
+```zia
 func isSecureUrl(url: String) -> Boolean {
     return url.StartsWith("https://");
 }
@@ -618,7 +618,7 @@ func isSecureUrl(url: String) -> Boolean {
 
 `IndexOf` only finds the first occurrence. To find all:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 func findAll(text: String, search: String) -> List[Integer] {
@@ -652,7 +652,7 @@ Comparing strings is essential for sorting, searching, and validation — but it
 
 ### Basic Equality
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 var a = "hello";
@@ -667,7 +667,7 @@ Say(a == c);  // false - case differs!
 
 String comparison is **case-sensitive** by default. "Hello" and "hello" are different strings:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 var input = "YES";
@@ -678,7 +678,7 @@ if input == "yes" {  // false!
 
 For case-insensitive comparison, convert to the same case first:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 var input = "YES";
@@ -688,7 +688,7 @@ if input.ToLower() == "yes" {  // true!
 ```
 
 **Common pattern for user input:**
-```rust
+```zia
 bind Zanna.Terminal;
 
 func normalizeInput(text: String) -> String {
@@ -707,7 +707,7 @@ func start() {
 
 Strings can be compared alphabetically using `<`, `>`, `<=`, `>=`:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 Say("apple" < "banana");  // true (a before b)
@@ -721,7 +721,7 @@ This is called **lexicographic ordering** — comparing character by character u
 
 Alphabetical comparison uses character codes, which leads to surprises:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 // All uppercase letters come BEFORE all lowercase
@@ -732,7 +732,7 @@ Say("apple" < "Banana"); // false (a > B)
 
 For true alphabetical sorting, convert to the same case:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 func alphabeticallyBefore(a: String, b: String) -> Boolean {
@@ -748,7 +748,7 @@ func start() {
 
 Another common trap:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 Say("9" < "10");   // false! '9' (57) > '1' (49)
@@ -757,7 +757,7 @@ Say("9" < "100");  // false! Same reason
 
 For numeric comparison, convert to numbers:
 
-```rust
+```zia
 bind Zanna.Terminal;
 bind Convert = Zanna.Core.Convert;
 
@@ -770,7 +770,7 @@ if Convert.ToInt64(a) < Convert.ToInt64(b) {
 
 ### Comparing Empty Strings
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 var empty = "";
@@ -788,7 +788,7 @@ Say(space.Length == 0); // false
 
 Strings can be converted to all uppercase or all lowercase:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 var text = "Hello, World!";
@@ -798,7 +798,7 @@ Say(text.ToLower());  // hello, world!
 
 Remember: the original string is unchanged (immutability):
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 var name = "Alice";
@@ -810,7 +810,7 @@ Say(name);          // Alice (still)
 
 The most common use of case conversion:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 var input = "YES";
@@ -826,7 +826,7 @@ Without `.ToLower()`, "YES", "Yes", "yes", and "yEs" would all be different. Con
 
 Combine case conversion with substrings:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 func capitalize(text: String) -> String {
@@ -843,7 +843,7 @@ func start() {
 ```
 
 **Title case (capitalize each word):**
-```rust
+```zia
 bind Zanna.Terminal;
 
 func capitalize(text: String) -> String {
@@ -879,7 +879,7 @@ func start() {
 
 User input often has extra spaces. The `trim` method removes whitespace from both ends:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 var input = "   hello   ";
@@ -888,7 +888,7 @@ Say("[" + input.Trim() + "]");  // [hello]
 
 Variations:
 
-```rust
+```zia
 var text = "   hello   ";
 text.TrimStart();  // "hello   " (left only)
 text.TrimEnd();    // "   hello" (right only)
@@ -902,7 +902,7 @@ text.Trim();       // "hello" (both sides)
 - Newlines ('\n')
 - Carriage returns ('\r')
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 var messy = "\t  Hello World  \n";
@@ -913,11 +913,11 @@ Say("[" + messy.Trim() + "]");  // [Hello World]
 
 Always trim user input before processing:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 Say("Enter your name:");
-var name = InputLine().Trim();
+var name = TryReadLine().UnwrapOrStr("").Trim();
 
 if name.Length == 0 {
     Say("Name cannot be empty");
@@ -932,7 +932,7 @@ Without trimming, a user who types "   " (just spaces) would pass a length check
 
 To replace occurrences of one string with another:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 var text = "Hello, World!";
@@ -942,7 +942,7 @@ Say(result);  // Hello, Zanna!
 
 By default, this replaces all occurrences:
 
-```rust
+```zia
 var text = "one fish, two fish, red fish, blue fish";
 var result = text.Replace("fish", "bird");
 // "one bird, two bird, red bird, blue bird"
@@ -951,7 +951,7 @@ var result = text.Replace("fish", "bird");
 ### Common Use Cases
 
 **Sanitizing input:**
-```rust
+```zia
 func sanitize(text: String) -> String {
     var result = text;
     result = result.Replace("<", "&lt;");
@@ -962,7 +962,7 @@ func sanitize(text: String) -> String {
 ```
 
 **Normalizing data:**
-```rust
+```zia
 bind Zanna.Terminal;
 
 // Remove common variations in phone numbers
@@ -982,7 +982,7 @@ func start() {
 ```
 
 **Template substitution:**
-```rust
+```zia
 bind Zanna.Terminal;
 
 func greet(template: String, name: String, time: String) -> String {
@@ -1001,7 +1001,7 @@ func start() {
 
 ### Replace Is Case-Sensitive
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 var text = "Hello hello HELLO";
@@ -1011,7 +1011,7 @@ Say(text.Replace("hello", "hi"));
 
 For case-insensitive replace, you need a more complex approach:
 
-```rust
+```zia
 func replaceIgnoreCase(text: String, search: String, replacement: String) -> String {
     var result = "";
     var i = 0;
@@ -1041,7 +1041,7 @@ func replaceIgnoreCase(text: String, search: String, replacement: String) -> Str
 
 Splitting breaks a string into an array of pieces at each occurrence of a delimiter:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 var csv = "apple,banana,cherry";
@@ -1063,7 +1063,7 @@ cherry
 
 Split finds every occurrence of the delimiter and breaks the string there:
 
-```rust
+```zia
 var text = "one::two::three";
 var parts = text.Split("::");  // ["one", "two", "three"]
 ```
@@ -1074,13 +1074,13 @@ The delimiter itself is removed — you get everything *between* the delimiters.
 
 Watch out for edge cases:
 
-```rust
+```zia
 var text = "a,,b";
 var parts = text.Split(",");  // ["a", "", "b"]
 // The empty string between the two commas is preserved
 ```
 
-```rust
+```zia
 var text = ",a,b,";
 var parts = text.Split(",");  // ["", "a", "b", ""]
 // Leading/trailing delimiters create empty strings
@@ -1089,19 +1089,19 @@ var parts = text.Split(",");  // ["", "a", "b", ""]
 ### Common Split Patterns
 
 **Split by space (words):**
-```rust
+```zia
 var sentence = "The quick brown fox";
 var words = sentence.Split(" ");  // ["The", "quick", "brown", "fox"]
 ```
 
 **Split by newline (lines):**
-```rust
+```zia
 var text = "line one\nline two\nline three";
 var lines = text.Split("\n");
 ```
 
 **Split by multiple characters:**
-```rust
+```zia
 var data = "name=Alice&age=30&city=Boston";
 var pairs = data.Split("&");  // ["name=Alice", "age=30", "city=Boston"]
 ```
@@ -1110,7 +1110,7 @@ var pairs = data.Split("&");  // ["name=Alice", "age=30", "city=Boston"]
 
 CSV (Comma-Separated Values) is extremely common:
 
-```rust
+```zia
 bind Zanna.Terminal;
 bind Seq = Zanna.Collections.Seq;
 
@@ -1129,7 +1129,7 @@ func start() {
 ```
 
 **Processing multiple lines:**
-```rust
+```zia
 bind Zanna.Terminal;
 
 func start() {
@@ -1159,7 +1159,7 @@ Carol is 35 years old, lives in Denver
 
 The reverse of splitting — combining a sequence into a single string:
 
-```rust
+```zia
 bind Zanna.Terminal;
 bind Str = Zanna.String;
 
@@ -1170,7 +1170,7 @@ Say(sentence);  // Hello World
 
 The first argument is what to put between elements, and the second is the sequence:
 
-```rust
+```zia
 bind Zanna.Terminal;
 bind Str = Zanna.String;
 
@@ -1184,7 +1184,7 @@ Say(Str.Join("", numbers));    // 123
 
 Split and join are complementary operations:
 
-```rust
+```zia
 bind Str = Zanna.String;
 
 var text = "Hello, World!";
@@ -1193,7 +1193,7 @@ var rejoined = Str.Join(", ", parts); // "Hello, World!"
 ```
 
 **Transform and rejoin:**
-```rust
+```zia
 bind Zanna.Terminal;
 
 // Capitalize each word
@@ -1221,7 +1221,7 @@ func start() {
 ```
 
 **Change delimiter:**
-```rust
+```zia
 bind Zanna.Terminal;
 bind Str = Zanna.String;
 
@@ -1244,7 +1244,7 @@ Because strings are immutable, building strings efficiently requires thought.
 
 ### The Problem with Repeated Concatenation
 
-```rust
+```zia
 // Inefficient: Creates a new string every iteration
 var result = "";
 for i in 0..1000 {
@@ -1264,7 +1264,7 @@ You end up copying characters repeatedly.
 
 For building large strings, use `StringBuilder`:
 
-```rust
+```zia
 bind Zanna.Text.StringBuilder as SB;
 
 var builder = new SB();
@@ -1292,7 +1292,7 @@ var result = builder.ToString();
 
 ### Building Complex Output
 
-```rust
+```zia
 bind Zanna.Terminal;
 bind Zanna.Text.StringBuilder as SB;
 bind Zanna.Time.DateTime as DateTime;
@@ -1331,7 +1331,7 @@ func start() {
 
 For small lists, simple concatenation is often clear enough:
 
-```rust
+```zia
 bind Zanna.Terminal;
 bind Seq = Zanna.Collections.Seq;
 
@@ -1364,7 +1364,7 @@ For larger outputs, prefer `StringBuilder`.
 ## Converting Between Strings and Numbers
 
 **String to number:**
-```rust
+```zia
 bind Convert = Zanna.Core.Convert;
 
 var text = "42";
@@ -1373,7 +1373,7 @@ var pi = Convert.ToDouble("3.14");   // 3.14 (float)
 ```
 
 **Number to string:**
-```rust
+```zia
 bind Zanna.Text.Fmt as Fmt;
 
 var num = 42;
@@ -1382,7 +1382,7 @@ var text = Fmt.Int(num);  // "42"
 
 Conversion happens automatically in concatenation:
 
-```rust
+```zia
 var result = "Answer: " + 42;  // "Answer: 42"
 ```
 
@@ -1390,7 +1390,7 @@ var result = "Answer: " + 42;  // "Answer: 42"
 
 Be careful — `"5" + 3` is `"53"`, not `8`:
 
-```rust
+```zia
 bind Zanna.Terminal;
 bind Convert = Zanna.Core.Convert;
 
@@ -1405,7 +1405,7 @@ If you want arithmetic, convert to numbers first.
 
 What if the string isn't a valid number?
 
-```rust
+```zia
 bind Convert = Zanna.Core.Convert;
 
 var result = Convert.ToInt64("abc");  // Error or NaN
@@ -1429,7 +1429,7 @@ func safeParseInt(text: String) -> Integer {
 
 Every character has a numeric code. The common encoding is ASCII/UTF-8, where 'A' is 65, 'a' is 97, '0' is 48, and so on.
 
-```rust
+```zia
 bind Str = Zanna.String;
 
 var code = "A".Asc();        // 65
@@ -1453,7 +1453,7 @@ Notice the patterns:
 
 ### Character Classification
 
-```rust
+```zia
 func isDigit(c: String) -> Boolean {
     return c.Asc() >= "0".Asc() && c.Asc() <= "9".Asc();
 }
@@ -1477,7 +1477,7 @@ func isAlphanumeric(c: String) -> Boolean {
 
 ### Character Conversion
 
-```rust
+```zia
 bind Str = Zanna.String;
 
 func toUpper(c: String) -> String {
@@ -1497,7 +1497,7 @@ func toLower(c: String) -> String {
 
 ### Digit Values
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 // Get numeric value of a digit character
@@ -1520,7 +1520,7 @@ func start() {
 
 For complex output, string concatenation is the primary approach:
 
-```rust
+```zia
 bind Zanna.Terminal;
 var name = "Alice";
 var score = 95;
@@ -1534,7 +1534,7 @@ When mixing strings and numbers, the `+` operator automatically converts numbers
 
 For formatted number output, use `Zanna.Text.Fmt`:
 
-```rust
+```zia
 bind Zanna.Terminal;
 bind Zanna.Text.Fmt as Fmt;
 
@@ -1557,7 +1557,7 @@ Let's apply everything to real-world problems.
 
 A basic email validator:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 func isValidEmail(email: String) -> Boolean {
@@ -1597,7 +1597,7 @@ func start() {
 
 ### Formatting Names
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 func formatName(fullName: String) -> String {
@@ -1637,7 +1637,7 @@ func start() {
 
 Since Zia doesn't have a built-in Map type, we can parse key-value pairs using parallel lists:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 func findValue(data: String, key: String) -> String {
@@ -1666,7 +1666,7 @@ func start() {
 
 ### Cleaning User Input
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 func cleanInput(text: String) -> String {
@@ -1687,7 +1687,7 @@ func start() {
 
 ### Password Strength Checker
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 func addNeed(existing: String, need: String) -> String {
@@ -1786,7 +1786,7 @@ Strings often cause subtle bugs. Here are common issues and how to find them.
 
 Sometimes strings look identical but aren't:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 var a = "hello";
@@ -1801,7 +1801,7 @@ if a == b {
 
 **Debugging technique:** Print with visible boundaries:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 func debugString(text: String) {
@@ -1839,7 +1839,7 @@ func start() {
 
 The most common string bug:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 var text = "Hello";
@@ -1858,7 +1858,7 @@ for i in 0..text.Length {      // Goes to index 4
 
 **Key insight:** Length is 5, but the last valid index is 4. This is because we start counting at 0.
 
-```rust
+```zia
 // The last character is always at index (length - 1)
 var text = "Hello";
 var lastChar = text[text.Length - 1];
@@ -1868,7 +1868,7 @@ var lastChar = text[text.Length - 1];
 
 Empty strings cause many bugs:
 
-```rust
+```zia
 var text = "";
 
 // This will fail:
@@ -1881,7 +1881,7 @@ if text.Length > 0 {
 ```
 
 **Safe first character:**
-```rust
+```zia
 func firstChar(text: String) -> String {
     if text.Length == 0 {
         return "";
@@ -1892,7 +1892,7 @@ func firstChar(text: String) -> String {
 
 ### Case Sensitivity Bugs
 
-```rust
+```zia
 var filename = "Report.PDF";
 
 // This fails - case doesn't match:
@@ -1910,7 +1910,7 @@ if filename.ToLower().EndsWith(".pdf") {
 
 Remember: `Substring(start, length)`, not `Substring(start, end)`:
 
-```rust
+```zia
 var text = "Hello, World!";
 
 // Get "World":
@@ -1924,7 +1924,7 @@ text.Substring(7, 5);    // Correct: start at 7, take 5 characters
 
 Let's build a program that analyzes text:
 
-```rust
+```zia
 module WordCounter;
 
 bind Zanna.Terminal;
@@ -1957,7 +1957,7 @@ func countVowels(text: String) -> Integer {
 
 func start() {
     Say("Enter some text:");
-    var text = InputLine();
+    var text = TryReadLine().UnwrapOrStr("");
 
     Say("");
     Say("=== Analysis ===");
@@ -1990,7 +1990,7 @@ Lowercase: hello world from zanna
 ## The Two Languages
 
 **Zia**
-```rust
+```zia
 bind Zanna.Terminal;
 bind Str = Zanna.String;
 
@@ -2049,14 +2049,14 @@ BASIC uses 1-based indexing for strings and has functions like `MID$`, `LEFT$`, 
 ## Common Mistakes
 
 **Off-by-one with indexing:**
-```rust
+```zia
 var text = "Hello";
 var last = text[text.Length];      // Error! Index 5 doesn't exist
 var last = text[text.Length - 1];  // Correct: index 4 is 'o'
 ```
 
 **Forgetting strings are immutable:**
-```rust
+```zia
 var text = "Hello";
 text[0] = "J";  // Error in many languages!
 text = "J" + text.Substring(1, text.Length - 1);  // Create a new string instead
@@ -2065,7 +2065,7 @@ text = "J" + text.Substring(1, text.Length - 1);  // Create a new string instead
 Many languages (including Zia) don't let you modify characters in place. You create new strings instead.
 
 **Comparing strings with wrong case:**
-```rust
+```zia
 var input = "YES";
 if input == "yes" {  // False! Case differs
     ...
@@ -2076,7 +2076,7 @@ if input.ToLower() == "yes" {  // Convert first
 ```
 
 **Empty string vs. null:**
-```rust
+```zia
 var empty = "";          // A string with zero characters
 var text = "Hello";
 
@@ -2086,7 +2086,7 @@ if text.Length == 0 {    // Check if empty
 ```
 
 **Confusing string concatenation with arithmetic:**
-```rust
+```zia
 bind Zanna.Terminal;
 bind Convert = Zanna.Core.Convert;
 
@@ -2099,10 +2099,10 @@ Say(Convert.ToInt64(a) + Convert.ToInt64(b));  // 8
 ```
 
 **Not trimming user input:**
-```rust
+```zia
 bind Zanna.Terminal;
 
-var input = InputLine();
+var input = TryReadLine().UnwrapOrStr("");
 // User might type "  yes  " with spaces
 
 if input == "yes" {  // Fails!

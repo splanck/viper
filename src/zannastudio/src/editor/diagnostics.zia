@@ -491,7 +491,7 @@ class LiveDiagnostics {
             shownCount = shownCount + 1;
             var locId = locStore.Add(displayPath, diagLine, diagCol, endLine, endCol,
                                      locations.KIND_DIAGNOSTIC, msg);
-            GUI.ListBox.ItemSetData(item, locId);
+            shell.toolPanels.SetAddedProblemLocationData(item, locId);
             if activeDiagnostic {
                 shell.workbench.minimap.AddMarker(diagLine, 1, markerColor);
 
@@ -506,7 +506,11 @@ class LiveDiagnostics {
             }
         }
 
-        shell.toolPanels.FinishProblems(shownCount);
+        if manualCheckPending or shell.toolPanels.IsProblemsPanelActive() {
+            shell.toolPanels.FinishProblems(shownCount);
+        } else {
+            shell.toolPanels.UpdateProblems(shownCount);
+        }
         shell.SetDiagnosticsSummary(errorCount, warningCount, noteCount);
         lastErrorCount = errorCount;
         lastWarningCount = warningCount;

@@ -150,7 +150,7 @@ This gives us 256 * 256 * 256 = 16,777,216 possible colors. That's over 16 milli
 
 ### Building Colors
 
-```rust
+```zia
 // Primary colors: one channel at maximum, others off
 var red = Color.RGB(255, 0, 0);      // Full red, no green, no blue
 var green = Color.RGB(0, 255, 0);    // No red, full green, no blue
@@ -188,7 +188,7 @@ Think of it this way:
 
 The graphics library provides common colors so you don't have to remember RGB values:
 
-```rust
+```zia
 Color.Red       // (255, 0, 0)
 Color.Green     // (0, 255, 0) — note: this is pure green, not forest green
 Color.Blue      // (0, 0, 255)
@@ -205,7 +205,7 @@ Color.Magenta   // (255, 0, 255)
 
 Now that we understand the concepts, let's write code. Everything starts with creating a canvas — a window where we can draw:
 
-```rust
+```zia
 bind Zanna.Graphics;
 
 func start() {
@@ -279,7 +279,7 @@ Graphics libraries provide basic shapes called *primitives*. Everything more com
 
 Rectangles are the workhorse of graphics — fast to draw and useful for backgrounds, UI elements, platforms, and countless other purposes.
 
-```rust
+```zia
 // Filled rectangle (solid color)
 canvas.Box(x, y, width, height, Color.Blue);
 
@@ -302,7 +302,7 @@ Box(50, 50, 100, 80, color)       Frame(50, 50, 100, 80, color)
 
 ### Circles and Ellipses
 
-```rust
+```zia
 // Filled circle: specify center, radius, and color
 canvas.Disc(centerX, centerY, radius, Color.Yellow);
 
@@ -328,7 +328,7 @@ Disc(200, 150, 50, color)        Ring(200, 150, 50, color)
 
 ### Lines
 
-```rust
+```zia
 // Draw a line from point 1 to point 2
 canvas.Line(x1, y1, x2, y2, Color.Green);
 ```
@@ -352,7 +352,7 @@ Line(50, 50, 200, 150, color)
 
 Sometimes you need to color a single pixel:
 
-```rust
+```zia
 canvas.Plot(x, y, Color.White);
 ```
 
@@ -362,7 +362,7 @@ This is the most fundamental drawing operation — everything else is built from
 
 For arbitrary shapes, define a series of points and connect them:
 
-```rust
+```zia
 // Triangle — draw using three Line calls
 canvas.Line(100, 200, 150, 100, Color.Red);
 canvas.Line(150, 100, 200, 200, Color.Red);
@@ -392,7 +392,7 @@ Triangle from [(100,200), (150,100), (200,200)]:
 
 Text is rendered as graphics too — each character is drawn as a pattern of pixels in the font's defined shape.
 
-```rust
+```zia
 canvas.Text(100, 100, "Hello, Graphics!", Color.Black);
 ```
 
@@ -420,7 +420,7 @@ canvas.Text(100, 100, "Hello, y", color)
 
 Let's draw a simple scene — a house with the sun — and trace through every step:
 
-```rust
+```zia
 module DrawingDemo;
 
 bind Zanna.Graphics;
@@ -537,7 +537,7 @@ Then repeat, dozens of times per second.
 
 ### The Loop in Code
 
-```rust
+```zia
 while !canvas.ShouldClose {
     canvas.Poll();       // Read keyboard/mouse events
     updateState();       // Move things, check collisions
@@ -553,7 +553,7 @@ The `wait()` at the end is important. Without it, the loop would run as fast as 
 
 Let's see the game loop in action:
 
-```rust
+```zia
 module BouncingBall;
 
 bind Zanna.Graphics;
@@ -694,16 +694,16 @@ Same code, different results!
 
 Instead of moving a fixed amount per frame, we move based on how much time has passed:
 
-```rust
+```zia
 bind Zanna.Time;
 
-var lastTime = Time.Clock.Ticks();
+var lastTime = Time.Clock.NowMs();
 
 while !canvas.ShouldClose {
     canvas.Poll();
 
     // Calculate delta time
-    var now = Time.Clock.Ticks();
+    var now = Time.Clock.NowMs();
     var dt = (now - lastTime) / 1000.0;  // Convert to seconds
     lastTime = now;
 
@@ -733,7 +733,7 @@ Same distance covered in the same real-world time, regardless of frame rate!
 
 ### Delta Time in Practice
 
-```rust
+```zia
 bind Zanna.Time;
 
 var x = 400.0;
@@ -741,12 +741,12 @@ var y = 300.0;
 var speedX = 200.0;  // 200 pixels per second
 var speedY = 150.0;  // 150 pixels per second
 
-var lastTime = Time.Clock.Ticks();
+var lastTime = Time.Clock.NowMs();
 
 while !canvas.ShouldClose {
     canvas.Poll();
 
-    var now = Time.Clock.Ticks();
+    var now = Time.Clock.NowMs();
     var dt = (now - lastTime) / 1000.0;
     lastTime = now;
 
@@ -798,7 +798,7 @@ The swap is nearly instantaneous, so the monitor never sees a half-finished draw
 
 ### Using Double Buffering
 
-```rust
+```zia
 var canvas = Canvas.New("My App", 800, 600);
 
 while !canvas.ShouldClose {
@@ -817,7 +817,7 @@ Most modern graphics systems handle double buffering automatically. The `canvas.
 
 While drawing shapes works for simple graphics, most games use pre-made images called *sprites*. A sprite is just an image file (PNG, JPG, etc.) loaded into memory.
 
-```rust
+```zia
 var playerSprite = Image.load("player.png");
 var enemySprite = Image.load("enemy.png");
 var backgroundSprite = Image.load("background.png");
@@ -830,7 +830,7 @@ canvas.drawImage(enemySprite, enemyX, enemyY);
 
 ### Sprite Operations
 
-```rust
+```zia
 // Basic drawing
 canvas.drawImage(sprite, x, y);
 
@@ -871,7 +871,7 @@ The areas that should be "see-through" are stored with zero opacity (alpha = 0) 
 
 Let's put everything together into a reusable structure:
 
-```rust
+```zia
 module GameFramework;
 
 bind Zanna.Graphics;
@@ -927,7 +927,7 @@ class Game {
         self.canvas = Canvas.New(title, width, height);
         self.objects = [];
         self.running = true;
-        self.lastTime = Clock.Ticks();
+        self.lastTime = Clock.NowMs();
     }
 
     expose func add(obj: GameObject) {
@@ -939,7 +939,7 @@ class Game {
             self.canvas.Poll();
 
             // Calculate delta time
-            var now = Clock.Ticks();
+            var now = Clock.NowMs();
             var dt = (now - self.lastTime) / 1000.0;
             self.lastTime = now;
 
@@ -1001,7 +1001,7 @@ Graphics programming has some classic pitfalls. Learn from others' mistakes!
 ### Mistake 1: Off-by-One Coordinate Errors
 
 **The bug:**
-```rust
+```zia
 var canvas = Canvas.New("Demo", 800, 600);
 // Later...
 canvas.Box(0, 0, 800, 600, Color.Black);  // This is correct
@@ -1011,7 +1011,7 @@ canvas.Disc(800, 600, 10, Color.Red);     // Bug! (800, 600) is outside the canv
 **Why it's wrong:** A 800x600 canvas has coordinates from (0,0) to (799, 599). Position (800, 600) is one pixel beyond the right and bottom edges.
 
 **The fix:**
-```rust
+```zia
 // The bottom-right corner is at (width-1, height-1)
 canvas.Disc(799, 599, 10, Color.Red);
 
@@ -1022,7 +1022,7 @@ canvas.Disc(width - 1, height - 1, 10, Color.Red);
 ### Mistake 2: Forgetting to Clear the Screen
 
 **The bug:**
-```rust
+```zia
 while !canvas.ShouldClose {
     canvas.Poll();
     x += 5;
@@ -1034,7 +1034,7 @@ while !canvas.ShouldClose {
 **What happens:** The ball leaves a trail of circles because previous frames aren't erased.
 
 **The fix:**
-```rust
+```zia
 while !canvas.ShouldClose {
     canvas.Poll();
     x += 5;
@@ -1050,7 +1050,7 @@ while !canvas.ShouldClose {
 ### Mistake 3: Drawing in Wrong Order (Z-Order Issues)
 
 **The bug:**
-```rust
+```zia
 canvas.Disc(100, 100, 50, Color.Red);     // Draw player
 canvas.Box(0, 0, 800, 600, Color.Blue);   // Draw background
 ```
@@ -1058,7 +1058,7 @@ canvas.Box(0, 0, 800, 600, Color.Blue);   // Draw background
 **What happens:** The background covers the player because it's drawn second.
 
 **The fix:** Draw back-to-front (painter's algorithm):
-```rust
+```zia
 // Background first (farthest back)
 canvas.Box(0, 0, 800, 600, Color.Blue);
 
@@ -1069,7 +1069,7 @@ canvas.Disc(100, 100, 50, Color.Red);
 ### Mistake 4: Integer vs. Float Precision
 
 **The bug:**
-```rust
+```zia
 var x = 100;  // Integer
 x = x + 0.5;  // Error: Integer variables cannot store fractional movement
 // But x is still 100! Integer truncation lost the 0.5
@@ -1078,7 +1078,7 @@ x = x + 0.5;  // Error: Integer variables cannot store fractional movement
 **What happens:** Slow movements don't work. The object either doesn't move at all (velocity < 1) or moves in jerky steps.
 
 **The fix:**
-```rust
+```zia
 var x = 100.0;  // Float
 x = x + 0.5;    // Now x = 100.5
 
@@ -1089,7 +1089,7 @@ canvas.Disc(x as Integer, y as Integer, 20, Color.Red);
 ### Mistake 5: Forgetting Flip()
 
 **The bug:**
-```rust
+```zia
 while !canvas.ShouldClose {
     canvas.Poll();
     canvas.Clear(Color.Black);
@@ -1105,7 +1105,7 @@ while !canvas.ShouldClose {
 ### Mistake 6: Not Accounting for Object Size in Collisions
 
 **The bug:**
-```rust
+```zia
 // Check if ball hit the right wall
 if x > 800 {  // Wrong! This checks the center
     // bounce
@@ -1115,7 +1115,7 @@ if x > 800 {  // Wrong! This checks the center
 **What happens:** The ball's center has to pass the wall before bouncing, so half the ball goes through the wall before reversing.
 
 **The fix:**
-```rust
+```zia
 // Account for the ball's radius
 if x + radius > 800 {
     x = 800 - radius;  // Push back so edge touches wall
@@ -1133,7 +1133,7 @@ When your graphics don't look right, here's a systematic approach:
 
 Print key values to the console:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 Say("x=" + x + ", y=" + y + ", dx=" + dx);
@@ -1145,7 +1145,7 @@ Check: Are the values what you expect? Are they changing each frame?
 
 Make the invisible visible:
 
-```rust
+```zia
 // Draw bounding boxes around objects
 canvas.Frame(player.x, player.y, player.width, player.height, Color.White);
 
@@ -1161,7 +1161,7 @@ canvas.Line(player.x, player.y, player.x + player.dx * 10, player.y + player.dy 
 
 Make things move slowly so you can watch:
 
-```rust
+```zia
 bind Zanna.Time;
 
 Time.Clock.Sleep(500);  // Half second between frames
@@ -1169,7 +1169,7 @@ Time.Clock.Sleep(500);  // Half second between frames
 
 Or reduce velocities temporarily:
 
-```rust
+```zia
 var speedMultiplier = 0.1;  // 10% speed for debugging
 x += dx * speedMultiplier;
 ```
@@ -1178,7 +1178,7 @@ x += dx * speedMultiplier;
 
 Simplify until it works:
 
-```rust
+```zia
 // Remove the game loop — just draw once
 canvas.Box(100, 100, 50, 50, Color.Red);
 canvas.Flip();
@@ -1194,7 +1194,7 @@ Does a simple rectangle appear? Yes? The basic setup works. Add complexity back 
 
 Draw a grid to understand your coordinate space:
 
-```rust
+```zia
 var gridColor = Color.RGB(50, 50, 50);  // Dark gray
 for i in 0..=8 {
     var x = i * 100;
@@ -1215,7 +1215,7 @@ canvas.Text(405, 315, "(400,300)", Color.White);
 ## The Two Languages
 
 **Zia**
-```rust
+```zia
 bind Zanna.Graphics;
 
 var canvas = Canvas.New("Demo", 800, 600);

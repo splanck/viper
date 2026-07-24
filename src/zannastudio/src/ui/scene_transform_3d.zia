@@ -1,0 +1,150 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/ui/scene_transform_3d.zia
+// Purpose: Pure transform-mode, snapping, and pointer-drag math for Studio's
+//          3D scene gizmo.
+// Key invariants:
+//   - Pointer projection remains deterministic and independent of GUI widgets.
+//   - Snapping quantizes the resulting axis value, never each pointer delta.
+//   - Scale cannot collapse through an unusable zero value.
+// Ownership/Lifetime: Stateless helper module borrowed by SceneEditor3D.
+// Links: zannastudio/src/ui/scene_editor_3d.zia,
+//        zannastudio/src/probes/scene_editor_3d_probe.zia
+//
+//===----------------------------------------------------------------------===//
+
+module scene_transform_3d;
+
+bind Math = Zanna.Math;
+
+// ============================================================================
+// MODULE: scene_transform_3d
+// PURPOSE: Give viewport manipulation one probeable math contract shared by
+//          live drags and deterministic scene-editor commands.
+//
+// WHERE-THIS-FITS: SceneEditor3D owns widgets and SceneNode mutation. This
+//          module owns only mode validation, projected drag scaling, and snap.
+//
+// TEACHING-NOTE: Snap the target value derived from the drag origin. Snapping
+//          frame-by-frame deltas loses sub-step motion and makes handles stick.
+// ============================================================================
+
+final TRANSFORM_MOVE: Integer = 0;
+final TRANSFORM_ROTATE: Integer = 1;
+final TRANSFORM_SCALE: Integer = 2;
+
+final MOVE_SNAP_INCREMENT: Number = 0.5;
+final ROTATE_SNAP_INCREMENT: Number = 15.0;
+final SCALE_SNAP_INCREMENT: Number = 0.1;
+final ROTATE_DEGREES_PER_HANDLE: Number = 45.0;
+final SCALE_UNITS_PER_HANDLE: Number = 1.0;
+final MIN_ABSOLUTE_SCALE: Number = 0.001;
+final VALUE_EPSILON: Number = 0.0000001;
+
+/// @brief Return whether an integer names a supported transform mode.
+func IsValidMode(mode: Integer) -> Boolean {
+    return mode == TRANSFORM_MOVE
+        or mode == TRANSFORM_ROTATE
+        or mode == TRANSFORM_SCALE;
+}
+
+/// @brief Return the user-facing transform mode label.
+func ModeLabel(mode: Integer) -> String {
+    if mode == TRANSFORM_ROTATE { return "Rotate"; }
+    if mode == TRANSFORM_SCALE { return "Scale"; }
+    return "Move";
+}
+
+/// @brief Return the present-participle action used during one drag.
+func ModeAction(mode: Integer) -> String {
+    if mode == TRANSFORM_ROTATE { return "Rotating"; }
+    if mode == TRANSFORM_SCALE { return "Scaling"; }
+    return "Moving";
+}
+
+/// @brief Return the history verb used after one committed drag.
+func ModeHistoryVerb(mode: Integer) -> String {
+    if mode == TRANSFORM_ROTATE { return "Rotated"; }
+    if mode == TRANSFORM_SCALE { return "Scaled"; }
+    return "Moved";
+}
+
+/// @brief Return the mode-specific snap increment.
+func SnapIncrement(mode: Integer) -> Number {
+    if mode == TRANSFORM_ROTATE { return ROTATE_SNAP_INCREMENT; }
+    if mode == TRANSFORM_SCALE { return SCALE_SNAP_INCREMENT; }
+    return MOVE_SNAP_INCREMENT;
+}
+
+/// @brief Describe the active snapping contract without hiding its precision.
+func SnapDescription(mode: Integer) -> String {
+    if mode == TRANSFORM_ROTATE { return "15°"; }
+    if mode == TRANSFORM_SCALE { return "0.1"; }
+    return "0.5 units";
+}
+
+/// @brief Convert screen-space mouse motion into an accumulated axis amount.
+/// @param localLength Local translation units represented by the handle.
+/// @details Move uses scene units, Rotate maps one full handle to 45 degrees,
+///          and Scale maps one full handle to one scale unit.
+func AxisDragAmount(mode: Integer,
+                    deltaX: Number,
+                    deltaY: Number,
+                    axisX: Number,
+                    axisY: Number,
+                    localLength: Number) -> Number {
+    if IsValidMode(mode) == false { return 0.0; }
+    var lengthSquared = axisX * axisX + axisY * axisY;
+    if lengthSquared <= VALUE_EPSILON { return 0.0; }
+    var fraction = (deltaX * axisX + deltaY * axisY)
+        / lengthSquared;
+    if mode == TRANSFORM_ROTATE {
+        return fraction * ROTATE_DEGREES_PER_HANDLE;
+    }
+    if mode == TRANSFORM_SCALE {
+        return fraction * SCALE_UNITS_PER_HANDLE;
+    }
+    return fraction * localLength;
+}
+
+/// @brief Resolve one drag-origin axis value plus accumulated motion.
+/// @details Quantization happens around global step boundaries so separate
+///          drags agree with inspector values and imported transforms.
+func AxisTarget(mode: Integer,
+                startValue: Number,
+                accumulatedAmount: Number,
+                snapEnabled: Boolean) -> Number {
+    if IsValidMode(mode) == false { return startValue; }
+    var target = startValue + accumulatedAmount;
+    if snapEnabled {
+        var increment = SnapIncrement(mode);
+        target = Math.Round(target / increment) * increment;
+    }
+    if mode == TRANSFORM_SCALE {
+        return UsableScale(target, startValue);
+    }
+    return target;
+}
+
+/// @brief Keep scale editable while preserving an existing sign when possible.
+func UsableScale(value: Number, fallback: Number) -> Number {
+    if value >= MIN_ABSOLUTE_SCALE or value <= 0.0 - MIN_ABSOLUTE_SCALE {
+        return value;
+    }
+    if value < 0.0 or (value < VALUE_EPSILON and fallback < 0.0) {
+        return 0.0 - MIN_ABSOLUTE_SCALE;
+    }
+    return MIN_ABSOLUTE_SCALE;
+}
+
+/// @brief Compare transform values using the editor's mutation epsilon.
+func NearlyEqual(left: Number, right: Number) -> Boolean {
+    var difference = left - right;
+    if difference < 0.0 { difference = 0.0 - difference; }
+    return difference <= VALUE_EPSILON;
+}

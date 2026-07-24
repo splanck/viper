@@ -2974,10 +2974,21 @@ TEST(outputpane_terminal_key_input_uses_byte_counted_xterm_sequences) {
     ASSERT_NOT_NULL(pane);
     vg_outputpane_set_terminal_mode(pane, true);
 
-    vg_event_t ctrl_space = vg_event_key(VG_EVENT_KEY_DOWN, VG_KEY_SPACE, 0, VG_MOD_CTRL);
-    ASSERT_TRUE(pane->base.vtable->handle_event(&pane->base, &ctrl_space));
+    vg_event_t enter = vg_event_key(VG_EVENT_KEY_DOWN, VG_KEY_ENTER, 0, VG_MOD_NONE);
+    vg_event_t backspace = vg_event_key(VG_EVENT_KEY_DOWN, VG_KEY_BACKSPACE, 0, VG_MOD_NONE);
+    ASSERT_TRUE(pane->base.vtable->handle_event(&pane->base, &enter));
+    ASSERT_TRUE(pane->base.vtable->handle_event(&pane->base, &backspace));
     size_t len = 0;
     char *bytes = vg_outputpane_take_input_bytes(pane, &len);
+    const char line_edit_expected[] = "\r\x7f";
+    ASSERT_NOT_NULL(bytes);
+    ASSERT_EQ(len, sizeof(line_edit_expected) - 1u);
+    ASSERT_EQ(memcmp(bytes, line_edit_expected, sizeof(line_edit_expected) - 1u), 0);
+    free(bytes);
+
+    vg_event_t ctrl_space = vg_event_key(VG_EVENT_KEY_DOWN, VG_KEY_SPACE, 0, VG_MOD_CTRL);
+    ASSERT_TRUE(pane->base.vtable->handle_event(&pane->base, &ctrl_space));
+    bytes = vg_outputpane_take_input_bytes(pane, &len);
     ASSERT_NOT_NULL(bytes);
     ASSERT_EQ(len, 1u);
     ASSERT_EQ(bytes[0], '\0');

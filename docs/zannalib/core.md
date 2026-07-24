@@ -130,7 +130,7 @@ Boxing helpers for storing primitive values in generic collections. Boxed values
 
 ### Zia Example
 
-```rust
+```zia
 module BoxDemo;
 
 bind Zanna.Terminal;
@@ -205,7 +205,7 @@ unhandled trap terminates execution.
 
 ### Zia Example
 
-```rust
+```zia
 module DiagnosticsDemo;
 
 bind Zanna.Terminal;
@@ -292,7 +292,7 @@ Safe string parsing utilities. Methods return `Option`, validation booleans, or 
 
 ### Parse.TryDouble and Parse.TryInt Example
 
-```rust
+```zia
 module ParseOptionsDemo;
 
 bind Zanna.Core.Parse as Parse;
@@ -312,7 +312,7 @@ func start() {
 
 ### Zia Example
 
-```rust
+```zia
 module ParseDemo;
 
 bind Zanna.Terminal;
@@ -394,7 +394,7 @@ This is distinct from `ToInt64(text)`, which parses a string.
 ## Zanna.String
 
 String manipulation class. Zanna strings are immutable byte strings and commonly contain UTF-8.
-Most positions and lengths are bytes. `Mid`/`MidLen`, `Flip`, and the SQL-LIKE wildcards instead
+Most positions and lengths are bytes. `Mid`/`MidLen`, `Reverse`, and the SQL-LIKE wildcards instead
 advance by Unicode code points using one shared strict UTF-8 decoder: invalid lead or
 continuation bytes, overlong encodings, UTF-16 surrogates, and values above U+10FFFF trap with
 an invalid-UTF-8 diagnostic rather than being grouped as apparent characters. Byte-oriented
@@ -453,7 +453,7 @@ start beyond the end. Trimming recognizes space, tab, CR, LF, vertical tab, and 
 | `PadLeft(width, padChar)`      | `String(Integer, String)` | Pads to a byte width with a single-byte `padChar` (multibyte traps) |
 | `PadRight(width, padChar)`     | `String(Integer, String)` | Pads to a byte width with a single-byte `padChar` (multibyte traps) |
 | `Repeat(count)`                | `String(Integer)`         | Repeats the string; a non-positive count returns empty           |
-| `Flip()`                       | `String()`                | Reverses Unicode code points (strict UTF-8; malformed input traps)   |
+| `Reverse()`                       | `String()`                | Reverses Unicode code points (strict UTF-8; malformed input traps)   |
 | `Split(delimiter)`             | `Seq(String)`             | Splits string by delimiter into a Seq of strings                |
 | `Lines()`                      | `Seq(String)`             | Splits into logical lines on `\n`, dropping a trailing `\r` (CRLF→LF); segment count matches `Split("\n")` |
 
@@ -550,7 +550,7 @@ quotes may not appear inside unquoted text; the record may not end inside a quot
 
 ### Zia Example
 
-```rust
+```zia
 module StringDemo;
 
 bind Zanna.Terminal;
@@ -565,7 +565,7 @@ func start() {
     Say(Str.ToUpper(s));                                    // HELLO, WORLD!
     Say(Str.ToLower(s));                                    // hello, world!
     Say("IndexOf: " + Fmt.Int(Str.IndexOf(s, "World")));    // 10
-    Say("Has World: " + Fmt.Bool(Str.Has(s, "World")));     // true
+    Say("Has World: " + Fmt.Bool(Str.Contains(s, "World")));     // true
     Say(Str.Replace(s, "World", "Zia"));                    // Hello, Zia!
 }
 ```
@@ -588,7 +588,7 @@ code = s.Trim().Asc()   ' code = 72 (ASCII for 'H')
 
 ### Extended Methods Zia Example
 
-```rust
+```zia
 module StringExtDemo;
 
 bind Zanna.Terminal;
@@ -601,14 +601,14 @@ func start() {
     // Search and match
     Say("Starts: " + Fmt.Bool(Str.StartsWith(s, "hello")));  // true
     Say("Ends: " + Fmt.Bool(Str.EndsWith(s, "world")));      // true
-    Say("Has: " + Fmt.Bool(Str.Has(s, "lo wo")));            // true
+    Say("Has: " + Fmt.Bool(Str.Contains(s, "lo wo")));            // true
     Say("Count l: " + Fmt.Int(Str.Count(s, "l")));           // 3
 
     // Transformation
     Say(Str.Replace(s, "world", "zia"));    // hello zia
     Say(Str.PadLeft("42", 5, "0"));         // 00042
     Say(Str.Repeat("ab", 3));               // ababab
-    Say(Str.Flip("hello"));                 // olleh
+    Say(Str.Reverse("hello"));                 // olleh
 }
 ```
 
@@ -621,7 +621,7 @@ s = "hello world"
 ' Search and match
 PRINT s.StartsWith("hello")  ' Output: true
 PRINT s.EndsWith("world")    ' Output: true
-PRINT s.Has("lo wo")         ' Output: true
+PRINT s.Contains("lo wo")         ' Output: true
 PRINT s.Count("l")           ' Output: 3
 
 ' Transformation
@@ -629,7 +629,7 @@ PRINT s.Replace("world", "universe")  ' Output: "hello universe"
 PRINT "42".PadLeft(5, "0")            ' Output: "00042"
 PRINT "hi".PadRight(5, "_")           ' Output: "hi___"
 PRINT "ab".Repeat(3)                   ' Output: "ababab"
-PRINT "hello".Flip()                   ' Output: "olleh"
+PRINT "hello".Reverse()                   ' Output: "olleh"
 
 ' Split and join
 DIM parts AS Zanna.Collections.Seq
@@ -656,7 +656,7 @@ directly into a byte-by-byte scan; an empty string or a non-ASCII leading byte r
 | `IsIdentifierPart(ch)`     | `Boolean(String)` | First character can continue an identifier (ASCII letter, digit, or `_`) |
 | `IsAlphanumeric(ch)`              | `Boolean(String)` | First character is ASCII alphanumeric (letter or digit) |
 
-```rust
+```zia
 module CharDemo;
 
 bind Zanna.Text.Char as Char;
@@ -730,7 +730,7 @@ In-process publish/subscribe message bus for decoupled communication between com
 
 ### Zia Example
 
-```rust
+```zia
 module MessageBusDemo;
 
 bind Zanna.Terminal;

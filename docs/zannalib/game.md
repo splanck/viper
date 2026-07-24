@@ -135,7 +135,7 @@ Physics2D uses a 64-bit layer/mask bitfield system:
 
 To create non-colliding groups:
 
-```rust
+```zia
 // Player on layer 0, enemies on layer 1, terrain on layer 2
 world.SetCollisionLayer(playerHandle, 0);
 world.SetCollisionMask(playerHandle, 0b110);  // collides with enemies + terrain, not self
@@ -197,7 +197,7 @@ Prefer `QueryRectResult`, `QueryPointResult`, and `QueryPairs` for production co
 immutable result objects that can be stored safely even after the quadtree is queried or mutated
 again:
 
-```rust
+```zia
 var result = tree.QueryRect(x, y, w, h);
 if result.Truncated {
     // Handle allocation pressure: results are incomplete.
@@ -303,7 +303,7 @@ long-running states.
 
 ### Example
 
-```rust
+```zia
 bind Zanna.Game;
 
 // Register states and set initial
@@ -516,7 +516,7 @@ The `decay` parameter controls how quickly shake intensity falls off:
 | `1000` | Linear decay — intensity falls proportionally to remaining time |
 | `≥ 1500` | **Quadratic (trauma model)** — intensity falls as `(remaining_time)²`, producing a natural-feeling hard-stop near the end |
 
-```rust
+```zia
 // Subtle hit feedback with quadratic falloff
 fx.Shake(5000, 300, 2000);
 // Earthquake: constant rumble for 3 seconds
@@ -761,7 +761,7 @@ keeps simulation units separate from draw pixels and you want one consistent pro
 | `PerspectiveX(worldX, centerX, depth, focalLength)` | `Number(Number, Number, Number, Number)` | Simple perspective X projection |
 | `PerspectiveY(worldY, centerY, depth, focalLength, flipY)` | `Number(Number, Number, Number, Number, Boolean)` | Simple perspective Y projection |
 
-```rust
+```zia
 var sx = Zanna.Game.WorldToScreenProjection.LinearX(playerX, cameraX, 400.0, 16.0);
 var sy = Zanna.Game.WorldToScreenProjection.LinearY(playerY, cameraY, 300.0, 16.0, true);
 
@@ -783,7 +783,7 @@ scale that suits your game and stay consistent:
 
 When mixing PathFollower with Camera or Physics2D, convert between scales:
 
-```rust
+```zia
 // PathFollower uses ×1000 scale; camera uses pixel scale
 var camX = follower.X / 1000;
 var camY = follower.Y / 1000;

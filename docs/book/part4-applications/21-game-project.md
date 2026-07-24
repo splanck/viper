@@ -66,7 +66,7 @@ Games are full of things: players, enemies, obstacles, collectibles, projectiles
 
 In Zia, we represent entities using values and sometimes class types. Think of a value as a filled-out form describing something:
 
-```rust
+```zia
 struct Frog {
     x: Number;           // Position across the screen
     y: Number;           // Position up and down
@@ -176,7 +176,7 @@ This separation means you can modify one aspect without breaking others. Adding 
 
 Let us start with the foundation. Configuration values are constants that control every aspect of the game. By collecting them in one place, we make the game easy to tune and customize.
 
-```rust
+```zia
 // config.zia
 module Config;
 
@@ -227,7 +227,7 @@ The `expose` keyword makes these constants accessible from other modules. The `f
 
 The frog is the heart of the game. It is what the player controls, what they identify with. Let us build it carefully.
 
-```rust
+```zia
 // frog.zia
 module Frog;
 
@@ -259,7 +259,7 @@ Why do we track both pixel and grid positions? The grid position determines whic
 
 Now let us add the functions that operate on frogs:
 
-```rust
+```zia
 // Create a brand new frog at the starting position
 expose func create() -> Frog {
     return spawn();
@@ -281,7 +281,7 @@ expose func spawn() -> Frog {
 
 The `spawn` function creates a frog at the starting position. Notice that `create` just calls `spawn`. Why have both? Semantic clarity. When the game first starts, we `create` a frog. When the frog dies and respawns, we `spawn` a new one. Same result, but the code reads more naturally.
 
-```rust
+```zia
 // Update the frog each frame
 expose func update(frog: Frog, dt: Number) -> Frog {
     var f = frog;
@@ -311,7 +311,7 @@ The platform-riding logic is interesting. When a frog hops onto a log, the log i
 
 But what if the log carries the frog off the screen? That is why we check the boundaries. A frog that drifts off-screen dies. This creates a classic Frogger tension: you hop onto a log for safety, but now you must keep an eye on where it is taking you.
 
-```rust
+```zia
 // Check if the frog can move (cooldown expired)
 expose func canMove(frog: Frog) -> Boolean {
     return frog.moveCooldown <= 0;
@@ -365,7 +365,7 @@ Also notice that moving sets `ridingPlatform` to null. When you hop, you leave w
 
 Vehicles are the dangers on the road. They move continuously across the screen, wrapping around when they exit, creating an endless stream of traffic.
 
-```rust
+```zia
 // vehicle.zia
 module Vehicle;
 
@@ -400,7 +400,7 @@ expose func create(row: Integer, speed: Number, width: Number, color: Color) -> 
 
 The starting position logic is clever: if a vehicle moves right (positive speed), it starts just off the left edge so it appears to drive onto the screen. If it moves left (negative speed), it starts at the right edge.
 
-```rust
+```zia
 expose func update(vehicle: Vehicle, dt: Number) -> Vehicle {
     var v = vehicle;
     v.x += v.speed * dt;
@@ -421,7 +421,7 @@ The wrapping logic is essential for creating the feeling of endless traffic. Whe
 
 Why `+ v.width` in the comparison? Because `x` represents the left edge of the vehicle. A vehicle at x = 800 on an 800-pixel wide screen still has its body visible. It only fully exits when its left edge is past the screen width by at least its own width.
 
-```rust
+```zia
 expose func getBounds(vehicle: Vehicle) -> Rect {
     return Rect {
         x: vehicle.x,
@@ -446,7 +446,7 @@ The `hitsPoint` function checks if a point (the frog's position) is inside the v
 
 Platforms are logs and turtles that float on the river. Unlike vehicles that kill on contact, platforms save the frog from drowning. The code is similar to vehicles with one crucial behavioral difference.
 
-```rust
+```zia
 // platform.zia
 module Platform;
 
@@ -504,7 +504,7 @@ The Platform code looks nearly identical to Vehicle. This might seem like unnece
 
 Now we bring everything together. The GameState value is the single source of truth for everything happening in the game.
 
-```rust
+```zia
 // game.zia
 module Game;
 
@@ -528,7 +528,7 @@ expose struct GameState {
 
 Notice how GameState owns everything. The frog, all vehicles, all platforms. When you have the game state, you have the complete picture of the game world.
 
-```rust
+```zia
 expose func create() -> GameState {
     var state = GameState {
         frog: Frog.create(),
@@ -548,7 +548,7 @@ expose func create() -> GameState {
 
 The `create` function initializes a fresh game, then calls `setupLevel` to populate the roads and rivers. This separation means the same `setupLevel` function can be used both when starting and when advancing to a new level.
 
-```rust
+```zia
 func setupLevel(state: GameState) -> GameState {
     var s = state;
 
@@ -626,7 +626,7 @@ The `speedMod` multiplier creates progressive difficulty. Level 1 runs at 1.0x s
 
 The heart of game logic happens in update:
 
-```rust
+```zia
 expose func update(state: GameState, dt: Number) -> GameState {
     var s = state;
 
@@ -691,7 +691,7 @@ Notice the clear sequence: update entities, check interactions, handle consequen
 
 The collision system separates road and river logic:
 
-```rust
+```zia
 func checkCollisions(state: GameState) -> GameState {
     var s = state;
     var frogX = s.frog.x;
@@ -742,7 +742,7 @@ This inversion creates different play experiences. On the road, you dodge threat
 
 Getting home is the whole point:
 
-```rust
+```zia
 func checkHome(state: GameState) -> GameState {
     var s = state;
 
@@ -788,7 +788,7 @@ The home slots are not the entire top row. There are barriers between them. Land
 
 The game module also handles the interface between input and frog movement:
 
-```rust
+```zia
 expose func moveFrog(state: GameState, dx: Integer, dy: Integer) -> GameState {
     var s = state;
 
@@ -814,7 +814,7 @@ This wrapper adds scoring for forward progress. Moving backward does not lose po
 
 Rendering transforms game state into pictures. It reads but never modifies state.
 
-```rust
+```zia
 // renderer.zia
 module Renderer;
 
@@ -854,7 +854,7 @@ expose func render(canvas: Canvas, state: Game.GameState) {
 
 Notice the drawing order. Background first, then platforms, then vehicles, then frog, then UI. This layering ensures the frog appears on top of platforms (correct, since it is riding them) and the UI appears over everything.
 
-```rust
+```zia
 func drawBackground(canvas: Canvas) {
     // Home zone at the top
     canvas.Box(0, 0, Config.SCREEN_WIDTH, Config.TILE_SIZE, Color.RGB(50, 50, 100));
@@ -894,7 +894,7 @@ func drawBackground(canvas: Canvas) {
 
 The background creates the visual context. Blue water tells players "danger, stay on platforms." Gray road with yellow lines reads instantly as "traffic area." The safe zones (purple) provide visual breathing room.
 
-```rust
+```zia
 func drawHomes(canvas: Canvas, occupied: List[Boolean]) {
     var positions = [2, 6, 10, 14, 18];
 
@@ -914,7 +914,7 @@ func drawHomes(canvas: Canvas, occupied: List[Boolean]) {
 
 Filled homes glow bright green, celebrating the player's progress. Empty homes are darker, beckoning targets. This visual feedback is crucial for quickly understanding game state.
 
-```rust
+```zia
 func drawUI(canvas: Canvas, state: Game.GameState) {
     // Display current stats at the bottom
     canvas.Text(10, Config.SCREEN_HEIGHT - 10, "Score: " + state.score, Color.White);
@@ -937,7 +937,7 @@ The UI provides at-a-glance status. Score, lives, and level are always visible. 
 
 The main file brings everything together:
 
-```rust
+```zia
 // main.zia
 module Main;
 
@@ -956,14 +956,14 @@ func start() {
     var state = Game.create();
 
     // Track time for delta calculations
-    var lastTime = Time.Clock.Ticks();
+    var lastTime = Time.Clock.NowMs();
 
     // The game loop
     while !canvas.ShouldClose {
         canvas.Poll();
 
         // Calculate how much time passed since last frame
-        var now = Time.Clock.Ticks();
+        var now = Time.Clock.NowMs();
         var dt = (now - lastTime) / 1000.0;  // Convert to seconds
         lastTime = now;
 
@@ -1051,13 +1051,13 @@ Game development has unique pitfalls. Here are mistakes beginners commonly make 
 ### Mistake 1: Frame-Rate Dependent Speed
 
 **Wrong:**
-```rust
+```zia
 // This moves different distances on fast vs slow computers
 player.x += 5;
 ```
 
 **Right:**
-```rust
+```zia
 // This moves the same distance per real second
 player.x += speed * dt;
 ```
@@ -1067,7 +1067,7 @@ Without delta time, your game runs twice as fast on a 120 FPS machine as on a 60
 ### Mistake 2: Using Key State for One-Time Actions
 
 **Wrong:**
-```rust
+```zia
 // This fires every frame the key is held!
 if Keyboard.IsDown(Keyboard.KeySpace) {
     fireBullet();
@@ -1075,7 +1075,7 @@ if Keyboard.IsDown(Keyboard.KeySpace) {
 ```
 
 **Right:**
-```rust
+```zia
 // This fires once per key press
 if Keyboard.WasPressed(Keyboard.KeySpace) {
     fireBullet();
@@ -1087,7 +1087,7 @@ Use `Keyboard.WasPressed` for discrete actions (jump, fire, menu select) and `Ke
 ### Mistake 3: Order-Dependent Collision Bugs
 
 **Wrong:**
-```rust
+```zia
 // Moving then checking creates "tunneling" through thin walls
 player.x += velocity * dt;
 player.y += velocity * dt;
@@ -1099,7 +1099,7 @@ If velocity is high enough, the player can jump over obstacles between frames. F
 ### Mistake 4: Modifying State During Iteration
 
 **Wrong:**
-```rust
+```zia
 for enemy in enemies {
     if enemy.dead {
         enemies.remove(enemy);  // Modifying while iterating!
@@ -1108,7 +1108,7 @@ for enemy in enemies {
 ```
 
 **Right:**
-```rust
+```zia
 var survivors: List[Enemy] = [];
 for enemy in enemies {
     if !enemy.dead {
@@ -1119,7 +1119,7 @@ enemies = survivors;
 ```
 
 Or:
-```rust
+```zia
 var toRemove: List[Integer] = [];
 for i in 0..enemies.Length {
     if enemies[i].dead {
@@ -1150,12 +1150,12 @@ Each requires explicit handling. When adding new features, ask: "What are all th
 ### Mistake 6: Not Accounting for Boundaries
 
 **Wrong:**
-```rust
+```zia
 player.x += dx;  // What if this goes negative or off-screen?
 ```
 
 **Right:**
-```rust
+```zia
 var newX = player.x + dx;
 if newX >= 0 && newX < screenWidth {
     player.x = newX;
@@ -1173,7 +1173,7 @@ Game bugs are often harder to find than bugs in regular programs because the sta
 ### Slow Down Time
 
 Add a debug mode that runs at 1/10 speed:
-```rust
+```zia
 var debugSlowMotion = false;
 
 if Keyboard.WasPressed(Keyboard.KeyF1) {
@@ -1190,7 +1190,7 @@ Now you can see exactly what happens during collisions or fast movements.
 ### Visualize Collision Boxes
 
 Draw rectangles showing where collision detection thinks objects are:
-```rust
+```zia
 func debugDrawBounds(canvas: Canvas, vehicles: List[Vehicle]) {
     for v in vehicles {
         var bounds = Vehicle.getBounds(v);
@@ -1204,7 +1204,7 @@ If your frog dies when it looks like it should not, the collision boxes reveal w
 ### Log State Changes
 
 When something unexpected happens, print the state before and after:
-```rust
+```zia
 if frog.alive && newFrog.alive == false {
     print("Frog died! Position: " + frog.x + ", " + frog.y);
     print("Grid position: " + frog.gridX + ", " + frog.gridY);
@@ -1216,7 +1216,7 @@ if frog.alive && newFrog.alive == false {
 ### Pause and Step
 
 Add the ability to pause the game and advance one frame at a time:
-```rust
+```zia
 var paused = false;
 var stepOneFrame = false;
 
@@ -1256,7 +1256,7 @@ A completed Frogger is a foundation, not an endpoint. Here are ways to make it y
 
 Sound brings games to life. Add a hop sound when the frog moves, a splash when it drowns, a splat when hit by a car, a cheerful jingle when reaching home:
 
-```rust
+```zia
 bind Zanna.Audio;
 
 var hopSound = Sound.Load("hop.wav");
@@ -1280,7 +1280,7 @@ if deathByVehicle {
 
 Replace colored rectangles with proper artwork. Load sprite images and draw them instead of `Box`:
 
-```rust
+```zia
 bind Sprite = Zanna.Graphics.Sprite;
 
 var frogSprite = Sprite.Load("frog.png");
@@ -1304,7 +1304,7 @@ canvas.Blit(sprite, frog.x - 20, frog.y);
 
 Save the highest score to a file so players can compete with themselves:
 
-```rust
+```zia
 bind Convert = Zanna.Core.Convert;
 bind Zanna.Text.Fmt as Fmt;
 
@@ -1335,7 +1335,7 @@ if state.score > highScore {
 
 Add urgency with a countdown timer:
 
-```rust
+```zia
 struct GameState {
     // ... existing fields ...
     timeRemaining: Number;
@@ -1360,7 +1360,7 @@ canvas.Text(500, Config.SCREEN_HEIGHT - 10,
 
 In the original Frogger, turtles periodically submerge, creating temporary danger:
 
-```rust
+```zia
 struct Platform {
     // ... existing fields ...
     isTurtle: Boolean;
@@ -1394,7 +1394,7 @@ if Platform.containsPoint(platform, frogX, frogY) {
 
 Add a second frog controlled by WASD, competing for score:
 
-```rust
+```zia
 struct GameState {
     frog1: Frog;  // Arrow keys
     frog2: Frog;  // WASD keys

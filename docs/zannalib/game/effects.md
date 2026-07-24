@@ -134,7 +134,7 @@ not. Rendered radius is half the configured size, truncated to an integer and cl
 
 ### Zia example
 
-```rust
+```zia
 module ParticleDemo;
 
 bind Zanna.Game.ParticleEmitter as PE;
@@ -335,7 +335,7 @@ covered frame has been drawn, so a scene swap gated on it never flashes the unde
 
 ### Zia example
 
-```rust
+```zia
 module ScreenFXDemo;
 
 bind Zanna.Game.ScreenFX as FX;
@@ -379,7 +379,7 @@ END
 
 ### Transition sketch
 
-```rust
+```zia
 module TransitionSketch;
 
 bind Zanna.Game.ScreenFX as FX;
@@ -472,7 +472,7 @@ player light is off while darkness and the other lights keep working.
 
 ### Zia example
 
-```rust
+```zia
 module LightingDemo;
 
 bind Zanna.Game.Lighting2D as Lighting2D;

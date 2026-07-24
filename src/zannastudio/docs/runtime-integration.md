@@ -49,6 +49,16 @@ IDE-side controllers should use editor revisions to avoid repeated full-buffer
 copies. When adding semantic features, take a snapshot once per relevant
 revision and reject stale results when the revision changes.
 
+### ListBox
+
+Retained ListBox rows may attach byte-exact string identities with
+`ItemSetData`. `GetSelectedData()` returns a fresh `Seq[String]` containing one
+entry per selected retained row in row order, including an empty entry when a
+selected row has no data. It returns an empty sequence for invalid handles,
+empty selection, and virtual mode. Scene hierarchies use this contract instead
+of parsing labels so Ctrl/Command and Shift multi-selection remains safe across
+duplicate or renamed rows. ADR 0156 defines the ABI and ownership behavior.
+
 ### OutputPane
 
 `OutputPane` is used for:
@@ -288,15 +298,31 @@ Watch/evaluate results (`evaluated` events) are always scalar leaves today and
 carry `varRef: 0` / `childCount: 0` so the IDE can render locals and watches
 through one code path.
 
-Zanna Studio currently does not mount a visual scene editor. Runtime scene support is
-available below the IDE, but the IDE still lacks:
+Zanna Studio mounts built-in 2D and 3D scene editors for the corresponding
+scene document kinds. They retain per-document workspace state and history,
+provide hierarchy/layer and property editing, render interactive
+canvas/viewport previews, search bounded project assets, and serialize through
+the runtime scene document surface. Standard Edit commands route to the active
+scene controller. A versioned, typed text envelope carries canonical source plus
+stable selection identities; controllers validate it before reconstructing
+selected 2D objects or 3D subtrees as a single history transaction. Richer
+component composition and mixed-value scalar/material authoring, advanced
+tileset metadata and animation, local/world transform switching, plane/ring
+gizmos, and play-in-editor remain product gaps. Existing batch inspector
+operations stay controller-side: 2D typed property set/remove uses
+`SceneDocument` property APIs, while 3D relative transforms mutate selected
+`SceneNode` local values before one canonical serialization.
 
-- `Zanna.GUI.SceneView`.
-- A `scene_editor/` subsystem.
-- `SceneDocumentState`.
-- Per-document scene handles.
-- Scene-specific save/reload/conflict flow.
-- Tile palette, layer list, object tools, inspector, and play wiring.
+ADR 0157 adds read-only decoded `*MapPixels` properties to `Material3D`.
+Studio uses those managed borrowed views for bounded assigned-map thumbnails,
+so the inspector follows the canonical material after load, undo/redo, import,
+clone, and VSCN round trips without parsing scene text or caching picker paths.
+
+`SceneNode.Name` follows the runtime's owned string-return convention. The
+native getter retains the node's stored name and the graphics-disabled stub
+returns an owned empty string; native callers must balance the result with
+`rt_string_unref`. This keeps repeated Studio hierarchy and inspector refreshes
+from consuming the node-owned name reference.
 
 ## Cross-Platform Rules
 

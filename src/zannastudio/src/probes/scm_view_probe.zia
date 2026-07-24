@@ -1,0 +1,373 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/probes/scm_view_probe.zia
+// Purpose: Exercise the responsive Source Control panel against a real Git repo.
+// Key invariants:
+//   - Wrapped controls remain reachable at the minimum supported sidebar width.
+//   - Stage, Unstage, diff, and Commit reflect structured selection/index state.
+//   - Focused Enter submission performs exactly one real commit.
+//   - Conflicts explain the safe edit-then-Stage workflow and block commits.
+// Ownership/Lifetime: The probe owns its temporary repo, shell, and harness.
+// Links: zannastudio/src/scm/scm_view.zia,
+//        zannastudio/src/scm/scm_git.zia
+//
+//===----------------------------------------------------------------------===//
+
+module scm_view_probe;
+
+bind "../scm/scm_git";
+bind "../scm/scm_view";
+bind "../ui/activity_bar";
+bind "../ui/app_shell";
+
+bind Convert = Zanna.Core.Convert;
+bind Exec = Zanna.System.Exec;
+bind File = Zanna.IO.File;
+bind GUI = Zanna.GUI;
+bind Path = Zanna.IO.Path;
+bind Seq = Zanna.Collections.Seq;
+bind Str = Zanna.String;
+bind TempFile = Zanna.IO.TempFile;
+bind Terminal = Zanna.Terminal;
+bind Time = Zanna.Time;
+
+/// @brief Configure one local-only Git setting in the temporary repository.
+func GitConfig(dir: String,
+               key: String,
+               value: String) {
+    var args = Seq.New();
+    Seq.Push(args, "-C");
+    Seq.Push(args, dir);
+    Seq.Push(args, "config");
+    Seq.Push(args, key);
+    Seq.Push(args, value);
+    Exec.RunArgs("git", args);
+}
+
+/// @brief Return whether one rendered child remains inside its panel.
+func ContainsWidget(parent: GUI.Widget,
+                    child: GUI.Widget) -> Boolean {
+    if parent == null or child == null { return false; }
+    return child.GetScreenX() >= parent.GetScreenX() - 1.0
+        and child.GetScreenY() >= parent.GetScreenY() - 1.0
+        and child.GetScreenX() + child.GetScreenWidth()
+            <= parent.GetScreenX() + parent.GetScreenWidth() + 1.0
+        and child.GetScreenY() + child.GetScreenHeight()
+            <= parent.GetScreenY() + parent.GetScreenHeight() + 1.0;
+}
+
+/// @brief Return whether every always-visible Source Control action is reachable.
+func ControlsContained(view: scm_view.ScmView) -> Boolean {
+    return ContainsWidget(view.host, view.refreshBtn)
+        and ContainsWidget(view.host, view.cancelBtn)
+        and ContainsWidget(view.host, view.pushBtn)
+        and ContainsWidget(view.host, view.pullBtn)
+        and ContainsWidget(view.host, view.historyBtn)
+        and ContainsWidget(view.host, view.stageBtn)
+        and ContainsWidget(view.host, view.unstageBtn)
+        and ContainsWidget(view.host, view.stageAllBtn)
+        and ContainsWidget(view.host, view.commitInput)
+        and ContainsWidget(view.host, view.commitBtn)
+        and ContainsWidget(view.host, view.sideBySideButton);
+}
+
+/// @brief Convert public logical widget geometry to harness framebuffer pixels.
+func HarnessCoordinate(shell: app_shell.AppShell,
+                       logical: Number) -> Integer {
+    var scale = shell.app.GetEffectiveScale();
+    if scale <= 0.0 { scale = 1.0; }
+    return Convert.NumToInt(logical * scale);
+}
+
+/// @brief Dispatch one real pointer click to a rendered button center.
+func Click(shell: app_shell.AppShell,
+           harness: GUI.TestHarness,
+           button: GUI.Button) {
+    var x = HarnessCoordinate(shell,
+        button.GetScreenX() + button.GetScreenWidth() / 2.0);
+    var y = HarnessCoordinate(shell,
+        button.GetScreenY() + button.GetScreenHeight() / 2.0);
+    harness.SendMouse("move", x, y, 0);
+    harness.SendMouse("down", x, y, 0);
+    harness.SendMouse("up", x, y, 0);
+    harness.DispatchPending();
+}
+
+/// @brief Pump UI and Git jobs until the Source Control queue becomes idle.
+func PumpUntilIdle(shell: app_shell.AppShell,
+                   view: scm_view.ScmView,
+                   budgetMs: Integer) -> Boolean {
+    var waited = 0;
+    while (view.Busy() or view.pendingJobs.count() > 0) and waited < budgetMs {
+        shell.Poll();
+        view.HandleEvents();
+        shell.Render();
+        if view.Busy() or view.pendingJobs.count() > 0 {
+            Time.Clock.Sleep(5);
+            waited = waited + 5;
+        }
+    }
+    shell.Poll();
+    view.HandleEvents();
+    shell.Render();
+    return view.Busy() == false and view.pendingJobs.count() == 0;
+}
+
+func Fail(shell: app_shell.AppShell,
+          harness: GUI.TestHarness,
+          reason: String) {
+    if harness != null { harness.UnbindApp(); }
+    if shell != null { shell.Destroy(); }
+    Terminal.Say("RESULT: fail " + reason);
+}
+
+func main() {
+    var versionArgs = Seq.New();
+    Seq.Push(versionArgs, "--version");
+    if Exec.RunArgs("git", versionArgs) != 0 {
+        Terminal.Say("RESULT: ok (git unavailable, skipped)");
+        return;
+    }
+
+    var dir = TempFile.CreateDirWithPrefix("zannastudio_scm_view_");
+    var initArgs = Seq.New();
+    Seq.Push(initArgs, "-C");
+    Seq.Push(initArgs, dir);
+    Seq.Push(initArgs, "init");
+    if Exec.RunArgs("git", initArgs) != 0 {
+        Terminal.Say("RESULT: fail git init");
+        return;
+    }
+    GitConfig(dir, "user.email", "probe@example.com");
+    GitConfig(dir, "user.name", "Source Control Probe");
+    GitConfig(dir, "commit.gpgsign", "false");
+
+    var git = new scm_git.Git();
+    git.SetRepo(dir);
+    var filePath = Path.Join(dir, "game.zia");
+    File.WriteAllText(filePath, "module Game; // base\n");
+    if git.StageAll() == false or git.Commit("seed") == false {
+        Terminal.Say("RESULT: fail seed repository");
+        return;
+    }
+    File.WriteAllText(filePath, "module Game; // edited in Studio\n");
+
+    var shell = new app_shell.AppShell();
+    shell.Build("Zanna Studio Source Control Probe", 1100, 720);
+    var activity = new activity_bar.ActivityBar();
+    activity.Setup(shell.workbench.explorerView,
+                   shell.workbench.scmViewHost,
+                   shell.workbench.runDebugViewHost,
+                   shell.workbench.abExplorer,
+                   shell.workbench.abSourceControl,
+                   shell.workbench.abRunDebug);
+    activity.ShowView(activity_bar.VIEW_SCM);
+
+    var view = new scm_view.ScmView();
+    view.Setup(shell.workbench.scmViewHost);
+    view.SetRepo(dir);
+    if PumpUntilIdle(shell, view, 10000) == false or view.repoReady == false
+       or view.lastStatus.entries.count() != 1 {
+        Fail(shell, null, "initial repository status");
+        return;
+    }
+
+    // No row is selected yet: only the aggregate Stage All action is honest.
+    if view.stageBtn.IsEnabled() or view.unstageBtn.IsEnabled()
+       or view.sideBySideButton.IsEnabled()
+       or view.stageAllBtn.IsEnabled() == false
+       or view.commitBtn.IsEnabled()
+       or view.commitInput.IsEnabled() == false {
+        Fail(shell, null, "initial selection-aware actions");
+        return;
+    }
+
+    // Exercise the minimum supported sidebar share after a completed layout.
+    shell.workbench.SetSidebarWidthPct(15);
+    shell.Poll();
+    shell.Render();
+    view.HandleEvents();
+    shell.Poll();
+    shell.Render();
+    if view.IsCompactControls() == false or ControlsContained(view) == false {
+        Terminal.Say(
+            "DETAIL: host=" + view.host.GetScreenX() + ","
+            + view.host.GetScreenY() + " "
+            + view.host.GetScreenWidth() + "x" + view.host.GetScreenHeight()
+            + " top=" + view.topRow.GetScreenX() + ","
+            + view.topRow.GetScreenY() + " "
+            + view.topRow.GetScreenWidth() + "x" + view.topRow.GetScreenHeight()
+            + " commitRight="
+            + (view.commitBtn.GetScreenX() + view.commitBtn.GetScreenWidth()));
+        Fail(shell, null, "controls overflowed the narrow sidebar");
+        return;
+    }
+    shell.workbench.SetSidebarWidthPct(30);
+    shell.Poll();
+    shell.Render();
+    view.HandleEvents();
+    shell.Render();
+
+    var harness = GUI.TestHarness.New();
+    if harness.BindApp(shell.app) == false {
+        Fail(shell, harness, "automation app binding");
+        return;
+    }
+
+    // Selecting a modified worktree row enables Stage and both diff surfaces,
+    // but never advertises Unstage for an index-clean file.
+    view.statusList.SelectIndex(0);
+    view.HandleEvents();
+    if PumpUntilIdle(shell, view, 10000) == false
+       or view.stageBtn.IsEnabled() == false
+       or view.unstageBtn.IsEnabled()
+       or view.sideBySideButton.IsEnabled() == false {
+        Fail(shell, harness, "modified-row action state");
+        return;
+    }
+
+    // Stage through the real hit-test path. The refreshed staged-only snapshot
+    // has no remaining worktree action and still requires a commit message.
+    Click(shell, harness, view.stageBtn);
+    view.HandleEvents();
+    if PumpUntilIdle(shell, view, 10000) == false
+       or view.lastStatus.entries.count() != 1
+       or view.lastStatus.entries.get(0).staged == false
+       or view.stageAllBtn.IsEnabled()
+       or view.commitBtn.IsEnabled() {
+        Fail(shell, harness, "pointer Stage workflow");
+        return;
+    }
+
+    // Focused Enter submits one commit; the successful refresh clears both the
+    // input and worktree without leaking Enter into another focused surface.
+    view.commitInput.SetText("commit from focused Enter");
+    view.commitInput.Focus();
+    view.HandleEvents();
+    if view.commitBtn.IsEnabled() == false {
+        Fail(shell, harness, "typed staged commit was not enabled");
+        return;
+    }
+    harness.SendKey("enter", 0);
+    harness.DispatchPending();
+    view.HandleEvents();
+    if PumpUntilIdle(shell, view, 10000) == false
+       or view.lastStatus.entries.count() != 0
+       or view.commitInput.get_Text() != ""
+       or git.Status().entries.count() != 0 {
+        Fail(shell, harness, "focused Enter commit workflow");
+        return;
+    }
+
+    // Produce a real two-branch conflict outside the view, then refresh it.
+    var baseBranch = git.CurrentBranch();
+    var branchArgs = Seq.New();
+    Seq.Push(branchArgs, "-C");
+    Seq.Push(branchArgs, dir);
+    Seq.Push(branchArgs, "checkout");
+    Seq.Push(branchArgs, "-b");
+    Seq.Push(branchArgs, "scm-view-conflict");
+    if Exec.RunArgs("git", branchArgs) != 0 {
+        Fail(shell, harness, "create conflict branch");
+        return;
+    }
+    File.WriteAllText(filePath, "module Game; // branch version\n");
+    if git.StageAll() == false or git.Commit("branch version") == false
+       or git.Checkout(baseBranch) == false {
+        Fail(shell, harness, "seed conflict branch");
+        return;
+    }
+    File.WriteAllText(filePath, "module Game; // base version\n");
+    if git.StageAll() == false or git.Commit("base version") == false {
+        Fail(shell, harness, "seed conflict base");
+        return;
+    }
+    var mergeArgs = Seq.New();
+    Seq.Push(mergeArgs, "-C");
+    Seq.Push(mergeArgs, dir);
+    Seq.Push(mergeArgs, "merge");
+    Seq.Push(mergeArgs, "scm-view-conflict");
+    if Exec.RunArgs("git", mergeArgs) == 0 {
+        Fail(shell, harness, "expected merge conflict");
+        return;
+    }
+
+    view.Refresh();
+    if PumpUntilIdle(shell, view, 10000) == false
+       or view.lastStatus.entries.count() != 1
+       or view.lastStatus.entries.get(0).conflicted == false
+       or view.stageAllBtn.IsEnabled() == false {
+        Terminal.Say(
+            "DETAIL: conflict idle=" + (view.Busy() == false)
+            + " queued=" + view.pendingJobs.count()
+            + " ready=" + view.repoReady
+            + " entries=" + view.lastStatus.entries.count()
+            + " stageAll=" + view.stageAllBtn.IsEnabled());
+        if view.lastStatus.entries.count() > 0 {
+            Terminal.Say(
+                "DETAIL: entry path=" + view.lastStatus.entries.get(0).path
+                + " index=" + view.lastStatus.entries.get(0).index
+                + " worktree=" + view.lastStatus.entries.get(0).worktree
+                + " conflicted=" + view.lastStatus.entries.get(0).conflicted);
+        }
+        Fail(shell, harness, "conflict status");
+        return;
+    }
+    view.commitInput.SetText("resolve conflict from Studio");
+    view.commitInput.Focus();
+    view.HandleEvents();
+    if view.commitBtn.IsEnabled() {
+        Fail(shell, harness, "unresolved conflict enabled Commit");
+        return;
+    }
+
+    view.statusList.SelectIndex(0);
+    view.HandleEvents();
+    if PumpUntilIdle(shell, view, 10000) == false
+       or view.stageBtn.IsEnabled() == false
+       or view.sideBySideButton.IsEnabled() == false {
+        Fail(shell, harness, "selected conflict actions");
+        return;
+    }
+    view.diffPane.SelectAll();
+    var conflictDiff = view.diffPane.GetSelection();
+    if Str.Contains(conflictDiff, "edit the conflict markers") == false
+       or Str.Contains(conflictDiff, "then Stage it") == false {
+        Fail(shell, harness, "conflict guidance missing from diff");
+        return;
+    }
+
+    // The authored message survives while the user edits, then staging the
+    // resolved file unlocks the existing commit rather than discarding work.
+    File.WriteAllText(filePath, "module Game; // resolved version\n");
+    Click(shell, harness, view.stageBtn);
+    view.HandleEvents();
+    if PumpUntilIdle(shell, view, 10000) == false
+       or view.lastStatus.entries.count() != 1
+       or view.lastStatus.entries.get(0).conflicted
+       or view.lastStatus.entries.get(0).staged == false
+       or view.commitInput.get_Text() != "resolve conflict from Studio"
+       or view.commitBtn.IsEnabled() == false {
+        Fail(shell, harness, "edit-then-Stage conflict resolution");
+        return;
+    }
+    view.commitInput.Focus();
+    harness.SendKey("enter", 0);
+    harness.DispatchPending();
+    view.HandleEvents();
+    if PumpUntilIdle(shell, view, 10000) == false
+       or view.lastStatus.entries.count() != 0
+       or git.Status().entries.count() != 0 {
+        Fail(shell, harness, "resolved conflict commit");
+        return;
+    }
+
+    harness.UnbindApp();
+    shell.Destroy();
+    Terminal.Say("RESULT: ok");
+}

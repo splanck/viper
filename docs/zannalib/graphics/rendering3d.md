@@ -219,7 +219,7 @@ vertical FOV (pass `<= 0.0` to keep the camera's FOV):
 - post-FX applies to the composited result (weapon included), and HUD overlays
   still draw on top.
 
-```rust
+```zia
 Canvas3D.Begin(canvas, worldCam)
 // ... world draws ...
 Canvas3D.End(canvas)
@@ -258,7 +258,7 @@ dimensions, or failed backend readback and leaves ownership with the caller.
 Successful copies update the destination generation for texture-cache
 invalidation; GPU canvases reuse their staging allocation across calls.
 
-```rust
+```zia
 Canvas3D.Begin(canvas, cam);
 Canvas3D.DrawMesh(canvas, mesh, model, material);
 Canvas3D.End(canvas);
@@ -917,7 +917,7 @@ instances with `Set(x, y, z)`, `SetX/Y/Z`, `CopyFrom(other)`, or writable
 setters copy component values; the pure `Vec3` arithmetic methods still return
 new vectors.
 
-```rust
+```zia
 bind Zanna.Graphics3D.Camera3D as Camera3D;
 bind Zanna.Math.Vec3 as Vec3;
 
@@ -1027,6 +1027,13 @@ the currently resident RGBA8 mip and native block source for each draw.
 | Property | Type | Access | Description |
 |----------|------|--------|-------------|
 | `Color` | Object | Read | Diffuse/base color as `Vec3` |
+| `TexturePixels` | Pixels | Read | Current decoded base-color/albedo map, or null |
+| `NormalMapPixels` | Pixels | Read | Current decoded normal map, or null |
+| `SpecularMapPixels` | Pixels | Read | Current decoded legacy specular map, or null |
+| `EmissiveMapPixels` | Pixels | Read | Current decoded emissive map, or null |
+| `MetallicRoughnessMapPixels` | Pixels | Read | Current decoded packed PBR map, or null |
+| `AmbientOcclusionMapPixels` | Pixels | Read | Current decoded ambient-occlusion map, or null |
+| `LightmapPixels` | Pixels | Read | Current decoded baked lightmap, or null |
 | `Alpha` | Double | Read/Write | Material opacity |
 | `Metallic` | Double | Read/Write | PBR metallic factor |
 | `Roughness` | Double | Read/Write | PBR roughness factor |
@@ -1050,6 +1057,14 @@ the currently resident RGBA8 mip and native block source for each draw.
 Texture setters accept `Pixels` handles, except `SetEnvMap`, which accepts a
 `CubeMap3D`. Passing `NULL` clears the slot and immediately updates the matching
 `Has*` property.
+
+The read-only `*Pixels` properties expose the currently drawable decoded view
+for inspection and authoring previews. Direct `Pixels` sources are returned
+unchanged; `TextureAsset3D` and `RenderTarget3D` sources resolve to their current
+material-facing pixels. Reading them does not replace the retained source,
+discard KTX2/source-container provenance, change residency, or alter VSCN
+serialization. A property can be null while a native-only or currently
+non-resident texture source remains assigned.
 
 Render-target bindings are live: the material samples the target's most recent
 *completed* frame, refreshing automatically whenever a `Canvas3D.End` into the
@@ -1169,7 +1184,7 @@ targets an explicit `AddTonemap(0, exposure)` applies exposure plus gamma-out (s
 encoding) so "tonemap off" still produces display-referred output matching modes 1/2;
 on LDR targets mode 0 remains a passthrough.
 
-```rust
+```zia
 bind Zanna.Graphics3D.PostFX3D as PostFX3D;
 
 var fx = PostFX3D.New();
@@ -1443,7 +1458,7 @@ Plays a single `Animation3D` track on a `Skeleton3D` with optional crossfade.
 Crossfades blend all bones, including channels that exist in only one clip, against bind pose. The
 fading-out clip keeps its own speed and looping behavior during the transition.
 
-```rust
+```zia
 bind Zanna.Graphics3D.AnimPlayer3D as AnimPlayer3D;
 bind Zanna.Graphics3D.Animation3D as Animation3D;
 
@@ -1615,7 +1630,7 @@ the base layer before overlay layers are applied. Root-motion extraction still c
 controller's state-player base layer. `SetIKSolver(solver)` requires a solver bound to the same
 skeleton and applies it after overlays, before the final skin palette.
 
-```rust
+```zia
 bind Zanna.Graphics3D.AnimController3D as AnimController3D;
 
 var ctrl = AnimController3D.New(skeleton);
@@ -1723,7 +1738,7 @@ backend and can accompany the hardware billboard batch.
 | `Update(deltaSeconds)` | `Void(Double)` | Advance bounded fixed-step simulation and update timing telemetry |
 | `Draw(canvas3D, camera)` | `Void(Object, Object)` | Render particles to the scene |
 
-```rust
+```zia
 bind Zanna.Graphics3D.Particles3D as Particles3D;
 
 var emitter = Particles3D.New(256);
@@ -1840,7 +1855,7 @@ from its own line-of-sight raycasts).
 | `BindNode(sceneNode)` | `Void(Object)` | Auto-track a `SceneNode` each `SpatialAudio3D.SyncBindings` call |
 | `ClearNodeBinding()` | `Void()` | Remove node binding |
 
-```rust
+```zia
 bind Zanna.Graphics3D.SoundSource3D as SoundSource3D;
 bind Zanna.Graphics3D.SoundListener3D as SoundListener3D;
 bind Zanna.Audio.SpatialAudio3D as SpatialAudio3D;
@@ -2003,7 +2018,7 @@ current waypoint segment against the navmesh's off-mesh links, so they report
 `true` only while the segment between the current and next waypoint is a link
 edge. An idle agent, or one walking ordinary polygons, reports `false`/`""`.
 
-```rust
+```zia
 bind Zanna.Graphics3D.NavMesh3D as NavMesh3D;
 bind Zanna.Graphics3D.NavAgent3D as NavAgent3D;
 
@@ -2074,7 +2089,7 @@ collider/nav entities pick the carve-through up automatically. Skirts at
 chunk borders are unaffected by interior holes; a hole touching a chunk
 border can leave a visible skirt wall inside the pit at LOD seams.
 
-```rust
+```zia
 bind Zanna.Graphics3D.Terrain3D as Terrain3D;
 
 // ... load splatPixels, grassTex, and rockTex before configuring the terrain ...

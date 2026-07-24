@@ -68,7 +68,7 @@ Command-line arguments and environment access.
 
 ### Zia Example
 
-```rust
+```zia
 module EnvDemo;
 
 bind Zanna.Terminal;
@@ -148,7 +148,7 @@ UTF-8 text clipboard access backed by the active desktop clipboard backend.
 
 ### Zia Example
 
-```rust
+```zia
 module ClipboardDemo;
 
 bind Zanna.System.Clipboard as Clipboard;
@@ -217,7 +217,7 @@ published through `Request` just like under the VM, so `Poll` observes `Interrup
 
 ### Zia Example
 
-```rust
+```zia
 module GracefulServer;
 
 bind Zanna.System.Shutdown as Shutdown;
@@ -310,7 +310,7 @@ Zanna.System.Exec.RunArgs("/bin/cat", args)  ' Arguments are passed directly
 The commands in the following Zia and BASIC examples are POSIX examples. On Windows, use commands
 and executable paths available on that host.
 
-```rust
+```zia
 module ExecDemo;
 
 bind Zanna.Terminal;
@@ -442,7 +442,7 @@ environment.
 The command below is a POSIX example. On Windows, use `cmd.exe` with arguments such as `/c` and a Windows command
 string, or start the desired executable directly without a shell.
 
-```rust
+```zia
 module ProcessDemo;
 
 bind Zanna.Collections.Seq as Seq;
@@ -545,7 +545,7 @@ non-null empty or NUL-containing program/cwd, malformed sequence entry, or alloc
 trap. `OpenResult` converts both forms to `Err(String)` and is the preferred API. In Zia, annotate
 the extracted payload because `Result.Unwrap()` has the generic `Object` return type:
 
-```rust
+```zia
 var opened = Pty.OpenResult(program, args, cwd, env, 80, 24);
 if opened.IsOk {
     var session: Zanna.System.Pty.PtySession = opened.Unwrap();
@@ -594,7 +594,7 @@ System information queries providing read-only access to machine properties.
 
 ### Zia Example
 
-```rust
+```zia
 module MachineDemo;
 
 bind Zanna.Terminal;
@@ -769,7 +769,7 @@ call these methods directly.
 
 ### Zia Example
 
-```rust
+```zia
 module GCDemo;
 
 bind Zanna.Terminal;
@@ -866,7 +866,7 @@ reject a null receiver before the helper is called.
 
 ### Zia Example
 
-```rust
+```zia
 module WeakRefDemo;
 
 bind Zanna.Terminal;
@@ -878,12 +878,12 @@ func start() {
     var target = Seq.New();
     var ref = WeakRef.New(target);
 
-    Say("Target alive: " + Fmt.Bool(ref.Alive()));
+    Say("Target alive: " + Fmt.Bool(ref.IsAlive()));
     var promoted = ref.Get(); // A strong reference when non-null
     Say("Promoted: " + Fmt.Bool(promoted != null));
 
     ref.Reset(null);
-    Say("After clear: " + Fmt.Bool(ref.Alive()));
+    Say("After clear: " + Fmt.Bool(ref.IsAlive()));
     ref.Free();
 }
 ```
@@ -955,7 +955,7 @@ Terminal input and output operations.
 
 ### Zia Example
 
-```rust
+```zia
 module TerminalDemo;
 
 bind Zanna.Terminal;

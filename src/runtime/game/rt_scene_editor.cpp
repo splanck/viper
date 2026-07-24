@@ -16,7 +16,8 @@
 //   - Temporary parsed runtime values are released before each C ABI return.
 //
 // Links: rt_scene_editor.h, rt_tiled_import.cpp,
-//   docs/adr/0144-complete-tiled-map-import.md
+//   docs/adr/0144-complete-tiled-map-import.md,
+//   docs/adr/0155-scene-object-authoring-metadata-and-duplication.md
 //
 //===----------------------------------------------------------------------===//
 
@@ -187,6 +188,22 @@ enum class ScalarKind {
     Float,
     String,
 };
+
+const char *scalarKindName(ScalarKind kind) {
+    switch (kind) {
+        case ScalarKind::Null:
+            return "null";
+        case ScalarKind::Bool:
+            return "bool";
+        case ScalarKind::Int:
+            return "int";
+        case ScalarKind::Float:
+            return "float";
+        case ScalarKind::String:
+            return "string";
+    }
+    return "";
+}
 
 struct SceneScalar {
     ScalarKind kind{ScalarKind::Null};
@@ -2145,12 +2162,47 @@ int64_t rt_game_scene_object_y(void *scene, int64_t index) {
     return validObjectIndex(s, index) ? s.objects[static_cast<size_t>(index)].y : 0;
 }
 
+void rt_game_scene_set_object_metadata(void *scene, int64_t index, rt_string type, rt_string id) {
+    SCENE_TRY {
+        SceneState &s = *requireScene(scene)->state;
+        if (!validObjectIndex(s, index))
+            return;
+
+        std::string next_type = toStd(type);
+        std::string next_id = toStd(id);
+        Object &object = s.objects[static_cast<size_t>(index)];
+        object.type = std::move(next_type);
+        object.id = std::move(next_id);
+    }
+    SCENE_CATCH_VOID
+}
+
 void rt_game_scene_set_object_position(void *scene, int64_t index, int64_t x, int64_t y) {
     SceneState &s = *requireScene(scene)->state;
     if (validObjectIndex(s, index)) {
         s.objects[static_cast<size_t>(index)].x = x;
         s.objects[static_cast<size_t>(index)].y = y;
     }
+}
+
+int64_t rt_game_scene_duplicate_object(void *scene, int64_t index, rt_string id) {
+    SCENE_TRY {
+        SceneState &s = *requireScene(scene)->state;
+        if (!validObjectIndex(s, index))
+            return -1;
+        if (static_cast<int64_t>(s.objects.size()) >= kMaxObjects) {
+            addDiagnostic(s, "scene.edit.rejected", "warning", "too many scene objects");
+            return -1;
+        }
+
+        std::string next_id = toStd(id);
+        Object duplicate = s.objects[static_cast<size_t>(index)];
+        duplicate.id = std::move(next_id);
+        int64_t duplicate_index = index + 1;
+        s.objects.insert(s.objects.begin() + duplicate_index, std::move(duplicate));
+        return duplicate_index;
+    }
+    SCENE_CATCH(-1)
 }
 
 void rt_game_scene_set_object_property(void *scene, int64_t index, rt_string key, rt_string value) {
@@ -2222,15 +2274,26 @@ return scalar && scalar->kind == ScalarKind::Bool ? (scalar->boolValue ? 1 : 0) 
 SCENE_CATCH(def)
 }
 
-int8_t rt_game_scene_object_has(void *scene, int64_t index, rt_string key) {
+int8_t rt_game_scene_object_has(void *scene, int64_t index, rt_string key){
+    SCENE_TRY{SceneState &s = *requireScene(scene) -> state;
+return validObjectIndex(s, index) &&
+               findScalar(s.objects[static_cast<size_t>(index)].properties, key)
+           ? 1
+           : 0;
+}
+SCENE_CATCH(0)
+}
+
+rt_string rt_game_scene_object_property_kind(void *scene, int64_t index, rt_string key) {
     SCENE_TRY {
         SceneState &s = *requireScene(scene)->state;
-        return validObjectIndex(s, index) &&
-                       findScalar(s.objects[static_cast<size_t>(index)].properties, key)
-                   ? 1
-                   : 0;
+        if (!validObjectIndex(s, index))
+            return makeString("");
+        const SceneScalar *scalar =
+            findScalar(s.objects[static_cast<size_t>(index)].properties, key);
+        return makeString(scalar ? scalarKindName(scalar->kind) : "");
     }
-    SCENE_CATCH(0)
+    SCENE_CATCH(makeString(""))
 }
 
 void *rt_game_scene_object_keys(void *scene, int64_t index) {
@@ -2247,6 +2310,15 @@ void *rt_game_scene_object_keys(void *scene, int64_t index) {
         return seq;
     }
     SCENE_CATCH(rt_seq_new_owned())
+}
+
+void rt_game_scene_object_set_null(void *scene, int64_t index, rt_string key) {
+    SCENE_TRY {
+        SceneState &s = *requireScene(scene)->state;
+        if (validObjectIndex(s, index))
+            setScalar(s.objects[static_cast<size_t>(index)].properties, s, key, makeNullScalar());
+    }
+    SCENE_CATCH_VOID
 }
 
 void rt_game_scene_object_set_int(void *scene, int64_t index, rt_string key, int64_t value) {

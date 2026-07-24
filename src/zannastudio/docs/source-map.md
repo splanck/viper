@@ -156,7 +156,8 @@ column, code, and message.
 ### `build/breakpoints.zia`
 
 Stores persisted breakpoint records: path, line, condition, and log message.
-Also owns breakpoint gutter marker constants. Debug command code and the debug
+Also owns breakpoint gutter marker constants and exact source-location removal,
+which never toggles a missing record back on. Debug command code and the debug
 session both depend on this store.
 
 ### `build/debug_session.zia`
@@ -171,8 +172,9 @@ The IDE writes newline JSON commands to stdin and reads sentinel-prefixed JSON
 events from stderr. Program stdout is kept as program output. The session tracks
 stopped/running/terminated state, current stop path and line, locals, call
 stack, evaluation results, persistent watches, program output, and debug console
-text. Restart requests are queued and launched only after the old adapter
-process terminates.
+text. Clear removes only session-owned stdout/stderr; debugger control status
+remains available for truthful console presentation. Restart requests are
+queued and launched only after the old adapter process terminates.
 
 Touch this file for debug protocol transport and session state. UI presentation
 belongs in `commands/debug_commands.zia`, `ui/app_shell.zia`, or debug-specific
@@ -217,18 +219,25 @@ basic editor command surface does not keep growing.
 UI-side owner for project-wide BASIC definition, references, incoming/outgoing
 calls, and rename. It snapshots roots and open BASIC buffers, schedules the
 owned background job, rejects stale editor/workspace anchors, navigates or
-applies edits on the UI thread, and publishes large result sets in bounded
-per-frame batches. Keep GUI/document mutation here and scanner/file work in the
-worker module below.
+opens complete rename results in the shared non-modal review surface, and
+publishes large result sets in bounded per-frame batches. Keep scanner/file work
+in the worker module below.
 
 ### `commands/zia_workspace_commands.zia`
 
 UI-side owner for Zia definition, references, incoming/outgoing calls, and
 rename. It waits for cooperative project indexing without blocking the event
 loop, submits immutable editor/index anchors to the owned worker, rejects stale
-or incomplete results, navigates and applies edits on the UI thread, and
-publishes at most 100 result items per frame. Keep project parsing in
+or incomplete results, navigates on the UI thread, opens complete rename results
+in shared review UI, and publishes at most 100 result items per frame. Keep project parsing in
 `editor/zia_workspace_query_job.zia` and GUI/document mutation here.
+
+### `commands/workspace_edit_preview_commands.zia`
+
+Consumes Apply/Cancel actions from the rename review surface. Apply revalidates
+the complete edit set immediately before mutation, refreshes the visible editor
+and index, and reopens stale failures inline; Cancel restores editor focus
+without changing the workspace.
 
 ### `commands/source_transform_commands.zia`
 
@@ -264,14 +273,16 @@ Search result display strings should never be the only source of navigation
 truth. Use `services/locations.zia` for stable location ids.
 
 The interactive path is the docked Search panel owned by `ui/app_shell.zia` and
-started from `SearchController`. `commands/search_prompt.zia` remains as a
-legacy request helper; direct, cached, and panel paths should converge on
-`services/search_request.zia`.
+started from `SearchController`. Search commands collect text and options there;
+blocking message-box prompts are intentionally not part of the Studio workflow.
+Direct and panel paths converge on `services/search_request.zia`.
 
 Text search is bounded by both file count and aggregate source bytes per frame.
 The controller records the first/last `LocationStore` ids published by each run;
 Replace All must use that interval rather than every historical `KIND_SEARCH`
-record in the shared location store.
+record in the shared location store. Search and Replace completion is durable
+panel/status feedback and must not emit a second transient notification.
+Immediate command failures route through `ui/notification_policy.zia`.
 
 ### `commands/replace_commands.zia`
 
@@ -306,7 +317,9 @@ build/run configs, updates running jobs, populates output rows, and publishes
 diagnostics to the shell.
 
 Process mechanics belong in `build/build_system.zia`; command workflow and
-status messages belong here.
+status messages belong here. Completed results remain in Output, Problems, and
+the status bar without a toast, even when the job fails; only an immediate start
+failure routes through `ui/notification_policy.zia`.
 
 ### `services/diff_engine.zia`
 
@@ -333,13 +346,20 @@ before application teardown so no promise outlives the runtime.
 
 User-facing debug commands: start, continue, step, pause, stop, restart, run to
 cursor, breakpoint toggles, breakpoint metadata, evaluation, and UI publishing
-from `DebugSession` state.
+from `DebugSession` state. It also pumps the inline Variables-panel watch
+toolbar and maps structured watch-row identities to Add/Remove/Refresh/Clear
+session operations. Call Stack publication attaches the original adapter frame
+index to each row, and Debug Console publication sends program output and
+session status to separate shell inputs. The same module publishes primitive
+state and versioned breakpoint snapshots to `RunDebugView`, then resolves its
+action intent through existing commands and exact source records.
 
 ### `commands/view_commands.zia`
 
-Workbench display commands: sidebar/status bar/theme/fullscreen/minimap,
-font zoom, UI zoom, settings, keybindings, tool-row copy, output copy/clear,
-output filter/wrap/autoscroll, recent files, and About.
+Workbench display commands: sidebar visibility/left-right placement, status
+bar/theme/fullscreen/minimap, font zoom, UI zoom, settings, keybindings,
+tool-row copy, output copy/clear, output filter/wrap/autoscroll, recent files,
+and About.
 
 ## `core/`
 
@@ -654,11 +674,12 @@ recursive directory or map-unpacking rules in command/core modules.
 
 ### `services/workspace_edits.zia`
 
-Preview, validation, conflict detection, application, and diagnostics formatting
-for workspace edit sequences. Rename and refactor commands depend on this to
-avoid partial or conflicting application. Scanner-backed edits may attach the
-source text and disk mtime observed during the background scan; validation
-rejects changed buffers/files before applying any edit.
+Validation, conflict detection, transactional application, legacy text-summary
+formatting, and diagnostics formatting for workspace edit sequences. Rename and
+refactor commands depend on this to avoid partial or conflicting application.
+Scanner-backed edits may attach the source text and disk mtime observed during
+the background scan; validation rejects changed buffers/files before applying
+any edit.
 
 ## `basic/`
 
@@ -696,8 +717,9 @@ for line-oriented interactive work, not a full-screen TUI host.
 
 Async Git command layer over `Zanna.System.Process`. It resolves `git`, starts
 argv-sequence jobs in the repository root, captures stdout/stderr/exit code,
-parses porcelain v2 status, stages/unstages files, commits, diffs, pushes,
-pulls, lists branches, and switches branches.
+parses porcelain v2 status (including the real three-object-ID unmerged-row
+shape), stages/unstages files, commits, diffs, pushes, pulls, lists branches,
+and switches branches.
 
 Known constraints are documented in [status.md](status.md) and
 [runtime-integration.md](runtime-integration.md). Blocking wrapper methods are
@@ -708,7 +730,10 @@ kept for probes and older call sites, but UI code should start and pump
 
 Source Control view model and UI action state. It owns the current Git snapshot,
 selected path, diff text, commit message, active job, and refresh/operation
-behavior needed by AppShell.
+behavior needed by AppShell. Wrapped action rows reflow with the sidebar;
+selection/index/conflict/message state drives truthful enablement; focused Enter
+submits commits and credential responses; and unmerged rows expose the safe
+edit-then-Stage path without destructive resolution shortcuts.
 
 ### `scm/scm_gutter_controller.zia`
 
@@ -721,31 +746,167 @@ bound marker publication.
 
 The `ui/` directory owns persistent widgets, overlays, and display helpers.
 
+### `ui/notification_policy.zia`
+
+Stateless eligibility rules for transient warning/error popups. Background
+results that already have a durable owning surface stay quiet, immediate action
+failures are eligible, and external-state warnings require active-resource
+ownership. Build and Search controllers are linted against bypassing this
+boundary with direct warning/error toast calls.
+
 ### `ui/app_shell.zia`
 
 Constructs the workbench: window, menu bar, toolbar, sidebar, explorer,
 activity bar, editor container, tab bar, breadcrumb, find bar, bottom panels,
-debug panels, terminal, Source Control widgets, preferences, overlays, status
-bar, and helper methods for showing/hiding/updating those widgets. It arbitrates
-the single focus-taking transient-surface slot used by Settings, About, explorer
-actions, breakpoint input, command input, and diff views. Frame rendering also
-reconciles the requested minimap with the measured editor-lane width so compact
-windows reclaim its space without losing the persisted preference.
+debug panels, terminal, Source Control and Run/Debug hosts, preferences,
+overlays, status bar, and helper methods for showing/hiding/updating those
+widgets. It arbitrates the single focus-taking transient-surface slot used by
+Settings, About, explorer actions, breakpoint input, command input, rename
+preview, and diff views. Frame rendering also reconciles the requested minimap
+with the measured editor-lane width so compact windows reclaim its space without
+losing the persisted preference.
 
 This file is also too large. Add new UI state here only when it truly belongs to
 the persistent shell. For complex new surfaces, prefer a dedicated controller or
 view module that AppShell wires.
 
+### `ui/workbench_shell.zia`
+
+Builds the stable nested splitter topology for the activity rail, primary
+sidebar, editor, Preferences lane, visual-scene hosts, and left/bottom/right
+tool-strip hosts. It delegates direct primary-sidebar movement and persistence
+edges to `PrimarySidebarDock` and tool content/docking to `ToolPanelShell`.
+
+### `ui/primary_sidebar_dock.zia`
+
+Owns the primary sidebar's drag header, explicit arrows, typed stationary
+left/right targets, mirrored logical-width math, collapse recovery, focus-safe
+live-tree reparenting, and one-shot position/size persistence edges. It moves
+Explorer, Source Control, and Run and Debug plus their activity rail without
+reparenting the editor or tool-panel trees.
+
+### `ui/workspace_dock.zia`
+
+Pure portable location IDs, typed drag payloads, bounded edge-target geometry,
+narrow floating-window snap geometry, and concise feedback text shared by
+primary-sidebar and tool-strip docking.
+
 ### `ui/activity_bar.zia`
 
-Activity bar state and view ids. Currently covers Explorer, Search, Source
-Control, Run/Debug, Extensions placeholder, Problems, Outline, and related view
-selection behavior.
+Activity bar state and persisted view ids for Explorer, Source Control, and Run
+and Debug sidebar surfaces.
 
 ### `ui/debug_breakpoint_overlay.zia`
 
 Overlay for breakpoint metadata entry: conditions and logpoints. It owns the
 temporary input UI and action result consumed by debug command code.
+
+### `ui/run_debug_view.zia`
+
+State-aware, vertically scrollable Run and Debug activity view. It consumes
+primitive session snapshots, retains copied breakpoint path/line/store identity,
+filters without parsing row text, realizes at most 1,000 matching rows, and
+emits action constants only. Process ownership, document navigation, breakpoint
+persistence, and tool-panel selection stay in command code.
+
+### `ui/run_debug_support.zia`
+
+Small presentation-support leaf for stable Run/Debug action ids, copied
+breakpoint records, row filtering/formatting, count text, and responsive
+button/scroll sizing. It has no build-system or debug-session dependency.
+
+### `ui/scene_editor_2d.zia`
+
+Document-backed 2D layer/tile/object authoring surface. It owns responsive
+canvas coordination, layer selection and asset assignment, gap-free
+paint/erase strokes, stable multi-object selection, transactional group
+drag/duplicate/delete, focus-scoped pixel/tile nudging, primary-axis
+alignment, deterministic distribution, typed object properties, Tiled import,
+external-image reload, and process-local canonical history. Real atlas
+decoding/rendering, project-asset discovery, selection normalization,
+precision-layout rules, and palette presentation live in smaller leaf modules.
+
+### `ui/scene_layout_2d.zia`
+
+Stateless helper for 2D alignment/distribution operation identity, selection
+requirements, stable coordinate ordering, and deterministically rounded
+distribution targets. It has no GUI, document, or Scene2D ownership.
+
+### `ui/scene_clipboard.zia`
+
+Shared document-independent clipboard envelope for both visual editors. It
+encodes a versioned scene kind, primary identity, bounded selection identities,
+and byte-exact canonical source content into the platform text clipboard. Its
+decoder rejects malformed, duplicate, oversized, or unsupported identities
+before either controller can reconstruct selected 2D objects or 3D subtrees.
+
+### `ui/scene_selection.zia`
+
+Shared document-independent selection boundary for the retained hierarchy
+ListBoxes. It converts byte-exact `GetSelectedData()` values into bounded,
+deduplicated model indices, preserves an explicit primary row, and never parses
+display labels. The runtime contract is recorded by ADR 0156.
+
+### `ui/scene_asset_browser.zia`
+
+Shared presentation-only project asset chooser for both scene editors. It
+cooperatively warms `ProjectManager`'s multi-root file cache, applies exact
+extension and case-insensitive text filters, realizes at most 512 rows, retains
+absolute row identity, previews one bounded common image, and reports selection
+intent without mutating a document. It also owns the conservative
+saved-scene-relative path spelling used by 2D layer assets.
+
+### `ui/scene_tileset_2d.zia`
+
+Document-independent 2D tileset preview library. It resolves authored paths,
+enforces source/decoded/cache budgets, decodes PNG/JPEG/BMP/GIF images, maps
+tile IDs to atlas frames, polls one external reference's metadata per interval,
+and renders the bounded palette and canvas images. Missing or invalid references
+remain deterministic fallback state.
+
+### `ui/scene_tileset_inspector_2d.zia`
+
+Presentation-only 2D layer-image status and scrollable palette. It owns
+accessible Reload/Clear controls, cached thumbnails, selection outlines, and
+pointer intent while `SceneEditor2D` owns document mutation and history.
+
+### `ui/scene_editor_3d.zia`
+
+Document-backed VSCN hierarchy and wireframe viewport. It owns import and
+primitive creation, camera navigation, responsive hierarchy/inspector state,
+stable multi-node selection, parent-aware group Move/Rotate/Scale handles,
+subtree-aware batch duplicate/delete, pointer capture and Escape rollback,
+focus-scoped W/E/R and Duplicate/Delete selection commands, live single-node
+transforms, relative multi-node numeric transform batches, compact PBR
+material component coordination, cycle-safe existing-node reparenting, bounded
+native texture selection, and canonical one-step edit history.
+
+### `ui/scene_hierarchy_3d.zia`
+
+Stateless helper for existing-node hierarchy containment, destination
+validation, unchanged-parent detection, and common-parent lookup. It has no
+GUI, document, or SceneGraph ownership.
+
+### `ui/scene_transform_3d.zia`
+
+Stateless helper for transform-mode labels, mode-aware snap increments, target
+quantization, safe scale bounds, and projected pointer-drag math. It has no GUI,
+document, or SceneGraph ownership.
+
+### `ui/scene_material_3d.zia`
+
+Material value/file-loading helper for compact PBR draft normalization, no-op
+matching, ColorPicker conversion, editable map-slot selection, common-image and
+strict KTX2 decoding, retained-map summaries, canonical bounded thumbnail
+creation, and clone-safe material creation. It preserves hidden imported
+material state and has no GUI, document, or SceneGraph ownership.
+
+### `ui/scene_material_inspector_3d.zia`
+
+Presentation-only compact PBR and texture-map inspector. It owns accessible
+widgets, selected-slot summaries, a cached 128-pixel canonical map thumbnail,
+and truthful action enablement, while `SceneEditor3D` retains selection,
+mutation, and history ownership.
 
 ### `ui/explorer_actions.zia`
 
@@ -756,9 +917,16 @@ input and reports action intent; actual filesystem/document mutation happens in
 ### `ui/command_input.zia`
 
 Reusable non-modal single-value command input overlay. It is used by Go To Line,
-Add Watch, output filtering, Workspace Symbols, Rename Symbol, Extract Local,
-and Extract Function; command modules consume the completed value and perform
-validation/effects.
+output filtering, Workspace Symbols, Rename Symbol, Extract Local, Extract
+Function, and New Project; command modules consume the completed value and
+perform validation/effects.
+
+### `ui/workspace_edit_preview.zia`
+
+Responsive non-modal review surface for multi-file rename edits. It retains the
+exact edit/root payload until Apply or Cancel, renders at most 50 row widgets
+per frame and 250 preview rows total, and participates in the shell's exclusive
+transient-focus ownership.
 
 ### `ui/ide_overlays.zia`
 
@@ -772,10 +940,37 @@ language display names.
 
 ### `ui/tool_panel_model.zia`
 
-Named ids and tab indexes for the bottom tool-panel strip. Use this instead of
-magic integers when adding bottom-panel behavior. It also owns the bounded
-stable-row model used by ListBox-backed Problems, Search, References, Debug
-Console, Variables, and Call Stack panels.
+Stable panel/tab ids, default tab indexes, durable Problems records, and bounded
+row state for the dockable tool-panel strip. Use stable IDs rather than visual
+indices after tabs can move. Problems records retain severity, source,
+location, code, message, action, and location-store data while filtered
+ListBox rows are rebuilt. Generic tool rows retain optional location data plus
+References group/header identity so filtered result items can be recreated
+without breaking click-to-open navigation. Their generic data field also carries
+durable producer identity such as the original adapter frame index for a
+filtered Call Stack row.
+
+### `ui/tool_panel_groups.zia`
+
+Pure migration-safe membership and ordering for simultaneous left, bottom,
+right, and in-window floating tool groups. It validates complete canonical
+layouts atomically, migrates legacy three-group/single-dock settings, moves one
+stable panel ID, and merges a complete primary group into an occupied
+destination without depending on GUI handles.
+
+### `ui/tool_panel_shell.zia`
+
+Owns live tool widgets, simultaneous left/bottom/right group roots, one
+movable/resizable in-window floating root, direct selected-tool movement,
+primary-group drag/merge/float, geometry and membership persistence edges,
+stable bounded row projection, and responsive in-panel controls. Moving a tool
+reparents its existing content widget and recreates only its owning Tab, so
+terminal/search/filter focus and producer state survive. Problems, Output,
+References, Debug Console, Variables, and Call Stack keep their control state
+here while producer-owned records remain outside concrete ListBox items. Call
+Stack rebuilds filtered rows with original frame IDs; Debug Console presents
+separately owned program output and debugger status, and emits a clear request
+for the session owner rather than clearing presentation rows optimistically.
 
 ### `ui/output_cache.zia`
 
@@ -849,9 +1044,31 @@ Important probe groups:
 - `editor_hot_path_probe.zia`: editor performance and copy/layout/index guards.
 - `intellisense_probe.zia`: completion, diagnostics, hover, signature behavior.
 - `console_search_probe.zia`: output/search/Quick Open helpers.
+- `bottom_panel_probe.zia`: real pointer docking for the primary sidebar and
+  primary tool group; simultaneous left/bottom/right/floating groups; real
+  floating move/resize/edge-redock and geometry persistence; direct selected
+  tool controls; migration-safe group persistence; mirrored size persistence;
+  collapse/focus safety; movable tabs; compact targets; and layout reset.
+- `tool_panel_toolbar_probe.zia`: live Problems/Output/References filters and
+  actions, durable diagnostic/reference metadata, incremental grouped results,
+  real pointer activation, and zoomed side-dock containment.
 - `debug_probe.zia`: VM debug adapter integration.
+- `debug_tool_surfaces_probe.zia`: state-aware Call Stack and Debug Console
+  filtering, copy/clear behavior, durable frame identity, real pointer actions,
+  and zoomed side-dock containment.
+- `run_debug_view_probe.zia`: persisted activity routing, complete debugger
+  state labels, real pointer controls, versioned breakpoint publication,
+  filtered exact removal/persistence, and high-zoom scroll reachability.
+- `scene_editor_2d_probe.zia` and `scene_editor_3d_probe.zia`: stable hierarchy
+  multi-selection; exact one-transaction group transform, duplicate, delete,
+  cut, same-kind cross-document paste, selection restoration, malformed or
+  wrong-kind rejection, focus-safe pixel/tile nudging, deterministic 2D
+  alignment/distribution, cycle/no-op-safe 3D reparenting, post-move selection
+  remapping, and rollback behavior.
 - `terminal_*`: PTY terminal behavior and rendering.
 - `scm_probe.zia`: Git Source Control behavior.
+- `scm_view_probe.zia`: real-Git responsive panel, pointer staging,
+  focused-Enter commits, and content-conflict recovery.
 - `scm_gutter_probe.zia`: bounded rendering plus asynchronous/stale-safe gutter
   diffs in a real temporary multi-root Git workspace.
 
@@ -891,13 +1108,31 @@ Use this practical decision table:
 | Text formatting | `zia/formatters.zia` |
 | Build/run process mechanics | `build/build_system.zia` |
 | Build/run user command flow | `commands/build_commands.zia` |
+| Transient notification eligibility | `ui/notification_policy.zia` |
 | Debug transport/session state | `build/debug_session.zia` |
 | Debug command behavior | `commands/debug_commands.zia` |
+| Run and Debug activity presentation | `ui/run_debug_view.zia` |
+| Shared scene project-asset search/preview | `ui/scene_asset_browser.zia` |
+| Shared typed scene clipboard envelope | `ui/scene_clipboard.zia` |
+| Shared retained-row scene selection | `ui/scene_selection.zia` |
+| 2D visual scene authoring | `ui/scene_editor_2d.zia` |
+| 2D precision layout rules | `ui/scene_layout_2d.zia` |
+| 2D tileset decode/palette rendering | `ui/scene_tileset_2d.zia` |
+| 2D tileset inspector presentation | `ui/scene_tileset_inspector_2d.zia` |
+| 3D visual scene authoring | `ui/scene_editor_3d.zia` |
+| 3D hierarchy reparent rules | `ui/scene_hierarchy_3d.zia` |
+| 3D transform gizmo math | `ui/scene_transform_3d.zia` |
+| 3D material copy-on-edit rules | `ui/scene_material_3d.zia` |
+| 3D material inspector presentation | `ui/scene_material_inspector_3d.zia` |
 | Terminal PTY wrapper | `terminal/terminal_session.zia` |
 | Terminal UI behavior | `terminal/terminal_controller.zia` |
 | Git command execution | `scm/scm_git.zia` |
 | Source Control view state | `scm/scm_view.zia` |
 | Persistent shell widgets | `ui/app_shell.zia` |
+| Workbench splitter topology | `ui/workbench_shell.zia` |
+| Primary sidebar docking | `ui/primary_sidebar_dock.zia` |
+| Shared workspace dock geometry/payloads | `ui/workspace_dock.zia` |
+| Independent tool-group membership/order | `ui/tool_panel_groups.zia` |
 | Build-output cache/wrap policy | `ui/output_cache.zia` |
 | Shared display row formatting | `ui/tool_panel_text.zia` |
 | Bottom panel ids/tab indexes | `ui/tool_panel_model.zia` |
@@ -913,9 +1148,13 @@ The source map should also make current weak spots explicit:
 - `commands/edit_commands.zia`, `commands/search_commands.zia`, and
   `editor/completion.zia` are also large and should be split when adding
   cohesive new behavior.
-- Bottom panels are functional but not true virtualized workbench surfaces.
-- Scene document kind exists without a scene editor subsystem.
-- Source Control is async and marks basic conflicts but still workflow-light.
+- Tool panels support independent attached groups and one in-window floating
+  group, but not native secondary-window/multi-monitor detachment or true
+  virtualized workbench surfaces.
+- Built-in 2D/3D scene editors exist, but their asset/component/gizmo depth is
+  still substantially below mature game-engine authoring tools.
+- Source Control has a safe basic conflict path but no merge/rebase
+  orchestration or ours/theirs recovery surface.
 - Terminal behavior depends on OutputPane terminal mode, not a complete terminal
   emulator.
 - BASIC support is intentionally narrower than Zia.

@@ -1789,6 +1789,14 @@ void rt_listbox_set_multi_select(void *listbox, int64_t enabled);
 /// @return Newline-delimited selected row text, or empty when nothing is selected.
 rt_string rt_listbox_get_selected_text(void *listbox);
 
+/// @brief Return data attached to all selected retained rows.
+/// @details Values are byte-exact copies in current row order. A selected row without data
+///          contributes an empty string. Virtual-mode lists return an empty sequence because
+///          their rows are owned by the external model.
+/// @param listbox ListBox widget handle.
+/// @return Newly allocated owned Seq of strings; empty for no selection or an invalid handle.
+void *rt_listbox_get_selected_data(void *listbox);
+
 /// @brief Check if selection changed since last check (polling pattern).
 /// @param listbox ListBox widget handle.
 /// @return 1 if selection changed, 0 otherwise.

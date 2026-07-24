@@ -143,7 +143,7 @@ calendar fields as UTC seconds since the Unix epoch.
 
 ### Zia Example
 
-```rust
+```zia
 module ArchiveDemo;
 
 bind Zanna.Terminal;
@@ -344,7 +344,7 @@ Use DEFLATE when:
 
 ### Zia Example
 
-```rust
+```zia
 module CompressDemo;
 
 bind Zanna.Terminal;

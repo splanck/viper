@@ -271,6 +271,7 @@ void *rt_game3d_entity_from_node(void *root) {
         const char *root_name_cstr = root_name ? rt_string_cstr(root_name) : NULL;
         if (root_name_cstr && root_name_cstr[0] != '\0')
             game3d_assign_ref((void **)&entity->name, root_name);
+        rt_string_unref(root_name);
     }
     entity->group = 1;
     return entity;

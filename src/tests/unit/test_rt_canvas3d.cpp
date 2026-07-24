@@ -1758,12 +1758,16 @@ static void test_textureasset3d_ktx2_material_bridge() {
     assert(mat != nullptr);
     rt_material3d_set_texture(mat, rgba_asset);
     EXPECT_EQ(rt_material3d_get_has_texture(mat), 1);
+    EXPECT_TRUE(rt_material3d_get_texture_pixels(mat) == fallback_pixels,
+                "material inspection resolves a TextureAsset3D RGBA fallback");
     rt_material3d_set_texture(mat, nullptr);
     EXPECT_EQ(rt_material3d_get_has_texture(mat), 0);
     rt_material3d_set_albedo_map(mat, rgba_asset);
     EXPECT_EQ(rt_material3d_get_has_texture(mat), 1);
     rt_material3d_set_normal_map(mat, rgba_asset);
     EXPECT_EQ(rt_material3d_get_has_normal_map(mat), 1);
+    EXPECT_TRUE(rt_material3d_get_normal_map_pixels(mat) == fallback_pixels,
+                "normal-map inspection resolves a TextureAsset3D RGBA fallback");
     rt_material3d_set_specular_map(mat, rgba_asset);
     EXPECT_EQ(rt_material3d_get_has_specular_map(mat), 1);
     rt_material3d_set_emissive_map(mat, rgba_asset);
@@ -1813,6 +1817,8 @@ static void test_textureasset3d_ktx2_material_bridge() {
                 "native mip query rejects out-of-range mips");
     rt_material3d_set_texture(mat, bc7_asset);
     EXPECT_EQ(rt_material3d_get_has_texture(mat), 1);
+    EXPECT_TRUE(rt_material3d_get_texture_pixels(mat) == rt_textureasset3d_get_pixels(bc7_asset),
+                "material inspection resolves a compressed TextureAsset3D fallback");
     textured = rt_material3d_new_textured(bc7_asset);
     assert(textured != nullptr);
     EXPECT_EQ(rt_material3d_get_has_texture(textured), 1);
@@ -3490,8 +3496,24 @@ static void test_material_texture_presence_getters() {
     EXPECT_EQ(rt_material3d_get_has_metallic_roughness_map(m), 0);
     EXPECT_EQ(rt_material3d_get_has_ao_map(m), 0);
     EXPECT_EQ(rt_material3d_get_has_env_map(m), 0);
+    EXPECT_TRUE(rt_material3d_get_texture_pixels(m) == nullptr,
+                "empty material exposes no base-color preview pixels");
+    EXPECT_TRUE(rt_material3d_get_normal_map_pixels(m) == nullptr,
+                "empty material exposes no normal-map preview pixels");
+    EXPECT_TRUE(rt_material3d_get_specular_map_pixels(m) == nullptr,
+                "empty material exposes no specular-map preview pixels");
+    EXPECT_TRUE(rt_material3d_get_emissive_map_pixels(m) == nullptr,
+                "empty material exposes no emissive-map preview pixels");
+    EXPECT_TRUE(rt_material3d_get_metallic_roughness_map_pixels(m) == nullptr,
+                "empty material exposes no metallic/roughness preview pixels");
+    EXPECT_TRUE(rt_material3d_get_ao_map_pixels(m) == nullptr,
+                "empty material exposes no ambient-occlusion preview pixels");
+    EXPECT_TRUE(rt_material3d_get_lightmap_pixels(m) == nullptr,
+                "empty material exposes no lightmap preview pixels");
     EXPECT_EQ(rt_material3d_get_has_texture(NULL), 0);
     EXPECT_EQ(rt_material3d_get_has_env_map(NULL), 0);
+    EXPECT_TRUE(rt_material3d_get_texture_pixels(NULL) == nullptr,
+                "null material exposes no preview pixels");
 
     rt_material3d_set_albedo_map(m, px);
     EXPECT_EQ(rt_material3d_get_has_texture(m), 1);
@@ -3504,6 +3526,7 @@ static void test_material_texture_presence_getters() {
     rt_material3d_set_emissive_map(m, px);
     rt_material3d_set_metallic_roughness_map(m, px);
     rt_material3d_set_ao_map(m, px);
+    rt_material3d_set_lightmap(m, px);
     rt_material3d_set_env_map(m, cm);
     EXPECT_EQ(rt_material3d_get_has_texture(m), 1);
     EXPECT_EQ(rt_material3d_get_has_normal_map(m), 1);
@@ -3512,6 +3535,20 @@ static void test_material_texture_presence_getters() {
     EXPECT_EQ(rt_material3d_get_has_metallic_roughness_map(m), 1);
     EXPECT_EQ(rt_material3d_get_has_ao_map(m), 1);
     EXPECT_EQ(rt_material3d_get_has_env_map(m), 1);
+    EXPECT_TRUE(rt_material3d_get_texture_pixels(m) == px,
+                "base-color inspection returns the bound drawable Pixels");
+    EXPECT_TRUE(rt_material3d_get_normal_map_pixels(m) == px,
+                "normal inspection returns the bound drawable Pixels");
+    EXPECT_TRUE(rt_material3d_get_specular_map_pixels(m) == px,
+                "specular inspection returns the bound drawable Pixels");
+    EXPECT_TRUE(rt_material3d_get_emissive_map_pixels(m) == px,
+                "emissive inspection returns the bound drawable Pixels");
+    EXPECT_TRUE(rt_material3d_get_metallic_roughness_map_pixels(m) == px,
+                "metallic/roughness inspection returns the bound drawable Pixels");
+    EXPECT_TRUE(rt_material3d_get_ao_map_pixels(m) == px,
+                "ambient-occlusion inspection returns the bound drawable Pixels");
+    EXPECT_TRUE(rt_material3d_get_lightmap_pixels(m) == px,
+                "lightmap inspection returns the bound drawable Pixels");
 
     rt_material3d_set_texture(m, NULL);
     rt_material3d_set_normal_map(m, NULL);
@@ -3519,6 +3556,7 @@ static void test_material_texture_presence_getters() {
     rt_material3d_set_emissive_map(m, NULL);
     rt_material3d_set_metallic_roughness_map(m, NULL);
     rt_material3d_set_ao_map(m, NULL);
+    rt_material3d_set_lightmap(m, NULL);
     rt_material3d_set_env_map(m, NULL);
     EXPECT_EQ(rt_material3d_get_has_texture(m), 0);
     EXPECT_EQ(rt_material3d_get_has_normal_map(m), 0);
@@ -3527,6 +3565,20 @@ static void test_material_texture_presence_getters() {
     EXPECT_EQ(rt_material3d_get_has_metallic_roughness_map(m), 0);
     EXPECT_EQ(rt_material3d_get_has_ao_map(m), 0);
     EXPECT_EQ(rt_material3d_get_has_env_map(m), 0);
+    EXPECT_TRUE(rt_material3d_get_texture_pixels(m) == nullptr,
+                "cleared base-color slot exposes no preview pixels");
+    EXPECT_TRUE(rt_material3d_get_normal_map_pixels(m) == nullptr,
+                "cleared normal slot exposes no preview pixels");
+    EXPECT_TRUE(rt_material3d_get_specular_map_pixels(m) == nullptr,
+                "cleared specular slot exposes no preview pixels");
+    EXPECT_TRUE(rt_material3d_get_emissive_map_pixels(m) == nullptr,
+                "cleared emissive slot exposes no preview pixels");
+    EXPECT_TRUE(rt_material3d_get_metallic_roughness_map_pixels(m) == nullptr,
+                "cleared metallic/roughness slot exposes no preview pixels");
+    EXPECT_TRUE(rt_material3d_get_ao_map_pixels(m) == nullptr,
+                "cleared ambient-occlusion slot exposes no preview pixels");
+    EXPECT_TRUE(rt_material3d_get_lightmap_pixels(m) == nullptr,
+                "cleared lightmap slot exposes no preview pixels");
     PASS();
 }
 

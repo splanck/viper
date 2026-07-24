@@ -18,7 +18,7 @@ This chapter will teach you not just *how* to use inheritance, but *when* to use
 
 Imagine building a game with different enemies. You start with a goblin:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 class Goblin {
@@ -54,7 +54,7 @@ class Goblin {
 
 Great! Now you need an orc:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 class Orc {
@@ -114,7 +114,7 @@ This isn't just a programming trick - it reflects how we naturally categorize th
 
 With inheritance, we extract the common parts into a *base class*:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 class Enemy {
@@ -150,7 +150,7 @@ class Enemy {
 
 Now we can create specialized enemies that *extend* this base:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 class Goblin extends Enemy {
@@ -202,7 +202,7 @@ When one class extends another, we create a *parent-child* relationship (also ca
 
 The `extends` keyword establishes this relationship:
 
-```rust
+```zia
 class Goblin extends Enemy {
     // Goblin is the child, Enemy is the parent
 }
@@ -218,7 +218,7 @@ When a class extends another, it automatically receives:
 
 Let's see this in action:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 var goblin = new Goblin(10.0, 20.0);
@@ -246,7 +246,7 @@ A child class can *override* methods from its parent - providing its own impleme
 
 A child class can also *add* new fields and methods that don't exist in the parent. The `Dragon` class adds a `breatheFire()` method that only dragons have.
 
-```rust
+```zia
 var dragon = new Dragon(0.0, 0.0);
 dragon.breatheFire();  // Works!
 
@@ -264,7 +264,7 @@ The `super` keyword is how child classes communicate with their parent. It has t
 
 When you create a child class, you typically need to initialize the parent's fields. The `super.init()` call in an initializer invokes the parent's initializer:
 
-```rust
+```zia
 class Enemy {
     expose Number x;
     expose Number y;
@@ -294,7 +294,7 @@ Think of it like filling out a form. The parent class says "I need these four pi
 
 Sometimes you want to *extend* the parent's behavior rather than completely replace it. The `super.methodName()` syntax lets you call the parent's version of a method:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 class Enemy {
@@ -363,7 +363,7 @@ You override methods when the child needs different behavior than the parent pro
 
 In Zanna, when you define a method in a child class with the same name as a parent method, it automatically overrides. However, for clarity and safety, you can use the `override` keyword to make your intentions explicit:
 
-```rust
+```zia
 class Enemy {
     expose func attack() -> Integer {
         return 1;
@@ -389,7 +389,7 @@ Using `override` is good practice because:
 
 Without the `override` keyword, you might accidentally override a parent method:
 
-```rust
+```zia
 class Vehicle {
     expose func turn(degrees: Number) {
         // Rotate the vehicle
@@ -412,7 +412,7 @@ Using `override` explicitly helps catch these mistakes. If you add `override` bu
 
 Inheritance can extend multiple levels, creating a *hierarchy* or *tree* of related classes:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 class Animal {
@@ -459,7 +459,7 @@ A `Dog` inherits from `Mammal`, which inherits from `Animal`. This means a dog h
 - From `Mammal`: `furColor`, `nurse()`
 - Its own: `breed`, `fetch()`
 
-```rust
+```zia
 var fido = new Dog("Fido", "Golden Retriever");
 fido.breathe();  // From Animal: "Fido is breathing"
 fido.nurse();    // From Mammal: "Fido is nursing its young"
@@ -503,7 +503,7 @@ This eleven-level hierarchy has several problems:
 
 Let's build a classic example that demonstrates inheritance well - geometric shapes:
 
-```rust
+```zia
 module Shapes;
 
 bind Zanna.Terminal;
@@ -650,7 +650,7 @@ Certain patterns appear repeatedly when using inheritance. Learning to recognize
 
 In this pattern, the parent defines the *structure* of an algorithm, but lets children fill in specific steps:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 class Report {
@@ -721,7 +721,7 @@ The parent (`Report`) defines the template: header, then content, then footer. C
 
 This pattern creates progressively more specific versions of a concept:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 class Account {
@@ -834,7 +834,7 @@ Even when "is-a" seems to apply, composition might still be better. Here are sig
 
 **1. You only need part of the parent's functionality**
 
-```rust
+```zia
 // If Rectangle only needs the position from Shape, not area/perimeter methods:
 class Rectangle {
     position: Point;  // Composition
@@ -847,7 +847,7 @@ class Rectangle {
 
 Inheritance relationships are fixed at compile time. Composition relationships can change:
 
-```rust
+```zia
 class Character {
     weapon: Weapon;  // Can swap weapons during the game
 
@@ -867,7 +867,7 @@ With inheritance, a `SwordCharacter` is always a sword character. With compositi
 
 Zanna (like many languages) only allows inheriting from one parent. But you can compose as many classes as you want:
 
-```rust
+```zia
 // Can't do this:
 class FlyingCar extends Car, Aircraft { }  // Error!
 
@@ -966,7 +966,7 @@ In other words, you should be able to substitute a child object anywhere a paren
 
 Let's see what this means practically:
 
-```rust
+```zia
 func processEnemy(enemy: Enemy) {
     enemy.move(10.0, 0.0);
     var damage = enemy.attack();
@@ -982,7 +982,7 @@ processEnemy(new Dragon(0.0, 0.0));   // Works!
 
 This seems obvious, but it's easy to violate. Consider:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 class Bird {
@@ -1017,7 +1017,7 @@ Better designs:
 
 The *fragile base class problem* occurs when changes to a parent class break child classes in unexpected ways.
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 class MediaPlayer {
@@ -1049,7 +1049,7 @@ class VideoPlayer extends MediaPlayer {
 
 This works fine. But what if someone modifies MediaPlayer?
 
-```rust
+```zia
 class MediaPlayer {
     expose func play() {
         // Changed: now calls preparePlayback differently
@@ -1079,7 +1079,7 @@ Suddenly VideoPlayer might break. Its author assumed a certain order of operatio
 Different Zanna language styles express inheritance differently:
 
 **Zia**
-```rust
+```zia
 bind Zanna.Terminal;
 
 class Animal {
@@ -1192,7 +1192,7 @@ Inheritance is powerful but easy to misuse. When you're unsure, composition is u
 **Exercise 15.5 - Template Method**: Create a `Game` class with a `play()` method that calls `setup()`, `playRound()` (in a loop), and `declareWinner()`. Create `TicTacToe` and `GuessTheNumber` games that override these methods.
 
 **Exercise 15.6 - Composition Refactoring**: Take the following (bad) inheritance hierarchy and refactor it to use composition:
-```rust
+```zia
 class Person { }
 class Employee extends Person { }
 class Manager extends Employee { }

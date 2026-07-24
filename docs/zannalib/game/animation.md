@@ -95,7 +95,7 @@ Back curves can leave the 0–1 range between their exact endpoints. That oversh
 
 ### Zia example
 
-```rust
+```zia
 module TweenDemo;
 
 bind Zanna.Game.Tween as Tween;
@@ -297,7 +297,7 @@ and never a silently dropped one under memory pressure (VDOC-279).
 
 ### Zia example
 
-```rust
+```zia
 module AnimStateDemo;
 
 bind Zanna.Game.AnimStateMachine as AnimStateMachine;
@@ -413,7 +413,7 @@ public registry. Use `PollEvents()`.
 
 ### Zia example
 
-```rust
+```zia
 module TimelineDemo;
 
 bind Zanna.Game.AnimTimeline as AnimTimeline;
@@ -484,7 +484,7 @@ regions if they are used every frame.
 
 ### Zia example
 
-```rust
+```zia
 module SpriteSheetDemo;
 
 bind Zanna.Graphics;
@@ -583,7 +583,7 @@ valid cache is preserved (VDOC-281).
 
 ### Zia example
 
-```rust
+```zia
 module PathFollowerDemo;
 
 bind Zanna.Game.PathFollower as PathFollower;

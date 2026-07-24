@@ -45,7 +45,7 @@ These classes sit directly on top of `Pixels` and `Canvas`. They cover rendering
 
 ## Render Targets, Textures, And Renderer
 
-```rust
+```zia
 var target = RenderTarget2D.New(320, 180)
 var spritePixels = Pixels.Load("assets/player.png")
 var texture = Texture2D.New(spritePixels)
@@ -67,7 +67,7 @@ canvas.BlitAlpha(0, 0, target.Pixels)
 
 ## Passes And Color Helpers
 
-```rust
+```zia
 var palette = Palette2D.New()
 palette.SetColor(3, 0xFF0000FF)
 palette.SetColor(4, Color.RGBA(0, 0, 255, 128))
@@ -115,7 +115,7 @@ Software video decoder that exposes each decoded frame as a `Pixels` object for 
 | `Update(deltaSeconds)` | `Void(Double)` | Advance the decoder by the elapsed time |
 | `SetVolume(volume)` | `Void(Double)` | Set playback volume `[0.0–1.0]` |
 
-```rust
+```zia
 bind Zanna.Graphics.VideoPlayer as VideoPlayer;
 
 var video = VideoPlayer.Open("assets/intro.ogv")

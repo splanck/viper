@@ -63,7 +63,7 @@ Checkable state is explicit: `IsCheckable()` is false until `SetCheckable(true)`
 
 ### Example
 
-```rust
+```zia
 // Zia
 var menubar = MenuBar.New(root);
 var fileMenu = menubar.AddMenu("File");
@@ -133,7 +133,7 @@ Toolbar item handles are runtime-managed and become inert after `RemoveItem()` o
 
 ### Example
 
-```rust
+```zia
 // Zia
 var toolbar = Toolbar.New(root);
 toolbar.SetIconSize(1);  // Medium preset: 24 px
@@ -179,7 +179,7 @@ Status-bar item handles are runtime-managed and become inert after removal, `Cle
 
 ### Example
 
-```rust
+```zia
 // Zia
 var statusbar = StatusBar.New(root);
 statusbar.SetLeftText("Ready");
@@ -215,7 +215,7 @@ Context menu, submenu, and menu-item handles are runtime-managed and become iner
 
 ### Example
 
-```rust
+```zia
 // Zia
 var ctx = ContextMenu.New();
 var cutItem = ctx.AddItem("Cut");
@@ -271,7 +271,7 @@ If the parent widget destroys the underlying bar, the runtime wrapper disconnect
 
 ### Example
 
-```rust
+```zia
 // Zia
 var findbar = FindBar.New(root);
 findbar.SetCaseSensitive(false);
@@ -316,7 +316,7 @@ The constructor accepts an app handle, app root, or widget parent. A widget pare
 
 ### Example
 
-```rust
+```zia
 // Zia
 var palette = CommandPalette.New(root);
 palette.SetPlaceholder("Type a command...");
@@ -378,7 +378,7 @@ Owns a set of commands and routes the menu item, toolbar button, keyboard shortc
 
 ### Example
 
-```rust
+```zia
 // Zia — bind one action to its menu item, toolbar button, shortcut and palette,
 // then dispatch them all from a single poll.
 var registry = CommandRegistry.New();
@@ -436,7 +436,7 @@ Replacing or clearing items also clears stale click payloads. After
 
 ### Example
 
-```rust
+```zia
 // Zia
 var bc = Breadcrumb.New(root);
 bc.SetPath("src/gui/widgets", "/");
@@ -482,7 +482,7 @@ Minimap wrappers install runtime finalizers and clamp width/scale changes throug
 
 ### Example
 
-```rust
+```zia
 // Zia
 var minimap = Minimap.New(root);
 minimap.BindEditor(editor);
@@ -564,7 +564,7 @@ Object-style dialogs:
 
 ### Example
 
-```rust
+```zia
 // Zia
 MessageBox.Info("Info", "Operation completed");
 MessageBox.Warning("Warning", "File not saved");
@@ -651,7 +651,7 @@ filters, a default filename, or multiple selected paths:
 
 ### Example
 
-```rust
+```zia
 // Zia
 var path = FileDialog.Open("Open File", "/home", "*.txt;*.zia");
 if path != "" { /* open file at path */ }
@@ -708,7 +708,7 @@ Toast handle methods:
 
 ### Example
 
-```rust
+```zia
 // Zia
 Toast.Info("File saved successfully");
 Toast.Success("Build completed");
@@ -741,7 +741,7 @@ Leave events honor the configured hide delay, timed tooltips auto-hide after the
 
 ### Example
 
-```rust
+```zia
 // Zia
 Tooltip.SetDelay(500);
 Tooltip.Show("Click to save", 100, 50);
@@ -768,7 +768,7 @@ Desktop backends now provide text clipboard support on Linux as well as macOS an
 
 ### Example
 
-```rust
+```zia
 // Zia
 bind Zanna.GUI;
 bind Zanna.Terminal;
@@ -804,7 +804,7 @@ Receiver class for setting layout properties on widget handles.
 
 ### Zia Example
 
-```rust
+```zia
 module ContainerDemo;
 
 bind Zanna.Terminal;
@@ -858,7 +858,7 @@ Invalid shortcut strings are rejected without registering a new shortcut or repl
 
 ### Example
 
-```rust
+```zia
 // Zia
 Shortcuts.Register("save", "Ctrl+S", "Save file");
 Shortcuts.Register("quit", "Ctrl+Q", "Quit application");
@@ -887,7 +887,7 @@ the default arrow.
 
 ### Example
 
-```rust
+```zia
 // Zia
 Cursor.Set(1);       // Pointer cursor
 Cursor.SetVisible(true);
@@ -916,7 +916,7 @@ Zanna.GUI.Theme.SetDark()
 Zanna.GUI.Theme.SetLight()
 ```
 
-```rust
+```zia
 // Zia
 bind Zanna.GUI.Theme as Theme;
 
@@ -973,7 +973,7 @@ widget's reusable storage. No background thread is created.
 | `AddChild(widget)` | `Void(Object)` | Add extra content to the widget's internal root container |
 | `Destroy()` | `Void()` | Release decoder resources |
 
-```rust
+```zia
 module VideoWidgetDemo;
 
 bind Zanna.GUI.VideoWidget as VideoWidget;

@@ -83,7 +83,7 @@ Locale-aware number formatting **and parsing** with configurable fraction digits
 
 ### Zia Example
 
-```rust
+```zia
 module NumberFormatDemo;
 
 bind Zanna.Terminal;
@@ -164,7 +164,7 @@ CLDR-pattern-letter date and time formatting.
 
 ### Zia Example
 
-```rust
+```zia
 module DateFormatDemo;
 
 bind Zanna.Terminal;
@@ -174,7 +174,7 @@ bind Zanna.Localization.Locale as Locale;
 
 func start() {
     var fmt = DateFormat.ForLocale(Locale.Parse("en-US"));
-    var ts = DateTime.Create(2027, 3, 15, 14, 30, 5);
+    var ts = DateTime.FromParts(2027, 3, 15, 14, 30, 5);
 
     Say(fmt.Long(ts));                       // "March 15, 2027"
     Say(fmt.Custom(ts, "yyyy-MM-dd HH:mm")); // "2027-03-15 14:30"
@@ -244,7 +244,7 @@ Locale-correct list joining ("A, B, and C").
 
 ### Zia Example
 
-```rust
+```zia
 module ListFormatDemo;
 
 bind Zanna.Terminal;

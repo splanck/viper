@@ -11,6 +11,10 @@
 //   - One Document has at most one live CodeEditor/EditorBuffer owner.
 //   - Flat editor state always describes the physically focused pane.
 //   - A mismatched document can never receive the focused pane's text.
+//   - Split panes contain editable CodeEditor documents only; visual surfaces
+//     and read-only previews always own the single centered workbench surface.
+//   - Split geometry is controller-authored or user-authored, never inferred
+//     from equal-flex child widths.
 // Ownership/Lifetime: Main owns one engine; Documents retain detached buffers.
 // Links: zannastudio/src/core/document.zia,
 //        zannastudio/src/main.zia
@@ -20,8 +24,18 @@
 module editor_engine;
 
 bind "../core/document";
+bind "../services/file_utils";
 bind Zanna.GUI as GUI;
 bind Doc = Zanna.Zia.Document;
+
+/// @brief Return whether a document can safely own one CodeEditor split pane.
+/// @details Visual scene surfaces own Document.content directly, while preview
+///          documents deliberately disable editor input. Neither may be hidden
+///          behind a live two-CodeEditor arrangement.
+expose func IsSplitDocumentEligible(doc: document.Document?) -> Boolean {
+    return doc != null and doc!.isReadOnlyPreview == false
+           and file_utils.IsVisualKind(doc!.kind) == false;
+}
 
 // ============================================================================
 // MODULE: editor_engine
@@ -90,10 +104,14 @@ class EditorEngine {
     // editor == leftWidget — behavior is byte-identical to before the split.
     expose GUI.CodeEditor leftWidget;   // Physical left pane (the Setup editor).
     expose GUI.CodeEditor rightWidget;  // Physical right pane, null until first split.
+    expose GUI.SplitPane editorPaneSplit; // Resizable left/right editor container.
     expose Boolean splitActive;         // Whether a second pane is shown.
     expose Boolean secondaryFocused;    // Whether the right pane is focused.
     expose PaneState shadow;            // Non-focused pane's metadata (null when unsplit).
     expose Boolean paneFocusChanged;    // Consumed by main to sync tabs/controllers.
+    expose Number splitPositionFraction; // Primary pane share while split.
+    hide Number appliedSplitPosition;
+    hide Boolean splitPositionDirty;
 
     // Incremental language-service sync (plan 08). Tracks what the focused pane
     // last pushed to the service's document mirror so the next sync sends only
@@ -111,10 +129,14 @@ class EditorEngine {
         cachedTextRevision = -1;
         leftWidget = null;
         rightWidget = null;
+        editorPaneSplit = null;
         splitActive = false;
         secondaryFocused = false;
         shadow = null;
         paneFocusChanged = false;
+        splitPositionFraction = 0.50;
+        appliedSplitPosition = 0.50;
+        splitPositionDirty = false;
         syncedRevision = -1;
         syncedPath = "";
     }
@@ -123,11 +145,18 @@ class EditorEngine {
     /// @note Enables line numbers, fold gutter, and Flex(1.0) so the
     ///       editor expands to fill its parent.
     expose func Setup(parent: GUI.HBox) {
-        editor = GUI.CodeEditor.New(parent);
+        editorPaneSplit = GUI.SplitPane.New(parent, 1);
+        editorPaneSplit.SetFlex(1.0);
+        editorPaneSplit.SetPosition(splitPositionFraction);
+        editorPaneSplit.SetMinFirst(160.0);
+        editorPaneSplit.SetMinSecond(160.0);
+        var primaryHost: GUI.Widget = editorPaneSplit.First;
+        editor = GUI.CodeEditor.New(primaryHost);
         editor.SetShowLineNumbers(true);
         editor.SetShowFoldGutter(true);
         editor.SetFlex(1.0);
         leftWidget = editor; // the primary pane; `editor` aliases the focused pane
+        editorPaneSplit.CollapseSecond();
     }
 
     /// @brief Load `doc.content` into the editor and restore its cursor.
@@ -137,6 +166,13 @@ class EditorEngine {
     expose func LoadDocument(doc: document.Document) {
         if doc == null {
             return;
+        }
+
+        // A visual surface or read-only preview cannot coexist with a hidden
+        // second CodeEditor. Collapse first, then load the requested document
+        // into the primary widget so tab switching preserves the user's target.
+        if splitActive and IsSplitDocumentEligible(doc) == false {
+            CloseSplit();
         }
 
         // A document already displayed in the other pane owns that pane's live
@@ -257,6 +293,10 @@ class EditorEngine {
         if doc == null or doc != currentDoc {
             return;
         }
+        // Visual editors serialize their canonical models directly into
+        // Document.content. The hidden text buffer is only a load-time snapshot
+        // and must never overwrite a newer scene edit during save/tab switching.
+        if file_utils.IsVisualKind(doc.kind) { return; }
         doc.content = GetTextSnapshot();
         doc.cursorLine = GetCursorLine();
         doc.cursorCol = GetCursorCol();
@@ -453,6 +493,71 @@ class EditorEngine {
         return 1;
     }
 
+    /// @brief Document physically displayed in the primary (left) pane.
+    /// @details Flat engine state follows keyboard focus, so this accessor
+    ///          resolves through `shadow` when the secondary pane is focused.
+    expose func PrimaryDocument() -> document.Document? {
+        if splitActive == false or secondaryFocused == false {
+            return currentDoc;
+        }
+        if shadow == null { return null; }
+        return shadow.currentDoc;
+    }
+
+    /// @brief Document physically displayed in the secondary (right) pane.
+    /// @return Null while the editor is not split.
+    expose func SecondaryDocument() -> document.Document? {
+        if splitActive == false { return null; }
+        if secondaryFocused { return currentDoc; }
+        if shadow == null { return null; }
+        return shadow.currentDoc;
+    }
+
+    /// @brief Apply a persisted primary-pane width percentage.
+    /// @param pct Primary pane share, clamped to [20, 80].
+    /// @details An unsplit engine stores the value without reopening the
+    ///          explicitly collapsed secondary host.
+    expose func SetSplitPositionPct(pct: Integer) {
+        var clamped = pct;
+        if clamped < 20 { clamped = 20; }
+        if clamped > 80 { clamped = 80; }
+        splitPositionFraction = clamped / 100.0;
+        appliedSplitPosition = splitPositionFraction;
+        if splitActive and editorPaneSplit != null {
+            editorPaneSplit.SetPosition(splitPositionFraction);
+        }
+        splitPositionDirty = false;
+    }
+
+    /// @brief Consume one user-authored editor divider change.
+    /// @return Rounded primary-pane width percentage, or -1 when unchanged.
+    expose func TakeChangedSplitPositionPercent() -> Integer {
+        CaptureSplitPosition();
+        if splitPositionDirty == false { return -1; }
+        splitPositionDirty = false;
+        var scaled = splitPositionFraction * 100.0;
+        var pct = 20;
+        while pct < 80 and scaled >= pct + 0.5 {
+            pct = pct + 1;
+        }
+        return pct;
+    }
+
+    /// @brief Capture a live split drag while both editor panes are visible.
+    hide func CaptureSplitPosition() {
+        if splitActive == false or editorPaneSplit == null
+           or editorPaneSplit.GetCollapsedSide() != 0 {
+            return;
+        }
+        var current = editorPaneSplit.GetPosition();
+        var delta = current - appliedSplitPosition;
+        if delta < 0.0 { delta = 0.0 - delta; }
+        if delta <= 0.0005 { return; }
+        splitPositionFraction = current;
+        appliedSplitPosition = current;
+        splitPositionDirty = true;
+    }
+
     hide func captureFlat() -> PaneState {
         var s = new PaneState();
         s.currentDoc = currentDoc;
@@ -476,23 +581,30 @@ class EditorEngine {
     /// @brief Open a second pane containing a distinct document.
     /// @details EditorBuffer is single-owner, so cloning the focused document
     ///          would create two divergent sources of truth. The caller must
-    ///          provide another open document; invalid requests leave the
-    ///          one-pane layout unchanged.
+    ///          provide another editable CodeEditor document; invalid requests
+    ///          leave the one-pane layout unchanged.
     /// @return True only when the split was opened.
-    expose func SplitRight(parent: GUI.HBox,
-                           secondaryDoc: document.Document) -> Boolean {
+    expose func SplitRight(secondaryDoc: document.Document) -> Boolean {
         if splitActive or currentDoc == null or secondaryDoc == null
-           or secondaryDoc == currentDoc {
+           or secondaryDoc == currentDoc or editorPaneSplit == null {
+            return false;
+        }
+        if IsSplitDocumentEligible(currentDoc) == false
+           or IsSplitDocumentEligible(secondaryDoc) == false {
             return false;
         }
         if rightWidget == null {
-            rightWidget = GUI.CodeEditor.New(parent);
+            var secondaryHost: GUI.Widget = editorPaneSplit.Second;
+            rightWidget = GUI.CodeEditor.New(secondaryHost);
             rightWidget.SetShowLineNumbers(true);
             rightWidget.SetShowFoldGutter(true);
             rightWidget.SetFlex(1.0);
         } else {
             rightWidget.SetVisible(true);
         }
+        editorPaneSplit.SetPosition(splitPositionFraction);
+        appliedSplitPosition = splitPositionFraction;
+        splitPositionDirty = false;
         rightWidget.AttachBuffer(GUI.EditorBuffer.New(""));
         rightWidget.SetReadOnly(false);
         shadow = new PaneState();
@@ -504,6 +616,29 @@ class EditorEngine {
         // The internal setup round trip ends on the original pane, so there is
         // no externally observable focus transition for main to reconcile.
         paneFocusChanged = false;
+        return true;
+    }
+
+    /// @brief Collapse a stale split after either pane changes surface kind.
+    /// @param preferredDoc Document selected by the global tab model.
+    /// @return True when an incompatible split was repaired.
+    /// @details Save As and Explorer retarget operations can change a live
+    ///          Document's kind without calling LoadDocument. This frame-level
+    ///          repair keeps the selected document visible while returning the
+    ///          workbench to its single-surface contract.
+    expose func ReconcileSplitEligibility(
+        preferredDoc: document.Document?) -> Boolean {
+        if splitActive == false { return false; }
+        var first = PrimaryDocument();
+        var second = SecondaryDocument();
+        if IsSplitDocumentEligible(first)
+           and IsSplitDocumentEligible(second) {
+            return false;
+        }
+        CloseSplit();
+        if preferredDoc != null and currentDoc != preferredDoc {
+            LoadDocument(preferredDoc!);
+        }
         return true;
     }
 
@@ -531,6 +666,7 @@ class EditorEngine {
     /// @brief Close the second pane, returning to single-pane mode on the primary.
     expose func CloseSplit() {
         if splitActive == false { return; }
+        CaptureSplitPosition();
         if secondaryFocused { FocusOtherPane(); } // ensure the primary is focused
         // Detach the right pane's buffer back into its Document before hiding
         // the widget. This preserves text, undo, cursor, and folds for a later
@@ -544,6 +680,7 @@ class EditorEngine {
             rightWidget.SetReadOnly(false);
         }
         if rightWidget != null { rightWidget.SetVisible(false); }
+        if editorPaneSplit != null { editorPaneSplit.CollapseSecond(); }
         shadow = null;
         splitActive = false;
         secondaryFocused = false;

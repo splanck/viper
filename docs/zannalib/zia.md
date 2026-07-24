@@ -139,7 +139,7 @@ String-returning forms remain for compatibility.
 
 ### Zia Example
 
-```rust
+```zia
 module CompletionDemo;
 
 bind Zanna.Zia.Completion as Completion;
@@ -217,7 +217,7 @@ first-fix fields, so the map schema does not depend on scheduling choice.
 
 ### Zia Example
 
-```rust
+```zia
 module ToolingDemo;
 
 bind Zanna.Zia.Toolchain as Toolchain;
@@ -307,7 +307,7 @@ result definitively, or use `BeginCheckForFile`, which returns null when no mirr
 
 ### Zia Example
 
-```rust
+```zia
 module DocumentDemo;
 
 bind Zanna.Zia.Document as Document;
@@ -480,7 +480,7 @@ them to editor buffers or files themselves.
 
 ### ProjectIndex Example
 
-```rust
+```zia
 module ProjectIndexDemo;
 
 bind Zanna.Zia.ProjectIndex as ProjectIndex;

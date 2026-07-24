@@ -242,6 +242,7 @@ int main() {
 
     const il::runtime::RuntimeClass *guiListBoxCls = findClass("Zanna.GUI.ListBox");
     assert(guiListBoxCls != nullptr && "Zanna.GUI.ListBox not found in catalog");
+    assert(hasMethod(*guiListBoxCls, "GetSelectedData", "seq<str>()"));
     assert(hasMethod(*guiListBoxCls, "SetVirtualModel", "i1(obj)"));
     assert(hasMethod(*guiListBoxCls, "GetVisibleFirst", "i64()"));
     assert(hasMethod(*guiListBoxCls, "GetVisibleCount", "i64()"));

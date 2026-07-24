@@ -9,9 +9,11 @@
 // Purpose: Regress split-pane document ownership, focus, and buffer teardown.
 // Key invariants:
 //   - A split contains two distinct Documents, never cloned independent copies.
+//   - Visual scenes and read-only previews cannot own CodeEditor split panes.
 //   - Opening the other pane's Document focuses its existing buffer owner.
 //   - Focused text cannot be saved into a mismatched Document.
 //   - Explorer path mutations preserve live undo and release removed pane owners.
+//   - `--visual-hold` displays the asserted resizable two-pane fixture.
 // Ownership/Lifetime: The probe owns and destroys one AppShell.
 // Links: zannastudio/src/editor/editor_engine.zia,
 //        zannastudio/src/core/document_manager.zia,
@@ -36,10 +38,20 @@ bind Terminal = Zanna.Terminal;
 bind File = Zanna.IO.File;
 bind Path = Zanna.IO.Path;
 bind TempFile = Zanna.IO.TempFile;
+bind Env = Zanna.System.Environment;
 
 func fail(shell: app_shell.AppShell, reason: String) {
     shell.Destroy();
     Terminal.Say("RESULT: fail " + reason);
+}
+
+func HasArg(name: String) -> Boolean {
+    var i = 0;
+    while i < Env.GetArgumentCount() {
+        if Env.GetArgument(i) == name { return true; }
+        i = i + 1;
+    }
+    return false;
 }
 
 func main() {
@@ -53,6 +65,11 @@ func main() {
     var secondary = docs.NewDocument();
     secondary.fileName = "secondary.zia";
     secondary.content = "SECONDARY\nline two\n";
+    var visual = docs.NewScene2DDocument();
+    var preview = docs.NewDocument();
+    preview.fileName = "preview.bin";
+    preview.content = "Read-only preview";
+    preview.isReadOnlyPreview = true;
     docs.SetActiveDocument(primary);
 
     var engine = new editor_engine.EditorEngine();
@@ -65,13 +82,25 @@ func main() {
     if engine.editor != engine.leftWidget { fail(shell, "editor not aliased to left"); return; }
 
     // A single Document cannot be cloned into two independent live buffers.
-    if engine.SplitRight(shell.workbench.editorRow, primary) {
+    if engine.SplitRight(primary) {
         fail(shell, "same-document split was accepted");
         return;
     }
     if engine.PaneCount() != 1 { fail(shell, "rejected split changed layout"); return; }
 
-    if engine.SplitRight(shell.workbench.editorRow, secondary) == false {
+    if engine.SplitRight(visual) or engine.SplitRight(preview) {
+        fail(shell, "non-editor document was accepted as a split companion");
+        return;
+    }
+    engine.LoadDocument(visual);
+    if engine.SplitRight(secondary) or engine.PaneCount() != 1 {
+        fail(shell, "visual primary document opened a hidden text split");
+        return;
+    }
+    engine.LoadDocument(primary);
+    docs.SetActiveDocument(primary);
+
+    if engine.SplitRight(secondary) == false {
         fail(shell, "distinct-document split was rejected");
         return;
     }
@@ -83,9 +112,46 @@ func main() {
         fail(shell, "secondary document not owned by shadow pane");
         return;
     }
+    if engine.PrimaryDocument() != primary
+       or engine.SecondaryDocument() != secondary {
+        fail(shell, "physical pane identity was not exposed before focus change");
+        return;
+    }
     if engine.rightWidget.Text != "SECONDARY\nline two\n" {
         fail(shell, "right pane cloned primary or lost secondary text");
         return;
+    }
+    if engine.editorPaneSplit == null
+       or engine.editorPaneSplit.GetCollapsedSide() != 0
+       or engine.leftWidget.GetScreenWidth() < 100.0
+       or engine.rightWidget.GetScreenWidth() < 100.0 {
+        fail(shell, "split editor did not create two usable resizable panes");
+        return;
+    }
+
+    // A live divider drag publishes one rounded durable percentage. Replaying
+    // a persisted percentage changes geometry without producing another edge.
+    engine.editorPaneSplit.SetPosition(0.637);
+    if engine.TakeChangedSplitPositionPercent() != 64
+       or engine.TakeChangedSplitPositionPercent() != -1 {
+        fail(shell, "editor divider drag did not publish one position");
+        return;
+    }
+    engine.SetSplitPositionPct(42);
+    var appliedSplitPosition = engine.editorPaneSplit.GetPosition();
+    if appliedSplitPosition < 0.41 or appliedSplitPosition > 0.43
+       or engine.TakeChangedSplitPositionPercent() != -1 {
+        fail(shell, "persisted editor split position replayed as input");
+        return;
+    }
+    if HasArg("--visual-hold") {
+        shell.SetStatusLeft("Drag the editor divider to resize both panes");
+        shell.Render();
+        while true {
+            shell.PollWait(16);
+            if shell.WasCloseRequested() { break; }
+            shell.Render();
+        }
     }
 
     // Focus and the manager's global selection can be synchronized by object
@@ -93,6 +159,11 @@ func main() {
     engine.FocusOtherPane();
     if engine.secondaryFocused == false or engine.currentDoc != secondary {
         fail(shell, "secondary focus did not select its document");
+        return;
+    }
+    if engine.PrimaryDocument() != primary
+       or engine.SecondaryDocument() != secondary {
+        fail(shell, "physical pane identity changed with keyboard focus");
         return;
     }
     if docs.SetActiveDocument(engine.currentDoc) != 1 or docs.GetActive() != secondary {
@@ -156,6 +227,7 @@ func main() {
 
     // Closing from the secondary pane returns to primary and detaches the
     // right buffer back into its Document for a lossless later re-split.
+    engine.editorPaneSplit.SetPosition(0.583);
     engine.CloseSplit();
     if engine.PaneCount() != 1 or engine.secondaryFocused {
         fail(shell, "close did not return to one primary pane");
@@ -165,17 +237,56 @@ func main() {
         fail(shell, "close did not restore primary ownership");
         return;
     }
+    if engine.editorPaneSplit.GetCollapsedSide() != 2 {
+        fail(shell, "closed split left an empty divider or secondary strip");
+        return;
+    }
+    if engine.TakeChangedSplitPositionPercent() != 58
+       or engine.TakeChangedSplitPositionPercent() != -1 {
+        fail(shell, "closing a split lost its final divider position");
+        return;
+    }
     if secondary.buffer == null or secondary.buffer.Text != "RIGHT-EDIT\n" {
         fail(shell, "secondary buffer was not detached on close");
         return;
     }
 
-    if engine.SplitRight(shell.workbench.editorRow, secondary) == false
-       or engine.rightWidget.Text != "RIGHT-EDIT\n" {
+    if engine.SplitRight(secondary) == false
+       or engine.rightWidget.Text != "RIGHT-EDIT\n"
+       or engine.editorPaneSplit.GetPosition() < 0.57
+       or engine.editorPaneSplit.GetPosition() > 0.59 {
         fail(shell, "re-split did not restore secondary buffer");
         return;
     }
-    engine.CloseSplit();
+
+    // Selecting a visual tab collapses both CodeEditor panes and keeps that
+    // explicit tab visible in the primary host.
+    docs.SetActiveDocument(visual);
+    engine.LoadDocument(visual);
+    if engine.PaneCount() != 1 or engine.currentDoc != visual
+       or engine.editor != engine.leftWidget {
+        fail(shell, "visual tab switch left a hidden editor split active");
+        return;
+    }
+
+    // Save As / Explorer retarget can change kind without another LoadDocument.
+    // The frame-level repair must collapse and preserve the selected owner.
+    docs.SetActiveDocument(primary);
+    engine.LoadDocument(primary);
+    if engine.SplitRight(secondary) == false {
+        fail(shell, "retarget split setup failed");
+        return;
+    }
+    secondary.kind = visual.kind;
+    docs.SetActiveDocument(secondary);
+    if engine.ReconcileSplitEligibility(secondary) == false
+       or engine.PaneCount() != 1 or engine.currentDoc != secondary {
+        fail(shell, "surface-kind retarget did not repair the editor split");
+        return;
+    }
+    secondary.kind = primary.kind;
+    docs.SetActiveDocument(primary);
+    engine.LoadDocument(primary);
 
     // Explorer rename is a path retarget, not a content reload. It must keep
     // the active EditorBuffer (including undo) alive, and report the transition
@@ -245,7 +356,7 @@ func main() {
     engine.editor.SetCursor(0, 0);
     engine.editor.InsertAtCursor("// keep edit\n");
     if engine.editor.CanUndo() == false
-       or engine.SplitRight(shell.workbench.editorRow, renamedDoc) == false {
+       or engine.SplitRight(renamedDoc) == false {
         fail(shell, "delete split setup failed");
         return;
     }

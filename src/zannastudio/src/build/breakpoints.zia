@@ -171,6 +171,18 @@ class BreakpointStore {
         return true;
     }
 
+    /// @brief Remove one exact source breakpoint without toggle-to-add behavior.
+    /// @return True only when an existing record was removed.
+    expose func RemoveAtLocation(path: String,
+                                 line: Integer) -> Boolean {
+        if path == "" or line <= 0 { return false; }
+        var idx = Find(path, line);
+        if idx < 0 { return false; }
+        items.RemoveAt(idx);
+        version = version + 1;
+        return true;
+    }
+
     expose func ClearPath(path: String) {
         var i = items.count() - 1;
         while i >= 0 {

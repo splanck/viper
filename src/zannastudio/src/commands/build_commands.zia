@@ -12,6 +12,7 @@
 //   - Project roots remain valid build/run targets without an open editor tab.
 //   - Current-file targets must be saved, editable documents.
 //   - At most one build/run job is active at a time.
+//   - Completion remains on durable Build result surfaces without a popup.
 // Ownership/Lifetime:
 //   - This stateless module borrows shell, document, project, and job models.
 // Links: zannastudio/src/build/build_system.zia,
@@ -22,6 +23,7 @@
 module build_commands;
 
 bind "../ui/app_shell";
+bind "../ui/notification_policy";
 bind "../core/document_manager";
 bind "../core/project_manager";
 bind "../editor/editor_engine";
@@ -30,6 +32,7 @@ bind "../build/build_system";
 bind "../build/diagnostic";
 bind "../build/run_config";
 bind "../commands/file_commands";
+bind "../services/file_utils";
 bind "../services/locations";
 bind "../services/theme_colors";
 
@@ -56,9 +59,9 @@ bind Obj = Zanna.Core.Object;
 //   * SAVE-BEFORE-BUILD. When a document is active, every handler calls
 //     SaveEditorState + the execution-save workflow so disk matches the editor.
 //     Untitled documents bail rather than silently inventing a filename.
-//   * TOAST + STATUS BAR. Every result reports through both the toast
-//     popup AND the status bar. Toast is for ephemeral notification;
-//     the status bar persists so the user can re-read the result later.
+//   * DURABLE COMPLETION. Every result persists in the status bar and panel.
+//     Background warning/error completion never interrupts later work with a
+//     duplicate toast; immediate start failures use notification policy.
 //   * DIRECT ARGS, NOT SHELL STRINGS. RunConfig stores program + Seq args;
 //     paths with spaces are passed as a single argument.
 //   * IDE-OWNED JOBS. The frame loop calls UpdateJob so long-running
@@ -85,7 +88,8 @@ expose func HasExecutionTarget(docMgr: document_manager.DocumentManager,
     if docMgr == null { return false; }
     var doc = docMgr.GetActive();
     return doc != null and doc!.isNew == false and doc!.filePath != ""
-           and doc!.isReadOnlyPreview == false;
+           and doc!.isReadOnlyPreview == false
+           and file_utils.IsVisualKind(doc!.kind) == false;
 }
 
 /// @brief Report a canceled save preflight using consistent Build/Run wording.
@@ -117,8 +121,8 @@ func StartExecutionConfig(shell: app_shell.AppShell,
     } else {
         shell.SetBuildJobActive(false, "");
         shell.SetStatusLeft(actionLabel + " failed to start");
-        GUI.Toast.Error(actionLabel + " did not start");
-        PopulateBuildOutput(shell, buildSys, locStore);
+        notification_policy.ActionError(actionLabel + " did not start");
+        PopulateBuildOutput(shell, buildSys, locStore, true);
     }
 }
 
@@ -131,7 +135,7 @@ func handleBuild(shell: app_shell.AppShell,
                  buildSys: build_system.BuildSystem,
                  locStore: locations.LocationStore,
                  saveAllBeforeBuild: Boolean) {
-    if EnsureNoActiveJob(shell, buildSys, "start a new build") == false { return; }
+    if CanStartExecutionJob(shell, buildSys, "start a new build") == false { return; }
     file_commands.SaveEditorState(docMgr, engine);
     var buildDoc = docMgr.GetActive();
     var projectTarget = projMgr != null and projMgr.IsOpen();
@@ -165,7 +169,7 @@ func handleBuildAndRun(shell: app_shell.AppShell,
                        buildSys: build_system.BuildSystem,
                        locStore: locations.LocationStore,
                        saveAllBeforeBuild: Boolean) {
-    if EnsureNoActiveJob(shell, buildSys, "start a new run") == false { return; }
+    if CanStartExecutionJob(shell, buildSys, "start a new run") == false { return; }
     file_commands.SaveEditorState(docMgr, engine);
     var runDoc = docMgr.GetActive();
     var projectTarget = projMgr != null and projMgr.IsOpen();
@@ -211,7 +215,6 @@ func handleStop(shell: app_shell.AppShell,
     if buildSys.Stop() {
         shell.SetBuildJobActive(false, "");
         shell.SetStatusLeft("Stopped job");
-        GUI.Toast.Info("Stopped running job");
     } else {
         shell.SetBuildJobActive(false, "");
         shell.SetStatusLeft("No running job");
@@ -227,7 +230,7 @@ func UpdateJob(shell: app_shell.AppShell,
         buildSys.Update();
         var outputDelta = buildSys.TakeOutputDelta();
         if outputDelta != "" {
-            shell.toolPanels.AppendBuildOutput(outputDelta);
+            shell.toolPanels.UpdateBuildOutput(outputDelta);
         }
         if buildSys.IsActive() == false {
             shell.SetBuildJobActive(false, "");
@@ -237,9 +240,6 @@ func UpdateJob(shell: app_shell.AppShell,
                 var okMsg = buildSys.activeName + " succeeded in " + buildSys.GetBuildTime();
                 if warns > 0 {
                     okMsg = okMsg + " — " + countLabel(warns, "warning");
-                    GUI.Toast.Warning(buildSys.activeName + " succeeded with " + countLabel(warns, "warning"));
-                } else {
-                    GUI.Toast.Success(buildSys.activeName + " succeeded");
                 }
                 shell.SetStatusLeft(okMsg);
             } else {
@@ -251,7 +251,6 @@ func UpdateJob(shell: app_shell.AppShell,
                     failMsg = failMsg + " (exit " + buildSys.exitCode + ")";
                 }
                 shell.SetStatusLeft(failMsg);
-                GUI.Toast.Error(buildSys.activeName + " failed");
             }
             UpdateDiagnostics(shell, buildSys, locStore);
         }
@@ -265,6 +264,7 @@ func UpdateJob(shell: app_shell.AppShell,
 func UpdateDiagnostics(shell: app_shell.AppShell,
                        buildSys: build_system.BuildSystem,
                        locStore: locations.LocationStore) {
+    var revealResult = shell.toolPanels.IsOutputPanelActive();
     shell.toolPanels.BeginProblems();
     shell.workbench.minimap.ClearMarkers();
 
@@ -300,30 +300,32 @@ func UpdateDiagnostics(shell: app_shell.AppShell,
             var locId = locStore.Add(diag.filePath, diag.line, diag.column,
                                      endLine, endColumn,
                                      locations.KIND_BUILD, diag.message);
-            GUI.ListBox.ItemSetData(item, locId);
+            shell.toolPanels.SetAddedProblemLocationData(item, locId);
             shell.workbench.minimap.AddMarker(diag.line, 1, markerColor);
             i = i + 1;
         }
     }
-    shell.toolPanels.FinishProblems(diagCount);
+    shell.toolPanels.UpdateProblems(diagCount);
 
-    PopulateBuildOutput(shell, buildSys, locStore);
+    PopulateBuildOutput(shell, buildSys, locStore, revealResult);
     // Land on the Problems tab when there is something to triage — those rows are
     // click-to-navigate — while a clean build stays on the Output log.
-    if diagCount > 0 {
+    if diagCount > 0 and revealResult {
         shell.toolPanels.ShowProblemsPanel();
     }
 }
 
 func PopulateBuildOutput(shell: app_shell.AppShell,
                          buildSys: build_system.BuildSystem,
-                         locStore: locations.LocationStore) {
+                         locStore: locations.LocationStore,
+                         reveal: Boolean) {
     shell.toolPanels.BeginOutputRows();
     var output = buildSys.GetOutput();
     if output == "" {
         shell.toolPanels.HideOutputPanel();
         return;
     }
+    shell.toolPanels.SetOutputRowSource(output);
     var lines = Zanna.String.Split(output, "\n");
     var i = 0;
     while i < Seq.get_Count(lines) {
@@ -355,7 +357,7 @@ func PopulateBuildOutput(shell: app_shell.AppShell,
     if shell.toolPanels.outputAutoScroll {
         shell.toolPanels.outputListBox.ScrollToBottom();
     }
-    shell.toolPanels.ShowOutputPanel();
+    if reveal { shell.toolPanels.ShowOutputPanel(); }
 }
 
 func FormatCommand(cfg: run_config.RunConfig) -> String {
@@ -402,19 +404,28 @@ func problemSummary(errors: Integer, warnings: Integer) -> String {
     return "";
 }
 
-func EnsureNoActiveJob(shell: app_shell.AppShell,
-                       buildSys: build_system.BuildSystem,
-                       nextAction: String) -> Boolean {
+/// @brief Keep a second build/run request from interrupting the active job.
+/// @param shell Workbench shell that owns status and Output surfaces.
+/// @param buildSys Current build/run process controller.
+/// @param nextAction Lowercase action phrase such as "start a new build".
+/// @return True when no job blocks the requested action.
+/// @details Visible command chrome is disabled during a job, but queued input
+///          can race that state update. Reveal the durable Output/Stop controls
+///          and preserve the process instead of showing a modal interruption.
+expose func CanStartExecutionJob(shell: app_shell.AppShell,
+                                 buildSys: build_system.BuildSystem,
+                                 nextAction: String) -> Boolean {
     if buildSys == null or buildSys.IsActive() == false { return true; }
-    var confirmed = GUI.MessageBox.Confirm(
-        "Job Already Active",
-        "Stop the current job and " + nextAction + "?");
-    if confirmed == 0 {
-        shell.SetStatusLeft("Existing job kept running");
-        return false;
+    if shell != null {
+        var output = buildSys.GetOutput();
+        if output != "" {
+            shell.toolPanels.SetBuildOutput(output);
+        }
+        shell.toolPanels.ShowOutputPanel();
+        var activeLabel = buildSys.activeName;
+        if activeLabel == "" { activeLabel = "A build or run job"; }
+        shell.SetStatusLeft(activeLabel + " is already running; use Stop before you "
+                            + nextAction);
     }
-    buildSys.Stop();
-    shell.SetBuildJobActive(false, "");
-    shell.toolPanels.SetBuildOutput(buildSys.GetOutput());
-    return true;
+    return false;
 }

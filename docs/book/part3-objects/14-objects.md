@@ -24,7 +24,7 @@ Before diving into syntax, let's understand the problems that objects solve. Thi
 
 Consider a simple `BankAccount` structure:
 
-```rust
+```zia
 struct BankAccount {
     expose String ownerName;
     expose Number balance;
@@ -35,7 +35,7 @@ var account = new BankAccount("Alice", 1000.0);
 
 This works, but there's nothing stopping someone from writing:
 
-```rust
+```zia
 account.balance = -500.0;  // Negative balance!
 account.balance = account.balance * 1000000;  // Instant millionaire!
 ```
@@ -48,7 +48,7 @@ In a real banking system, this would be catastrophic. The balance should only ch
 
 With structures, you write functions that operate on data:
 
-```rust
+```zia
 func deposit(account: BankAccount, amount: Number) {
     if amount > 0 {
         account.balance += amount;
@@ -76,7 +76,7 @@ This is better -- now we have functions that enforce rules. But there are proble
 
 A structure is just raw data. There's no built-in way to ensure it starts in a valid state:
 
-```rust
+```zia
 struct Rectangle {
     expose Number width;
     expose Number height;
@@ -92,7 +92,7 @@ What does a rectangle with negative dimensions even mean? The structure allows i
 
 Say you have a structure for representing colors:
 
-```rust
+```zia
 struct Color {
     expose Integer red;    // 0-255
     expose Integer green;  // 0-255
@@ -128,7 +128,7 @@ In Zia, the `struct` keyword creates a structure -- pure data without behavior. 
 
 A struct groups data:
 
-```rust
+```zia
 struct Rectangle {
     expose Number width;
     expose Number height;
@@ -137,7 +137,7 @@ struct Rectangle {
 
 A *class* groups data *and* behavior:
 
-```rust
+```zia
 class Rectangle {
     expose Number width;
     expose Number height;
@@ -218,7 +218,7 @@ Think of it like this:
 
 Both `fido` and `rex` are Dogs -- they follow the same template. But they're separate objects with their own data. When Fido barks, Rex doesn't bark. When Rex's age increases, Fido's age stays the same.
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 class Dog {
@@ -267,7 +267,7 @@ This distinction matters because:
 
 You create an object with `new` followed by the class initializer arguments:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 var rect1 = new Rectangle(10.0, 5.0);
@@ -294,7 +294,7 @@ Now `rect1` refers to a specific Rectangle object with its own width and height.
 
 The initializer is a special method that runs when you create a new object. Its job is to set up the object's initial state -- to make sure the object starts its life in a valid, usable condition.
 
-```rust
+```zia
 class Person {
     expose String name;
     expose Integer age;
@@ -312,7 +312,7 @@ var alice = new Person("Alice", 30);
 
 Without initializers, objects would start with uninitialized or default values. Consider:
 
-```rust
+```zia
 // Hypothetically, if we could create objects without initializers:
 var person = new Person();  // What is person.name? What is person.age?
 ```
@@ -323,7 +323,7 @@ The object would be in a meaningless state. The initializer ensures that every o
 
 You can define multiple initializers with different parameter lists. This is called *overloading* -- the same name (`init`) with different signatures:
 
-```rust
+```zia
 class Person {
     expose String name;
     expose Integer age;
@@ -362,7 +362,7 @@ Multiple initializers let callers provide different levels of detail. Some objec
 
 Initializers are the perfect place to validate input and ensure objects start in valid states:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 class Rectangle {
@@ -397,7 +397,7 @@ You might also choose to report errors differently -- storing an error flag, log
 
 Initializers can do more than just assign fields. They can perform any setup logic the object needs:
 
-```rust
+```zia
 class GameCharacter {
     expose String name;
     expose Integer health;
@@ -427,7 +427,7 @@ class GameCharacter {
 
 Some fields have values that depend on other fields. The initializer is where you establish these relationships:
 
-```rust
+```zia
 bind Zanna.Math as Math;
 
 class Circle {
@@ -445,7 +445,7 @@ class Circle {
 
 However, this pattern can be dangerous -- if `radius` changes later, `diameter` and `circumference` will be out of sync. It's often better to compute derived values in methods:
 
-```rust
+```zia
 bind Zanna.Math as Math;
 
 class Circle {
@@ -473,7 +473,7 @@ This leads us to an important principle: **initializers set up the essential sta
 
 Inside a method, you need a way to refer to the specific object the method was called on. That's what `self` provides.
 
-```rust
+```zia
 class Counter {
     expose Integer count;
 
@@ -501,7 +501,7 @@ Think of it as the method's window into its own object's data. Without `self`, t
 
 Let's trace through exactly what happens:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 var counter = new Counter();   // Step 1: Create object
@@ -529,7 +529,7 @@ Say(counter.getCount());       // Step 3: Get value
 
 Without `self`, methods would have no way to access their object's data:
 
-```rust
+```zia
 func increment() {
     count += 1;  // Error! What count? count isn't defined here.
 }
@@ -541,7 +541,7 @@ The variable `count` doesn't exist in the method's local scope. It's a field tha
 
 This becomes clearer with multiple objects:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 var counterA = new Counter();
@@ -573,7 +573,7 @@ One of the most powerful ideas in object-oriented programming is *encapsulation*
 
 Consider what happens when anyone can modify an object's fields directly:
 
-```rust
+```zia
 class BankAccount {
     expose String ownerName;
     expose Number balance;  // Completely exposed!
@@ -598,7 +598,7 @@ There are no rules, no validation, no protection. The object is just passive dat
 
 Zia lets you control what's visible from outside the class:
 
-```rust
+```zia
 class BankAccount {
     hide balance: Number;
     expose String ownerName;
@@ -634,7 +634,7 @@ class BankAccount {
 
 Now the balance is hidden -- external code cannot access it directly:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 var account = new BankAccount("Alice", 100.0);
@@ -664,7 +664,7 @@ As long as all modifications go through these methods, the invariant is guarante
 
 Different classes have different invariants:
 
-```rust
+```zia
 class Temperature {
     hide kelvin: Number;
 
@@ -735,7 +735,7 @@ A good practice is to hide fields by default and only expose what's necessary. A
 
 Usually, the answer is no. External code needs to *do things* with the object (call methods), not *poke at its internals* (access fields).
 
-```rust
+```zia
 class Player {
     hide name: String;
     hide health: Integer;
@@ -761,7 +761,7 @@ class Player {
 
 Methods define what objects can *do*. They're functions that belong to a class and operate on its data through `self`.
 
-```rust
+```zia
 bind Zanna.Math as Math;
 
 class Circle {
@@ -806,7 +806,7 @@ Methods generally fall into a few categories:
 
 **Accessors (Getters)** -- Return information about the object:
 
-```rust
+```zia
 func getName() -> String {
     return self.name;
 }
@@ -818,7 +818,7 @@ func getHealth() -> Integer {
 
 **Mutators (Setters/Modifiers)** -- Change the object's state:
 
-```rust
+```zia
 func setName(newName: String) {
     self.name = newName;
 }
@@ -833,7 +833,7 @@ func takeDamage(amount: Integer) {
 
 **Computed Properties** -- Calculate values from the object's state:
 
-```rust
+```zia
 func area() -> Number {
     return self.width * self.height;
 }
@@ -845,7 +845,7 @@ func isAlive() -> Boolean {
 
 **Actions** -- Perform complex operations:
 
-```rust
+```zia
 func attack(target: Enemy) {
     var damage = self.calculateDamage();
     target.takeDamage(damage);
@@ -867,7 +867,7 @@ Sometimes you have a choice: should this be a method on a class, or a standalone
 - The operation is conceptually "what this thing does"
 - You want to take advantage of encapsulation (accessing hidden fields)
 
-```rust
+```zia
 bind Zanna.Math as Math;
 
 // Good as a method - operates on the circle's own data
@@ -890,7 +890,7 @@ class Circle {
 - The operation is a general utility that doesn't belong to any particular class
 - The operation doesn't need access to hidden state
 
-```rust
+```zia
 bind Zanna.Math as Math;
 
 // Good as a function - works with two objects equally
@@ -905,7 +905,7 @@ func distance(p1: Point, p2: Point) -> Number {
 
 **Keep methods focused.** Each method should do one thing well:
 
-```rust
+```zia
 // Bad: method does too many things
 func processOrder() {
     // validate order
@@ -927,7 +927,7 @@ func sendConfirmationEmail() { ... }
 
 **Name methods as verbs.** Methods do things, so their names should be action words:
 
-```rust
+```zia
 // Good names - clear actions
 func deposit(amount: Number) { ... }
 func withdraw(amount: Number) { ... }
@@ -942,7 +942,7 @@ func process() { ... }
 
 **Be careful with methods that both read and modify.** If a method returns a value AND changes state, it can be confusing:
 
-```rust
+```zia
 // Confusing: does this modify count, or just return it?
 func getAndIncrement() -> Integer {
     var old = self.count;
@@ -969,7 +969,7 @@ State is the current condition of an object -- the values of all its fields at a
 - Can change over time through method calls
 - Determines how the object behaves
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 class TrafficLight {
@@ -1035,7 +1035,7 @@ When designing a class, ask:
 
 4. **What behavior differs by state?** A "dead" player might ignore movement commands. A "disconnected" connection might queue messages instead of sending them.
 
-```rust
+```zia
 class GameCharacter {
     hide health: Integer;
     hide state: String;  // "alive", "dead", "respawning"
@@ -1085,7 +1085,7 @@ class GameCharacter {
 
 Encapsulation is crucial for maintaining valid state. If external code could modify `state` directly, it could put the character in impossible states:
 
-```rust
+```zia
 // If state were exposed:
 character.state = "flying";  // Not a valid state!
 character.state = "alive";   // Resurrected without going through respawn!
@@ -1148,7 +1148,7 @@ Following the principle of "hide by default":
 
 ### Step 5: Write the Entity
 
-```rust
+```zia
 bind Zanna.Terminal;
 bind Zanna.Time.DateTime as DateTime;
 
@@ -1261,7 +1261,7 @@ class BankAccount {
 
 ### Step 6: Use the Entity
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 func start() {
@@ -1300,7 +1300,7 @@ func start() {
 
 Let's put everything together with a more complete example:
 
-```rust
+```zia
 module TodoApp;
 
 bind Zanna.Terminal;
@@ -1476,7 +1476,7 @@ Notice how:
 
 **Zia**
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 class Dog {
@@ -1532,7 +1532,7 @@ If you can't clearly describe what a class represents, it probably shouldn't be 
 
 A class should have one primary responsibility. If a class is doing too many things, split it:
 
-```rust
+```zia
 // Too much responsibility
 class Game {
     player: Player;
@@ -1581,7 +1581,7 @@ Methods do things, so their names should be verbs:
 
 Each method should do one thing well. If a method is long or does multiple distinct operations, consider splitting it:
 
-```rust
+```zia
 // Too long -- doing multiple things
 func processOrder() {
     // 50 lines of validation
@@ -1611,7 +1611,7 @@ func processOrder() {
 
 ### Forgetting `self`
 
-```rust
+```zia
 class Counter {
     expose Integer count;
 
@@ -1625,7 +1625,7 @@ Inside a method, you must use `self` to access the object's fields. Without it, 
 
 ### Exposing Fields That Should Be Hidden
 
-```rust
+```zia
 class BankAccount {
     expose Number balance;  // Bad: anyone can modify directly
 }
@@ -1638,7 +1638,7 @@ Exposed fields bypass all your carefully written validation logic. Hide them and
 
 ### Monster Entities
 
-```rust
+```zia
 // Don't do this -- one class doing everything
 class Game {
     player: ...;
@@ -1659,7 +1659,7 @@ Such classes become impossible to understand, test, or modify. Split them into f
 
 ### Methods That Do Too Much
 
-```rust
+```zia
 func doEverything() {
     // Load data
     // Process data
@@ -1676,7 +1676,7 @@ Long methods are hard to understand, test, and debug. Break them into smaller, f
 
 ### Ignoring Invalid Input
 
-```rust
+```zia
 func setAge(age: Integer) {
     self.age = age;  // What if age is -5? Or 500?
 }

@@ -230,14 +230,14 @@ hide func PumpTreeContextMenu(shell: app_shell.AppShell,
         var copyPath = context_menus.CurrentContextPath(projMgr, shell);
         if copyPath != "" {
             GUI.ClipboardText.SetText(copyPath);
-            GUI.Toast.Success("Path copied");
+            shell.SetStatusLeft("Copied path");
         }
     }
     if shell.menuChrome.ctxCopyRelativePath.WasClicked() {
         var copyRelPath = context_menus.CurrentContextPath(projMgr, shell);
         if copyRelPath != "" {
             GUI.ClipboardText.SetText(projMgr.RelativePath(copyRelPath));
-            GUI.Toast.Success("Relative path copied");
+            shell.SetStatusLeft("Copied relative path");
         }
     }
     if shell.menuChrome.ctxDuplicate.WasClicked() {
@@ -245,7 +245,7 @@ hide func PumpTreeContextMenu(shell: app_shell.AppShell,
         if IO.File.Exists(dupPath) != false and projMgr.CanMutatePath(dupPath) {
             explorerOverlay.OpenDuplicate(shell, dupPath);
         } else if dupPath != "" {
-            GUI.Toast.Info("Duplicate is available for files");
+            shell.SetStatusLeft("Duplicate is available for files");
         }
     }
     if shell.menuChrome.ctxRename.WasClicked() {
@@ -274,7 +274,7 @@ hide func PumpTreeContextMenu(shell: app_shell.AppShell,
     }
     if shell.menuChrome.ctxSearchFolder.WasClicked() {
         search_commands.handleProjectSearchInFolderAsync(shell, projMgr, shell.contextDir,
-                                                         docMgr, engine, locStore, searcher);
+                                                         docMgr, engine, searcher);
     }
     if shell.menuChrome.ctxRunFile.WasClicked() {
         var runPath = context_menus.CurrentContextPath(projMgr, shell);
@@ -291,7 +291,6 @@ hide func PumpTreeContextMenu(shell: app_shell.AppShell,
         var entryPath = context_menus.CurrentContextPath(projMgr, shell);
         if projMgr.SetEntryFile(entryPath) {
             shell.SetStatusLeft("Project entry: " + projMgr.RelativePath(entryPath));
-            GUI.Toast.Success("Project entry updated");
         } else {
             GUI.Toast.Warning("Choose a project file as the entry point");
         }
@@ -372,7 +371,7 @@ hide func PumpEditorContextMenu(shell: app_shell.AppShell,
                     basic_workspace_query_job.QUERY_DEFINITION,
                     "Go to definition", shell, docMgr, projMgr, engine);
             } else {
-                GUI.Toast.Info("Go to definition is unavailable");
+                shell.SetStatusLeft("Go to definition is unavailable");
             }
         } else if IsActiveZiaDocument(docMgr)
                   and ziaWorkspaceCommands != null {
@@ -391,7 +390,7 @@ hide func PumpEditorContextMenu(shell: app_shell.AppShell,
                     basic_workspace_query_job.QUERY_REFERENCES,
                     "Find references", shell, docMgr, projMgr, engine);
             } else {
-                GUI.Toast.Info("Find references is unavailable");
+                shell.SetStatusLeft("Find references is unavailable");
             }
         } else if IsActiveZiaDocument(docMgr)
                   and ziaWorkspaceCommands != null {
@@ -407,20 +406,12 @@ hide func PumpEditorContextMenu(shell: app_shell.AppShell,
         if commandInputOverlay != null {
             commandInputOverlay.OpenRenameSymbol(shell, edit_commands.IdentifierAtCursor(engine));
         } else if IsActiveBasicDocument(docMgr) {
-            if basicWorkspaceCommands != null {
-                var newName = GUI.MessageBox.Prompt("Rename Symbol", "New name:");
-                basicWorkspaceCommands.StartRename(newName, shell, docMgr,
-                                                   projMgr, engine);
-            } else {
-                GUI.Toast.Info("Rename is unavailable");
-            }
+            shell.SetStatusLeft("Rename input is unavailable");
         } else if IsActiveZiaDocument(docMgr)
                   and ziaWorkspaceCommands != null {
-            var ziaNewName = GUI.MessageBox.Prompt("Rename Symbol", "New name:");
-            ziaWorkspaceCommands.StartRename(ziaNewName, shell, docMgr,
-                                             projMgr, engine, indexer);
+            shell.SetStatusLeft("Rename input is unavailable");
         } else {
-            edit_commands.handleRenameSymbol(shell, docMgr, engine, tabs, indexer);
+            shell.SetStatusLeft("Rename input is unavailable");
         }
     }
     if shell.menuChrome.ecFormat.WasClicked()     { edit_commands.handleFormatDocument(shell, docMgr, engine); }
@@ -474,13 +465,13 @@ hide func PumpTabContextMenu(shell: app_shell.AppShell,
     if shell.menuChrome.tcCopyPath.WasClicked() {
         if tabTargetPath != "" {
             GUI.ClipboardText.SetText(tabTargetPath);
-            GUI.Toast.Success("Path copied");
+            shell.SetStatusLeft("Copied path");
         }
     }
     if shell.menuChrome.tcCopyRelativePath.WasClicked() {
         if tabTargetPath != "" {
             GUI.ClipboardText.SetText(projMgr.RelativePath(tabTargetPath));
-            GUI.Toast.Success("Relative path copied");
+            shell.SetStatusLeft("Copied relative path");
         }
     }
     if shell.menuChrome.tcReveal.WasClicked() {

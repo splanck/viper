@@ -42,6 +42,7 @@ final TRANSIENT_SURFACE_EXPLORER_ACTION: Integer = 3;
 final TRANSIENT_SURFACE_DEBUG_BREAKPOINT: Integer = 4;
 final TRANSIENT_SURFACE_COMMAND_INPUT: Integer = 5;
 final TRANSIENT_SURFACE_DIFF: Integer = 6;
+final TRANSIENT_SURFACE_WORKSPACE_EDIT_PREVIEW: Integer = 7;
 // Reserve desktop chrome as well as a visible resize margin. Monitor metrics
 // describe the full display, not the platform work area; 32 pixels was smaller
 // than the macOS menu bar plus title bar and could strand the status bar below
@@ -139,6 +140,10 @@ class AppShell {
         app = GUI.App.New(title, width, height);
         app.SetPreventClose(true);
         GUI.Theme.SetDark();
+        // Keep transient feedback out of editor chrome and prevent background
+        // activity from filling the workbench with a tall notification stack.
+        GUI.Toast.SetPosition(2);
+        GUI.Toast.SetMaxVisible(3);
 
         mainVBox = GUI.VBox.New();
         mainVBox.SetSpacing(0.0);
@@ -334,6 +339,10 @@ class AppShell {
 
     /// @brief Set the left status message text.
     /// @param text Message to show.
+    /// @details Routine synchronous confirmations and expected unavailable
+    ///          states belong here. Reserve transient toasts for failures that
+    ///          need attention, important recovery/conflict state, and
+    ///          user-initiated asynchronous completion.
     expose func SetStatusLeft(text: String) {
         statusShell.SetStatusLeft(text);
     }
@@ -369,6 +378,29 @@ class AppShell {
                                               hasProject,
                                               hasBuildTarget,
                                               hasDebugTarget);
+    }
+
+    /// @brief Apply whether the active tab owns a visible CodeEditor surface.
+    expose func SetTextEditorContextAvailable(available: Boolean) {
+        menuChrome.SetTextEditorContextAvailable(available);
+    }
+
+    /// @brief Reflect selection edits for the active editor surface.
+    expose func SetSurfaceEditActionsAvailable(canCut: Boolean,
+                                               canCopy: Boolean,
+                                               canPaste: Boolean,
+                                               canSelectAll: Boolean,
+                                               canDuplicate: Boolean,
+                                               canDeleteScene: Boolean) {
+        menuChrome.SetSurfaceEditActionsAvailable(
+            canCut, canCopy, canPaste, canSelectAll,
+            canDuplicate, canDeleteScene);
+    }
+
+    /// @brief Reflect undo/redo availability for code or visual scene history.
+    expose func SetEditHistoryAvailable(canUndo: Boolean,
+                                        canRedo: Boolean) {
+        menuChrome.SetEditHistoryAvailable(canUndo, canRedo);
     }
 
     /// @brief Update active project and language status items.

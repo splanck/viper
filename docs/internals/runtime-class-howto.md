@@ -1247,7 +1247,7 @@ PRINT "After reset: "; g.Value ' Output: After reset: 0
 
 ### Usage in Zia
 
-```rust
+```zia
 var g = Gauge.New(0, 100)
 
 g.Increment(30)

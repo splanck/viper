@@ -18,7 +18,8 @@
 //
 // Links: src/runtime/game/rt_scene_editor.cpp,
 //   src/runtime/game/rt_tiled_import.cpp, docs/adr/0140-tiled-map-and-scene-import.md,
-//   docs/adr/0144-complete-tiled-map-import.md
+//   docs/adr/0144-complete-tiled-map-import.md,
+//   docs/adr/0155-scene-object-authoring-metadata-and-duplication.md
 //
 //===----------------------------------------------------------------------===//
 
@@ -278,8 +279,19 @@ int main() {
            "descent");
     rt_game_scene_object_set_int(scene, obj, rt_const_cstr("hp"), 3);
     rt_game_scene_object_set_bool(scene, obj, rt_const_cstr("elite"), 1);
+    rt_game_scene_object_set_null(scene, obj, rt_const_cstr("target"));
     assert(rt_game_scene_object_get_int(scene, obj, rt_const_cstr("hp"), -1) == 3);
     assert(rt_game_scene_object_get_bool(scene, obj, rt_const_cstr("elite"), 0) == 1);
+    assert(to_std(rt_game_scene_object_property_kind(scene, obj, rt_const_cstr("hp"))) == "int");
+    assert(to_std(rt_game_scene_object_property_kind(scene, obj, rt_const_cstr("elite"))) ==
+           "bool");
+    assert(to_std(rt_game_scene_object_property_kind(scene, obj, rt_const_cstr("sprite"))) ==
+           "string");
+    assert(to_std(rt_game_scene_object_property_kind(scene, obj, rt_const_cstr("target"))) ==
+           "null");
+    assert(
+        to_std(rt_game_scene_object_property_kind(scene, obj, rt_const_cstr("missing"))).empty());
+    assert(to_std(rt_game_scene_object_property_kind(scene, -1, rt_const_cstr("hp"))).empty());
     assert(rt_game_scene_find_object(scene, rt_const_cstr("player")) == obj);
     assert(rt_game_scene_count_of_type(scene, rt_const_cstr("Player")) == 1);
     assert(rt_game_scene_object_of_type(scene, rt_const_cstr("Player"), 0) == obj);
@@ -297,6 +309,35 @@ int main() {
     assert(rt_tilemap_get_tile_layer(render, 1, 1, 1) == 7);
     rt_tilemap_set_tile_layer(render, 1, 1, 1, 99);
     assert(rt_game_scene_get_tile(scene, 1, 1, 1) == 7);
+
+    rt_game_scene_set_object_metadata(scene, obj, rt_const_cstr("Actor"), rt_const_cstr("hero"));
+    assert(to_std(rt_game_scene_object_type(scene, obj)) == "Actor");
+    assert(to_std(rt_game_scene_object_id(scene, obj)) == "hero");
+    assert(rt_game_scene_find_object(scene, rt_const_cstr("player")) == -1);
+    assert(rt_game_scene_find_object(scene, rt_const_cstr("hero")) == obj);
+    int64_t duplicate = rt_game_scene_duplicate_object(scene, obj, rt_const_cstr("hero-copy"));
+    assert(duplicate == obj + 1);
+    assert(rt_game_scene_object_count(scene) == 2);
+    assert(to_std(rt_game_scene_object_type(scene, duplicate)) == "Actor");
+    assert(to_std(rt_game_scene_object_id(scene, duplicate)) == "hero-copy");
+    assert(rt_game_scene_object_x(scene, duplicate) == rt_game_scene_object_x(scene, obj));
+    assert(rt_game_scene_object_y(scene, duplicate) == rt_game_scene_object_y(scene, obj));
+    assert(rt_game_scene_object_get_int(scene, duplicate, rt_const_cstr("hp"), -1) == 3);
+    assert(rt_game_scene_object_get_bool(scene, duplicate, rt_const_cstr("elite"), 0) == 1);
+    assert(to_std(rt_game_scene_object_property_kind(scene, duplicate, rt_const_cstr("target"))) ==
+           "null");
+    assert(to_std(rt_game_scene_object_get_str(
+               scene, duplicate, rt_const_cstr("sprite"), rt_const_cstr(""))) == "hero.png");
+    rt_game_scene_object_set_int(scene, duplicate, rt_const_cstr("hp"), 9);
+    rt_game_scene_object_set_str(
+        scene, duplicate, rt_const_cstr("target"), rt_const_cstr("changed"));
+    rt_game_scene_set_object_position(scene, duplicate, 144, 160);
+    assert(rt_game_scene_object_get_int(scene, obj, rt_const_cstr("hp"), -1) == 3);
+    assert(to_std(rt_game_scene_object_property_kind(scene, obj, rt_const_cstr("target"))) ==
+           "null");
+    assert(rt_game_scene_object_x(scene, obj) == 10);
+    assert(rt_game_scene_object_y(scene, obj) == 20);
+    assert(rt_game_scene_duplicate_object(scene, -1, rt_const_cstr("invalid")) == -1);
 
     rt_string bad_json = rt_const_cstr("{\"version\":1,");
     void *bad = rt_game_scene_load_json(bad_json);

@@ -1,0 +1,1036 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/probes/scene_editor_2d_probe.zia
+// Purpose: Verify Studio's 2D scene surface, visual tilesets, edits, and round
+//          trip.
+// Key invariants:
+//   - Scene documents select the visual surface instead of the code editor.
+//   - Tile/object edits immediately update the shared dirty Document JSON.
+//   - Tiny scenes fit above 400%, canvases center, and strokes commit once.
+//   - Compact windows wrap actions and show canvas or inspector at full width.
+//   - Metadata edits, typed-property duplication, transactional batch property
+//     edits, precision nudging, selection arrangement, and draw ordering round
+//     trip.
+//   - Scene selection command focus never escapes inspector inputs.
+//   - Standard clipboard actions preserve typed multi-object data across tabs.
+//   - Relative layer images render source-over tiles, drive a visual palette,
+//     and create one no-op-safe asset history transaction.
+//   - Per-document tools, canvas framing, inspector layout, and undo survive
+//     scene-to-scene tab switches without leaking into the other scene.
+//   - Undoing to the clean baseline clears dirty state and Save As adds .scene.
+//   - Invalid JSON is preserved and never replaced by an empty scene.
+// Ownership/Lifetime:
+//   - The probe owns and destroys one isolated AppShell window.
+// Links: zannastudio/src/ui/scene_editor_2d.zia,
+//        zannastudio/src/ui/scene_clipboard.zia,
+//        zannastudio/src/ui/scene_tileset_2d.zia,
+//        zannastudio/src/core/document_manager.zia,
+//        docs/adr/0155-scene-object-authoring-metadata-and-duplication.md
+//
+//===----------------------------------------------------------------------===//
+
+module scene_editor_2d_probe;
+
+bind "../core/document";
+bind "../core/document_manager";
+bind "../core/project_manager";
+bind "../core/recovery_store";
+bind "../commands/file_commands";
+bind "../editor/editor_engine";
+bind "../services/file_utils";
+bind "../ui/app_shell";
+bind "../ui/scene_asset_browser";
+bind "../ui/scene_clipboard";
+bind "../ui/scene_editor_2d";
+bind "../ui/scene_tileset_2d";
+
+bind SceneDocument = Zanna.Game2D.SceneDocument;
+bind Pixels = Zanna.Graphics.Pixels;
+bind Color = Zanna.Graphics.Color;
+bind TempFile = Zanna.IO.TempFile;
+bind Dir = Zanna.IO.Dir;
+bind File = Zanna.IO.File;
+bind Path = Zanna.IO.Path;
+bind Convert = Zanna.Core.Convert;
+bind GUI = Zanna.GUI;
+bind Terminal = Zanna.Terminal;
+
+// ============================================================================
+// MODULE: scene_editor_2d_probe
+// PURPOSE: Pin the 2D visual surface's document, gesture, tileset, and history
+//          contracts through the same public controller used by Studio.
+//
+// WHERE-THIS-FITS: This display probe complements SceneDocument runtime tests
+//          by exercising real widgets, Pixels assets, and document ownership.
+//
+// TEACHING-NOTE: Reloading external pixels is intentionally tested separately
+//          from assigning their path because only assignment is scene data.
+// ============================================================================
+
+func fail(shell: app_shell.AppShell, reason: String) {
+    shell.Destroy();
+    Terminal.Say("RESULT: fail " + reason);
+}
+
+func removeTempDir(path: String) {
+    if path != "" { Dir.RemoveAll(path); }
+}
+
+func near(actual: Number, expected: Number) -> Boolean {
+    var difference = actual - expected;
+    if difference < 0.0 { difference = 0.0 - difference; }
+    return difference < 0.01;
+}
+
+func main() {
+    var shell = new app_shell.AppShell();
+    shell.Build("Zanna Studio 2D Scene Editor Probe", 1100, 760);
+
+    var editor = new scene_editor_2d.SceneEditor2D();
+    editor.Setup(shell.workbench.scene2DHost, shell.app);
+
+    var documents = new document_manager.DocumentManager();
+    var sceneDoc = documents.NewScene2DDocument();
+    var hiddenEngine = new editor_engine.EditorEngine();
+    hiddenEngine.Setup(shell.workbench.editorRow);
+    hiddenEngine.LoadDocument(sceneDoc);
+    shell.SelectSurface(sceneDoc.kind);
+    editor.Activate(sceneDoc);
+    editor.Pump(sceneDoc);
+    shell.Poll();
+    shell.Render();
+    editor.Pump(sceneDoc);
+    shell.Render();
+
+    if shell.workbench.scene2DHost.IsVisible() == false
+       or shell.workbench.editorRow.IsVisible()
+       or shell.workbench.scene3DHost.IsVisible() {
+        fail(shell, "2D document did not select exactly one visual surface");
+        return;
+    }
+    if editor.scene == null
+       or editor.scene.Width != 32 or editor.scene.Height != 18
+       or editor.scene.LayerCount() != 1
+       or editor.renderedColumns != 32 or editor.renderedRows != 18
+       or editor.framePixels == null
+       or scene_editor_2d.FitZoomPercent(3, 2, 600, 400) < 1000
+       or editor.canvasStage.GetLogicalWidth()
+          < editor.canvasScroll.GetLogicalWidth() - 2.0
+       or editor.canvasImage.GetScreenX()
+          <= editor.canvasScroll.GetScreenX() + 2.0 {
+        fail(shell, "default scene did not build a usable bounded canvas ("
+             + editor.scene.Width + "x" + editor.scene.Height
+             + ", layers=" + editor.scene.LayerCount()
+             + ", rendered=" + editor.renderedColumns + "x" + editor.renderedRows
+             + ", pixels=" + (editor.framePixels != null) + ")");
+        return;
+    }
+
+    if scene_editor_2d.UsesCompactLayout(640.0) == false
+       or scene_editor_2d.UsesCompactLayout(640.01)
+       or scene_editor_2d.UsesCompactLayout(0.0) {
+        fail(shell, "2D compact-layout threshold was unstable");
+        return;
+    }
+
+    // Studio supports a 720-wide production window, which leaves a much
+    // narrower center surface after the sidebar. Go smaller here to keep the
+    // responsive contract defensive and verify every action remains reachable.
+    shell.app.SetMinimumSize(1, 1);
+    shell.app.SetWindowSize(560, 420);
+    shell.Poll();
+    shell.Render();
+    editor.Pump(sceneDoc);
+    shell.Render();
+    editor.Pump(sceneDoc);
+    shell.Render();
+    var compactBodyWidth = editor.bodySplit.GetScreenWidth();
+    if editor.compactLayout == false
+       or editor.bodySplit.GetCollapsedSide() != 2
+       or editor.toolbarStatus.IsVisible()
+       or editor.viewStatusLabel.IsVisible()
+       or editor.canvasScroll.GetScreenWidth() < compactBodyWidth - 8.0
+       or editor.objectButton.GetScreenX()
+              + editor.objectButton.GetScreenWidth()
+          > editor.toolbar.GetScreenX() + editor.toolbar.GetScreenWidth() + 1.0
+       or editor.objectButton.GetScreenY()
+              + editor.objectButton.GetScreenHeight()
+          > editor.toolbar.GetScreenY() + editor.toolbar.GetScreenHeight() + 1.0
+       or editor.inspectorButton.GetScreenX()
+              + editor.inspectorButton.GetScreenWidth()
+          > editor.viewToolbar.GetScreenX()
+              + editor.viewToolbar.GetScreenWidth() + 1.0
+       or editor.inspectorButton.GetScreenY()
+              + editor.inspectorButton.GetScreenHeight()
+          > editor.viewToolbar.GetScreenY()
+              + editor.viewToolbar.GetScreenHeight() + 1.0 {
+        fail(shell, "compact 2D canvas or wrapping actions were clipped: root="
+             + editor.root.GetScreenWidth() + " body=" + compactBodyWidth
+             + " canvas=" + editor.canvasScroll.GetScreenWidth()
+             + " side=" + editor.bodySplit.GetCollapsedSide()
+             + " compact=" + editor.compactLayout
+             + " status=" + editor.toolbarStatus.IsVisible()
+             + "/" + editor.viewStatusLabel.IsVisible()
+             + " object=" + editor.objectButton.GetScreenX() + ","
+             + editor.objectButton.GetScreenY() + " "
+             + editor.objectButton.GetScreenWidth() + "x"
+             + editor.objectButton.GetScreenHeight()
+             + " toolbar=" + editor.toolbar.GetScreenX() + ","
+             + editor.toolbar.GetScreenY() + " "
+             + editor.toolbar.GetScreenWidth() + "x"
+             + editor.toolbar.GetScreenHeight()
+             + " inspector=" + editor.inspectorButton.GetScreenX() + ","
+             + editor.inspectorButton.GetScreenY() + " "
+             + editor.inspectorButton.GetScreenWidth() + "x"
+             + editor.inspectorButton.GetScreenHeight()
+             + " view=" + editor.viewToolbar.GetScreenX() + ","
+             + editor.viewToolbar.GetScreenY() + " "
+             + editor.viewToolbar.GetScreenWidth() + "x"
+             + editor.viewToolbar.GetScreenHeight());
+        return;
+    }
+
+    editor.ToggleInspectorPane();
+    shell.Render();
+    editor.Pump(sceneDoc);
+    shell.Render();
+    if editor.bodySplit.GetCollapsedSide() != 1
+       or editor.compactInspectorShown == false
+       or editor.inspectorScroll.GetScreenWidth() < compactBodyWidth - 8.0 {
+        fail(shell, "compact 2D inspector did not replace the canvas at full width");
+        return;
+    }
+
+    shell.app.SetWindowSize(1100, 760);
+    shell.Poll();
+    shell.Render();
+    editor.Pump(sceneDoc);
+    shell.Render();
+    editor.Pump(sceneDoc);
+    shell.Render();
+    if editor.compactLayout
+       or editor.bodySplit.GetCollapsedSide() != 0
+       or editor.toolbarStatus.IsVisible() == false
+       or editor.viewStatusLabel.IsVisible() == false
+       or editor.canvasScroll.GetScreenWidth() < 200.0
+       or editor.inspectorScroll.GetScreenWidth() < 200.0 {
+        fail(shell, "wide 2D canvas/inspector split did not restore after resize");
+        return;
+    }
+
+    // The wide visibility preference and compact master/detail selection are
+    // intentionally independent across resize boundaries.
+    editor.ToggleInspectorPane();
+    shell.Render();
+    if editor.inspectorRequestedVisible
+       or editor.compactInspectorShown == false
+       or editor.bodySplit.GetCollapsedSide() != 2 {
+        fail(shell, "wide 2D inspector hide did not preserve compact selection");
+        return;
+    }
+    shell.app.SetWindowSize(560, 420);
+    shell.Poll();
+    shell.Render();
+    editor.Pump(sceneDoc);
+    shell.Render();
+    if editor.compactLayout == false
+       or editor.bodySplit.GetCollapsedSide() != 1
+       or editor.inspectorRequestedVisible {
+        fail(shell, "compact 2D pane selection overwrote the wide preference");
+        return;
+    }
+    shell.app.SetWindowSize(1100, 760);
+    shell.Poll();
+    shell.Render();
+    editor.Pump(sceneDoc);
+    shell.Render();
+    if editor.compactLayout
+       or editor.bodySplit.GetCollapsedSide() != 2
+       or editor.inspectorRequestedVisible {
+        fail(shell, "wide 2D inspector preference was lost across compact resize");
+        return;
+    }
+    editor.ToggleInspectorPane();
+    shell.Render();
+    if editor.bodySplit.GetCollapsedSide() != 0
+       or editor.inspectorRequestedVisible == false
+       or editor.compactInspectorShown == false {
+        fail(shell, "wide 2D inspector did not restore independently");
+        return;
+    }
+
+    var originalContent = sceneDoc.content;
+    editor.mode = scene_editor_2d.MODE_PAINT;
+    editor.zoomPercent = 400;
+    editor.selectedCellX = 6;
+    editor.selectedCellY = 4;
+    editor.tileSpinner.SetValue(17.0);
+    editor.bodySplit.SetPosition(0.58);
+    // Re-activate once before creating history so direct probe state follows
+    // the same validated restore/render path used by a real tab switch.
+    editor.Activate(sceneDoc);
+    editor.Pump(sceneDoc);
+    shell.Render();
+    editor.canvasScroll.SetScroll(120.0, 80.0);
+    editor.inspectorScroll.SetScroll(0.0, 90.0);
+    editor.Pump(sceneDoc);
+    var expectedCanvasScrollX = editor.canvasScroll.GetScrollX();
+    var expectedCanvasScrollY = editor.canvasScroll.GetScrollY();
+    var expectedInspectorScrollY = editor.inspectorScroll.GetScrollY();
+    var expectedSplitPosition = editor.bodySplit.GetPosition();
+    var continuityTileChanged = editor.SetSceneTile(0, 0, 0, 3);
+    if expectedCanvasScrollX < 1.0 or expectedCanvasScrollY < 1.0
+       or expectedInspectorScrollY < 1.0
+       or continuityTileChanged == false {
+        fail(shell, "2D workspace continuity setup did not create "
+             + "scroll/history state: canvas=" + expectedCanvasScrollX + ","
+             + expectedCanvasScrollY + " inspector=" + expectedInspectorScrollY
+             + " tile=" + continuityTileChanged
+             + " zoom=" + editor.zoomPercent
+             + " stage=" + editor.canvasStage.GetLogicalWidth() + "x"
+             + editor.canvasStage.GetLogicalHeight()
+             + " viewport=" + editor.canvasScroll.GetLogicalWidth() + "x"
+             + editor.canvasScroll.GetLogicalHeight());
+        return;
+    }
+    editor.selectedCellX = 6;
+    editor.selectedCellY = 4;
+    editor.Pump(sceneDoc);
+
+    var otherSceneDoc = new document.Document();
+    otherSceneDoc.fileName = "Other.scene";
+    otherSceneDoc.language = "scene";
+    otherSceneDoc.kind = file_utils.DOC_KIND_SCENE_2D;
+    otherSceneDoc.content = editor.DefaultSceneJson();
+    editor.Pump(otherSceneDoc);
+    shell.Render();
+    if editor.mode != scene_editor_2d.MODE_SELECT
+       or Convert.NumToInt(editor.tileSpinner.Value) != 1
+       or editor.CanUndo()
+       or editor.compactInspectorShown
+       or near(editor.bodySplit.GetPosition(), 0.68) == false {
+        fail(shell, "new 2D tab inherited another scene's workspace or history");
+        return;
+    }
+    editor.mode = scene_editor_2d.MODE_OBJECT;
+    editor.zoomPercent = 225;
+    editor.bodySplit.SetPosition(0.72);
+    editor.Pump(otherSceneDoc);
+
+    editor.Pump(sceneDoc);
+    shell.Render();
+    var workspaceRestored =
+        editor.mode == scene_editor_2d.MODE_PAINT
+        and editor.zoomPercent == 400
+        and Convert.NumToInt(editor.tileSpinner.Value) == 17
+        and editor.selectedCellX == 6 and editor.selectedCellY == 4
+        and editor.compactInspectorShown
+        and near(editor.bodySplit.GetPosition(), expectedSplitPosition)
+        and near(editor.canvasScroll.GetScrollX(), expectedCanvasScrollX)
+        and near(editor.canvasScroll.GetScrollY(), expectedCanvasScrollY)
+        and near(editor.inspectorScroll.GetScrollY(),
+                 expectedInspectorScrollY);
+    if workspaceRestored == false {
+        fail(shell, "2D tab workspace restore mismatch: mode="
+             + editor.mode + " zoom=" + editor.zoomPercent
+             + " tile=" + Convert.NumToInt(editor.tileSpinner.Value)
+             + " cell=" + editor.selectedCellX + "," + editor.selectedCellY
+             + " split=" + editor.bodySplit.GetPosition()
+             + "/" + expectedSplitPosition
+             + " canvas=" + editor.canvasScroll.GetScrollX()
+             + "," + editor.canvasScroll.GetScrollY()
+             + "/" + expectedCanvasScrollX + "," + expectedCanvasScrollY
+             + " inspector=" + editor.inspectorScroll.GetScrollY()
+             + "/" + expectedInspectorScrollY);
+        return;
+    }
+    if editor.CanUndo() == false or editor.Undo() == false
+       or sceneDoc.content != originalContent or sceneDoc.isModified {
+        fail(shell, "2D tab switch did not restore the clean undo baseline");
+        return;
+    }
+    if editor.ReplaceScene(20, 12, 24) == false
+       or editor.scene.Width != 20 or editor.scene.Height != 12
+       or editor.scene.TileWidth != 24
+       or editor.RenameSceneLayer(0, "Gameplay") == false
+       or editor.scene.LayerName(0) != "Gameplay"
+       or editor.Undo() == false or editor.scene.LayerName(0) == "Gameplay"
+       or editor.Undo() == false or sceneDoc.content != originalContent
+       or sceneDoc.isModified {
+        fail(shell, "custom scene setup or layer rename was not undoable");
+        return;
+    }
+    var originalRevision = editor.GetRevision();
+    if editor.PaintTileLine(0, 2, 3, 8, 3, 7) == false
+       or editor.AddSceneObject("enemy", "slime-1", 64, 96) < 0 {
+        fail(shell, "transactional stroke or object edit was rejected");
+        return;
+    }
+    editor.Pump(sceneDoc);
+    shell.Render();
+    if sceneDoc.content == originalContent
+       or sceneDoc.isModified == false
+       or editor.GetRevision() != originalRevision + 2 {
+        fail(shell, "accepted edits did not update dirty document state");
+        return;
+    }
+
+    var reparsed = SceneDocument.LoadJsonResult(sceneDoc.content);
+    if reparsed.IsOk == false {
+        fail(shell, "edited scene JSON did not parse");
+        return;
+    }
+    var roundTrip = reparsed.Unwrap() as SceneDocument;
+    if roundTrip.GetTile(0, 2, 3) != 7
+       or roundTrip.GetTile(0, 5, 3) != 7
+       or roundTrip.GetTile(0, 8, 3) != 7
+       or roundTrip.ObjectCount() != 1
+       or roundTrip.ObjectType(0) != "enemy"
+       or roundTrip.ObjectId(0) != "slime-1"
+       or roundTrip.ObjectX(0) != 64 or roundTrip.ObjectY(0) != 96 {
+        fail(shell, "tile/object edits did not survive canonical round trip");
+        return;
+    }
+
+    var editedContent = sceneDoc.content;
+    if editor.CanUndo() == false or editor.Undo() == false
+       or editor.scene.ObjectCount() != 0
+       or editor.scene.GetTile(0, 2, 3) != 7
+       or editor.CanRedo() == false or editor.Redo() == false
+       or sceneDoc.content != editedContent
+       or editor.scene.ObjectCount() != 1 {
+        fail(shell, "2D scene undo/redo did not restore canonical snapshots");
+        return;
+    }
+
+    var authoringRevision = editor.GetRevision();
+    if editor.SetSceneObjectProperty(0, "", "hp", "int", "25") == false
+       or editor.SetSceneObjectProperty(0, "", "label", "string",
+                                        "Slime King") == false
+       or editor.SetSceneObjectProperty(0, "", "elite", "bool", "yes") == false
+       or editor.SetSceneObjectProperty(0, "", "speed", "float", "3.5") == false
+       or editor.SetSceneObjectProperty(0, "", "target", "null", "") == false
+       or editor.SetSceneObjectProperty(0, "label", "displayName", "string",
+                                        "Slime King") == false
+       or editor.SetSceneObjectProperty(0, "hp", "hp", "int", "invalid")
+       or editor.scene.ObjectGetInt(0, "hp", -1) != 25
+       or editor.scene.ObjectPropertyKind(0, "target") != "null"
+       or editor.scene.ObjectHas(0, "label")
+       or editor.scene.ObjectGetStr(0, "displayName", "") != "Slime King"
+       or editor.UpdateSceneObject(0, "boss", "slime-king", 80, 112) == false
+       or editor.scene.ObjectType(0) != "boss"
+       or editor.scene.ObjectId(0) != "slime-king"
+       or editor.scene.ObjectGetInt(0, "hp", -1) != 25 {
+        fail(shell, "typed property or metadata inspector did not commit scene data");
+        return;
+    }
+    if editor.AddSceneObject("boss", "slime-king", 0, 0) >= 0
+       or editor.scene.ObjectCount() != 1 {
+        fail(shell, "object inspector accepted a duplicate ID");
+        return;
+    }
+    var duplicate = editor.DuplicateSceneObject(0);
+    var duplicateSpeed = editor.scene.ObjectGetFloat(duplicate, "speed", -1.0);
+    if duplicate != 1
+       or editor.scene.ObjectId(duplicate) != "slime-king-copy"
+       or editor.scene.ObjectType(duplicate) != "boss"
+       or editor.scene.ObjectX(duplicate) != 112
+       or editor.scene.ObjectY(duplicate) != 144
+       or editor.scene.ObjectGetInt(duplicate, "hp", -1) != 25
+       or editor.scene.ObjectGetBool(duplicate, "elite", false) == false
+       or duplicateSpeed < 3.499999 or duplicateSpeed > 3.500001
+       or editor.scene.ObjectGetStr(duplicate, "displayName", "") != "Slime King"
+       or editor.scene.ObjectPropertyKind(duplicate, "target") != "null"
+       or editor.MoveSceneObject(duplicate, 0) == false
+       or editor.scene.ObjectId(0) != "slime-king-copy"
+       or editor.scene.ObjectId(1) != "slime-king"
+       or editor.RemoveSceneObjectProperty(0, "target") == false
+       or editor.scene.ObjectHas(0, "target")
+       or editor.scene.ObjectPropertyKind(1, "target") != "null"
+       or editor.GetRevision() != authoringRevision + 10 {
+        fail(shell, "lossless object duplication or draw ordering failed");
+        return;
+    }
+    var authoredResult = SceneDocument.LoadJsonResult(sceneDoc.content);
+    if authoredResult.IsOk == false {
+        fail(shell, "authored object JSON did not parse");
+        return;
+    }
+    var authoredScene = authoredResult.Unwrap() as SceneDocument;
+    if authoredScene.ObjectCount() != 2
+       or authoredScene.ObjectId(0) != "slime-king-copy"
+       or authoredScene.ObjectGetInt(0, "hp", -1) != 25
+       or authoredScene.ObjectHas(0, "target")
+       or authoredScene.ObjectPropertyKind(1, "target") != "null" {
+        fail(shell, "authored object metadata did not survive canonical round trip");
+        return;
+    }
+
+    var authoredContent = sceneDoc.content;
+    var groupSelection: List[Integer] = [];
+    groupSelection.add(0);
+    groupSelection.add(1);
+    if editor.SelectSceneObjects(groupSelection, 1) == false
+       or editor.selectedObjects.count() != 2
+       or editor.applyObjectButton.IsEnabled()
+       or editor.objectTypeInput.IsEnabled()
+       or editor.objectArrangeDropdown.IsEnabled() == false
+       or editor.arrangeObjectButton.IsEnabled() == false
+       or editor.objectPropertyKeyInput.IsEnabled() == false
+       or editor.objectPropertyTypeDropdown.IsEnabled() == false
+       or editor.setObjectPropertyButton.IsEnabled() == false
+       or editor.removeObjectPropertyButton.IsEnabled() == false
+       or editor.duplicateObjectButton.IsEnabled() == false
+       or editor.removeObjectButton.IsEnabled() == false {
+        fail(shell, "2D group selection left single-object actions ambiguous");
+        return;
+    }
+
+    editor.objectPropertyKeyInput.Focus();
+    if editor.objectPropertyKeyInput.IsFocused() == false
+       or editor.SceneSelectionCommandsOwnFocus() {
+        fail(shell, "2D scene selection shortcuts escaped a property input");
+        return;
+    }
+    editor.objectList.Focus();
+    if editor.objectList.IsFocused() == false
+       or editor.SceneSelectionCommandsOwnFocus() == false {
+        fail(shell, "2D hierarchy focus did not own scene selection shortcuts");
+        return;
+    }
+
+    // Arrow nudging belongs only to the canvas focus proxy. A property field
+    // keeps its native arrow behavior, while one viewport keypress moves the
+    // complete selection and creates exactly one history entry.
+    var nudgeHarness = GUI.TestHarness.New();
+    if nudgeHarness.BindApp(shell.app) == false {
+        fail(shell, "2D precision nudge harness did not bind");
+        return;
+    }
+    var nudgeBaseline = sceneDoc.content;
+    var nudgeRevision = editor.GetRevision();
+    var nudgeFirstX = editor.scene.ObjectX(0);
+    var nudgeSecondX = editor.scene.ObjectX(1);
+    editor.objectPropertyKeyInput.Focus();
+    nudgeHarness.SendKey("right", 0);
+    nudgeHarness.DispatchPending();
+    editor.Pump(sceneDoc);
+    if sceneDoc.content != nudgeBaseline
+       or editor.GetRevision() != nudgeRevision {
+        nudgeHarness.UnbindApp();
+        fail(shell, "2D arrow nudge escaped a focused property input");
+        return;
+    }
+    editor.mode = scene_editor_2d.MODE_SELECT;
+    editor.selectButton.Focus();
+    nudgeHarness.SendKey("right", 0);
+    nudgeHarness.DispatchPending();
+    editor.Pump(sceneDoc);
+    if editor.scene.ObjectX(0) != nudgeFirstX + 1
+       or editor.scene.ObjectX(1) != nudgeSecondX + 1
+       or editor.GetRevision() != nudgeRevision + 1
+       or editor.Undo() == false
+       or sceneDoc.content != nudgeBaseline {
+        nudgeHarness.UnbindApp();
+        fail(shell, "2D viewport nudge was not one exact group history action");
+        return;
+    }
+    editor.mode = scene_editor_2d.MODE_PAINT;
+    nudgeHarness.UnbindApp();
+
+    var batchRevision = editor.GetRevision();
+    if editor.SetSelectedSceneObjectProperty(
+           "spawnWeight", "float", "2.25") == false
+       or editor.GetRevision() != batchRevision + 1
+       or editor.selectedObjects.count() != 2
+       or near(editor.scene.ObjectGetFloat(0, "spawnWeight", 0.0), 2.25)
+            == false
+       or near(editor.scene.ObjectGetFloat(1, "spawnWeight", 0.0), 2.25)
+            == false
+       or editor.SetSelectedSceneObjectProperty(
+              "spawnWeight", "float", "2.25")
+       or editor.GetRevision() != batchRevision + 1
+       or editor.Undo() == false
+       or sceneDoc.content != authoredContent {
+        fail(shell, "2D batch property set was not one exact history action");
+        return;
+    }
+
+    editor.SelectSceneObjects(groupSelection, 1);
+    batchRevision = editor.GetRevision();
+    if editor.RemoveSelectedSceneObjectProperty("displayName") == false
+       or editor.GetRevision() != batchRevision + 1
+       or editor.scene.ObjectHas(0, "displayName")
+       or editor.scene.ObjectHas(1, "displayName")
+       or editor.selectedObjects.count() != 2
+       or editor.Undo() == false
+       or sceneDoc.content != authoredContent
+       or editor.scene.ObjectGetStr(0, "displayName", "")
+            != "Slime King"
+       or editor.scene.ObjectGetStr(1, "displayName", "")
+            != "Slime King" {
+        fail(shell, "2D batch property removal lost data or exact undo");
+        return;
+    }
+
+    editor.SelectSceneObjects(groupSelection, 1);
+    batchRevision = editor.GetRevision();
+    if editor.SetSelectedSceneObjectProperty(
+           "broken", "int", "not-a-number")
+       or editor.GetRevision() != batchRevision
+       or sceneDoc.content != authoredContent
+       or editor.scene.ObjectHas(0, "broken")
+       or editor.scene.ObjectHas(1, "broken") {
+        fail(shell, "2D invalid batch property changed scene data");
+        return;
+    }
+
+    // Alignment uses the primary object as its explicit anchor. Distribution
+    // keeps the two extrema and deterministically rounds intermediate integer
+    // positions. Repeating an already-satisfied layout is a history no-op.
+    editor.SelectSceneObjects(groupSelection, 1);
+    var arrangeRevision = editor.GetRevision();
+    var anchorX = editor.scene.ObjectX(1);
+    if editor.ArrangeSelectedSceneObjects(
+           scene_editor_2d.ARRANGE_ALIGN_X) == false
+       or editor.scene.ObjectX(0) != anchorX
+       or editor.scene.ObjectX(1) != anchorX
+       or editor.GetRevision() != arrangeRevision + 1
+       or editor.ArrangeSelectedSceneObjects(
+              scene_editor_2d.ARRANGE_ALIGN_X)
+       or editor.GetRevision() != arrangeRevision + 1
+       or editor.Undo() == false
+       or sceneDoc.content != authoredContent {
+        fail(shell, "2D primary-axis alignment was not exact or no-op safe");
+        return;
+    }
+
+    var thirdObject = editor.AddSceneObject(
+        "marker", "distribution-marker", anchorX + 120, 144);
+    if thirdObject != 2 {
+        fail(shell, "2D distribution setup could not add a third object");
+        return;
+    }
+    var distributionBaseline = sceneDoc.content;
+    var distributionSelection: List[Integer] = [];
+    distributionSelection.add(0);
+    distributionSelection.add(1);
+    distributionSelection.add(2);
+    editor.SelectSceneObjects(distributionSelection, 1);
+    arrangeRevision = editor.GetRevision();
+    if editor.ArrangeSelectedSceneObjects(
+           scene_editor_2d.ARRANGE_DISTRIBUTE_X) == false
+       or editor.scene.ObjectX(1) != anchorX
+       or editor.scene.ObjectX(0) != anchorX + 60
+       or editor.scene.ObjectX(2) != anchorX + 120
+       or editor.GetRevision() != arrangeRevision + 1
+       or editor.ArrangeSelectedSceneObjects(
+              scene_editor_2d.ARRANGE_DISTRIBUTE_X)
+       or editor.GetRevision() != arrangeRevision + 1
+       or editor.Undo() == false
+       or sceneDoc.content != distributionBaseline
+       or editor.Undo() == false
+       or sceneDoc.content != authoredContent {
+        fail(shell, "2D distribution was not deterministic or exactly undoable");
+        return;
+    }
+
+    editor.SelectSceneObjects(groupSelection, 1);
+    var groupRevision = editor.GetRevision();
+    if editor.TranslateSelectedSceneObjects(32, -16) == false
+       or editor.GetRevision() != groupRevision + 1
+       or editor.scene.ObjectX(0) != 144
+       or editor.scene.ObjectY(0) != 128
+       or editor.scene.ObjectX(1) != 112
+       or editor.scene.ObjectY(1) != 96
+       or editor.Undo() == false
+       or sceneDoc.content != authoredContent {
+        fail(shell, "2D group move was not one exact history transaction");
+        return;
+    }
+
+    editor.SelectSceneObjects(groupSelection, 1);
+    groupRevision = editor.GetRevision();
+    if editor.DuplicateSelectedSceneObjects() != 2
+       or editor.GetRevision() != groupRevision + 1
+       or editor.scene.ObjectCount() != 4
+       or editor.selectedObjects.count() != 2
+       or editor.scene.ObjectGetInt(1, "hp", -1) != 25
+       or editor.scene.ObjectGetInt(3, "hp", -1) != 25
+       or editor.scene.ObjectPropertyKind(3, "target") != "null"
+       or editor.Undo() == false
+       or sceneDoc.content != authoredContent
+       or editor.scene.ObjectCount() != 2 {
+        fail(shell, "2D group duplication lost typed data or exact undo");
+        return;
+    }
+
+    editor.SelectSceneObjects(groupSelection, 1);
+    groupRevision = editor.GetRevision();
+    if editor.RemoveSelectedSceneObjects() == false
+       or editor.GetRevision() != groupRevision + 1
+       or editor.scene.ObjectCount() != 0
+       or editor.Undo() == false
+       or sceneDoc.content != authoredContent
+       or editor.scene.ObjectCount() != 2 {
+        fail(shell, "2D group removal was not subtree-free exact undo");
+        return;
+    }
+
+    // Standard Edit commands use one typed text envelope. Pasting into another
+    // scene must reconstruct custom property kinds rather than flattening them
+    // to inspector strings, and Cut/Paste each own exactly one history row.
+    editor.SelectSceneObjects(groupSelection, 1);
+    if editor.SelectAllSceneObjects() == false
+       or editor.selectedObjects.count() != 2
+       or editor.CopySelectedSceneObjects() == false {
+        fail(shell, "2D Select All or Copy did not use the scene selection");
+        return;
+    }
+    var copied2D = scene_clipboard.Decode(GUI.ClipboardText.GetText());
+    if copied2D.valid == false or copied2D.kind != "2d"
+       or copied2D.primary != 1 or copied2D.indices.count() != 2
+       or copied2D.content != authoredContent
+       or scene_clipboard.HasKind(
+              GUI.ClipboardText.GetText(), "2d") == false {
+        fail(shell, "2D clipboard envelope lost kind, primary, or canonical data");
+        return;
+    }
+    var malformed2D = scene_clipboard.Decode(
+        "ZANNA_STUDIO_SCENE_CLIPBOARD_V1\n2d\n0\n0,0\n{}");
+    if malformed2D.valid {
+        fail(shell, "2D clipboard accepted duplicate object identities");
+        return;
+    }
+
+    var otherBaseline = otherSceneDoc.content;
+    editor.Pump(otherSceneDoc);
+    var crossPasteRevision = editor.GetRevision();
+    if editor.PasteSceneObjectsFromClipboard() == false
+       or editor.GetRevision() != crossPasteRevision + 1
+       or editor.scene.ObjectCount() != 2
+       or editor.selectedObjects.count() != 2
+       or editor.selectedObject != 1
+       or editor.scene.ObjectType(0) != "boss"
+       or editor.scene.ObjectX(0) != 144
+       or editor.scene.ObjectY(0) != 176
+       or editor.scene.ObjectX(1) != 112
+       or editor.scene.ObjectY(1) != 144
+       or editor.scene.ObjectGetInt(0, "hp", -1) != 25
+       or editor.scene.ObjectGetStr(1, "displayName", "")
+            != "Slime King"
+       or editor.scene.ObjectHas(0, "target")
+       or editor.scene.ObjectPropertyKind(1, "target") != "null"
+       or editor.Undo() == false
+       or otherSceneDoc.content != otherBaseline
+       or editor.scene.ObjectCount() != 0 {
+        fail(shell, "cross-scene 2D paste lost typed data or exact undo");
+        return;
+    }
+
+    editor.Pump(sceneDoc);
+    editor.SelectSceneObjects(groupSelection, 1);
+    var cutRevision = editor.GetRevision();
+    if editor.CutSelectedSceneObjects() == false
+       or editor.GetRevision() != cutRevision + 1
+       or editor.scene.ObjectCount() != 0
+       or editor.Undo() == false
+       or sceneDoc.content != authoredContent
+       or editor.scene.ObjectCount() != 2 {
+        fail(shell, "2D Cut was not one exact clipboard/history transaction");
+        return;
+    }
+    var wrongKindSelection: List[Integer] = [];
+    wrongKindSelection.add(0);
+    GUI.ClipboardText.SetText(scene_clipboard.Encode(
+        "3d", wrongKindSelection, 0, "{}"));
+    var rejectedPasteContent = sceneDoc.content;
+    var rejectedPasteRevision = editor.GetRevision();
+    if editor.PasteSceneObjectsFromClipboard()
+       or sceneDoc.content != rejectedPasteContent
+       or editor.GetRevision() != rejectedPasteRevision {
+        fail(shell, "2D paste accepted a 3D clipboard or changed history");
+        return;
+    }
+    GUI.ClipboardText.Clear();
+
+    // Layer assets now drive real canvas pixels and a bounded tile palette
+    // instead of acting as an inert path field beside colored placeholders.
+    var tilesetDir =
+        TempFile.CreateDirWithPrefix("zannastudio_scene2d_tileset_");
+    var tilesetPath = Path.Join(tilesetDir, "terrain.png");
+    var invalidTilesetPath = Path.Join(tilesetDir, "broken.png");
+    var atlas = Pixels.New(64, 64);
+    if tilesetDir == "" or atlas == null {
+        removeTempDir(tilesetDir);
+        fail(shell, "could not create visual tileset fixture");
+        return;
+    }
+    atlas.DrawBox(0, 0, 32, 32, Color.RGB(224, 36, 28));
+    atlas.DrawBox(32, 0, 32, 32, Color.RGB(35, 198, 76));
+    atlas.DrawBox(0, 32, 32, 32, Color.RGB(48, 96, 226));
+    atlas.DrawBox(32, 32, 32, 32, Color.RGB(230, 190, 38));
+    atlas.DrawBox(8, 8, 16, 16, Color.RGBA(224, 36, 28, 128));
+    File.WriteAllText(invalidTilesetPath, "not an image");
+    if Pixels.SavePng(atlas, tilesetPath) != 1
+       or File.Exists(invalidTilesetPath) == false {
+        removeTempDir(tilesetDir);
+        fail(shell, "could not write visual tileset fixtures");
+        return;
+    }
+
+    var previousScenePath = sceneDoc.filePath;
+    sceneDoc.filePath = Path.Join(tilesetDir, "authored.scene");
+    var relativeTilesetPath = Path.Name(tilesetPath);
+    var normalizedImageExtensions =
+        scene_asset_browser.NormalizeAssetExtensions(
+            ".png,.jpg,.jpeg,.bmp,.gif");
+    if scene_asset_browser.PortableReferencePath(
+           tilesetPath, sceneDoc.filePath) != relativeTilesetPath
+       or scene_asset_browser.AssetExtensionAllowed(
+              tilesetPath, normalizedImageExtensions) == false
+       or scene_asset_browser.AssetExtensionAllowed(
+              tilesetPath + ".bak", normalizedImageExtensions)
+       or scene_asset_browser.AssetMatchesFilter(
+              relativeTilesetPath, tilesetPath, "TERRAIN") == false {
+        sceneDoc.filePath = previousScenePath;
+        removeTempDir(tilesetDir);
+        fail(shell, "portable scene-asset matching or path spelling drifted");
+        return;
+    }
+
+    var assetProject = new project_manager.ProjectManager();
+    assetProject.Setup(null);
+    editor.SetWorkspaceContext(assetProject);
+    var assetBrowser = editor.tilesetInspector.assetBrowser;
+    assetBrowser.Open();
+    assetBrowser.filterInput.SetText("terrain");
+    var browserPumps = 0;
+    if assetProject.OpenFolder(tilesetDir) {
+        while browserPumps < 16 and assetBrowser.assetList.Count == 0 {
+            assetBrowser.Pump(assetProject, true);
+            browserPumps = browserPumps + 1;
+        }
+    }
+    if assetBrowser.assetList.Count != 1 {
+        sceneDoc.filePath = previousScenePath;
+        removeTempDir(tilesetDir);
+        fail(shell, "project asset browser did not find the filtered image");
+        return;
+    }
+    assetBrowser.assetList.SelectIndex(0);
+    assetBrowser.Pump(assetProject, true);
+    if Path.Normalize(assetBrowser.SelectedPath())
+          != Path.Normalize(tilesetPath)
+       or assetBrowser.previewPixels == null {
+        sceneDoc.filePath = previousScenePath;
+        removeTempDir(tilesetDir);
+        fail(shell, "project asset selection or bounded preview was stale");
+        return;
+    }
+    assetBrowser.Close();
+
+    var beforeTilesetRevision = editor.GetRevision();
+    if scene_tileset_2d.ResolveAssetPath(
+           relativeTilesetPath, sceneDoc.filePath)
+          != Path.Normalize(tilesetPath)
+       or scene_tileset_2d.PaletteTileAt(4, 31, 1) != 2
+       or scene_tileset_2d.PaletteTileAt(4, 1, 31) != 0
+       or editor.ApplyLayerAssetPath(0, relativeTilesetPath) == false
+       or editor.GetRevision() != beforeTilesetRevision + 1
+       or editor.scene.LayerAsset(0) != relativeTilesetPath
+       or editor.tilesets.TileCount(0) != 4
+       or editor.tilesetInspector.palettePixels == null {
+        sceneDoc.filePath = previousScenePath;
+        removeTempDir(tilesetDir);
+        fail(shell, "relative tileset did not build a bounded visual palette");
+        return;
+    }
+    if editor.ApplyLayerAssetPath(0, relativeTilesetPath)
+       or editor.GetRevision() != beforeTilesetRevision + 1
+       or editor.SetSceneTile(0, 0, 0, 1) == false {
+        sceneDoc.filePath = previousScenePath;
+        removeTempDir(tilesetDir);
+        fail(shell, "tileset no-op or tile history state was not canonical");
+        return;
+    }
+    editor.Pump(sceneDoc);
+    shell.Render();
+    editor.Pump(sceneDoc);
+    var tileSample = editor.framePixels.GetColor(
+        editor.displayCellSize / 2, editor.displayCellSize / 2);
+    if Color.GetRed(tileSample) < 115
+       or Color.GetRed(tileSample) > 135
+       or Color.GetGreen(tileSample) < 25
+       or Color.GetGreen(tileSample) > 40
+       or Color.GetBlue(tileSample) < 25
+       or Color.GetBlue(tileSample) > 40 {
+        sceneDoc.filePath = previousScenePath;
+        removeTempDir(tilesetDir);
+        fail(shell, "translucent tileset frame did not composite source-over");
+        return;
+    }
+    var reloadContent = sceneDoc.content;
+    var reloadRevision = editor.GetRevision();
+    atlas.DrawBox(0, 0, 32, 32, Color.RGB(128, 44, 214));
+    var noisyY = 32;
+    while noisyY < 64 {
+        var noisyX = 32;
+        while noisyX < 64 {
+            atlas.SetColor(
+                noisyX,
+                noisyY,
+                Color.RGB(
+                    (noisyX * 17 + noisyY * 11) % 256,
+                    (noisyX * 7 + noisyY * 23) % 256,
+                    (noisyX * 29 + noisyY * 3) % 256));
+            noisyX = noisyX + 1;
+        }
+        noisyY = noisyY + 1;
+    }
+    if Pixels.SavePng(atlas, tilesetPath) != 1 {
+        sceneDoc.filePath = previousScenePath;
+        removeTempDir(tilesetDir);
+        fail(shell, "could not update the tileset reload fixture");
+        return;
+    }
+    if editor.PollTilesetExternalChanges(0) == false {
+        sceneDoc.filePath = previousScenePath;
+        removeTempDir(tilesetDir);
+        fail(shell, "external tileset metadata change was not detected");
+        return;
+    }
+    editor.Pump(sceneDoc);
+    shell.Render();
+    editor.Pump(sceneDoc);
+    tileSample = editor.framePixels.GetColor(
+        editor.displayCellSize / 2, editor.displayCellSize / 2);
+    if editor.GetRevision() != reloadRevision
+       or sceneDoc.content != reloadContent
+       or Color.GetRed(tileSample) < 115
+       or Color.GetRed(tileSample) > 140
+       or Color.GetGreen(tileSample) < 35
+       or Color.GetGreen(tileSample) > 55
+       or Color.GetBlue(tileSample) < 200
+       or editor.SelectPaletteTile(4) == false
+       or Convert.NumToInt(editor.tileSpinner.Value) != 4
+       or editor.mode != scene_editor_2d.MODE_PAINT {
+        sceneDoc.filePath = previousScenePath;
+        removeTempDir(tilesetDir);
+        fail(shell, "tileset reload or palette selection changed history");
+        return;
+    }
+
+    var tilesetContent = sceneDoc.content;
+    if editor.GetRevision() != beforeTilesetRevision + 2
+       or editor.Undo() == false
+       or editor.scene.LayerAsset(0) != relativeTilesetPath
+       or editor.scene.GetTile(0, 0, 0) != 0
+       or editor.Redo() == false
+       or sceneDoc.content != tilesetContent {
+        sceneDoc.filePath = previousScenePath;
+        removeTempDir(tilesetDir);
+        fail(shell, "visual tileset assignment/paint did not undo and redo exactly");
+        return;
+    }
+    var tilesetRoundTrip = SceneDocument.LoadJsonResult(sceneDoc.content);
+    if tilesetRoundTrip.IsOk == false
+       or (tilesetRoundTrip.Unwrap() as SceneDocument).LayerAsset(0)
+            != relativeTilesetPath {
+        sceneDoc.filePath = previousScenePath;
+        removeTempDir(tilesetDir);
+        fail(shell, "layer tileset reference did not survive canonical JSON");
+        return;
+    }
+    var invalidAssetRevision = editor.GetRevision();
+    if editor.ApplyLayerAssetPath(0, Path.Name(invalidTilesetPath))
+       or editor.GetRevision() != invalidAssetRevision
+       or sceneDoc.content != tilesetContent
+       or editor.scene.LayerAsset(0) != relativeTilesetPath {
+        sceneDoc.filePath = previousScenePath;
+        removeTempDir(tilesetDir);
+        fail(shell, "invalid tileset changed the scene or history");
+        return;
+    }
+    var clearAssetRevision = editor.GetRevision();
+    if editor.ApplyLayerAssetPath(0, "") == false
+       or editor.GetRevision() != clearAssetRevision + 1
+       or editor.scene.LayerAsset(0) != ""
+       or editor.tilesets.TileCount(0) != 0
+       or editor.Undo() == false
+       or sceneDoc.content != tilesetContent
+       or editor.tilesets.TileCount(0) != 4 {
+        sceneDoc.filePath = previousScenePath;
+        removeTempDir(tilesetDir);
+        fail(shell, "clear layer image was not one reversible transaction");
+        return;
+    }
+    sceneDoc.filePath = previousScenePath;
+    assetProject.CloseProject();
+    removeTempDir(tilesetDir);
+
+    // The hidden CodeEditor still contains the pre-edit scene text. Recovery
+    // must snapshot the visual controller's canonical Document content instead.
+    var recoveryDir = TempFile.CreateDirWithPrefix("zannastudio_scene2d_recovery_");
+    var recovery = new recovery_store.RecoveryStore();
+    if recovery.Setup(recoveryDir) == false
+       or recovery.WriteSwaps(documents, hiddenEngine) == false {
+        removeTempDir(recoveryDir);
+        fail(shell, "visual scene recovery snapshot failed");
+        return;
+    }
+    var recovered = recovery.CollectRecovered();
+    if recovered.count() != 1
+       or (recovered.get(0) as recovery_store.RecoveryRecord).content
+          != sceneDoc.content
+       or (recovered.get(0) as recovery_store.RecoveryRecord).content
+          == originalContent {
+        recovery.MarkCleanExit();
+        removeTempDir(recoveryDir);
+        fail(shell, "recovery used stale hidden CodeEditor scene text");
+        return;
+    }
+    recovery.MarkCleanExit();
+    removeTempDir(recoveryDir);
+
+    var saveDir = TempFile.CreateDirWithPrefix("zannastudio_scene2d_save_");
+    var saveStem = Path.Join(saveDir, "level");
+    var wrongPath = Path.Join(saveDir, "level.txt");
+    var canonicalBeforeSave = sceneDoc.content;
+    file_commands.SetSaveFormatOptions(true, true);
+    file_commands.NormalizeDocumentForSave(
+        documents, hiddenEngine, documents.activeIndex);
+    if sceneDoc.content != canonicalBeforeSave
+       or documents.SaveAsBlockReason(documents.activeIndex, wrongPath) == ""
+       or documents.SaveAs(saveStem) == false
+       or sceneDoc.filePath != saveStem + ".scene"
+       or sceneDoc.kind != file_utils.DOC_KIND_SCENE_2D
+       or File.Exists(sceneDoc.filePath) == false {
+        removeTempDir(saveDir);
+        fail(shell, "2D save normalization or extension safety failed");
+        return;
+    }
+    removeTempDir(saveDir);
+
+    var invalidDoc = new document.Document();
+    invalidDoc.fileName = "broken.scene";
+    invalidDoc.language = "scene";
+    invalidDoc.kind = file_utils.DOC_KIND_SCENE_2D;
+    invalidDoc.content = "{\"version\":1,";
+    var invalidOriginal = invalidDoc.content;
+    editor.Activate(invalidDoc);
+    editor.Pump(invalidDoc);
+    if editor.scene != null or editor.loadError == ""
+       or invalidDoc.content != invalidOriginal or invalidDoc.isModified {
+        fail(shell, "invalid JSON was not preserved transactionally");
+        return;
+    }
+
+    shell.Destroy();
+    Terminal.Say("RESULT: ok");
+}

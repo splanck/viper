@@ -22,7 +22,7 @@ Code organization is one of those skills that separates beginners from intermedi
 
 Let's start with why this matters. Imagine you're building a simple game with a player, enemies, and items. Without any organization, you might write everything in one file:
 
-```rust
+```zia
 // game.zia — 500 lines and growing...
 
 // Player stuff
@@ -87,7 +87,7 @@ A module is a file containing related code: functions, structures, constants. Ev
 
 Here's a simple module:
 
-```rust
+```zia
 // file: MathUtils.zia
 module MathUtils;
 
@@ -118,7 +118,7 @@ Suppose you have a function called `add`. Simple, right? But what does `add` do?
 
 Without modules, you're forced into awkward solutions:
 
-```rust
+```zia
 // Without modules: ugly prefixed names
 func mathAdd(a: Integer, b: Integer) -> Integer { ... }
 func listAdd(list: List[Integer], item: Integer) { ... }
@@ -148,7 +148,7 @@ Each module creates its own namespace. Functions inside `Math` don't conflict wi
 
 To use code from another module, you bind it:
 
-```rust
+```zia
 // file: Main.zia
 module Main;
 
@@ -177,7 +177,7 @@ Zia provides several bind styles for different situations.
 
 The basic bind brings in the whole module:
 
-```rust
+```zia
 bind MathUtils;
 
 // Use with prefix
@@ -190,7 +190,7 @@ This is the safest approach. Names are always fully qualified, so there's no con
 
 If you only need certain items, bind them directly:
 
-```rust
+```zia
 bind MathUtils { square, PI };
 bind Zanna.Terminal;
 
@@ -206,7 +206,7 @@ This binds only `square` and `PI`, and you can use them without the module prefi
 
 Sometimes you want to rename a binding. Maybe the name is too long, or maybe it conflicts with something else:
 
-```rust
+```zia
 bind MathUtils as M;
 bind Zanna.Terminal;
 
@@ -220,7 +220,7 @@ This is useful when module names are long or when two modules have the same name
 
 You can also bind specific items from a module without the prefix:
 
-```rust
+```zia
 bind MathUtils { square, PI };
 bind Zanna.Terminal;
 
@@ -253,7 +253,7 @@ Here's a practical guide:
 
 Real-world example:
 
-```rust
+```zia
 // Good: Bind with alias when using many functions
 bind Zanna.Math as Math;
 bind Zanna.Terminal { Say };
@@ -278,7 +278,7 @@ Top-level declarations are exported by default unless marked `hide`. Use
 aliases, but `expose` is the canonical spelling used elsewhere in the
 reference:
 
-```rust
+```zia
 // file: Counter.zia
 module Counter;
 
@@ -304,7 +304,7 @@ hide func reset() {  // Private: internal use only
 The `hide` modifier makes `count` and `reset` internal implementation details.
 Other modules can use `increment`, `decrement`, and `get`.
 
-```rust
+```zia
 // file: Main.zia
 module Main;
 
@@ -349,7 +349,7 @@ Things that should usually be private:
 - Internal state variables
 - Implementation details that might change
 
-```rust
+```zia
 module EmailValidator;
 bind Zanna.String as Str;
 bind Zanna.Collections.Seq as Seq;
@@ -370,7 +370,7 @@ expose func isValid(email: String) -> Boolean {
 
 // Private helpers: Users don't need these
 hide func containsAt(email: String) -> Boolean {
-    return Str.Has(email, "@");
+    return Str.Contains(email, "@");
 }
 
 hide func hasValidDomain(email: String) -> Boolean {
@@ -378,7 +378,7 @@ hide func hasValidDomain(email: String) -> Boolean {
     if Seq.get_Count(parts) != 2 {
         return false;
     }
-    return Str.Has(Seq.GetStr(parts, 1), ".");
+    return Str.Contains(Seq.GetStr(parts, 1), ".");
 }
 ```
 
@@ -403,7 +403,7 @@ my_project/
 
 Modules in subdirectories use dot notation:
 
-```rust
+```zia
 bind utils.math;     // Bind utils/math.zia
 bind utils.random;   // Bind utils/random.zia
 
@@ -477,7 +477,7 @@ Choose the structure that makes sense for your project. The goal is that anyone 
 
 Zanna comes with a rich standard library organized into namespaces:
 
-```rust
+```zia
 bind Zanna.Terminal;   // Terminal I/O (Say, Print, ReadLine, etc.)
 bind Zanna.IO;         // File operations
 bind Zanna.Math;       // Mathematical functions
@@ -489,7 +489,7 @@ bind Zanna.Graphics;   // 2D graphics (Canvas, Sprite, etc.)
 
 When you bind a Zanna namespace, its functions become available without the full prefix:
 
-```rust
+```zia
 bind Zanna.Terminal;
 bind Zanna.Math.Random as Random;
 
@@ -503,7 +503,7 @@ Without `bind`, you'd write `Zanna.Terminal.Say("...")` and `Zanna.Math.Random.N
 
 You can also bind with aliases or selectively import specific items:
 
-```rust
+```zia
 bind Zanna.Terminal as T;              // Alias: T.Say("Hello")
 bind Zanna.Math { Sqrt, Sin, Cos };    // Selective: Sqrt(x) works, Tan(x) doesn't
 ```
@@ -550,7 +550,7 @@ This is called a *dependency hierarchy*, and it's what makes large programs mana
 
 There's one pattern you must avoid: circular dependencies. This happens when A binds B and B binds A.
 
-```rust
+```zia
 // player.zia
 module Player;
 bind Enemy;  // Player needs to know about enemies
@@ -586,7 +586,7 @@ There are several strategies:
 
 **Extract shared code into a third module:**
 
-```rust
+```zia
 // position.zia — Shared types
 module Position;
 
@@ -620,7 +620,7 @@ By extracting `Vec2` into its own module, we removed one direction of the depend
 
 **Use interfaces (covered in Part III):**
 
-```rust
+```zia
 // target.zia
 module Target;
 
@@ -664,7 +664,7 @@ Every bind creates a coupling. The more modules you bind, the more you depend on
 
 Ask yourself: "Does this module really need that binding?" Sometimes you bind a module for one function that you could easily write yourself. Sometimes you bind a module for a type that could be passed in instead.
 
-```rust
+```zia
 // High dependency: binds many modules
 module Report;
 bind Database;
@@ -705,7 +705,7 @@ Think of your module as having two parts:
 - The **interface**: What you promise to provide, which should be stable
 - The **implementation**: How you provide it, which should be flexible
 
-```rust
+```zia
 module Cache;
 
 // Interface (stable promise)
@@ -730,7 +730,7 @@ Users see only `get`, `set`, and `clear`. You're free to completely rewrite the 
 Let's refactor our game demo into proper modules:
 
 **Vec2.zia** — Vector math
-```rust
+```zia
 // file: Vec2.zia
 module Vec2;
 
@@ -786,7 +786,7 @@ expose func normalize(v: Vec2) -> Vec2 {
 ```
 
 **Player.zia** — Player module
-```rust
+```zia
 // file: Player.zia
 module Player;
 
@@ -846,7 +846,7 @@ expose func addScore(player: Player, points: Integer) -> Player {
 ```
 
 **Enemy.zia** — Enemy module
-```rust
+```zia
 // file: Enemy.zia
 module Enemy;
 
@@ -878,7 +878,7 @@ expose func moveToward(enemy: Enemy, target: Vec2.Vec2) -> Enemy {
 ```
 
 **Main.zia** — Game entry point
-```rust
+```zia
 // file: Main.zia
 module Main;
 
@@ -958,7 +958,7 @@ string_utils/
 
 Users bind `string_utils` and get a clean, organized API:
 
-```rust
+```zia
 bind string_utils;
 
 bind Zanna.Terminal;
@@ -1050,7 +1050,7 @@ One of the biggest benefits of good module design is testability. When code is p
 
 **Isolation.** You can test a module without loading the entire application. Testing `Vec2` doesn't require creating a player or starting a game loop.
 
-```rust
+```zia
 // file: Vec2Test.zia
 module Vec2Test;
 
@@ -1110,13 +1110,13 @@ Sometimes you want to test internal functions that aren't exported. There are se
 
 **Option 2: Export with a "testing" convention.** Some teams export testing helpers with a prefix:
 
-```rust
+```zia
 module EmailValidator;
 
 bind Zanna.String as Str;
 
 hide func containsAt(email: String) -> Boolean {
-    return Str.Has(email, "@");
+    return Str.Contains(email, "@");
 }
 
 // Exported for testing, not for normal use
@@ -1127,7 +1127,7 @@ expose func test_containsAt(email: String) -> Boolean {
 
 **Option 3: Create a test module.** Put tests in the same file as the code they test. Tests can access private functions because they're in the same module:
 
-```rust
+```zia
 module EmailValidator;
 
 bind Zanna.String as Str;
@@ -1139,7 +1139,7 @@ func require(condition: Boolean, message: String) {
 }
 
 hide func containsAt(email: String) -> Boolean {
-    return Str.Has(email, "@");
+    return Str.Contains(email, "@");
 }
 
 expose func isValid(email: String) -> Boolean {
@@ -1163,7 +1163,7 @@ func start() {
 ## The Two Languages
 
 **Zia**
-```rust
+```zia
 // Defining
 module MyModule;
 expose func hello() { ... }
@@ -1194,7 +1194,7 @@ CALL Hello()
 
 ### Exposing Too Much
 
-```rust
+```zia
 // Bad: Everything is public
 module User;
 
@@ -1206,7 +1206,7 @@ expose func validateName(name: String) -> Boolean { ... }  // Internal helper ex
 expose func generateId() -> Integer { ... }  // Internal helper exposed
 ```
 
-```rust
+```zia
 // Good: Minimal public interface
 module User;
 
@@ -1220,7 +1220,7 @@ expose func deleteUser(id: Integer) -> Boolean { ... }
 
 ### God Modules
 
-```rust
+```zia
 // Bad: One module that does everything
 module App;
 
@@ -1285,7 +1285,7 @@ FileUtils.writeAllText("out.txt", s);
 
 ### Wrong Abstraction Level
 
-```rust
+```zia
 // Bad: Module is too granular
 // add.zia
 module Add;
@@ -1296,7 +1296,7 @@ module Subtract;
 expose func subtract(a: Integer, b: Integer) -> Integer { return a - b; }
 ```
 
-```rust
+```zia
 // Good: Module has coherent purpose
 // math.zia
 module Math;

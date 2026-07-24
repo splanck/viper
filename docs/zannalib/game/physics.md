@@ -53,7 +53,7 @@ A 2D array container optimized for tile maps, game boards, and grid-based data.
 
 ### Zia Example
 
-```rust
+```zia
 module Grid2DDemo;
 
 bind Zanna.Terminal;
@@ -202,7 +202,7 @@ Axis-aligned bounding box (AABB) for collision detection between game objects.
 
 ### Zia Example
 
-```rust
+```zia
 module CollisionDemo;
 
 bind Zanna.Terminal;
@@ -421,7 +421,7 @@ Analytic projectile helper for preview arcs, lobbed attacks, and trajectory test
 
 ### Zia Example
 
-```rust
+```zia
 module Physics2DDemo;
 
 bind Zanna.Game;
@@ -550,7 +550,7 @@ Both copy the quadtree output at query time, so later queries or mutations do no
 
 ### Zia Example
 
-```rust
+```zia
 module QuadtreeDemo;
 
 bind Zanna.Terminal;

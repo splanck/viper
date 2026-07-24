@@ -1,0 +1,296 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/probes/debug_watch_toolbar_probe.zia
+// Purpose: Exercise docked debugger-watch entry and management controls.
+// Key invariants:
+//   - Add Watch opens/focuses the Variables input without a transient overlay.
+//   - Enter and real pointer actions mutate exactly the intended watch rows.
+//   - Failed duplicate adds retain authored text for correction.
+//   - Wrapped controls remain inside narrow, zoomed side docks.
+// Ownership/Lifetime: The probe owns and destroys its shell and debug session.
+// Links: zannastudio/src/ui/tool_panel_shell.zia,
+//        zannastudio/src/commands/debug_commands.zia
+//
+//===----------------------------------------------------------------------===//
+
+module debug_watch_toolbar_probe;
+
+bind "../build/debug_session";
+bind "../commands/debug_commands";
+bind "../ui/app_shell";
+
+bind Convert = Zanna.Core.Convert;
+bind GUI = Zanna.GUI;
+bind Str = Zanna.String;
+bind Terminal = Zanna.Terminal;
+
+/// @brief Return whether one child is visually contained by its panel.
+func ContainsWidget(parent: GUI.Widget,
+                    child: GUI.Widget) -> Boolean {
+    if parent == null or child == null { return false; }
+    return child.GetScreenX() >= parent.GetScreenX() - 1.0
+        and child.GetScreenY() >= parent.GetScreenY() - 1.0
+        and child.GetScreenX() + child.GetScreenWidth()
+            <= parent.GetScreenX() + parent.GetScreenWidth() + 1.0
+        and child.GetScreenY() + child.GetScreenHeight()
+            <= parent.GetScreenY() + parent.GetScreenHeight() + 1.0;
+}
+
+/// @brief Convert public logical widget geometry to harness framebuffer pixels.
+func HarnessCoordinate(shell: app_shell.AppShell,
+                       logical: Number) -> Integer {
+    var scale = shell.app.GetEffectiveScale();
+    if scale <= 0.0 { scale = 1.0; }
+    return Convert.NumToInt(logical * scale);
+}
+
+/// @brief Dispatch one real pointer click to a button center.
+func Click(shell: app_shell.AppShell,
+           harness: GUI.TestHarness,
+           button: GUI.Button) {
+    var x = HarnessCoordinate(shell,
+        button.GetScreenX() + button.GetScreenWidth() / 2.0);
+    var y = HarnessCoordinate(shell,
+        button.GetScreenY() + button.GetScreenHeight() / 2.0);
+    harness.SendMouse("move", x, y, 0);
+    harness.SendMouse("down", x, y, 0);
+    harness.SendMouse("up", x, y, 0);
+    harness.DispatchPending();
+}
+
+func fail(shell: app_shell.AppShell,
+          harness: GUI.TestHarness,
+          reason: String) {
+    if harness != null { harness.UnbindApp(); }
+    if shell != null { shell.Destroy(); }
+    Terminal.Say("RESULT: fail " + reason);
+}
+
+func main() {
+    var shell = new app_shell.AppShell();
+    shell.Build("Zanna Studio Watch Toolbar Probe", 720, 520);
+    var session = new debug_session.DebugSession();
+
+    debug_commands.PopulateDebugPanels(shell, session);
+    shell.toolPanels.ShowVariablesPanel();
+    debug_commands.HandleWatchToolbar(shell, session);
+    shell.Poll();
+    shell.Render();
+    if shell.toolPanels.GetActiveToolPanelId() != "variables"
+       or shell.toolPanels.variablesPanel.IsVisible() == false
+       or shell.toolPanels.watchToolbar.IsVisible() == false
+       or shell.toolPanels.watchExpressionInput.IsVisible() == false
+       or shell.toolPanels.variablesListBox.IsVisible() == false
+       or shell.toolPanels.watchAddButton.IsEnabled()
+       or shell.toolPanels.watchRemoveButton.IsEnabled()
+       or shell.toolPanels.watchRefreshButton.IsEnabled()
+       or shell.toolPanels.watchClearButton.IsEnabled() {
+        fail(shell, null, "initial watch surface state");
+        return;
+    }
+
+    // Side docking and whole-UI zoom must reflow one stable control tree rather
+    // than clipping actions or replacing in-progress text.
+    shell.toolPanels.SetWatchExpressionText("draft + 1");
+    shell.app.SetUiScale(2.0);
+    shell.app.SetWindowSize(720, 520);
+    shell.toolPanels.SetDockLocationName("left");
+    shell.toolPanels.ShowVariablesPanel();
+    shell.Poll();
+    shell.toolPanels.PumpToolTabs();
+    debug_commands.HandleWatchToolbar(shell, session);
+    shell.Render();
+    if shell.toolPanels.IsWatchToolbarCompact() == false
+       or ContainsWidget(shell.toolPanels.variablesPanel,
+                         shell.toolPanels.watchExpressionInput) == false
+       or ContainsWidget(shell.toolPanels.variablesPanel,
+                         shell.toolPanels.watchAddButton) == false
+       or ContainsWidget(shell.toolPanels.variablesPanel,
+                         shell.toolPanels.watchRemoveButton) == false
+       or ContainsWidget(shell.toolPanels.variablesPanel,
+                         shell.toolPanels.watchRefreshButton) == false
+       or ContainsWidget(shell.toolPanels.variablesPanel,
+                         shell.toolPanels.watchClearButton) == false
+       or shell.toolPanels.watchToolbar.GetScreenY()
+              + shell.toolPanels.watchToolbar.GetScreenHeight()
+          > shell.toolPanels.variablesListBox.GetScreenY() + 1.0
+       or shell.toolPanels.GetWatchExpressionText() != "draft + 1" {
+        Terminal.Say(
+            "DETAIL: compact=" + shell.toolPanels.IsWatchToolbarCompact()
+            + " panel=" + shell.toolPanels.variablesPanel.GetScreenX()
+            + "," + shell.toolPanels.variablesPanel.GetScreenY()
+            + " " + shell.toolPanels.variablesPanel.GetScreenWidth()
+            + "x" + shell.toolPanels.variablesPanel.GetScreenHeight()
+            + " toolbar=" + shell.toolPanels.watchToolbar.GetScreenX()
+            + "," + shell.toolPanels.watchToolbar.GetScreenY()
+            + " " + shell.toolPanels.watchToolbar.GetScreenWidth()
+            + "x" + shell.toolPanels.watchToolbar.GetScreenHeight()
+            + " input=" + shell.toolPanels.watchExpressionInput.GetScreenX()
+            + "," + shell.toolPanels.watchExpressionInput.GetScreenY()
+            + " " + shell.toolPanels.watchExpressionInput.GetScreenWidth()
+            + "x" + shell.toolPanels.watchExpressionInput.GetScreenHeight()
+            + " addRight="
+            + (shell.toolPanels.watchAddButton.GetScreenX()
+               + shell.toolPanels.watchAddButton.GetScreenWidth())
+            + " removeRight="
+            + (shell.toolPanels.watchRemoveButton.GetScreenX()
+               + shell.toolPanels.watchRemoveButton.GetScreenWidth())
+            + " refreshRight="
+            + (shell.toolPanels.watchRefreshButton.GetScreenX()
+               + shell.toolPanels.watchRefreshButton.GetScreenWidth())
+            + " clearRight="
+            + (shell.toolPanels.watchClearButton.GetScreenX()
+               + shell.toolPanels.watchClearButton.GetScreenWidth())
+            + " listY=" + shell.toolPanels.variablesListBox.GetScreenY());
+        fail(shell, null, "watch controls overflowed the zoomed side dock");
+        return;
+    }
+
+    shell.app.SetUiScale(1.0);
+    shell.app.SetWindowSize(720, 520);
+    shell.toolPanels.SetDockLocationName("bottom");
+    shell.toolPanels.ShowVariablesPanel();
+    shell.Poll();
+    shell.toolPanels.PumpToolTabs();
+    shell.Render();
+
+    var harness = GUI.TestHarness.New();
+    if harness.BindApp(shell.app) == false {
+        fail(shell, harness, "automation app binding");
+        return;
+    }
+
+    // The command route seeds and focuses the persistent Variables field.
+    debug_commands.OpenWatchInput(shell, "score + 1");
+    debug_commands.HandleWatchToolbar(shell, session);
+    shell.Render();
+    if shell.toolPanels.GetActiveToolPanelId() != "variables"
+       or shell.toolPanels.GetWatchExpressionText() != "score + 1"
+       or shell.toolPanels.IsWatchExpressionFocused() == false
+       or shell.toolPanels.watchAddButton.IsEnabled() == false
+       or shell.statusShell.lastLeftStatus
+          != "Enter a watch expression and press Enter" {
+        fail(shell, harness, "Add Watch did not focus the inline field");
+        return;
+    }
+
+    // Submit through the real keyboard path.
+    harness.SendKey("enter", 0);
+    harness.DispatchPending();
+    if debug_commands.HandleWatchToolbar(shell, session) == false
+       or session.WatchCount() != 1
+       or session.WatchExpression(0) != "score + 1"
+       or shell.toolPanels.GetWatchExpressionText() != ""
+       or shell.toolPanels.IsWatchExpressionFocused() == false
+       or shell.toolPanels.variablesListBox.Count != 3
+       or shell.toolPanels.watchClearButton.IsEnabled() == false
+       or shell.toolPanels.watchRefreshButton.IsEnabled() {
+        fail(shell, harness, "Enter did not add exactly one watch");
+        return;
+    }
+
+    // A rejected duplicate remains editable instead of disappearing.
+    shell.Poll();
+    shell.toolPanels.SetWatchExpressionText("score + 1");
+    shell.toolPanels.FocusWatchExpression();
+    debug_commands.HandleWatchToolbar(shell, session);
+    harness.SendKey("enter", 0);
+    harness.DispatchPending();
+    if debug_commands.HandleWatchToolbar(shell, session) == false
+       or session.WatchCount() != 1
+       or shell.toolPanels.GetWatchExpressionText() != "score + 1"
+       or shell.toolPanels.IsWatchExpressionFocused() == false
+       or Str.IndexOf(shell.statusShell.lastLeftStatus,
+                      "Watch already exists") == 0 {
+        fail(shell, harness, "duplicate watch did not remain inline");
+        return;
+    }
+
+    // Select the structured watch row and remove it through a real button hit.
+    shell.Poll();
+    shell.toolPanels.ClearWatchExpression();
+    shell.toolPanels.variablesListBox.SelectIndex(1);
+    debug_commands.HandleWatchToolbar(shell, session);
+    shell.Render();
+    if shell.toolPanels.watchRemoveButton.IsEnabled() == false {
+        fail(shell, harness, "selected watch did not enable Remove");
+        return;
+    }
+    Click(shell, harness, shell.toolPanels.watchRemoveButton);
+    var removed = debug_commands.HandleWatchToolbar(shell, session);
+    if removed == false
+       or session.WatchCount() != 0
+       or shell.toolPanels.watchRemoveButton.IsEnabled()
+       or shell.toolPanels.watchClearButton.IsEnabled()
+       or Str.IndexOf(shell.statusShell.lastLeftStatus,
+                      "Removed watch score + 1") == 0 {
+        Terminal.Say(
+            "DETAIL: handled=" + removed
+            + " count=" + session.WatchCount()
+            + " removeEnabled="
+            + shell.toolPanels.watchRemoveButton.IsEnabled()
+            + " clearEnabled=" + shell.toolPanels.watchClearButton.IsEnabled()
+            + " status=" + shell.statusShell.lastLeftStatus);
+        fail(shell, harness, "Remove did not target the selected watch");
+        return;
+    }
+
+    // Add two expressions, then clear them through the visible toolbar.
+    shell.Poll();
+    shell.toolPanels.SetWatchExpressionText("left");
+    shell.toolPanels.FocusWatchExpression();
+    debug_commands.HandleWatchToolbar(shell, session);
+    Click(shell, harness, shell.toolPanels.watchAddButton);
+    if debug_commands.HandleWatchToolbar(shell, session) == false
+       or session.WatchCount() != 1 {
+        fail(shell, harness, "pointer Add did not create a watch");
+        return;
+    }
+    shell.Poll();
+    shell.toolPanels.SetWatchExpressionText("right");
+    shell.toolPanels.FocusWatchExpression();
+    debug_commands.HandleWatchToolbar(shell, session);
+    Click(shell, harness, shell.toolPanels.watchAddButton);
+    if debug_commands.HandleWatchToolbar(shell, session) == false
+       or session.WatchCount() != 2 {
+        fail(shell, harness, "second pointer Add did not create a watch");
+        return;
+    }
+    shell.Poll();
+    debug_commands.HandleWatchToolbar(shell, session);
+    shell.Render();
+    Click(shell, harness, shell.toolPanels.watchClearButton);
+    var cleared = debug_commands.HandleWatchToolbar(shell, session);
+    if cleared == false
+       or session.WatchCount() != 0
+       or shell.toolPanels.variablesListBox.Count != 0
+       or shell.toolPanels.watchClearButton.IsEnabled() {
+        Terminal.Say(
+            "DETAIL: handled=" + cleared
+            + " count=" + session.WatchCount()
+            + " rows=" + shell.toolPanels.variablesListBox.Count
+            + " clearEnabled=" + shell.toolPanels.watchClearButton.IsEnabled()
+            + " clear="
+            + shell.toolPanels.watchClearButton.GetScreenX()
+            + "," + shell.toolPanels.watchClearButton.GetScreenY()
+            + " " + shell.toolPanels.watchClearButton.GetScreenWidth()
+            + "x" + shell.toolPanels.watchClearButton.GetScreenHeight()
+            + " toolbar="
+            + shell.toolPanels.watchToolbar.GetScreenX()
+            + "," + shell.toolPanels.watchToolbar.GetScreenY()
+            + " " + shell.toolPanels.watchToolbar.GetScreenWidth()
+            + "x" + shell.toolPanels.watchToolbar.GetScreenHeight()
+            + " status=" + shell.statusShell.lastLeftStatus);
+        fail(shell, harness, "Clear did not remove every watch");
+        return;
+    }
+
+    harness.UnbindApp();
+    shell.Destroy();
+    Terminal.Say("RESULT: ok");
+}

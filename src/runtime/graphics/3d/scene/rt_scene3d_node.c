@@ -1050,13 +1050,16 @@ void rt_scene_node3d_set_name(void *obj, rt_string name) {
     node->name = name;
 }
 
-/// @brief Read the node's name (empty string if unset or `obj` is NULL).
+/// @brief Read the node's name as an owned runtime-string reference.
+/// @details Public string-return ABI callers release their result. Retaining the
+///          stored slot here keeps repeated property reads from consuming the
+///          node's own reference and turning later names into dangling handles.
 rt_string rt_scene_node3d_get_name(void *obj) {
     rt_scene_node3d *node = scene_node3d_checked(obj);
     if (node)
         scene_node_repair_string_slot(&node->name);
     if (node && node->name)
-        return node->name;
+        return rt_string_ref(node->name);
     return rt_const_cstr("");
 }
 

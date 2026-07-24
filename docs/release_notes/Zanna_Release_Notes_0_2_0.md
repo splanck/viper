@@ -30,7 +30,7 @@ The ZannaLang frontend has been renamed to **Zia**. This includes:
 
 Example:
 
-```rust
+```zia
 module Hello;
 
 func start() {
@@ -71,7 +71,7 @@ A new cross-platform GUI widget library (~26,000 lines):
 
 Example:
 
-```rust
+```zia
 func main() {
     var app = Zanna.GUI.App.New("My App", 800, 600);
     Zanna.GUI.Theme.SetDark();

@@ -55,6 +55,9 @@ bind "../core/project_manager";
 bind "../core/session";
 bind "../core/settings";
 bind "../ui/status_bar_model";
+bind "../ui/tool_panel_groups";
+bind "../ui/tool_panel_model";
+bind "../ui/workspace_dock";
 bind "../basic/semantic_scan";
 
 bind Terminal = Zanna.Terminal;
@@ -99,6 +102,97 @@ func AddEdit(edits: Any,
     Map.SetInt(edit, "endColumn", endColumn);
     Map.SetStr(edit, "newText", newText);
     Seq.Push(edits, edit);
+}
+
+func TestToolPanelGroups() {
+    var defaultGroups = new tool_panel_groups.ToolPanelGroups();
+    if assertTrue(
+           defaultGroups.Encode()
+               == "left=;bottom=problems,output,search,references,variables,"
+                  + "call-stack,debug-console,terminal;right=;floating="
+           and defaultGroups.LocationForId(tool_panel_model.TAB_ID_TERMINAL)
+               == workspace_dock.DOCK_BOTTOM,
+           "tool-panel groups start as one compatible bottom strip") == false {
+        return;
+    }
+    if assertTrue(
+           defaultGroups.Apply(
+               "left=problems,search;"
+               + "bottom=output,references,variables,call-stack,debug-console;"
+               + "right=terminal",
+               "bottom",
+               tool_panel_model.DEFAULT_TAB_ORDER)
+           and defaultGroups.LocationForId(
+                   tool_panel_model.TAB_ID_PROBLEMS)
+               == workspace_dock.DOCK_LEFT
+           and defaultGroups.LocationForId(
+                   tool_panel_model.TAB_ID_TERMINAL)
+               == workspace_dock.DOCK_RIGHT,
+           "tool-panel groups migrate one complete three-dock layout") == false {
+        return;
+    }
+    var mergeGroups = new tool_panel_groups.ToolPanelGroups();
+    mergeGroups.Apply(
+        "left=problems,search;"
+        + "bottom=output,references,variables,call-stack,debug-console;"
+        + "right=terminal",
+        "bottom",
+        tool_panel_model.DEFAULT_TAB_ORDER);
+    if assertTrue(
+           mergeGroups.MergeLocation(
+               workspace_dock.DOCK_LEFT, workspace_dock.DOCK_RIGHT)
+           and mergeGroups.Encode()
+               == "left=;bottom=output,references,variables,call-stack,"
+                  + "debug-console;right=problems,search,terminal;floating=",
+           "whole-group docking merges occupied destinations in stable order")
+       == false {
+        return;
+    }
+    defaultGroups.MoveId(
+        tool_panel_model.TAB_ID_TERMINAL, workspace_dock.DOCK_BOTTOM);
+    if assertTrue(
+           defaultGroups.Encode()
+               == "left=problems,search;"
+                  + "bottom=output,references,variables,call-stack,"
+                  + "debug-console,terminal;right=;floating=",
+           "moving one tool preserves every other group member") == false {
+        return;
+    }
+    if assertTrue(
+           defaultGroups.Apply(
+                   "left=terminal;bottom=terminal;right=",
+                   "right",
+                   "terminal,debug-console,call-stack,variables,references,"
+                   + "search,output,problems")
+               == false
+           and defaultGroups.Encode()
+               == "left=;bottom=;right=terminal,debug-console,call-stack,"
+                  + "variables,references,search,output,problems;floating=",
+           "malformed group layouts recover atomically through legacy state")
+       == false {
+        return;
+    }
+    var floatingGroups = new tool_panel_groups.ToolPanelGroups();
+    if assertTrue(
+           floatingGroups.Apply(
+               "left=problems;bottom=output,search,references,variables,"
+               + "call-stack,debug-console;right=;floating=terminal",
+               "bottom",
+               tool_panel_model.DEFAULT_TAB_ORDER)
+           and floatingGroups.LocationForId(
+                   tool_panel_model.TAB_ID_TERMINAL)
+               == workspace_dock.DOCK_FLOATING
+           and floatingGroups.MoveId(
+               tool_panel_model.TAB_ID_PROBLEMS,
+               workspace_dock.DOCK_FLOATING)
+           and floatingGroups.Encode()
+               == "left=;bottom=output,search,references,variables,"
+                  + "call-stack,debug-console;right=;"
+                  + "floating=terminal,problems",
+           "tool-panel groups persist a fourth movable floating location")
+       == false {
+        return;
+    }
 }
 
 func TestSafeIo() {
@@ -203,7 +297,15 @@ func TestCommandsAndModels() {
                   and registry.Find("extractfunction").category == "Refactor"
                   and registry.Find("searchproject").category == "Search"
                   and registry.Find("signature_trigger").category == "Navigate"
-                  and registry.Find("signaturenextoverload").category == "Navigate",
+                  and registry.Find("signaturenextoverload").category == "Navigate"
+                  and registry.Find("movesidebarleft").category == "View"
+                  and registry.Find("movesidebarright").category == "View"
+                  and registry.Find("movetoolleft").category == "View"
+                  and registry.Find("movetoolbottom").category == "View"
+                  and registry.Find("movetoolright").category == "View"
+                  and registry.Find("movetoolfloating").category == "View"
+                  and registry.Find("floatpanelgroup").category == "View"
+                  and registry.Find("resetworkspacelayout").category == "View",
                   "command palette categories assigned") == false { return; }
     if assertTrue(registry.Find("saveas").shortcut
                       == command_catalog.PlatformShortcut("Ctrl+Shift+S")
@@ -272,6 +374,72 @@ func TestCommandsAndModels() {
                   and registry.IsExecutable("stopjob", ziaService) == false
                   and registry.IsExecutable("debugcontinue", ziaService) == false,
                   "document and project context enables target commands") == false { return; }
+
+    registry.SetTextEditorAvailable(false);
+    if assertTrue(registry.IsExecutable("save", ziaService)
+                  and registry.IsExecutable("close", ziaService)
+                  and registry.IsExecutable("find", ziaService) == false
+                  and registry.IsExecutable("cut", ziaService) == false
+                  and registry.IsExecutable("minimap", ziaService) == false
+                  and registry.IsExecutable("spliteditorright", ziaService) == false
+                  and Str.IndexOf(registry.DisabledReason("find", ziaService),
+                                 "source and text editors") != 0,
+                  "visual surfaces disable hidden code-editor commands") == false {
+        return;
+    }
+    registry.SetVisualSceneEditorAvailable(true);
+    if assertTrue(registry.IsExecutable("cut", ziaService)
+                  and registry.IsExecutable("copy", ziaService)
+                  and registry.IsExecutable("paste", ziaService)
+                  and registry.IsExecutable("selectall", ziaService)
+                  and registry.IsExecutable("duplicateline", ziaService)
+                  and registry.IsExecutable(
+                      "deletesceneselection", ziaService)
+                  and registry.IsExecutable("find", ziaService) == false
+                  and registry.IsExecutable("minimap", ziaService) == false,
+                  "visual scenes own selection edits but not source commands")
+       == false {
+        return;
+    }
+    registry.SetVisualSceneEditorAvailable(false);
+    registry.SetTextEditorAvailable(true);
+    if assertTrue(
+           registry.IsExecutable("duplicateline", ziaService)
+           and registry.IsExecutable(
+               "deletesceneselection", ziaService) == false,
+           "text editors retain duplicate but not scene-only delete")
+       == false {
+        return;
+    }
+
+    registry.SetSplitEditorContext(false, false);
+    if assertTrue(registry.IsExecutable("spliteditorright", ziaService) == false
+                  and registry.IsExecutable("focusotherpane", ziaService) == false
+                  and registry.IsExecutable("closesplit", ziaService) == false
+                  and Str.IndexOf(
+                      registry.DisabledReason("spliteditorright", ziaService),
+                      "another source or text document") != 0,
+                  "single-document split commands explain missing topology") == false {
+        return;
+    }
+    registry.SetSplitEditorContext(true, false);
+    if assertTrue(registry.IsExecutable("spliteditorright", ziaService)
+                  and registry.IsExecutable("focusotherpane", ziaService) == false
+                  and registry.IsExecutable("closesplit", ziaService) == false,
+                  "eligible companion enables only split creation") == false {
+        return;
+    }
+    registry.SetSplitEditorContext(false, true);
+    if assertTrue(registry.IsExecutable("spliteditorright", ziaService) == false
+                  and registry.IsExecutable("focusotherpane", ziaService)
+                  and registry.IsExecutable("closesplit", ziaService)
+                  and Str.IndexOf(
+                      registry.DisabledReason("spliteditorright", ziaService),
+                      "Close the current editor split") == 1,
+                  "active split enables pane commands and blocks nesting") == false {
+        return;
+    }
+    registry.SetSplitEditorContext(true, false);
 
     registry.ApplyCommandContext(true, true, true, true,
                                  true, false, false, ziaService);
@@ -388,6 +556,35 @@ func TestCommandsAndModels() {
                   "editor save settings have stable defaults") == false { return; }
     if assertTrue(defaultSettings.uiZoomPercent == 100,
                   "UI zoom defaults to 100 percent") == false { return; }
+    if assertTrue(defaultSettings.panelDockPosition == "bottom"
+                  and defaultSettings.toolPanelGroupLayout == ""
+                  and defaultSettings.sidePanelWidthPct == 30
+                  and defaultSettings.floatingToolPanelX == 96
+                  and defaultSettings.floatingToolPanelY == 88
+                  and defaultSettings.floatingToolPanelWidth == 680
+                  and defaultSettings.floatingToolPanelHeight == 420
+                  and defaultSettings.primarySidebarPosition == "left"
+                  and defaultSettings.sidebarWidthPct == 24
+                  and defaultSettings.sidebarVisible
+                  and defaultSettings.activeSidebarViewId == "explorer"
+                  and defaultSettings.editorSplitPct == 50
+                  and defaultSettings.activeToolPanelId == "none"
+                  and defaultSettings.toolPanelTabOrder
+                      == "problems,output,search,references,variables,call-stack,debug-console,terminal",
+                  "workspace docking has stable defaults") == false { return; }
+    if assertTrue(
+        settings.EffectiveSidebarVisibility(
+            false, true, "explorer") == false
+        and settings.EffectiveSidebarVisibility(
+            false, true, "run-debug")
+        and settings.EffectiveSidebarVisibility(
+            true, true, "explorer")
+        and settings.EffectiveSidebarVisibility(
+            true, false, "run-debug") == false,
+        "startup suppresses only sidebar views that need a workspace")
+       == false {
+        return;
+    }
 
     var sigSource = "module Demo;\nfunc f() { outer(inner(a, b), c); }\n";
     if assertTrue(signature.ActiveParameter(sigSource, 2, 27) == 1,
@@ -539,7 +736,17 @@ func TestDocumentsAndSettings() {
     File.WriteAllText(viewSettingsPath,
         "[settings]\nwordWrap=1\nlineNumbers=0\ninsertSpaces=0\n"
         + "trimTrailingWhitespace=1\nensureFinalNewline=0\nautoSave=1\nsaveAllBeforeBuild=0\n"
-        + "diagnosticsDelayMs=750\ncompletionDelayMs=90\nuiZoomPercent=125\n");
+        + "diagnosticsDelayMs=750\ncompletionDelayMs=90\nuiZoomPercent=125\n"
+        + "panelDockPosition=right\nsidePanelWidth=42\n"
+        + "floatingToolPanelX=144\nfloatingToolPanelY=112\n"
+        + "floatingToolPanelWidth=760\nfloatingToolPanelHeight=480\n"
+        + "toolPanelGroupLayout=left=terminal;bottom=debug-console,"
+        + "call-stack,variables,references,search,output;right=problems\n"
+        + "primarySidebarPosition=right\nsidebarWidth=36\n"
+        + "sidebarVisible=0\nactiveSidebarView=run-debug\n"
+        + "editorSplit=63\nactiveToolPanel=terminal\n"
+        + "toolPanelTabOrder=terminal,debug-console,call-stack,variables,"
+        + "references,search,output,problems\n");
     var viewSettings = new settings.SettingsManager();
     viewSettings.settingsDir = root;
     viewSettings.settingsPath = viewSettingsPath;
@@ -552,17 +759,46 @@ func TestDocumentsAndSettings() {
                   and viewSettings.saveAllBeforeBuild == false
                   and viewSettings.diagnosticsDelayMs == 750
                   and viewSettings.completionDelayMs == 90
-                  and viewSettings.uiZoomPercent == 125,
+                  and viewSettings.uiZoomPercent == 125
+                  and viewSettings.panelDockPosition == "right"
+                  and viewSettings.toolPanelGroupLayout
+                      == "left=terminal;bottom=debug-console,call-stack,"
+                         + "variables,references,search,output;right=problems"
+                  and viewSettings.sidePanelWidthPct == 42
+                  and viewSettings.floatingToolPanelX == 144
+                  and viewSettings.floatingToolPanelY == 112
+                  and viewSettings.floatingToolPanelWidth == 760
+                  and viewSettings.floatingToolPanelHeight == 480
+                  and viewSettings.primarySidebarPosition == "right"
+                  and viewSettings.sidebarWidthPct == 36
+                  and viewSettings.sidebarVisible == false
+                  and viewSettings.activeSidebarViewId == "run-debug"
+                  and viewSettings.editorSplitPct == 63
+                  and viewSettings.activeToolPanelId == "terminal"
+                  and viewSettings.toolPanelTabOrder
+                      == "terminal,debug-console,call-stack,variables,references,search,output,problems",
                   "view settings load from persistent preferences") == false { return; }
 
     var clampSettingsPath = Path.Join(root, "clamp-settings.ini");
-    File.WriteAllText(clampSettingsPath, "[settings]\nuiZoomPercent=9999\n");
+    File.WriteAllText(
+        clampSettingsPath,
+        "[settings]\nuiZoomPercent=9999\neditorSplit=1\n"
+        + "primarySidebarPosition=middle\n"
+        + "sidebarVisible=maybe\nactiveSidebarView=made-up\n"
+        + "activeToolPanel=made-up\n");
     var clampSettings = new settings.SettingsManager();
     clampSettings.settingsDir = root;
     clampSettings.settingsPath = clampSettingsPath;
     clampSettings.Load();
-    if assertTrue(clampSettings.uiZoomPercent == 100,
-                  "out-of-range persisted UI zoom is rejected to the default") == false { return; }
+    if assertTrue(clampSettings.uiZoomPercent == 100
+                  and clampSettings.editorSplitPct == 50
+                  and clampSettings.primarySidebarPosition == "left"
+                  and clampSettings.sidebarVisible
+                  and clampSettings.activeSidebarViewId == "explorer"
+                  and clampSettings.activeToolPanelId == "none",
+                  "out-of-range persisted layout and UI zoom keep defaults") == false {
+        return;
+    }
     var invalidSettingsTarget = new settings.SettingsManager();
     invalidSettingsTarget.settingsDir = root;
     invalidSettingsTarget.settingsPath = root;
@@ -581,7 +817,36 @@ func TestDocumentsAndSettings() {
                   and Ini.Get(viewSettingsIni, "settings", "autoSave") == "1"
                   and Ini.Get(viewSettingsIni, "settings", "saveAllBeforeBuild") == "0"
                   and Ini.Get(viewSettingsIni, "settings", "diagnosticsDelayMs") == "750"
-                  and Ini.Get(viewSettingsIni, "settings", "completionDelayMs") == "90",
+                  and Ini.Get(viewSettingsIni, "settings", "completionDelayMs") == "90"
+                  and Ini.Get(viewSettingsIni, "settings", "panelDockPosition") == "right"
+                  and Ini.Get(
+                      viewSettingsIni, "settings", "toolPanelGroupLayout")
+                      == "left=terminal;bottom=debug-console,call-stack,"
+                         + "variables,references,search,output;right=problems"
+                  and Ini.Get(viewSettingsIni, "settings", "sidePanelWidth") == "42"
+                  and Ini.Get(
+                      viewSettingsIni, "settings", "floatingToolPanelX")
+                      == "144"
+                  and Ini.Get(
+                      viewSettingsIni, "settings", "floatingToolPanelY")
+                      == "112"
+                  and Ini.Get(
+                      viewSettingsIni, "settings", "floatingToolPanelWidth")
+                      == "760"
+                  and Ini.Get(
+                      viewSettingsIni, "settings", "floatingToolPanelHeight")
+                      == "480"
+                  and Ini.Get(
+                      viewSettingsIni, "settings", "primarySidebarPosition")
+                      == "right"
+                  and Ini.Get(viewSettingsIni, "settings", "sidebarWidth") == "36"
+                  and Ini.Get(viewSettingsIni, "settings", "sidebarVisible") == "0"
+                  and Ini.Get(viewSettingsIni, "settings", "activeSidebarView")
+                      == "run-debug"
+                  and Ini.Get(viewSettingsIni, "settings", "editorSplit") == "63"
+                  and Ini.Get(viewSettingsIni, "settings", "activeToolPanel") == "terminal"
+                  and Ini.Get(viewSettingsIni, "settings", "toolPanelTabOrder")
+                      == "terminal,debug-console,call-stack,variables,references,search,output,problems",
                   "editor behavior settings save to persistent preferences") == false { return; }
 
     file_commands.SetSaveFormatOptions(true, true);
@@ -1034,6 +1299,8 @@ func TestWorkspaceEdits() {
 }
 
 func main() {
+    TestToolPanelGroups();
+    if probeFailed { return; }
     TestSafeIo();
     if probeFailed { return; }
     TestCommandsAndModels();

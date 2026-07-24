@@ -1,0 +1,202 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/ui/scene_tileset_inspector_2d.zia
+// Purpose: Accessible, scrollable visual tile palette for Studio's 2D scene
+//          inspector.
+// Key invariants:
+//   - This presentation object never mutates SceneDocument or Document state.
+//   - Palette visibility and status always reflect the active decoded library.
+//   - Pointer selection returns intent; SceneEditor2D owns tool/history changes.
+// Ownership/Lifetime: SceneEditor2D owns one inspector; GUI owns its widgets.
+// Links: zannastudio/src/ui/scene_editor_2d.zia,
+//        zannastudio/src/ui/scene_tileset_2d.zia
+//
+//===----------------------------------------------------------------------===//
+
+module scene_tileset_inspector_2d;
+
+bind "scene_tileset_2d";
+bind "scene_asset_browser";
+
+bind GUI = Zanna.GUI;
+bind Pixels = Zanna.Graphics.Pixels;
+bind Input = Zanna.Input;
+bind Convert = Zanna.Core.Convert;
+
+// ============================================================================
+// MODULE: scene_tileset_inspector_2d
+// PURPOSE: Keep visual tile-palette widgets and pointer hit routing outside the
+//          already-large SceneEditor2D document coordinator.
+//
+// WHERE-THIS-FITS: scene_tileset_2d loads/renders bounded assets.
+//          SceneEditor2D owns active layers, selected tile IDs, and history.
+//
+// TEACHING-NOTE: Clicking the palette reports a one-based tile ID. It does not
+//          directly update the spinner or switch tools, which keeps widgets
+//          separate from the canonical scene command path.
+// ============================================================================
+
+/// @brief Presentation-only tileset palette embedded in the 2D inspector.
+class SceneTilesetInspector2D {
+    hide GUI.App guiApp;
+    expose GUI.GroupBox group;
+    expose GUI.Label status;
+    expose GUI.ScrollView scroll;
+    expose GUI.VBox stage;
+    expose GUI.Image image;
+    expose GUI.Button reloadButton;
+    expose GUI.Button clearButton;
+    expose scene_asset_browser.SceneAssetBrowser assetBrowser;
+    expose Pixels palettePixels;
+    hide Integer lastLibraryRevision;
+    hide Integer lastLayer;
+    hide Integer lastSelectedTile;
+
+    expose func init() {
+        guiApp = null;
+        group = null;
+        status = null;
+        scroll = null;
+        stage = null;
+        image = null;
+        reloadButton = null;
+        clearButton = null;
+        assetBrowser = new scene_asset_browser.SceneAssetBrowser();
+        palettePixels = null;
+        lastLibraryRevision = -1;
+        lastLayer = -1;
+        lastSelectedTile = -1;
+    }
+
+    /// @brief Build the complete scrollable palette surface.
+    expose func Setup(parent: GUI.VBox, app: GUI.App) {
+        guiApp = app;
+        group = GUI.GroupBox.New(parent, "Tile palette");
+        status = GUI.Label.New(
+            group,
+            "No tileset image. Choose one to preview and paint visually.");
+        status.SetWordWrap(true);
+        scroll = GUI.ScrollView.New(group);
+        scroll.SetPreferredSize(0.0, 180.0);
+        stage = GUI.VBox.New();
+        stage.SetAlign(GUI.Align.Center);
+        scroll.AddChild(stage);
+        image = GUI.Image.New(stage);
+        image.SetScaleMode(0);
+        image.SetFilter(0);
+        image.SetAccessibleName("Layer tileset palette");
+        image.SetTooltip(
+            "Click a tile to select it and switch to Paint mode");
+        scroll.SetVisible(false);
+        var actions = GUI.HBox.New();
+        actions.SetSpacing(4.0);
+        group.AddChild(actions);
+        reloadButton = GUI.Button.New(actions, "Reload Image");
+        reloadButton.SetTooltip(
+            "Reload changed image pixels without editing scene history");
+        clearButton = GUI.Button.New(actions, "Clear Image");
+        clearButton.SetTooltip(
+            "Remove this layer image reference as one undoable edit");
+        assetBrowser.Setup(
+            group,
+            "Project Layer Images...",
+            ".png,.jpg,.jpeg,.bmp,.gif",
+            "Use Image");
+    }
+
+    /// @brief Refresh status, pixels, geometry, and visibility from one library.
+    expose func Refresh(
+        library: scene_tileset_2d.SceneTilesetLibrary2D,
+        layer: Integer,
+        selectedTile: Integer) {
+        if status == null or image == null or library == null { return; }
+        status.SetText(library.Status(layer));
+        var entry = library.Entry(layer);
+        var hasReference = entry != null and entry.authoredPath != "";
+        reloadButton.SetEnabled(hasReference);
+        clearButton.SetEnabled(hasReference);
+        if library.TileCount(layer) <= 0 {
+            palettePixels = null;
+            image.Clear();
+            scroll.SetVisible(false);
+            lastLibraryRevision = library.revision;
+            lastLayer = layer;
+            lastSelectedTile = selectedTile;
+            return;
+        }
+        if palettePixels != null
+           and lastLibraryRevision == library.revision
+           and lastLayer == layer
+           and lastSelectedTile == selectedTile {
+            scroll.SetVisible(true);
+            return;
+        }
+        palettePixels = library.RenderPalette(layer, selectedTile);
+        lastLibraryRevision = library.revision;
+        lastLayer = layer;
+        lastSelectedTile = selectedTile;
+        if palettePixels == null {
+            image.Clear();
+            scroll.SetVisible(false);
+            return;
+        }
+        var width = palettePixels.Width;
+        var height = palettePixels.Height;
+        image.SetPixels(palettePixels, width, height);
+        image.SetSize(width, height);
+        stage.SetSize(width, height);
+        var scale = EffectiveUiScale();
+        scroll.SetContentSize(width * scale, height * scale);
+        scroll.SetVisible(true);
+    }
+
+    /// @brief Return the clicked one-based tile ID, or zero without a click.
+    expose func TakeSelectedTile(
+        library: scene_tileset_2d.SceneTilesetLibrary2D,
+        layer: Integer) -> Integer {
+        if image == null or library == null
+           or scroll.IsVisible() == false or image.IsHovered() == false
+           or Input.Mouse.WasClicked(Input.Mouse.ButtonLeft) == false {
+            return 0;
+        }
+        var scale = EffectiveUiScale();
+        var relativeX = Input.Mouse.X() / scale - image.GetScreenX();
+        var relativeY = Input.Mouse.Y() / scale - image.GetScreenY();
+        return scene_tileset_2d.PaletteTileAt(
+            library.TileCount(layer),
+            Convert.NumToInt(relativeX),
+            Convert.NumToInt(relativeY));
+    }
+
+    /// @brief Return the logical-to-framebuffer scale used by GUI app polling.
+    hide func EffectiveUiScale() -> Number {
+        if guiApp == null { return 1.0; }
+        var scale = guiApp.GetEffectiveScale();
+        if scale <= 0.0 { return 1.0; }
+        return scale;
+    }
+
+    /// @brief Consume the explicit non-mutating image reload action.
+    expose func TakeReloadRequested() -> Boolean {
+        return reloadButton != null and reloadButton.WasClicked();
+    }
+
+    /// @brief Consume the explicit undoable reference-clear action.
+    expose func TakeClearRequested() -> Boolean {
+        return clearButton != null and clearButton.WasClicked();
+    }
+
+    /// @brief Reconcile pointer availability with the editor's model state.
+    expose func SetEnabled(enabled: Boolean) {
+        if image != null { image.SetEnabled(enabled); }
+        if enabled == false {
+            if reloadButton != null { reloadButton.SetEnabled(false); }
+            if clearButton != null { clearButton.SetEnabled(false); }
+        }
+    }
+}

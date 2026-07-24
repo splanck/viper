@@ -1,0 +1,348 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/ui/tool_panel_groups.zia
+// Purpose: Migration-safe model for attached and floating Studio tool groups.
+// Key invariants:
+//   - Every built-in tool-panel ID belongs to exactly one supported location.
+//   - Encoded layouts are complete and applied atomically.
+//   - Malformed layouts recover through the legacy dock and tab-order values.
+//   - Moving one ID preserves every other ID and appends it predictably.
+// Ownership/Lifetime:
+//   - ToolPanelShell owns one model for the lifetime of the workbench.
+//   - This module owns no GUI widgets and performs no persistence I/O.
+// Links: zannastudio/src/ui/tool_panel_model.zia,
+//        zannastudio/src/ui/tool_panel_shell.zia,
+//        zannastudio/src/ui/workspace_dock.zia
+//
+//===----------------------------------------------------------------------===//
+
+module tool_panel_groups;
+
+// ============================================================================
+// MODULE: tool_panel_groups
+// PURPOSE: Validate and serialize the membership/order of left, bottom, right,
+//          and floating tool groups independently of their concrete GUI widgets.
+//
+// WHERE-THIS-FITS: Settings stores the canonical encoded form. ToolPanelShell
+//          applies it by moving existing panel widgets and recreating Tab
+//          presentations without replacing the panel controllers themselves.
+//
+// TEACHING-NOTE: Persist stable panel IDs, not Tab handles. Tab handles are
+//          presentation objects owned by one TabBar and are retired whenever a
+//          panel crosses from one dock group to another.
+// ============================================================================
+
+bind "../ui/tool_panel_model";
+bind "../ui/workspace_dock";
+
+bind Seq = Zanna.Collections.Seq;
+bind Obj = Zanna.Core.Object;
+bind Str = Zanna.String;
+
+/// @brief Complete membership and order for all supported tool locations.
+class ToolPanelGroups {
+    expose String order;
+    expose Integer problemsLocation;
+    expose Integer outputLocation;
+    expose Integer searchLocation;
+    expose Integer referencesLocation;
+    expose Integer variablesLocation;
+    expose Integer callStackLocation;
+    expose Integer debugLocation;
+    expose Integer terminalLocation;
+
+    expose func init() {
+        order = tool_panel_model.DEFAULT_TAB_ORDER;
+        problemsLocation = workspace_dock.DOCK_BOTTOM;
+        outputLocation = workspace_dock.DOCK_BOTTOM;
+        searchLocation = workspace_dock.DOCK_BOTTOM;
+        referencesLocation = workspace_dock.DOCK_BOTTOM;
+        variablesLocation = workspace_dock.DOCK_BOTTOM;
+        callStackLocation = workspace_dock.DOCK_BOTTOM;
+        debugLocation = workspace_dock.DOCK_BOTTOM;
+        terminalLocation = workspace_dock.DOCK_BOTTOM;
+    }
+
+    /// @brief Apply one complete encoded layout or atomically use legacy state.
+    /// @return True for an empty/migrated or valid grouped layout.
+    expose func Apply(encoded: String,
+                      legacyDockName: String,
+                      legacyOrder: String) -> Boolean {
+        SetFromLegacy(legacyDockName, legacyOrder);
+        if Str.Trim(encoded) == "" { return true; }
+
+        var parts = Str.Split(encoded, ";");
+        var partCount = Seq.get_Count(parts);
+        if partCount != 3 and partCount != 4 { return false; }
+        var leftPart = Str.Trim(Obj.ToString(Seq.Get(parts, 0)));
+        var bottomPart = Str.Trim(Obj.ToString(Seq.Get(parts, 1)));
+        var rightPart = Str.Trim(Obj.ToString(Seq.Get(parts, 2)));
+        var floatingPart = "floating=";
+        if partCount == 4 {
+            floatingPart = Str.Trim(Obj.ToString(Seq.Get(parts, 3)));
+        }
+        if !Str.StartsWith(leftPart, "left=")
+           or !Str.StartsWith(bottomPart, "bottom=")
+           or !Str.StartsWith(rightPart, "right=")
+           or !Str.StartsWith(floatingPart, "floating=") {
+            return false;
+        }
+
+        var candidate = new ToolPanelGroups();
+        candidate.Clear();
+        if !candidate.AssignList(
+               Str.Substring(leftPart, 5, Str.get_Length(leftPart) - 5),
+               workspace_dock.DOCK_LEFT)
+           or !candidate.AssignList(
+               Str.Substring(bottomPart, 7, Str.get_Length(bottomPart) - 7),
+               workspace_dock.DOCK_BOTTOM)
+           or !candidate.AssignList(
+               Str.Substring(rightPart, 6, Str.get_Length(rightPart) - 6),
+               workspace_dock.DOCK_RIGHT)
+           or !candidate.AssignList(
+               Str.Substring(
+                   floatingPart, 9, Str.get_Length(floatingPart) - 9),
+               workspace_dock.DOCK_FLOATING)
+           or !candidate.IsComplete() {
+            return false;
+        }
+
+        CopyFrom(candidate);
+        return true;
+    }
+
+    /// @brief Place a complete legacy order into one legacy dock.
+    expose func SetFromLegacy(dockName: String, encodedOrder: String) {
+        var normalizedOrder = encodedOrder;
+        if !IsCompleteOrder(normalizedOrder) {
+            normalizedOrder = tool_panel_model.DEFAULT_TAB_ORDER;
+        }
+        Clear();
+        var location = workspace_dock.DockLocationFromName(dockName);
+        AssignList(normalizedOrder, location);
+    }
+
+    /// @brief Move one known stable ID and append it to the target group.
+    expose func MoveId(id: String, location: Integer) -> Boolean {
+        if !IsKnownId(id) or !workspace_dock.IsToolLocation(location) {
+            return false;
+        }
+        if LocationForId(id) == location { return false; }
+        var nextOrder = "";
+        var parts = Str.Split(order, ",");
+        var i = 0;
+        while i < Seq.get_Count(parts) {
+            var current = Str.Trim(Obj.ToString(Seq.Get(parts, i)));
+            if current != "" and current != id {
+                nextOrder = AppendId(nextOrder, current);
+            }
+            i = i + 1;
+        }
+        order = AppendId(nextOrder, id);
+        SetLocation(id, location);
+        return true;
+    }
+
+    /// @brief Merge one complete dock group into another without reordering IDs.
+    /// @details Whole-group header docking uses this path. A destination group
+    ///          may already contain panels, so both memberships are combined in
+    ///          their existing global order and the source becomes empty.
+    expose func MergeLocation(source: Integer,
+                              destination: Integer) -> Boolean {
+        if !workspace_dock.IsToolLocation(source)
+           or !workspace_dock.IsToolLocation(destination)
+           or source == destination {
+            return false;
+        }
+        var changed = false;
+        var parts = Str.Split(order, ",");
+        var i = 0;
+        while i < Seq.get_Count(parts) {
+            var id = Str.Trim(Obj.ToString(Seq.Get(parts, i)));
+            if LocationForId(id) == source {
+                SetLocation(id, destination);
+                changed = true;
+            }
+            i = i + 1;
+        }
+        return changed;
+    }
+
+    /// @brief Return one ID's current dock, or DOCK_NONE for unknown IDs.
+    expose func LocationForId(id: String) -> Integer {
+        if id == tool_panel_model.TAB_ID_PROBLEMS {
+            return problemsLocation;
+        }
+        if id == tool_panel_model.TAB_ID_OUTPUT { return outputLocation; }
+        if id == tool_panel_model.TAB_ID_SEARCH { return searchLocation; }
+        if id == tool_panel_model.TAB_ID_REFERENCES {
+            return referencesLocation;
+        }
+        if id == tool_panel_model.TAB_ID_VARIABLES {
+            return variablesLocation;
+        }
+        if id == tool_panel_model.TAB_ID_CALL_STACK {
+            return callStackLocation;
+        }
+        if id == tool_panel_model.TAB_ID_DEBUG { return debugLocation; }
+        if id == tool_panel_model.TAB_ID_TERMINAL {
+            return terminalLocation;
+        }
+        return workspace_dock.DOCK_NONE;
+    }
+
+    /// @brief Return stable IDs for one dock in their durable visual order.
+    expose func IdsAt(location: Integer) -> String {
+        if !workspace_dock.IsToolLocation(location) { return ""; }
+        var result = "";
+        var parts = Str.Split(order, ",");
+        var i = 0;
+        while i < Seq.get_Count(parts) {
+            var id = Str.Trim(Obj.ToString(Seq.Get(parts, i)));
+            if LocationForId(id) == location {
+                result = AppendId(result, id);
+            }
+            i = i + 1;
+        }
+        return result;
+    }
+
+    /// @brief Return whether one dock currently owns at least one panel.
+    expose func HasIdsAt(location: Integer) -> Boolean {
+        return IdsAt(location) != "";
+    }
+
+    /// @brief Return the first stable ID at one dock, or empty when unassigned.
+    expose func FirstIdAt(location: Integer) -> String {
+        var ids = IdsAt(location);
+        if ids == "" { return ""; }
+        var parts = Str.Split(ids, ",");
+        if Seq.get_Count(parts) == 0 { return ""; }
+        return Str.Trim(Obj.ToString(Seq.Get(parts, 0)));
+    }
+
+    /// @brief Return the canonical complete persistence form.
+    expose func Encode() -> String {
+        return "left=" + IdsAt(workspace_dock.DOCK_LEFT)
+            + ";bottom=" + IdsAt(workspace_dock.DOCK_BOTTOM)
+            + ";right=" + IdsAt(workspace_dock.DOCK_RIGHT)
+            + ";floating=" + IdsAt(workspace_dock.DOCK_FLOATING);
+    }
+
+    /// @brief Replace global order while preserving current group membership.
+    expose func SetCompleteOrder(encodedOrder: String) -> Boolean {
+        if !IsCompleteOrder(encodedOrder) { return false; }
+        order = encodedOrder;
+        return true;
+    }
+
+    hide func Clear() {
+        order = "";
+        problemsLocation = workspace_dock.DOCK_NONE;
+        outputLocation = workspace_dock.DOCK_NONE;
+        searchLocation = workspace_dock.DOCK_NONE;
+        referencesLocation = workspace_dock.DOCK_NONE;
+        variablesLocation = workspace_dock.DOCK_NONE;
+        callStackLocation = workspace_dock.DOCK_NONE;
+        debugLocation = workspace_dock.DOCK_NONE;
+        terminalLocation = workspace_dock.DOCK_NONE;
+    }
+
+    hide func CopyFrom(other: ToolPanelGroups) {
+        order = other.order;
+        problemsLocation = other.problemsLocation;
+        outputLocation = other.outputLocation;
+        searchLocation = other.searchLocation;
+        referencesLocation = other.referencesLocation;
+        variablesLocation = other.variablesLocation;
+        callStackLocation = other.callStackLocation;
+        debugLocation = other.debugLocation;
+        terminalLocation = other.terminalLocation;
+    }
+
+    hide func AssignList(encodedIds: String, location: Integer) -> Boolean {
+        if encodedIds == "" { return true; }
+        var parts = Str.Split(encodedIds, ",");
+        var i = 0;
+        while i < Seq.get_Count(parts) {
+            var id = Str.Trim(Obj.ToString(Seq.Get(parts, i)));
+            if !IsKnownId(id)
+               or LocationForId(id) != workspace_dock.DOCK_NONE {
+                return false;
+            }
+            SetLocation(id, location);
+            order = AppendId(order, id);
+            i = i + 1;
+        }
+        return true;
+    }
+
+    hide func SetLocation(id: String, location: Integer) {
+        if id == tool_panel_model.TAB_ID_PROBLEMS {
+            problemsLocation = location;
+        } else if id == tool_panel_model.TAB_ID_OUTPUT {
+            outputLocation = location;
+        } else if id == tool_panel_model.TAB_ID_SEARCH {
+            searchLocation = location;
+        } else if id == tool_panel_model.TAB_ID_REFERENCES {
+            referencesLocation = location;
+        } else if id == tool_panel_model.TAB_ID_VARIABLES {
+            variablesLocation = location;
+        } else if id == tool_panel_model.TAB_ID_CALL_STACK {
+            callStackLocation = location;
+        } else if id == tool_panel_model.TAB_ID_DEBUG {
+            debugLocation = location;
+        } else if id == tool_panel_model.TAB_ID_TERMINAL {
+            terminalLocation = location;
+        }
+    }
+
+    hide func IsComplete() -> Boolean {
+        return IsCompleteOrder(order)
+            and problemsLocation != workspace_dock.DOCK_NONE
+            and outputLocation != workspace_dock.DOCK_NONE
+            and searchLocation != workspace_dock.DOCK_NONE
+            and referencesLocation != workspace_dock.DOCK_NONE
+            and variablesLocation != workspace_dock.DOCK_NONE
+            and callStackLocation != workspace_dock.DOCK_NONE
+            and debugLocation != workspace_dock.DOCK_NONE
+            and terminalLocation != workspace_dock.DOCK_NONE;
+    }
+}
+
+/// @brief Return whether an ID names one built-in tool surface.
+expose func IsKnownId(id: String) -> Boolean {
+    return tool_panel_model.PanelKindForTabId(id)
+        != tool_panel_model.PANEL_NONE;
+}
+
+/// @brief Validate that an order names every built-in panel exactly once.
+expose func IsCompleteOrder(encodedOrder: String) -> Boolean {
+    var parts = Str.Split(encodedOrder, ",");
+    if Seq.get_Count(parts) != 8 { return false; }
+    var i = 0;
+    while i < Seq.get_Count(parts) {
+        var id = Str.Trim(Obj.ToString(Seq.Get(parts, i)));
+        if !IsKnownId(id) { return false; }
+        var j = 0;
+        while j < i {
+            if Str.Trim(Obj.ToString(Seq.Get(parts, j))) == id {
+                return false;
+            }
+            j = j + 1;
+        }
+        i = i + 1;
+    }
+    return true;
+}
+
+/// @brief Append one ID to a comma-separated sequence.
+func AppendId(encoded: String, id: String) -> String {
+    if encoded == "" { return id; }
+    return encoded + "," + id;
+}

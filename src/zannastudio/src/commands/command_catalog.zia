@@ -73,6 +73,8 @@ class CommandSpec {
 expose func DefaultCommandSpecs() -> List[CommandSpec] {
     var specs: List[CommandSpec] = [];
     AddSpec(specs, "new", "New File", "Create a new untitled file", "Ctrl+N", "", true);
+    AddSpec(specs, "newscene2d", "New 2D Scene", "Create an editable tile and object scene", "", "", true);
+    AddSpec(specs, "newscene3d", "New 3D Scene", "Create an editable VSCN hierarchy", "", "", true);
     AddSpec(specs, "open", "Open File...", "Open a file from disk", "Ctrl+O", "", true);
     AddSpec(specs, "openfolder", "Open Folder...", "Open a project folder", "Ctrl+Alt+O", "", true);
     AddSpec(specs, "addfolder", "Add Folder to Workspace...", "Add another folder as a workspace root", "", "", true);
@@ -113,7 +115,18 @@ expose func DefaultCommandSpecs() -> List[CommandSpec] {
     AddSpec(specs, "togglebreakpoint", "Toggle Breakpoint", "Set or clear a breakpoint at the cursor", "F9", "", true);
     AddSpec(specs, "debugcondition", "Conditional Breakpoint…", "Set a breakpoint that stops only when an expression is true", "", "", true);
     AddSpec(specs, "debuglogpoint", "Add Logpoint…", "Log a message (with {expr}) at a line without stopping", "", "", true);
-    AddSpec(specs, "togglesidebar", "Toggle Sidebar", "Show or hide the file tree", "Ctrl+B", "", true);
+    AddSpec(specs, "togglesidebar", "Toggle Primary Side Bar", "Show or hide Explorer, Source Control, or Run and Debug", "Ctrl+B", "", true);
+    AddSpec(specs, "movesidebarleft", "Move Primary Side Bar Left", "Move Explorer, Source Control, and Run and Debug to the left edge", "", "", true);
+    AddSpec(specs, "movesidebarright", "Move Primary Side Bar Right", "Move Explorer, Source Control, and Run and Debug to the right edge", "", "", true);
+    AddSpec(specs, "dockpanelsleft", "Dock Panel Group Left", "Move and merge the primary tool-panel group at the left edge", "", "", true);
+    AddSpec(specs, "dockpanelsbottom", "Dock Panel Group Bottom", "Move and merge the primary tool-panel group below the editor", "", "", true);
+    AddSpec(specs, "dockpanelsright", "Dock Panel Group Right", "Move and merge the primary tool-panel group at the right edge", "", "", true);
+    AddSpec(specs, "floatpanelgroup", "Float Primary Panel Group", "Move the complete primary tool-panel group into a movable window", "", "", true);
+    AddSpec(specs, "movetoolleft", "Move Active Tool Left", "Split the selected tool into the left dock group", "", "", true);
+    AddSpec(specs, "movetoolbottom", "Move Active Tool to Bottom", "Split the selected tool into the bottom dock group", "", "", true);
+    AddSpec(specs, "movetoolright", "Move Active Tool Right", "Split the selected tool into the right dock group", "", "", true);
+    AddSpec(specs, "movetoolfloating", "Move Active Tool to Floating Window", "Split the selected tool into the movable floating group", "", "", true);
+    AddSpec(specs, "resetworkspacelayout", "Reset Workspace Layout", "Restore default sidebar, panel docking, tab order, and editor split", "", "", true);
     AddSpec(specs, "spliteditorright", "Split Editor Right", "Open a second editor pane to the right", "Ctrl+\\", "", true);
     AddSpec(specs, "focusotherpane", "Focus Other Editor Pane", "Move focus to the other split pane", "", "", true);
     AddSpec(specs, "closesplit", "Close Editor Split", "Close the second editor pane", "", "", true);
@@ -170,7 +183,8 @@ expose func DefaultCommandSpecs() -> List[CommandSpec] {
     AddSpec(specs, "shrinkselection", "Shrink Selection", "Shrink selection from document to line to word", "Shift+Alt+Left", "", true);
     AddSpec(specs, "togglelinecomment", "Toggle Line Comment", "Comment or uncomment the active line", "Ctrl+/", "", true);
     AddSpec(specs, "toggleblockcomment", "Toggle Block Comment", "Wrap or unwrap the selection in a block comment", "Shift+Alt+A", "", true);
-    AddSpec(specs, "duplicateline", "Duplicate Line", "Duplicate the active line", "Ctrl+Shift+D", "", true);
+    AddSpec(specs, "duplicateline", "Duplicate Selection", "Duplicate the active text line or visual-scene selection", "Ctrl+Shift+D", "", true);
+    AddSpec(specs, "deletesceneselection", "Delete Scene Selection", "Delete the selected 2D objects or 3D hierarchy roots", "Delete", "", true);
     AddSpec(specs, "movelineup", "Move Line Up", "Move the active line above the previous line", "Alt+Up", "", true);
     AddSpec(specs, "movelinedown", "Move Line Down", "Move the active line below the next line", "Alt+Down", "", true);
     AddSpec(specs, "organizebinds", "Organize Binds", "Sort and deduplicate the leading Zia bind block", "Shift+Alt+O", "diagnostics", true);
@@ -240,7 +254,8 @@ expose func PlatformShortcut(shortcut: String) -> String {
 /// @param id Stable command id from the catalog.
 /// @return Palette category name such as File, Edit, Build, or Debug.
 expose func CategoryForCommand(id: String) -> String {
-    if id == "new" or id == "open" or id == "openfolder"
+    if id == "new" or id == "newscene2d" or id == "newscene3d"
+       or id == "open" or id == "openfolder"
        or id == "addfolder" or id == "removefolder" or id == "closeworkspace"
        or id == "save" or id == "saveas" or id == "saveall"
        or id == "close" or id == "reload" or id == "recentfiles"
@@ -269,10 +284,17 @@ expose func CategoryForCommand(id: String) -> String {
     if Str.StartsWith(id, "debug") or id == "togglebreakpoint" {
         return "Debug";
     }
-    if id == "togglesidebar" or id == "statusbar" or id == "zoomin"
+    if id == "togglesidebar" or id == "movesidebarleft"
+       or id == "movesidebarright" or id == "dockpanelsleft"
+       or id == "dockpanelsbottom" or id == "dockpanelsright"
+       or id == "floatpanelgroup"
+       or id == "movetoolleft" or id == "movetoolbottom"
+       or id == "movetoolright" or id == "movetoolfloating"
+       or id == "statusbar" or id == "zoomin"
        or id == "zoomout" or id == "zoomreset" or id == "uizoomin"
        or id == "uizoomout" or id == "uizoomreset"
        or id == "toggletheme" or id == "fullscreen" or id == "minimap"
+       or id == "resetworkspacelayout"
        or id == "spliteditorright" or id == "focusotherpane" or id == "closesplit" {
         return "View";
     }
@@ -293,7 +315,8 @@ expose func CategoryForCommand(id: String) -> String {
        or id == "selectalloccurrences" or id == "clearcursors"
        or id == "expandselection" or id == "shrinkselection"
        or id == "togglelinecomment" or id == "toggleblockcomment"
-       or id == "duplicateline" or id == "movelineup" or id == "movelinedown"
+       or id == "duplicateline" or id == "deletesceneselection"
+       or id == "movelineup" or id == "movelinedown"
        or id == "trimtrailingwhitespace" or id == "formatdocument"
        or id == "formatselection" {
         return "Edit";

@@ -1,22 +1,43 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/probes/editor_depth_probe.zia
+// Purpose: Regress tab ordering, durable split identity, and breadcrumb lookup.
+// Key invariants:
+//   - Document reorder preserves the active Document by identity.
+//   - Session restore maps physical pane owners through validated session slots.
+//   - A missing structured pane owner never selects an arbitrary replacement.
+//   - Visual documents cannot be captured or restored as CodeEditor pane owners.
+// Ownership/Lifetime: The probe owns isolated temporary files and model objects.
+// Links: zannastudio/src/core/session.zia,
+//        zannastudio/src/editor/editor_engine.zia
+//
+//===----------------------------------------------------------------------===//
+
 module editor_depth_probe;
 
 // ============================================================================
 // MODULE: editor_depth_probe
-// PURPOSE: Verify plan 07 model-level behaviors — document reorder mirrors
-//          tab drag-reorder (active document follows its new index), and the
-//          session split flag round-trips through save/restore.
+// PURPOSE: Verify document reorder, exact split-session restoration, safe
+//          structured-session degradation, and breadcrumb symbol inference.
 // ============================================================================
 
 bind "../core/document_manager";
 bind "../core/project_manager";
 bind "../core/session";
 bind "../editor/editor_tabs";
+bind "../services/file_utils";
 bind "../zia/function_scan";
 
 bind File = Zanna.IO.File;
 bind Path = Zanna.IO.Path;
 bind TempFile = Zanna.IO.TempFile;
 bind Terminal = Zanna.Terminal;
+bind Ini = Zanna.Data.Ini;
 
 func fail(reason: String) {
     Terminal.Say("RESULT: fail " + reason);
@@ -58,20 +79,120 @@ func main() {
         return;
     }
 
-    // Session split flag round-trips.
+    // Exact physical pane ownership and focus round-trip through durable slots.
     var sessionDir = TempFile.CreateDirWithPrefix("zannastudio_split_session_");
+    var sessionPath = Path.Join(sessionDir, "settings.ini");
     var mgr = new session.SessionManager();
-    mgr.Setup(Path.Join(sessionDir, "settings.ini"));
-    mgr.splitActive = true;
+    mgr.Setup(sessionPath);
     var projMgr = new project_manager.ProjectManager();
-    mgr.Save(docMgr, projMgr);
+    var primaryPane = docMgr.GetDocument(0);
+    var secondaryPane = docMgr.GetDocument(2);
+    if primaryPane == null or secondaryPane == null {
+        fail("split fixture documents are missing");
+        return;
+    }
+    docMgr.SetActiveDocument(secondaryPane!);
+    mgr.CaptureSplitState(primaryPane!, secondaryPane!, true);
+    if mgr.SaveCleanExit(docMgr, projMgr) == false {
+        fail("structured split session save failed");
+        return;
+    }
+    var savedSplitIni = Ini.Parse(File.ReadAllText(sessionPath));
+    if Ini.Get(savedSplitIni, "session", "splitActive") != "1"
+       or Ini.Get(savedSplitIni, "session", "splitFirstIndex") != "0"
+       or Ini.Get(savedSplitIni, "session", "splitSecondIndex") != "2"
+       or Ini.Get(savedSplitIni, "session", "splitSecondFocused") != "1" {
+        fail("physical split identity was not serialized");
+        return;
+    }
 
     var mgr2 = new session.SessionManager();
-    mgr2.Setup(Path.Join(sessionDir, "settings.ini"));
+    mgr2.Setup(sessionPath);
+    var restoredDocs = new document_manager.DocumentManager();
+    var restoredProject = new project_manager.ProjectManager();
     var tabs = new editor_tabs.EditorTabs();
-    mgr2.Restore(docMgr, projMgr, tabs);
-    if mgr2.splitActive == false {
-        fail("splitActive flag lost across save/restore");
+    if mgr2.Restore(restoredDocs, restoredProject, tabs) != 3 {
+        fail("structured split documents did not restore");
+        return;
+    }
+    var restoredFirst = mgr2.RestoredSplitFirstDocument();
+    var restoredSecond = mgr2.RestoredSplitSecondDocument();
+    var restoredActive = restoredDocs.GetActive();
+    if mgr2.splitActive == false
+       or mgr2.splitSecondFocused == false
+       or restoredFirst == null or restoredFirst!.filePath != b
+       or restoredSecond == null or restoredSecond!.filePath != c
+       or restoredActive == null or restoredActive!.filePath != c {
+        fail("structured split identity or focused side was not restored");
+        return;
+    }
+
+    // A structured session from an older or malformed writer may name a visual
+    // document. Restore its tabs, but never rebuild it as a hidden CodeEditor.
+    var visualPath = Path.Join(sessionDir, "world.vscn");
+    File.WriteAllText(visualPath, file_utils.DefaultScene3DContent());
+    var visualSessionPath = Path.Join(sessionDir, "visual-settings.ini");
+    File.WriteAllText(
+        visualSessionPath,
+        "[settings]\nrestoreSession=1\n"
+        + "[session]\ncount=2\nactiveIndex=1\nsplitActive=1\n"
+        + "splitFirstIndex=0\nsplitSecondIndex=1\nsplitSecondFocused=1\n"
+        + "[session.file.0]\npath=" + a + "\n"
+        + "[session.file.1]\npath=" + visualPath + "\n");
+    var visualMgr = new session.SessionManager();
+    visualMgr.Setup(visualSessionPath);
+    var visualDocs = new document_manager.DocumentManager();
+    if visualMgr.Restore(
+           visualDocs, new project_manager.ProjectManager(), null) != 2
+       or visualMgr.splitActive
+       or visualMgr.RestoredSplitFirstDocument() != null
+       or visualMgr.RestoredSplitSecondDocument() != null {
+        fail("visual document was restored as a CodeEditor split owner");
+        return;
+    }
+    var visualFirst = visualDocs.GetDocument(0);
+    var visualSecond = visualDocs.GetDocument(1);
+    if visualFirst == null or visualSecond == null {
+        fail("visual split rejection discarded safe restored tabs");
+        return;
+    }
+    visualMgr.CaptureSplitState(visualFirst!, visualSecond!, true);
+    if visualMgr.splitActive {
+        fail("visual document was captured as a new split owner");
+        return;
+    }
+
+    // Once a structured owner disappears, startup must stay single-pane. It
+    // must not silently replace c.zia with whichever unrelated tab is nearby.
+    File.Delete(c);
+    var missingMgr = new session.SessionManager();
+    missingMgr.Setup(sessionPath);
+    var missingDocs = new document_manager.DocumentManager();
+    missingMgr.Restore(missingDocs, new project_manager.ProjectManager(), null);
+    if missingMgr.splitActive
+       or missingMgr.RestoredSplitFirstDocument() != null
+       or missingMgr.RestoredSplitSecondDocument() != null {
+        fail("missing structured pane owner selected an arbitrary replacement");
+        return;
+    }
+
+    // Boolean-only sessions from older Studio builds retain their conservative
+    // companion fallback contract until the next structured save.
+    var legacyPath = Path.Join(sessionDir, "legacy-settings.ini");
+    File.WriteAllText(
+        legacyPath,
+        "[settings]\nrestoreSession=1\n"
+        + "[session]\ncount=2\nactiveIndex=0\nsplitActive=1\n"
+        + "[session.file.0]\npath=" + a + "\n"
+        + "[session.file.1]\npath=" + b + "\n");
+    var legacyMgr = new session.SessionManager();
+    legacyMgr.Setup(legacyPath);
+    legacyMgr.Restore(new document_manager.DocumentManager(),
+                      new project_manager.ProjectManager(), null);
+    if legacyMgr.splitActive == false
+       or legacyMgr.RestoredSplitFirstDocument() != null
+       or legacyMgr.RestoredSplitSecondDocument() != null {
+        fail("legacy boolean split compatibility was lost");
         return;
     }
 

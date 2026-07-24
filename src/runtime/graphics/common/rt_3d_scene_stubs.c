@@ -677,17 +677,16 @@ void rt_scene_node3d_set_name(void *n, rt_string s) {
     (void)s;
 }
 
-/// @brief Stub for `SceneNode3D.Name` — get the assigned name, or NULL
-///        if unnamed.
+/// @brief Stub for `SceneNode3D.Name` — get the assigned name.
 ///
-/// Silent stub returning NULL.
+/// Silent stub returning an owned empty runtime string.
 ///
 /// @param n SceneNode3D handle (ignored).
 ///
-/// @return `NULL`.
+/// @return An owned empty runtime string.
 rt_string rt_scene_node3d_get_name(void *n) {
     (void)n;
-    return NULL;
+    return rt_const_cstr("");
 }
 
 /// @brief Stub for `SceneNode3D.BoundsMin` — get the min corner of the

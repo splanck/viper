@@ -1,7 +1,7 @@
 ---
 status: active
 audience: contributors
-last-verified: 2026-07-18
+last-verified: 2026-07-23
 ---
 
 # CODEMAP: Zanna Studio
@@ -65,3 +65,8 @@ record with file-level detail; the load-bearing locations:
 | Debugger class-field expansion (ADR 0138) | `src/vm/debug/VMDebug.cpp`, `src/frontends/zia/DebugLayoutExport.hpp` |
 | Terminal emulator (regions, modes, replies) | `src/lib/gui/src/widgets/vg_outputpane.c`, `src/zannastudio/src/terminal/` |
 | SCM history, job queue, credential prompts | `src/zannastudio/src/scm/scm_git.zia`, `src/zannastudio/src/scm/scm_view.zia` |
+| Direct persisted workspace docking | `src/zannastudio/src/ui/workbench_shell.zia`, `src/zannastudio/src/ui/primary_sidebar_dock.zia`, `src/zannastudio/src/ui/workspace_dock.zia`, `src/zannastudio/src/ui/tool_panel_groups.zia`, `src/zannastudio/src/ui/tool_panel_shell.zia` |
+| Stable scene multi-selection (ADR 0156) | `src/runtime/graphics/gui/rt_gui_controls.c`, `src/zannastudio/src/ui/scene_selection.zia` |
+| Scene-aware Edit commands and typed cross-document clipboard | `src/zannastudio/src/commands/main_command_dispatcher.zia`, `src/zannastudio/src/ui/scene_clipboard.zia` |
+| Focus-safe scene Duplicate/Delete and transactional batch inspectors | `src/zannastudio/src/commands/main_command_dispatcher.zia`, `src/zannastudio/src/ui/scene_editor_2d.zia`, `src/zannastudio/src/ui/scene_editor_3d.zia` |
+| Scene precision layout and hierarchy organization | `src/zannastudio/src/ui/scene_layout_2d.zia`, `src/zannastudio/src/ui/scene_hierarchy_3d.zia`, `src/zannastudio/src/ui/scene_editor_2d.zia`, `src/zannastudio/src/ui/scene_editor_3d.zia` |

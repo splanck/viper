@@ -97,7 +97,7 @@ push/pop, insert/remove, and slicing operations.
 
 ### Zia Example
 
-```rust
+```zia
 module SeqDemo;
 
 bind Zanna.Terminal;
@@ -347,7 +347,7 @@ sources.
 
 ### Zia Example
 
-```rust
+```zia
 module LazySeqDemo;
 
 bind Zanna.Functional.LazySeq as LS;
@@ -507,7 +507,7 @@ A sequential cursor over a collection that provides controlled traversal with pe
 
 ### Zia Example
 
-```rust
+```zia
 module IteratorDemo;
 
 bind Zanna.Collections;

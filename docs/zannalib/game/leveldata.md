@@ -57,7 +57,7 @@ the cutoff is dropped whole rather than left as an invalid fragment (VDOC-239).
 
 ## Example
 
-```rust
+```zia
 module LevelDocumentExample;
 
 func start() {

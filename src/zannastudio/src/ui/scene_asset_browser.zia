@@ -1,0 +1,561 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/ui/scene_asset_browser.zia
+// Purpose: Bounded, searchable project-asset selection shared by Studio's
+//          visual scene editors.
+// Key invariants:
+//   - Project discovery is cooperative and consumes a fixed per-frame budget.
+//   - At most 512 concrete rows and one bounded image preview are retained.
+//   - Selection reports intent; this module never mutates scene documents.
+//   - Multi-root labels are unambiguous and paths remain absolute in row data.
+// Ownership/Lifetime: A scene inspector owns each browser; ProjectManager owns
+//                     the borrowed workspace file cache.
+// Links: zannastudio/src/core/project_manager.zia,
+//        zannastudio/src/ui/scene_editor_2d.zia,
+//        zannastudio/src/ui/scene_editor_3d.zia
+//
+//===----------------------------------------------------------------------===//
+
+module scene_asset_browser;
+
+bind "../core/project_manager";
+bind "../services/safe_io";
+
+bind GUI = Zanna.GUI;
+bind Pixels = Zanna.Graphics.Pixels;
+bind Path = Zanna.IO.Path;
+bind File = Zanna.IO.File;
+bind Str = Zanna.String;
+bind Seq = Zanna.Collections.Seq;
+bind Obj = Zanna.Core.Object;
+
+// ============================================================================
+// MODULE: scene_asset_browser
+// PURPOSE: Present workspace-backed scene assets without adding file discovery,
+//          filtering, thumbnails, or multi-root labeling to scene controllers.
+//
+// WHERE-THIS-FITS: ProjectManager owns bounded file discovery. Scene inspectors
+//          own widgets. SceneEditor2D/3D validate and commit selected paths.
+//
+// TEACHING-NOTE: A browser selection is only intent. Validation can still fail
+//          after selection because files may change or disappear asynchronously.
+// ============================================================================
+
+final MAX_VISIBLE_SCENE_ASSETS: Integer = 512;
+final ASSET_CACHE_WORK_PER_FRAME: Integer = 128;
+final ASSET_ROW_WORK_PER_FRAME: Integer = 256;
+final MAX_ASSET_PREVIEW_SOURCE_BYTES: Integer = 16000000;
+final MAX_ASSET_PREVIEW_PIXELS: Integer = 4194304;
+final MAX_ASSET_PREVIEW_EDGE: Integer = 128;
+
+/// @brief Normalize a comma/semicolon extension list for exact membership.
+expose func NormalizeAssetExtensions(extensions: String) -> String {
+    var value = Str.ToLower(Str.Trim(extensions));
+    value = Str.Replace(value, ";", ",");
+    value = Str.Replace(value, " ", "");
+    value = Str.Replace(value, "*", "");
+    while Str.IndexOf(value, ",,") > 0 {
+        value = Str.Replace(value, ",,", ",");
+    }
+    if value == "" { return ","; }
+    if Str.StartsWith(value, ",") == false { value = "," + value; }
+    if Str.EndsWith(value, ",") == false { value = value + ","; }
+    return value;
+}
+
+/// @brief Return whether one path belongs to an exact extension allow-list.
+expose func AssetExtensionAllowed(path: String,
+                                  normalizedExtensions: String) -> Boolean {
+    var extension = Str.ToLower(Path.Extension(path));
+    if extension == "" { return false; }
+    return Str.IndexOf(
+        normalizedExtensions, "," + extension + ",") > 0;
+}
+
+/// @brief Match a case-insensitive browser query against label and full path.
+expose func AssetMatchesFilter(label: String,
+                               path: String,
+                               filter: String) -> Boolean {
+    var query = Str.ToLower(Str.Trim(filter));
+    if query == "" { return true; }
+    return Str.IndexOf(Str.ToLower(label), query) > 0
+        or Str.IndexOf(Str.ToLower(path), query) > 0;
+}
+
+/// @brief Return a portable scene-relative reference when roots are compatible.
+/// @details Unsaved documents and incompatible roots retain an absolute path.
+expose func PortableReferencePath(assetPath: String,
+                                  documentPath: String) -> String {
+    var cleanAsset = Str.Trim(assetPath);
+    if cleanAsset == "" { return ""; }
+    if Path.IsAbsolute(cleanAsset) == false {
+        return PortableSeparators(cleanAsset);
+    }
+
+    var target = Path.Normalize(Path.Absolute(cleanAsset));
+    if Str.Trim(documentPath) == "" {
+        return PortableSeparators(target);
+    }
+    var base = Path.Normalize(
+        Path.Absolute(Path.Directory(documentPath)));
+    var baseParts = AssetPathParts(base);
+    var targetParts = AssetPathParts(target);
+    if Seq.get_Count(baseParts) == 0
+       or Seq.get_Count(targetParts) == 0 {
+        return PortableSeparators(target);
+    }
+
+    var baseRoot = Obj.ToString(Seq.Get(baseParts, 0));
+    var targetRoot = Obj.ToString(Seq.Get(targetParts, 0));
+    var rootsMatch = baseRoot == targetRoot;
+    if rootsMatch == false
+       and Str.EndsWith(baseRoot, ":")
+       and Str.EndsWith(targetRoot, ":") {
+        rootsMatch = Str.ToLower(baseRoot) == Str.ToLower(targetRoot);
+    }
+    if rootsMatch == false { return PortableSeparators(target); }
+
+    var common = 1;
+    while common < Seq.get_Count(baseParts)
+          and common < Seq.get_Count(targetParts)
+          and Obj.ToString(Seq.Get(baseParts, common))
+              == Obj.ToString(Seq.Get(targetParts, common)) {
+        common = common + 1;
+    }
+
+    var relative = "";
+    var baseIndex = common;
+    while baseIndex < Seq.get_Count(baseParts) {
+        relative = AppendAssetPath(relative, "..");
+        baseIndex = baseIndex + 1;
+    }
+    var targetIndex = common;
+    while targetIndex < Seq.get_Count(targetParts) {
+        relative = AppendAssetPath(
+            relative,
+            Obj.ToString(Seq.Get(targetParts, targetIndex)));
+        targetIndex = targetIndex + 1;
+    }
+    if relative == "" { relative = Path.Name(target); }
+    return relative;
+}
+
+/// @brief Presentation-only project asset chooser.
+class SceneAssetBrowser {
+    expose GUI.Button openButton;
+    expose GUI.GroupBox group;
+    expose GUI.TextInput filterInput;
+    expose GUI.Button clearFilterButton;
+    expose GUI.Button refreshButton;
+    expose GUI.Button closeButton;
+    expose GUI.ListBox assetList;
+    expose GUI.Label statusLabel;
+    expose GUI.VBox previewStage;
+    expose GUI.Image previewImage;
+    expose GUI.Label selectionLabel;
+    expose GUI.Button useButton;
+    expose Pixels previewPixels;
+    expose Integer realizedCount;
+    expose Integer matchedCount;
+    expose Boolean resultTruncated;
+    hide String normalizedExtensions;
+    hide String filterText;
+    hide Integer cacheGeneration;
+    hide Integer scanIndex;
+    hide Boolean canUseSelection;
+    hide Boolean selectedUsable;
+    hide String selectedLabel;
+
+    expose func init() {
+        openButton = null;
+        group = null;
+        filterInput = null;
+        clearFilterButton = null;
+        refreshButton = null;
+        closeButton = null;
+        assetList = null;
+        statusLabel = null;
+        previewStage = null;
+        previewImage = null;
+        selectionLabel = null;
+        useButton = null;
+        previewPixels = null;
+        realizedCount = 0;
+        matchedCount = 0;
+        resultTruncated = false;
+        normalizedExtensions = ",";
+        filterText = "";
+        cacheGeneration = -1;
+        scanIndex = 0;
+        canUseSelection = false;
+        selectedUsable = false;
+        selectedLabel = "";
+    }
+
+    /// @brief Build one collapsed asset browser inside a scene inspector group.
+    expose func Setup(parent: GUI.GroupBox,
+                      openLabel: String,
+                      extensions: String,
+                      useLabel: String) {
+        normalizedExtensions = NormalizeAssetExtensions(extensions);
+        openButton = GUI.Button.New(parent, openLabel);
+        openButton.SetAccessibleName(openLabel);
+        openButton.SetTooltip(
+            "Search supported assets already inside the open workspace");
+
+        group = GUI.GroupBox.New(parent, "Project assets");
+        var filterRow = GUI.HBox.New();
+        filterRow.SetSpacing(4.0);
+        group.AddChild(filterRow);
+        filterInput = GUI.TextInput.New(filterRow);
+        filterInput.SetFlex(1.0);
+        filterInput.SetPlaceholder("Filter project assets");
+        filterInput.SetAccessibleName("Filter project scene assets");
+        clearFilterButton = GUI.Button.New(filterRow, "Clear");
+        clearFilterButton.SetAccessibleName("Clear project asset filter");
+
+        statusLabel = GUI.Label.New(group, "Open a workspace folder to browse assets.");
+        statusLabel.SetWordWrap(true);
+        assetList = GUI.ListBox.New(group);
+        assetList.SetPreferredSize(0.0, 150.0);
+        assetList.SetAccessibleName("Project scene assets");
+
+        previewStage = GUI.VBox.New();
+        previewStage.SetAlign(GUI.Align.Center);
+        group.AddChild(previewStage);
+        previewImage = GUI.Image.New(previewStage);
+        previewImage.SetScaleMode(0);
+        previewImage.SetFilter(1);
+        previewImage.SetAccessibleName("Selected project asset preview");
+        previewImage.SetVisible(false);
+        selectionLabel = GUI.Label.New(group, "Select an asset to inspect it.");
+        selectionLabel.SetWordWrap(true);
+
+        var actions = GUI.Flex.New();
+        actions.SetDirection(GUI.FlexDirection.Row);
+        actions.SetWrap(GUI.FlexWrap.Wrap);
+        actions.SetGap(4.0);
+        group.AddChild(actions);
+        useButton = GUI.Button.New(actions, useLabel);
+        useButton.SetAccessibleName(useLabel);
+        refreshButton = GUI.Button.New(actions, "Refresh");
+        refreshButton.SetAccessibleName("Refresh project asset index");
+        closeButton = GUI.Button.New(actions, "Close");
+        closeButton.SetAccessibleName("Close project asset browser");
+        useButton.SetEnabled(false);
+        group.SetVisible(false);
+    }
+
+    /// @brief Show and focus the browser without creating document state.
+    expose func Open() {
+        if group == null { return; }
+        group.SetVisible(true);
+        if filterInput != null { filterInput.Focus(); }
+    }
+
+    /// @brief Hide the browser and release its decoded thumbnail.
+    expose func Close() {
+        if group != null { group.SetVisible(false); }
+        ClearPreview();
+    }
+
+    /// @brief Pump cooperative discovery and return one activated absolute path.
+    expose func Pump(
+        projectManager: project_manager.ProjectManager,
+        canUse: Boolean) -> String {
+        if group == null { return ""; }
+        if openButton.WasClicked() {
+            if group.IsVisible() { Close(); } else { Open(); }
+        }
+        if group.IsVisible() == false { return ""; }
+
+        canUseSelection = canUse;
+        var projectOpen =
+            projectManager != null and projectManager.IsOpen();
+        refreshButton.SetEnabled(projectOpen);
+        if projectOpen == false {
+            ResetRows();
+            statusLabel.SetText(
+                "Open a workspace folder to browse project assets. "
+                + "The system file picker remains available.");
+            selectionLabel.SetText("No project assets are available.");
+            useButton.SetEnabled(false);
+            if closeButton.WasClicked() { Close(); }
+            return "";
+        }
+
+        if refreshButton.WasClicked() {
+            projectManager.StartFileCacheRefresh();
+            cacheGeneration = -1;
+        }
+        projectManager.WarmFileCache(ASSET_CACHE_WORK_PER_FRAME);
+        var generation = projectManager.FileCacheGeneration();
+        var nextFilter = Str.ToLower(Str.Trim(filterInput.get_Text()));
+        if generation != cacheGeneration or nextFilter != filterText {
+            cacheGeneration = generation;
+            filterText = nextFilter;
+            ResetRows();
+        }
+        if clearFilterButton.WasClicked() {
+            filterInput.SetText("");
+            filterText = "";
+            ResetRows();
+            filterInput.Focus();
+        }
+
+        PumpRows(projectManager);
+        RefreshStatus(projectManager);
+        if assetList.WasSelectionChanged() {
+            RefreshSelection(projectManager);
+        } else {
+            useButton.SetEnabled(
+                canUseSelection and selectedUsable
+                and SelectedPath() != "");
+        }
+
+        var activated = assetList.WasActivated();
+        var useRequested = useButton.WasClicked() or activated;
+        if closeButton.WasClicked() {
+            Close();
+            return "";
+        }
+        if useRequested and canUseSelection and selectedUsable {
+            return SelectedPath();
+        }
+        return "";
+    }
+
+    /// @brief Absolute data path of the selected row, or empty.
+    expose func SelectedPath() -> String {
+        if assetList == null or assetList.Selected == null { return ""; }
+        return GUI.ListBox.ItemGetData(assetList.Selected);
+    }
+
+    /// @brief Rebuild browser state for a changed query or cache generation.
+    hide func ResetRows() {
+        if assetList != null { assetList.Clear(); }
+        scanIndex = 0;
+        realizedCount = 0;
+        matchedCount = 0;
+        resultTruncated = false;
+        selectedUsable = false;
+        selectedLabel = "";
+        ClearPreview();
+        if selectionLabel != null {
+            selectionLabel.SetText("Select an asset to inspect it.");
+        }
+        if useButton != null { useButton.SetEnabled(false); }
+    }
+
+    /// @brief Scan a bounded page of known files and append matching rows.
+    hide func PumpRows(projectManager: project_manager.ProjectManager) {
+        var known = projectManager.PeekCachedFileCount();
+        var work = 0;
+        while scanIndex < known and work < ASSET_ROW_WORK_PER_FRAME {
+            var path = projectManager.CachedFileAt(scanIndex);
+            scanIndex = scanIndex + 1;
+            work = work + 1;
+            if AssetExtensionAllowed(path, normalizedExtensions) {
+                var label = AssetLabel(projectManager, path);
+                if AssetMatchesFilter(label, path, filterText) {
+                    matchedCount = matchedCount + 1;
+                    if realizedCount < MAX_VISIBLE_SCENE_ASSETS {
+                        var item = assetList.AddItem(label);
+                        GUI.ListBox.ItemSetData(item, path);
+                        realizedCount = realizedCount + 1;
+                    } else {
+                        resultTruncated = true;
+                    }
+                }
+            }
+        }
+    }
+
+    /// @brief Publish honest indexing, match, and truncation status.
+    hide func RefreshStatus(projectManager: project_manager.ProjectManager) {
+        if statusLabel == null { return; }
+        var text = "" + matchedCount + " matching project assets";
+        if resultTruncated {
+            text = "Showing first " + MAX_VISIBLE_SCENE_ASSETS
+                + " matching assets; narrow the filter";
+        } else if projectManager.IsFileCacheComplete() == false {
+            text = text + " • indexing "
+                + projectManager.PeekCachedFileCount() + " known files";
+        } else if matchedCount == 0 {
+            text = "No supported project assets match this filter.";
+        }
+        if projectManager.IsFileCacheComplete()
+           and projectManager.fileCacheTruncated {
+            text = text + " • workspace index truncated";
+        }
+        statusLabel.SetText(text);
+    }
+
+    /// @brief Load one bounded thumbnail and update selection enablement.
+    hide func RefreshSelection(
+        projectManager: project_manager.ProjectManager) {
+        ClearPreview();
+        selectedUsable = false;
+        var path = SelectedPath();
+        if path == "" {
+            selectionLabel.SetText("Select an asset to inspect it.");
+            useButton.SetEnabled(false);
+            return;
+        }
+        selectedLabel = AssetLabel(projectManager, path);
+        var sourceBytes = safe_io.SizeBytes(path);
+        if sourceBytes < 0 {
+            selectionLabel.SetText(
+                selectedLabel + "\nThe file is missing or unreadable.");
+            useButton.SetEnabled(false);
+            return;
+        }
+        selectedUsable = true;
+        if sourceBytes > MAX_ASSET_PREVIEW_SOURCE_BYTES {
+            selectionLabel.SetText(
+                selectedLabel + "\nPreview omitted above 16 MB.");
+            useButton.SetEnabled(canUseSelection);
+            return;
+        }
+        var extension = Str.ToLower(Path.Extension(path));
+        if extension != ".png" and extension != ".jpg"
+           and extension != ".jpeg" and extension != ".bmp"
+           and extension != ".gif" {
+            selectionLabel.SetText(
+                selectedLabel + "\nPreview is unavailable for "
+                + extension + " assets.");
+            useButton.SetEnabled(canUseSelection);
+            return;
+        }
+
+        var source = LoadAssetPreview(path);
+        if source == null {
+            selectionLabel.SetText(
+                selectedLabel + "\nThe image preview could not be decoded.");
+            useButton.SetEnabled(canUseSelection);
+            return;
+        }
+        var sourcePixels = source.Width * source.Height;
+        if sourcePixels <= 0 or sourcePixels > MAX_ASSET_PREVIEW_PIXELS {
+            selectionLabel.SetText(
+                selectedLabel + "\nPreview omitted above 4,194,304 pixels.");
+            useButton.SetEnabled(canUseSelection);
+            return;
+        }
+
+        previewPixels = ScalePreview(source);
+        if previewPixels != null {
+            previewImage.SetPixels(
+                previewPixels, previewPixels.Width, previewPixels.Height);
+            previewImage.SetSize(previewPixels.Width, previewPixels.Height);
+            previewStage.SetSize(
+                previewPixels.Width, previewPixels.Height);
+            previewImage.SetVisible(true);
+            selectionLabel.SetText(
+                selectedLabel + "\n" + source.Width + " × " + source.Height
+                + " pixels");
+        } else {
+            selectionLabel.SetText(
+                selectedLabel + "\nThe image preview could not be scaled.");
+        }
+        useButton.SetEnabled(canUseSelection);
+    }
+
+    /// @brief Drop the selected thumbnail and clear its widget.
+    hide func ClearPreview() {
+        previewPixels = null;
+        if previewImage != null {
+            previewImage.Clear();
+            previewImage.SetVisible(false);
+        }
+    }
+
+    /// @brief Scale one valid source into the bounded preview square.
+    hide func ScalePreview(source: Pixels) -> Pixels {
+        if source == null or source.Width <= 0 or source.Height <= 0 {
+            return null;
+        }
+        if source.Width <= MAX_ASSET_PREVIEW_EDGE
+           and source.Height <= MAX_ASSET_PREVIEW_EDGE {
+            return source.Clone();
+        }
+        var width = MAX_ASSET_PREVIEW_EDGE;
+        var height = source.Height * MAX_ASSET_PREVIEW_EDGE / source.Width;
+        if source.Height > source.Width {
+            height = MAX_ASSET_PREVIEW_EDGE;
+            width = source.Width * MAX_ASSET_PREVIEW_EDGE / source.Height;
+        }
+        if width < 1 { width = 1; }
+        if height < 1 { height = 1; }
+        try {
+            return source.Resize(width, height);
+        } catch {
+            return null;
+        }
+        return null;
+    }
+
+    /// @brief Root-aware row label for single- and multi-root workspaces.
+    hide func AssetLabel(
+        projectManager: project_manager.ProjectManager,
+        path: String) -> String {
+        var relative = projectManager.RelativePath(path);
+        if projectManager.RootCount() <= 1 { return relative; }
+        var owner = projectManager.WorkspaceRootPathForPath(path);
+        var i = 0;
+        while i < projectManager.RootCount() {
+            if Path.Normalize(projectManager.RootPathAt(i))
+               == Path.Normalize(owner) {
+                return projectManager.RootNameAt(i) + "/" + relative;
+            }
+            i = i + 1;
+        }
+        return relative;
+    }
+}
+
+/// @brief Convert platform separators to portable forward slashes.
+func PortableSeparators(path: String) -> String {
+    var value = Str.Replace(path, "\\", "/");
+    var separator = Path.Separator();
+    if separator != "/" {
+        value = Str.Replace(value, separator, "/");
+    }
+    return value;
+}
+
+/// @brief Split a normalized filesystem path into meaningful components.
+func AssetPathParts(path: String) -> Any {
+    var parts = Seq.New();
+    var raw = Str.Split(PortableSeparators(path), "/");
+    var i = 0;
+    while i < Seq.get_Count(raw) {
+        var part = Obj.ToString(Seq.Get(raw, i));
+        if part != "" and part != "." {
+            Seq.Push(parts, part);
+        }
+        i = i + 1;
+    }
+    return parts;
+}
+
+/// @brief Append one portable path component.
+func AppendAssetPath(path: String, component: String) -> String {
+    if path == "" { return component; }
+    return path + "/" + component;
+}
+
+/// @brief Decode one preview without leaking loader exceptions into UI state.
+func LoadAssetPreview(path: String) -> Pixels {
+    try {
+        return Pixels.Load(path);
+    } catch {
+        return null;
+    }
+    return null;
+}

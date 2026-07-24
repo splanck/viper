@@ -82,7 +82,7 @@ Dynamic array that grows automatically. Stores object references.
 > [Zia Tutorial](../../tutorials/zia-tutorial.md). The runtime class methods below
 > (`Push`, `Get`, `Count`) work on the same objects; both styles compile.
 
-```rust
+```zia
 module ListDemo;
 
 bind Zanna.Terminal;
@@ -206,7 +206,7 @@ It uses a circular buffer for amortized O(1) pushes and O(1) pops.
 
 ### Zia Example
 
-```rust
+```zia
 module QueueDemo;
 
 bind Zanna.Terminal;
@@ -307,7 +307,7 @@ A LIFO (last-in-first-out) collection. Elements are added and removed from the t
 
 ### Zia Example
 
-```rust
+```zia
 module StackDemo;
 
 bind Zanna.Terminal;
@@ -414,7 +414,7 @@ one slot.
 
 ### Zia Example
 
-```rust
+```zia
 module DequeDemo;
 
 bind Zanna.Collections.Deque as Deque;
@@ -548,7 +548,7 @@ transfer in owning mode. `Clone()` preserves the source ring's ownership mode.
 
 ### Zia Example
 
-```rust
+```zia
 module RingDemo;
 
 bind Zanna.Terminal;
@@ -661,7 +661,7 @@ A priority queue implemented as a binary heap. Elements are stored with an integ
 
 ### Zia Example
 
-```rust
+```zia
 module HeapDemo;
 
 bind Zanna.Terminal;

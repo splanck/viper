@@ -16,6 +16,12 @@
 //   - Native resizing cannot collapse the workbench below a usable viewport.
 //   - Split panes own distinct documents and pane focus drives tab selection.
 //   - User-authored bottom-panel sizing is persisted only after drag input settles.
+//   - Persistent activity views emit intent through their focused controllers.
+// Ownership/Lifetime:
+//   - main owns every application controller until the frame loop exits.
+//   - Cleanup drains process, worker, watcher, persistence, and GUI ownership.
+// Links: zannastudio/src/ui/app_shell.zia,
+//        zannastudio/src/app/lifecycle_controller.zia
 //
 //===----------------------------------------------------------------------===//
 
@@ -27,7 +33,11 @@ bind "ui/ide_overlays";
 bind "ui/explorer_actions";
 bind "ui/debug_breakpoint_overlay";
 bind "ui/command_input";
+bind "ui/workspace_edit_preview";
 bind "ui/activity_bar";
+bind "ui/run_debug_view";
+bind "ui/scene_editor_2d";
+bind "ui/scene_editor_3d";
 bind "app/build_info";
 bind "app/command_palette_controller";
 bind "app/context_menus";
@@ -78,6 +88,7 @@ bind "commands/command_context";
 bind "commands/basic_workspace_commands";
 bind "commands/diagnostic_edit_commands";
 bind "commands/zia_workspace_commands";
+bind "commands/workspace_edit_preview_commands";
 bind "commands/main_command_dispatcher";
 bind "commands/file_commands";
 bind "commands/edit_commands";
@@ -150,18 +161,139 @@ final SESSION_RESTORE_ENTRIES_PER_PAINT = 1;
 final RECOVERY_SCAN_ENTRIES_PER_PAINT = 1;
 final PANEL_SPLIT_SAVE_IDLE_MS = 600;
 
-/// @brief Flush an unsettled bottom-panel drag before application shutdown.
-/// @details Normal frames debounce writes; shutdown consumes one last live
-///          splitter value and commits whenever either that value or an earlier
-///          debounced update is still pending.
-func FlushBottomPanelSplit(shell: app_shell.AppShell,
-                           appSettings: settings.SettingsManager,
-                           savePending: Boolean) {
+/// @brief Route the selected Problems quick fix through its real source anchor.
+/// @details Filtering rebuilds ListBox rows, so the tool-panel model supplies
+///          durable action/location metadata. Opening that location first makes
+///          the existing asynchronous diagnostic controller validate and edit
+///          exactly the diagnostic the user selected.
+func HandleProblemsQuickFix(
+    shell: app_shell.AppShell,
+    docMgr: document_manager.DocumentManager,
+    engine: editor_engine.EditorEngine,
+    tabs: editor_tabs.EditorTabs,
+    projMgr: project_manager.ProjectManager,
+    locStore: locations.LocationStore,
+    controller: diagnostic_edit_commands.DiagnosticActionController) {
+    if shell == null or controller == null
+       or shell.toolPanels.ProblemsQuickFixWasRequested() == false {
+        return;
+    }
+    diagnostic_edit_commands.StartSelectedProblemAction(
+        controller, shell, docMgr, engine, tabs, projMgr, locStore);
+    shell.toolPanels.SetProblemsActionBusy(controller.IsBusy());
+}
+
+/// @brief Return whether the active document owns the visible CodeEditor.
+func ActiveUsesTextEditor(docMgr: document_manager.DocumentManager) -> Boolean {
+    if docMgr == null { return false; }
+    var doc = docMgr.GetActive();
+    return doc != null and doc!.isReadOnlyPreview == false
+           and file_utils.IsVisualKind(doc!.kind) == false;
+}
+
+/// @brief Return the active surface's cheap content revision.
+/// @details Visual editors own their canonical Document content directly, so
+///          auto-save/recovery must not watch the hidden CodeEditor revision.
+func ActiveContentRevision(docMgr: document_manager.DocumentManager,
+                           engine: editor_engine.EditorEngine,
+                           scene2D: scene_editor_2d.SceneEditor2D,
+                           scene3D: scene_editor_3d.SceneEditor3D) -> Integer {
+    if docMgr != null {
+        var doc = docMgr.GetActive();
+        if doc != null {
+            if doc!.kind == file_utils.DOC_KIND_SCENE_2D and scene2D != null {
+                return scene2D.GetRevision();
+            }
+            if doc!.kind == file_utils.DOC_KIND_SCENE_3D and scene3D != null {
+                return scene3D.GetRevision();
+            }
+        }
+    }
+    if engine == null { return 0; }
+    return engine.GetRevision();
+}
+
+/// @brief Flush unsettled dock location and splitter changes before shutdown.
+/// @details Normal frames debounce writes; shutdown consumes every remaining
+///          edge-trigger and commits it together as one settings transaction.
+func FlushWorkspaceLayout(shell: app_shell.AppShell,
+                          engine: editor_engine.EditorEngine,
+                          projMgr: project_manager.ProjectManager,
+                          activityBarCtrl: activity_bar.ActivityBar,
+                          appSettings: settings.SettingsManager,
+                          savePending: Boolean) {
     if shell == null or appSettings == null { return; }
     var shouldSave = savePending;
     var changedPct = shell.toolPanels.TakeChangedSplitPercent();
     if changedPct >= 0 {
         appSettings.bottomPanelSplitPct = changedPct;
+        shouldSave = true;
+    }
+    var changedSidePct = shell.toolPanels.TakeChangedSidePanelWidthPercent();
+    if changedSidePct >= 0 {
+        appSettings.sidePanelWidthPct = changedSidePct;
+        shouldSave = true;
+    }
+    if shell.toolPanels.TakeFloatingToolPanelGeometryChanged() {
+        appSettings.floatingToolPanelX =
+            shell.toolPanels.GetFloatingToolPanelX();
+        appSettings.floatingToolPanelY =
+            shell.toolPanels.GetFloatingToolPanelY();
+        appSettings.floatingToolPanelWidth =
+            shell.toolPanels.GetFloatingToolPanelWidth();
+        appSettings.floatingToolPanelHeight =
+            shell.toolPanels.GetFloatingToolPanelHeight();
+        shouldSave = true;
+    }
+    var changedSidebarPct =
+        shell.workbench.TakeChangedSidebarWidthPercent();
+    if changedSidebarPct >= 0 {
+        appSettings.sidebarWidthPct = changedSidebarPct;
+        shouldSave = true;
+    }
+    var changedSidebarPosition =
+        shell.workbench.TakeChangedSidebarPosition();
+    if changedSidebarPosition != "" {
+        appSettings.primarySidebarPosition = changedSidebarPosition;
+        shouldSave = true;
+    }
+    if HasPersistentSidebarContext(projMgr, activityBarCtrl)
+       and appSettings.sidebarVisible != shell.workbench.IsSidebarVisible() {
+        appSettings.sidebarVisible = shell.workbench.IsSidebarVisible();
+        shouldSave = true;
+    }
+    if activityBarCtrl != null
+       and appSettings.activeSidebarViewId != activityBarCtrl.activeView {
+        appSettings.activeSidebarViewId = activityBarCtrl.activeView;
+        shouldSave = true;
+    }
+    if engine != null {
+        var changedEditorSplitPct =
+            engine.TakeChangedSplitPositionPercent();
+        if changedEditorSplitPct >= 0 {
+            appSettings.editorSplitPct = changedEditorSplitPct;
+            shouldSave = true;
+        }
+    }
+    var changedDock = shell.toolPanels.TakeChangedDockLocation();
+    if changedDock != "" {
+        appSettings.panelDockPosition = changedDock;
+        shouldSave = true;
+    }
+    var changedGroupLayout =
+        shell.toolPanels.TakeChangedToolPanelGroupLayout();
+    if changedGroupLayout != "" {
+        appSettings.toolPanelGroupLayout = changedGroupLayout;
+        shouldSave = true;
+    }
+    var changedTabOrder = shell.toolPanels.TakeChangedToolTabOrder();
+    if changedTabOrder != "" {
+        appSettings.toolPanelTabOrder = changedTabOrder;
+        shouldSave = true;
+    }
+    var activeToolPanelId = shell.toolPanels.GetActiveToolPanelId();
+    if appSettings.activeToolPanelId != activeToolPanelId {
+        appSettings.activeToolPanelId = activeToolPanelId;
         shouldSave = true;
     }
     if shouldSave { appSettings.Save(); }
@@ -183,11 +315,16 @@ func RebindFocusedPane(shell: app_shell.AppShell,
 /// @brief Select a distinct open document for a new secondary pane.
 func SplitCompanionDocument(docMgr: document_manager.DocumentManager,
                             primary: document.Document) -> document.Document? {
-    if docMgr == null or primary == null { return null; }
+    if docMgr == null or editor_engine.IsSplitDocumentEligible(primary) == false {
+        return null;
+    }
     var i = 0;
     while i < docMgr.GetCount() {
         var candidate = docMgr.GetDocument(i);
-        if candidate != null and candidate! != primary { return candidate; }
+        if candidate != null and candidate! != primary
+           and editor_engine.IsSplitDocumentEligible(candidate!) {
+            return candidate;
+        }
         i = i + 1;
     }
     return null;
@@ -203,11 +340,10 @@ func OpenSplitWithCompanion(shell: app_shell.AppShell,
         if notifyOnFailure {
             var reason = "Open a second file before splitting the editor";
             shell.SetStatusLeft(reason);
-            GUI.Toast.Info(reason);
         }
         return false;
     }
-    return engine.SplitRight(shell.workbench.editorRow, companion!);
+    return engine.SplitRight(companion!);
 }
 
 /// @brief Align the global document/tab model with the physically focused pane.
@@ -237,6 +373,35 @@ func SyncFocusedPaneSelection(shell: app_shell.AppShell,
     if focused.isNew { shell.SetBreadcrumbPath(""); }
     else { shell.SetBreadcrumbPath(focused.filePath); }
     shell.SetStatusRight(file_commands.DocStatusLabel(focused));
+    return true;
+}
+
+/// @brief Rebuild an exact durable left/right editor arrangement.
+/// @details The session maps durable file slots back to Document identities
+///          during validation. Startup therefore never substitutes a different
+///          tab when one saved pane owner is missing or rejected.
+func OpenRestoredSplit(docMgr: document_manager.DocumentManager,
+                       engine: editor_engine.EditorEngine,
+                       tabs: editor_tabs.EditorTabs,
+                       sessionMgr: session.SessionManager) -> Boolean {
+    if docMgr == null or engine == null or tabs == null or sessionMgr == null {
+        return false;
+    }
+    var first = sessionMgr.RestoredSplitFirstDocument();
+    var second = sessionMgr.RestoredSplitSecondDocument();
+    if first == null or second == null or first! == second!
+       or editor_engine.IsSplitDocumentEligible(first!) == false
+       or editor_engine.IsSplitDocumentEligible(second!) == false {
+        return false;
+    }
+    var firstIndex = docMgr.SetActiveDocument(first!);
+    if firstIndex < 0 { return false; }
+    tabs.SetActive(firstIndex);
+    engine.LoadDocument(first!);
+    if engine.SplitRight(second!) == false { return false; }
+    if sessionMgr.splitSecondFocused {
+        engine.FocusOtherPane();
+    }
     return true;
 }
 
@@ -311,6 +476,17 @@ func computePollWaitMs(shell: app_shell.AppShell,
     return POLL_WAIT_IDLE_FOCUSED_MS;
 }
 
+/// @brief Return whether sidebar visibility has meaningful persistent context.
+/// @details Explorer/SCM need a workspace; Run and Debug also serves standalone
+///          source files and therefore persists visibility without a project.
+func HasPersistentSidebarContext(
+    projMgr: project_manager.ProjectManager,
+    activityBarCtrl: activity_bar.ActivityBar) -> Boolean {
+    if projMgr != null and projMgr.IsOpen() { return true; }
+    return activityBarCtrl != null
+        and activityBarCtrl.activeView == activity_bar.VIEW_RUN_DEBUG;
+}
+
 /// @brief Program entry point. Constructs the IDE and runs the main loop.
 func main() {
     if handleCommandLine() { return; }
@@ -324,8 +500,11 @@ func main() {
     var tabs = new editor_tabs.EditorTabs();
     var projMgr = new project_manager.ProjectManager();
     var activityBarCtrl = new activity_bar.ActivityBar();
+    var runDebugView = new run_debug_view.RunDebugView();
     var scmView = new scm_view.ScmView();
     var diffOverlay = new diff_view.DiffView();
+    var renamePreview =
+        new workspace_edit_preview.WorkspaceEditPreview();
     var terminalCtrl = new terminal_controller.TerminalController();
     var buildSys = new build_system.BuildSystem();
     var breakpointStore = new breakpoints.BreakpointStore();
@@ -365,9 +544,15 @@ func main() {
     debugOverlay.Setup(shell);
     var commandInputOverlay = new command_input.CommandInputOverlay();
     commandInputOverlay.Setup(shell);
+    renamePreview.Setup(shell);
+    basicWorkspaceCommands.renamePreview = renamePreview;
+    ziaWorkspaceCommands.renamePreview = renamePreview;
 
     var welcomeView = new welcome_view.WelcomeView();
-    welcomeView.Setup(shell.workbench.welcomeHost, shell.workbench.editorRow);
+    welcomeView.Setup(shell.workbench.welcomeHost,
+                      shell.workbench.editorRow,
+                      shell.workbench.scene2DHost,
+                      shell.workbench.scene3DHost);
     // Paint a complete, truthful startup surface before synchronous settings,
     // session, recovery, and project restoration can occupy the UI thread.
     // This replaces the former blank split-pane frame that looked like a hung
@@ -386,6 +571,12 @@ func main() {
 
     engine.Setup(shell.workbench.editorRow);
     engine.editor.Focus();
+    var scene2DEditor = new scene_editor_2d.SceneEditor2D();
+    scene2DEditor.Setup(shell.workbench.scene2DHost, shell.app);
+    scene2DEditor.SetWorkspaceContext(projMgr);
+    var scene3DEditor = new scene_editor_3d.SceneEditor3D();
+    scene3DEditor.Setup(shell.workbench.scene3DHost, shell.app);
+    scene3DEditor.SetWorkspaceContext(projMgr);
 
     var completer = new completion.CompletionController();
     completer.Setup(engine.editor, shell.app);
@@ -425,7 +616,13 @@ func main() {
 
     tabs.Setup(shell.workbench.tabBar);
     projMgr.Setup(shell.workbench.sidebarTree);
-    activityBarCtrl.Setup(shell.workbench.explorerView, shell.workbench.scmViewHost, shell.workbench.abExplorer, shell.workbench.abSourceControl);
+    runDebugView.Setup(shell.workbench.runDebugViewHost);
+    activityBarCtrl.Setup(shell.workbench.explorerView,
+                          shell.workbench.scmViewHost,
+                          shell.workbench.runDebugViewHost,
+                          shell.workbench.abExplorer,
+                          shell.workbench.abSourceControl,
+                          shell.workbench.abRunDebug);
     scmView.Setup(shell.workbench.scmViewHost);
     diffOverlay.Setup(shell);
     scmView.diffOverlay = diffOverlay;
@@ -529,6 +726,10 @@ func main() {
             docMgr.SetActive(lastRecoveredIndex);
             tabs.SetActive(lastRecoveredIndex);
             restoredCount = restoredCount + recoveredOpened;
+            // Crash-recovered work is the most urgent startup context. Keep the
+            // last recovered buffer focused instead of replacing it with an
+            // older clean-session pane arrangement.
+            restoreSplitRequested = false;
             GUI.Toast.Info("Recovered " + recoveredOpened + " unsaved file(s) from a previous session");
         }
         if recoveryScan.truncated {
@@ -543,13 +744,25 @@ func main() {
         if explorer_action_runner.OpenFileAndRecord(
                shell, docMgr, engine, tabs, sessionMgr, startupFile) {
             restoredCount = restoredCount + 1;
+            // An explicit Open With / command-line target owns startup focus.
+            // Do not replace it with the prior session's pane arrangement.
+            restoreSplitRequested = false;
         }
     }
+
+    // Restore the selected workspace view only after project restoration so
+    // Source Control is already pointed at the live root before it is revealed.
+    if projMgr.IsOpen() {
+        scmView.SetRepo(projMgr.RootPath());
+    }
+    activityBarCtrl.ShowView(appSettings.activeSidebarViewId);
 
     // A blank Explorer pane makes the no-project opening surface look broken
     // and pushes the welcome card visibly off-center. Restore the pane only
     // when session loading actually produced a workspace.
-    shell.SetSidebarVisible(projMgr.IsOpen());
+    shell.SetSidebarVisible(settings.EffectiveSidebarVisibility(
+        projMgr.IsOpen(), appSettings.sidebarVisible,
+        activityBarCtrl.activeView));
     welcomeView.SetStartupMode(false);
 
     // ========================================================================
@@ -566,19 +779,30 @@ func main() {
         shell.SetWelcomeStatusMode(false);
         var restoredDoc = docMgr.GetActive();
         if restoredDoc != null {
-            engine.LoadDocument(restoredDoc);
-            shell.SelectSurface(restoredDoc.kind);
-            shell.SetStatusRight(file_commands.DocStatusLabel(restoredDoc));
-            if restoredDoc.isNew {
-                shell.SetBreadcrumbPath("");
-            } else {
-                shell.SetBreadcrumbPath(restoredDoc.filePath);
+            var exactSplitAvailable = restoreSplitRequested
+                and sessionMgr.RestoredSplitFirstDocument() != null
+                and sessionMgr.RestoredSplitSecondDocument() != null;
+            var exactSplitOpened = false;
+            if exactSplitAvailable {
+                exactSplitOpened = OpenRestoredSplit(
+                    docMgr, engine, tabs, sessionMgr);
             }
-            if restoreSplitRequested {
+            if exactSplitOpened == false {
+                engine.LoadDocument(restoredDoc);
+            }
+            if restoreSplitRequested and exactSplitAvailable == false {
                 OpenSplitWithCompanion(shell, docMgr, engine, false);
             }
+            SyncFocusedPaneSelection(shell, docMgr, engine, tabs);
+            engine.ConsumePaneFocusChanged();
+            RebindFocusedPane(shell, engine, completer);
         }
     }
+
+    if projMgr.IsOpen() {
+        terminalCtrl.SetCwd(projMgr.RootPath());
+    }
+    shell.toolPanels.SetActiveToolPanelId(appSettings.activeToolPanelId);
 
     shell.SetStatusLeft("Ready");
     if restoredCount == 0 {
@@ -606,6 +830,9 @@ func main() {
     commandContext.projMgr = projMgr;
     commandContext.engine = engine;
     commandContext.tabs = tabs;
+    commandContext.activityBarCtrl = activityBarCtrl;
+    commandContext.scene2DEditor = scene2DEditor;
+    commandContext.scene3DEditor = scene3DEditor;
     commandContext.buildSys = buildSys;
     commandContext.dbgSession = dbgSession;
     commandContext.terminalCtrl = terminalCtrl;
@@ -647,9 +874,11 @@ func main() {
     var prevStatusLineCount = engine.GetLineCount();
     var prevStatusCursorCount = engine.editor.GetCursorCount();
     var didPostFirstFrameActivate = false;
-    var autoSaveRevision = engine.GetRevision();
+    var autoSaveRevision = ActiveContentRevision(
+        docMgr, engine, scene2DEditor, scene3DEditor);
+    var autoSaveActiveIndex = docMgr.activeIndex;
     var autoSaveDebounce = Threads.Debouncer.New(AUTO_SAVE_IDLE_MS);
-    var recoveryRevision = engine.GetRevision();
+    var recoveryRevision = autoSaveRevision;
     var recoveryActiveIndex = docMgr.activeIndex;
     var recoveryDebounce = Threads.Debouncer.New(2000);
     var scmGutter = new scm_gutter_controller.ScmGutterController();
@@ -675,7 +904,7 @@ func main() {
         focusThrottle.Update(shell.app);
         var allowBackground = focusThrottle.AllowBackgroundWork();
 
-        // Activity bar — switch the left view (Explorer / Source Control).
+        // Activity bar — switch the persistent left workbench view.
         if shell.workbench.abExplorer.WasClicked() {
             activityBarCtrl.ShowView(activity_bar.VIEW_EXPLORER);
             shell.SetSidebarVisible(true);
@@ -684,6 +913,11 @@ func main() {
             activityBarCtrl.ShowView(activity_bar.VIEW_SCM);
             shell.SetSidebarVisible(true);
             if projMgr.IsOpen() { scmView.SetRepo(projMgr.RootPath()); }
+            else { scmView.SetRepo(""); }
+        }
+        if shell.workbench.abRunDebug.WasClicked() {
+            activityBarCtrl.ShowView(activity_bar.VIEW_RUN_DEBUG);
+            shell.SetSidebarVisible(true);
         }
         scmView.HandleEvents();
         diffOverlay.Pump();
@@ -691,6 +925,13 @@ func main() {
 
         // Welcome / start surface: shown only when no documents are open.
         var curDocCount = docMgr.GetCount();
+        var activeBeforeSplitRepair = docMgr.GetActive();
+        if engine.ReconcileSplitEligibility(activeBeforeSplitRepair) {
+            SyncFocusedPaneSelection(shell, docMgr, engine, tabs);
+            engine.ConsumePaneFocusChanged();
+            RebindFocusedPane(shell, engine, completer);
+        }
+        var textEditorContextAvailable = ActiveUsesTextEditor(docMgr);
         var hasBuildTarget = build_commands.HasExecutionTarget(docMgr, projMgr);
         var hasDebugTarget = debug_commands.HasDebugTarget(docMgr);
         shell.SetCommandContextAvailable(curDocCount > 0,
@@ -707,6 +948,17 @@ func main() {
             welcomeView.SetShown(true);
             if welcomeView.newFileButton.WasClicked() {
                 file_commands.handleNew(shell, docMgr, engine, tabs);
+            }
+            if welcomeView.newScene2DButton.WasClicked() {
+                file_commands.handleNewScene2D(shell, docMgr, engine, tabs);
+            }
+            if welcomeView.newScene3DButton.WasClicked() {
+                file_commands.handleNewScene3D(shell, docMgr, engine, tabs);
+            }
+            if welcomeView.openFileButton.WasClicked()
+               and file_commands.handleOpen(shell, docMgr, engine, tabs) {
+                explorer_action_runner.RecordActiveFile(sessionMgr, docMgr);
+                fileWatchCtrl.ResetPendingReload();
             }
             if welcomeView.openFolderButton.WasClicked() {
                 if file_commands.handleOpenFolder(shell, projMgr) {
@@ -739,10 +991,25 @@ func main() {
             welcomeView.SetShown(false);
         }
         prevDocCount = curDocCount;
+
+        var activeVisualDoc = docMgr.GetActive();
+        if activeVisualDoc != null {
+            if scene2DEditor.Pump(activeVisualDoc) {
+                tabs.SetModified(docMgr.activeIndex,
+                                 activeVisualDoc!.isModified);
+                shell.SetStatusRight(file_commands.DocStatusLabel(activeVisualDoc));
+            }
+            if scene3DEditor.Pump(activeVisualDoc) {
+                tabs.SetModified(docMgr.activeIndex,
+                                 activeVisualDoc!.isModified);
+                shell.SetStatusRight(file_commands.DocStatusLabel(activeVisualDoc));
+            }
+        }
         if shell.WasCloseRequested() {
             if file_commands.handleExit(shell, docMgr, engine) {
-                sessionMgr.splitActive = engine.PaneCount() >= 2;
-                FlushBottomPanelSplit(shell, appSettings, panelSplitSavePending);
+                FlushWorkspaceLayout(
+                    shell, engine, projMgr, activityBarCtrl, appSettings,
+                    panelSplitSavePending);
                 diffOverlay.Shutdown();
                 basicWorkspaceCommands.Shutdown();
                 diagnosticActions.Shutdown();
@@ -761,16 +1028,88 @@ func main() {
                                  activeWorkbench, paletteCtrl, commandRegistry,
                                  appSettings, engine);
         var activeService = languageFrame.activeService;
+        shell.SetTextEditorContextAvailable(textEditorContextAvailable);
+        commandRegistry.SetTextEditorAvailable(textEditorContextAvailable);
+        var visualSceneEditorAvailable = false;
+        var canCutSurface = textEditorContextAvailable;
+        var canCopySurface = textEditorContextAvailable;
+        var canPasteSurface = textEditorContextAvailable;
+        var canSelectAllSurface = textEditorContextAvailable;
+        var canDuplicateSurface = textEditorContextAvailable;
+        var canDeleteSceneSurface = false;
+        if textEditorContextAvailable == false and activeVisualDoc != null
+           and activeVisualDoc!.kind == file_utils.DOC_KIND_SCENE_2D {
+            visualSceneEditorAvailable = true;
+            canCutSurface = scene2DEditor.HasSceneObjectSelection();
+            canCopySurface = canCutSurface;
+            canPasteSurface = scene2DEditor.CanPasteSceneObjects();
+            canSelectAllSurface =
+                scene2DEditor.CanSelectAllSceneObjects();
+            canDuplicateSurface = canCutSurface;
+            canDeleteSceneSurface = canCutSurface;
+        } else if textEditorContextAvailable == false
+                  and activeVisualDoc != null
+                  and activeVisualDoc!.kind
+                      == file_utils.DOC_KIND_SCENE_3D {
+            visualSceneEditorAvailable = true;
+            canCutSurface = scene3DEditor.HasSceneNodeSelection();
+            canCopySurface = canCutSurface;
+            canPasteSurface = scene3DEditor.CanPasteSceneNodes();
+            canSelectAllSurface =
+                scene3DEditor.CanSelectAllSceneNodes();
+            canDuplicateSurface = canCutSurface;
+            canDeleteSceneSurface = canCutSurface;
+        }
+        shell.SetSurfaceEditActionsAvailable(
+            canCutSurface, canCopySurface,
+            canPasteSurface, canSelectAllSurface,
+            canDuplicateSurface, canDeleteSceneSurface);
+        commandRegistry.SetVisualSceneEditorAvailable(
+            visualSceneEditorAvailable);
+        commandRegistry.SetSplitEditorContext(
+            textEditorContextAvailable
+                and engine.PaneCount() < 2
+                and SplitCompanionDocument(docMgr, engine.currentDoc) != null,
+            engine.PaneCount() == 2);
+        var canUndoSurface = false;
+        var canRedoSurface = false;
+        if textEditorContextAvailable and engine != null and engine.editor != null {
+            canUndoSurface = engine.editor.CanUndo();
+            canRedoSurface = engine.editor.CanRedo();
+        } else if activeVisualDoc != null
+                  and activeVisualDoc!.kind == file_utils.DOC_KIND_SCENE_2D {
+            canUndoSurface = scene2DEditor.CanUndo();
+            canRedoSurface = scene2DEditor.CanRedo();
+        } else if activeVisualDoc != null
+                  and activeVisualDoc!.kind == file_utils.DOC_KIND_SCENE_3D {
+            canUndoSurface = scene3DEditor.CanUndo();
+            canRedoSurface = scene3DEditor.CanRedo();
+        }
+        shell.SetEditHistoryAvailable(canUndoSurface, canRedoSurface);
+        if textEditorContextAvailable == false and activeVisualDoc != null {
+            var visualService = "2D Scene";
+            if activeVisualDoc!.kind == file_utils.DOC_KIND_SCENE_3D {
+                visualService = "3D Scene";
+            }
+            shell.SetWorkspaceStatus(activeWorkbench.activeProjectName, visualService);
+        }
         if allowBackground {
             languageFrame.PumpWorkspace(shell, projMgr, docMgr, engine);
         }
         languageFrame.SyncBreakpoints(engine, breakpointStore);
-        debug_commands.PumpGutter(shell, docMgr, engine, breakpointStore);
+        if textEditorContextAvailable {
+            debug_commands.PumpGutter(shell, docMgr, engine, breakpointStore);
+        }
 
         languageFrame.RouteCompletionKeys();
         languageFrame.PumpForegroundTools(shell, docMgr, engine, tabs, locStore,
                                           buildSys, dbgSession, breakpointStore);
+        debug_commands.PumpRunDebugView(
+            shell, runDebugView, docMgr, engine, tabs, buildSys,
+            breakpointStore, dbgSession, debugOverlay,
+            appSettings.saveAllBeforeBuild);
         diagnosticActions.Pump(shell, docMgr, engine, projMgr);
+        shell.toolPanels.SetProblemsActionBusy(diagnosticActions.IsBusy());
         ziaWorkspaceCommands.Pump(shell, docMgr, projMgr, engine, tabs,
                                   indexer, locStore);
         // Keep keyboard shortcuts and command-palette selections under the
@@ -815,7 +1154,6 @@ func main() {
                 if cpSelected != "" and commandRegistry.IsExecutable(cpSelected, activeService) == false {
                     var disabledReason = commandRegistry.DisabledReason(cpSelected, activeService);
                     shell.SetStatusLeft(disabledReason);
-                    GUI.Toast.Info(disabledReason);
                     cpSelected = "";
                 }
             }
@@ -845,8 +1183,9 @@ func main() {
         if main_command_dispatcher.DispatchCommandContext(commandContext,
                                                           cpSelected,
                                                           suppressTreeOpen) {
-            sessionMgr.splitActive = engine.PaneCount() >= 2;
-            FlushBottomPanelSplit(shell, appSettings, panelSplitSavePending);
+            FlushWorkspaceLayout(
+                shell, engine, projMgr, activityBarCtrl, appSettings,
+                panelSplitSavePending);
             diffOverlay.Shutdown();
             basicWorkspaceCommands.Shutdown();
             diagnosticActions.Shutdown();
@@ -937,10 +1276,88 @@ func main() {
         if shell.toolPanels.variablesListBox.WasSelectionChanged() {
             debug_commands.HandleVariableActivate(shell, dbgSession);
         }
+        debug_commands.HandleWatchToolbar(shell, dbgSession);
+        shell.workbench.PumpSidebarDocking();
         shell.toolPanels.PumpToolTabs();
+        if shell.toolPanels.TakeDebugConsoleClearRequest() {
+            debug_commands.handleClearDebugConsole(shell, dbgSession);
+        }
+        HandleProblemsQuickFix(shell, docMgr, engine, tabs, projMgr, locStore,
+                               diagnosticActions);
+        var workspaceLayoutChanged = false;
         var changedPanelSplitPct = shell.toolPanels.TakeChangedSplitPercent();
         if changedPanelSplitPct >= 0 {
             appSettings.bottomPanelSplitPct = changedPanelSplitPct;
+            workspaceLayoutChanged = true;
+        }
+        var changedSidePanelPct =
+            shell.toolPanels.TakeChangedSidePanelWidthPercent();
+        if changedSidePanelPct >= 0 {
+            appSettings.sidePanelWidthPct = changedSidePanelPct;
+            workspaceLayoutChanged = true;
+        }
+        if shell.toolPanels.TakeFloatingToolPanelGeometryChanged() {
+            appSettings.floatingToolPanelX =
+                shell.toolPanels.GetFloatingToolPanelX();
+            appSettings.floatingToolPanelY =
+                shell.toolPanels.GetFloatingToolPanelY();
+            appSettings.floatingToolPanelWidth =
+                shell.toolPanels.GetFloatingToolPanelWidth();
+            appSettings.floatingToolPanelHeight =
+                shell.toolPanels.GetFloatingToolPanelHeight();
+            workspaceLayoutChanged = true;
+        }
+        var changedSidebarPct =
+            shell.workbench.TakeChangedSidebarWidthPercent();
+        if changedSidebarPct >= 0 {
+            appSettings.sidebarWidthPct = changedSidebarPct;
+            workspaceLayoutChanged = true;
+        }
+        var changedSidebarPosition =
+            shell.workbench.TakeChangedSidebarPosition();
+        if changedSidebarPosition != "" {
+            appSettings.primarySidebarPosition = changedSidebarPosition;
+            shell.SetStatusLeft(
+                "Primary sidebar moved " + changedSidebarPosition);
+            workspaceLayoutChanged = true;
+        }
+        if HasPersistentSidebarContext(projMgr, activityBarCtrl)
+           and appSettings.sidebarVisible != shell.workbench.IsSidebarVisible() {
+            appSettings.sidebarVisible = shell.workbench.IsSidebarVisible();
+            workspaceLayoutChanged = true;
+        }
+        if appSettings.activeSidebarViewId != activityBarCtrl.activeView {
+            appSettings.activeSidebarViewId = activityBarCtrl.activeView;
+            workspaceLayoutChanged = true;
+        }
+        var changedEditorSplitPct =
+            engine.TakeChangedSplitPositionPercent();
+        if changedEditorSplitPct >= 0 {
+            appSettings.editorSplitPct = changedEditorSplitPct;
+            workspaceLayoutChanged = true;
+        }
+        var changedPanelDock = shell.toolPanels.TakeChangedDockLocation();
+        if changedPanelDock != "" {
+            appSettings.panelDockPosition = changedPanelDock;
+            workspaceLayoutChanged = true;
+        }
+        var changedToolGroupLayout =
+            shell.toolPanels.TakeChangedToolPanelGroupLayout();
+        if changedToolGroupLayout != "" {
+            appSettings.toolPanelGroupLayout = changedToolGroupLayout;
+            workspaceLayoutChanged = true;
+        }
+        var changedToolTabOrder = shell.toolPanels.TakeChangedToolTabOrder();
+        if changedToolTabOrder != "" {
+            appSettings.toolPanelTabOrder = changedToolTabOrder;
+            workspaceLayoutChanged = true;
+        }
+        var activeToolPanelId = shell.toolPanels.GetActiveToolPanelId();
+        if appSettings.activeToolPanelId != activeToolPanelId {
+            appSettings.activeToolPanelId = activeToolPanelId;
+            workspaceLayoutChanged = true;
+        }
+        if workspaceLayoutChanged {
             panelSplitSavePending = true;
             panelSplitSaveDebounce.Signal();
         } else if panelSplitSavePending and panelSplitSaveDebounce.get_IsReady() {
@@ -950,19 +1367,27 @@ func main() {
         }
 
         // Inline overlay actions
-        // Keybindings card + settings filter (plan 08). Populated lazily the
-        // first frame the settings panel is visible, then kept in sync with
-        // Set/Reset actions and the section filter.
+        // Preferences search spans setting keywords and live command bindings.
+        // Populate commands before applying card visibility so a command-name
+        // match can keep Keybindings visible even when it is not a section word.
         if overlays.settingsVisible {
-            if overlays.keybindingList != null and overlays.keybindingList.Count == 0 {
+            if overlays.keybindingListInitialized == false {
                 overlays.PopulateKeybindings(commandRegistry,
                                              overlays.settingsFilterInput.get_Text());
+                overlays.ApplySettingsFilter(
+                    overlays.settingsFilterInput.get_Text());
             }
-            if overlays.settingsFilterInput != null
-               and overlays.settingsFilterInput.WasChanged() {
+            if overlays.settingsFilterClearButton != null
+               and overlays.settingsFilterClearButton.WasClicked() {
+                overlays.settingsFilterInput.SetText("");
+                overlays.settingsFilterInput.Focus();
+                overlays.PopulateKeybindings(commandRegistry, "");
+                overlays.ApplySettingsFilter("");
+            } else if overlays.settingsFilterInput != null
+                      and overlays.settingsFilterInput.WasChanged() {
                 var settingsFilter = overlays.settingsFilterInput.get_Text();
-                overlays.ApplySettingsFilter(settingsFilter);
                 overlays.PopulateKeybindings(commandRegistry, settingsFilter);
+                overlays.ApplySettingsFilter(settingsFilter);
             }
             if overlays.keybindingSetButton != null
                and overlays.keybindingSetButton.WasClicked() {
@@ -985,6 +1410,8 @@ func main() {
                         var keybindingSaved = appSettings.Save();
                         overlays.PopulateKeybindings(commandRegistry,
                                                      overlays.settingsFilterInput.get_Text());
+                        overlays.ApplySettingsFilter(
+                            overlays.settingsFilterInput.get_Text());
                         var keybindingStatus = commandRegistry.ShortcutConflictSummary();
                         if keybindingSaved == false {
                             keybindingStatus = "Could not save keybinding changes. " + keybindingStatus;
@@ -1010,6 +1437,8 @@ func main() {
                     var resetSaved = appSettings.Save();
                     overlays.PopulateKeybindings(commandRegistry,
                                                  overlays.settingsFilterInput.get_Text());
+                    overlays.ApplySettingsFilter(
+                        overlays.settingsFilterInput.get_Text());
                     var resetStatus = commandRegistry.ShortcutConflictSummary();
                     if resetSaved == false {
                         resetStatus = "Could not save keybinding changes. " + resetStatus;
@@ -1058,6 +1487,9 @@ func main() {
             shell.SetStatusLeft("Ready");
         }
 
+        workspace_edit_preview_commands.PumpRenamePreview(
+            renamePreview, shell, docMgr, engine, tabs, indexer);
+
         var commandInputAction = commandInputOverlay.Pump(shell);
         if commandInputAction == command_input.COMMAND_INPUT_NEW_PROJECT_CONSOLE
            or commandInputAction == command_input.COMMAND_INPUT_NEW_PROJECT_GUI
@@ -1072,68 +1504,114 @@ func main() {
             var projectName = Str.Trim(commandInputOverlay.ReadValue());
             var projectsBase = project_templates.DefaultProjectsBase();
             if projectsBase == "" {
-                GUI.Toast.Error("Could not resolve the user projects folder");
-                commandInputOverlay.Finish();
+                shell.SetStatusLeft("Could not resolve the user projects folder");
+                commandInputOverlay.Reject(
+                    shell,
+                    "The user projects folder could not be resolved. Check the account home directory.");
                 continue;
             }
             if safe_io.MakeAll(projectsBase) == false {
-                GUI.Toast.Error("Could not create the user projects folder");
-                commandInputOverlay.Finish();
+                shell.SetStatusLeft("Could not create the user projects folder");
+                commandInputOverlay.Reject(
+                    shell,
+                    "The projects folder could not be created. Check folder permissions and try again.");
+                continue;
+            }
+            if project_templates.ValidName(projectName) == false {
+                shell.SetStatusLeft("Enter a valid project name");
+                commandInputOverlay.Reject(
+                    shell,
+                    "Use 1-64 letters, numbers, hyphens, or underscores.");
+                continue;
+            }
+            var requestedProjectPath = IO.Path.Join(projectsBase, projectName);
+            if IO.Dir.Exists(requestedProjectPath)
+               or IO.File.Exists(requestedProjectPath) {
+                shell.SetStatusLeft("A project named " + projectName + " already exists");
+                commandInputOverlay.Reject(
+                    shell,
+                    "That project name already exists. Choose a different name.");
                 continue;
             }
             var newProjectPath = project_templates.Scaffold(projectsBase, projectName, templateKind);
             if newProjectPath == "" {
-                GUI.Toast.Info("Could not create project (name invalid or folder exists)");
+                shell.SetStatusLeft("Could not create project " + projectName);
+                commandInputOverlay.Reject(
+                    shell,
+                    "The project could not be created. Check folder permissions and try again.");
             } else {
                 projMgr.OpenFolder(newProjectPath);
                 main_command_dispatcher.ActivateOpenWorkspace(commandContext, true);
                 sessionMgr.RecordRecentProject(newProjectPath);
-                var mainPath = Path.Join(Path.Join(newProjectPath, "src"), "main.zia");
+                var mainPath = IO.Path.Join(IO.Path.Join(newProjectPath, "src"), "main.zia");
                 file_commands.OpenFileAtPath(shell, docMgr, engine, tabs, mainPath);
-                GUI.Toast.Info("Created " + projectName);
+                shell.SetStatusLeft("Created project: " + projectName);
+                commandInputOverlay.Finish();
             }
-            commandInputOverlay.Finish();
         }
         if commandInputAction == command_input.COMMAND_INPUT_GOTO_LINE {
-            edit_commands.handleGoToLineText(shell, engine, commandInputOverlay.ReadValue());
-            commandInputOverlay.Finish();
-        }
-        if commandInputAction == command_input.COMMAND_INPUT_ADD_WATCH {
-            debug_commands.handleAddWatchExpression(shell, dbgSession, commandInputOverlay.ReadValue());
-            commandInputOverlay.Finish();
+            if edit_commands.handleGoToLineText(
+                   shell, engine, commandInputOverlay.ReadValue()) {
+                commandInputOverlay.Finish();
+            } else {
+                commandInputOverlay.Reject(
+                    shell, "Enter a positive line number.");
+            }
         }
         if commandInputAction == command_input.COMMAND_INPUT_FILTER_OUTPUT {
             shell.toolPanels.SetOutputFilter(commandInputOverlay.ReadValue());
             commandInputOverlay.Finish();
         }
         if commandInputAction == command_input.COMMAND_INPUT_WORKSPACE_SYMBOLS {
-            search_commands.handleWorkspaceSymbolsTextAsync(
-                shell, projMgr, docMgr, engine, locStore, searcher,
-                commandInputOverlay.ReadValue());
-            commandInputOverlay.Finish();
+            if search_commands.handleWorkspaceSymbolsTextAsync(
+                   shell, projMgr, docMgr, engine, locStore, searcher,
+                   commandInputOverlay.ReadValue()) {
+                commandInputOverlay.Finish();
+            } else {
+                commandInputOverlay.Reject(
+                    shell,
+                    "Open a project folder before searching workspace symbols.");
+            }
         }
         if commandInputAction == command_input.COMMAND_INPUT_RENAME_SYMBOL {
             var renameDoc = docMgr.GetActive();
+            var renameStarted = false;
             if renameDoc != null and renameDoc!.language == "basic" {
-                basicWorkspaceCommands.StartRename(
+                renameStarted = basicWorkspaceCommands.StartRename(
                     commandInputOverlay.ReadValue(), shell, docMgr, projMgr,
                     engine);
             } else {
-                ziaWorkspaceCommands.StartRename(
+                renameStarted = ziaWorkspaceCommands.StartRename(
                     commandInputOverlay.ReadValue(), shell, docMgr, projMgr,
                     engine, indexer);
             }
-            commandInputOverlay.Finish();
+            if renameStarted {
+                commandInputOverlay.Finish();
+            } else {
+                commandInputOverlay.Reject(
+                    shell,
+                    "Use a valid identifier and save the source file before renaming.");
+            }
         }
         if commandInputAction == command_input.COMMAND_INPUT_EXTRACT_LOCAL {
-            edit_commands.handleExtractLocalVariableText(shell, docMgr, engine,
-                                                         commandInputOverlay.ReadValue());
-            commandInputOverlay.Finish();
+            if edit_commands.handleExtractLocalVariableText(
+                   shell, docMgr, engine, commandInputOverlay.ReadValue()) {
+                commandInputOverlay.Finish();
+            } else {
+                commandInputOverlay.Reject(
+                    shell,
+                    "Select one Zia expression and enter a valid variable name.");
+            }
         }
         if commandInputAction == command_input.COMMAND_INPUT_EXTRACT_FUNCTION {
-            edit_commands.handleExtractFunctionText(shell, docMgr, engine,
-                                                    commandInputOverlay.ReadValue());
-            commandInputOverlay.Finish();
+            if edit_commands.handleExtractFunctionText(
+                   shell, docMgr, engine, commandInputOverlay.ReadValue()) {
+                commandInputOverlay.Finish();
+            } else {
+                commandInputOverlay.Reject(
+                    shell,
+                    "Select Zia statements and enter a valid function name.");
+            }
         }
         if commandInputAction == command_input.COMMAND_INPUT_CANCEL {
             commandInputOverlay.Finish();
@@ -1194,19 +1672,27 @@ func main() {
         }
 
         var autoDoc = docMgr.GetActive();
-        var currentRevisionForSave = engine.GetRevision();
+        var currentRevisionForSave = ActiveContentRevision(
+            docMgr, engine, scene2DEditor, scene3DEditor);
         if appSettings.autoSave and autoDoc != null and autoDoc!.isNew == false {
-            if currentRevisionForSave != autoSaveRevision {
+            if docMgr.activeIndex != autoSaveActiveIndex {
+                autoSaveActiveIndex = docMgr.activeIndex;
+                autoSaveRevision = currentRevisionForSave;
+                if autoDoc!.isModified { autoSaveDebounce.Signal(); }
+                else { autoSaveDebounce.Reset(); }
+            } else if currentRevisionForSave != autoSaveRevision {
                 autoSaveRevision = currentRevisionForSave;
                 autoSaveDebounce.Signal();
             } else if autoSaveDebounce.get_IsReady() and autoDoc!.isModified {
                 if file_commands.AutoSaveActive(shell, docMgr, engine, tabs) {
-                    autoSaveRevision = engine.GetRevision();
+                    autoSaveRevision = ActiveContentRevision(
+                        docMgr, engine, scene2DEditor, scene3DEditor);
                     autoSaveDebounce.Reset();
                     fileWatchCtrl.ResetPendingReload();
                 }
             }
         } else {
+            autoSaveActiveIndex = docMgr.activeIndex;
             autoSaveRevision = currentRevisionForSave;
             autoSaveDebounce.Reset();
         }
@@ -1231,8 +1717,10 @@ func main() {
         // buffers cannot back up while focus changes. New diffs are requested
         // on a tab switch or shortly after edits settle; requests coalesce and
         // never wait for Git on the UI thread.
-        scmGutter.Pump(engine, docMgr, projMgr);
-        if allowBackground {
+        if textEditorContextAvailable {
+            scmGutter.Pump(engine, docMgr, projMgr);
+        }
+        if allowBackground and textEditorContextAvailable {
             if docMgr.activeIndex != scmGutterActiveIndex {
                 scmGutterActiveIndex = docMgr.activeIndex;
                 scmGutter.RefreshActive(engine, docMgr, projMgr);
@@ -1260,10 +1748,24 @@ func main() {
         // ====================================================================
         // Update status bar (only when cursor moves)
         // ====================================================================
-        var statusRevision = engine.GetRevision();
+        var statusRevision = currentRevisionForSave;
         var statusLineCount = engine.GetLineCount();
         var statusCursorCount = engine.editor.GetCursorCount();
-        if curCursorLine != prevCursorLine or curCursorCol != prevCursorCol
+        if textEditorContextAvailable == false and activeVisualDoc != null {
+            var visualStatus = "Visual scene";
+            if activeVisualDoc!.kind == file_utils.DOC_KIND_SCENE_2D
+               and scene2DEditor.scene != null {
+                visualStatus = "Canvas " + scene2DEditor.scene.Width
+                    + " × " + scene2DEditor.scene.Height
+                    + "  |  Layers " + scene2DEditor.scene.LayerCount()
+                    + "  |  Objects " + scene2DEditor.scene.ObjectCount();
+            } else if activeVisualDoc!.kind == file_utils.DOC_KIND_SCENE_3D
+                      and scene3DEditor.scene != null {
+                visualStatus = "Hierarchy " + (scene3DEditor.scene.NodeCount - 1)
+                    + " node(s)  |  VSCN";
+            }
+            shell.SetStatusCenter(visualStatus);
+        } else if curCursorLine != prevCursorLine or curCursorCol != prevCursorCol
            or statusRevision != prevStatusRevision
            or statusLineCount != prevStatusLineCount
            or statusCursorCount != prevStatusCursorCount {
@@ -1351,8 +1853,9 @@ func main() {
     basicWorkspaceCommands.Shutdown();
     diagnosticActions.Shutdown();
     ziaWorkspaceCommands.Shutdown();
-    sessionMgr.splitActive = engine.PaneCount() >= 2;
-    FlushBottomPanelSplit(shell, appSettings, panelSplitSavePending);
+    FlushWorkspaceLayout(
+        shell, engine, projMgr, activityBarCtrl, appSettings,
+        panelSplitSavePending);
     lifecycle_controller.CleanupIde(shell, docMgr, projMgr, engine, buildSys, dbgSession,
                                     terminalCtrl, fileWatchCtrl, workspaceWatcherState,
                                     indexer, breakpointStore, sessionMgr, recoveryStore);

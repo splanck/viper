@@ -82,7 +82,7 @@ Convenience methods for storing and retrieving typed values without manual boxin
 
 ### Zia Example
 
-```rust
+```zia
 module MapDemo;
 
 bind Zanna.Terminal;
@@ -192,10 +192,10 @@ intersection, difference), and subset/superset queries. Unlike `StringSet` which
 | `Remove(obj)`       | `Boolean(Object)` | Remove an object; returns true if removed, false if not found  |
 | `Has(obj)`          | `Boolean(Object)` | Check if object is in the set                                  |
 | `Clear()`           | `Void()`          | Remove all objects from the set                                |
-| `Items()`           | `Seq()`           | Get all objects as a Seq (order undefined)                     |
+| `ToSeq()`           | `Seq()`           | Get all objects as a Seq (order undefined)                     |
 | `Union(other)`      | `Set(Set)`        | Return new set with union of both sets                         |
 | `Intersect(other)`  | `Set(Set)`        | Return new set with intersection of both sets                  |
-| `Diff(other)`       | `Set(Set)`        | Return new set with elements in this but not other             |
+| `Difference(other)`       | `Set(Set)`        | Return new set with elements in this but not other             |
 | `IsSubset(other)`   | `Boolean(Set)`    | True if this set is a subset of other                          |
 | `IsSuperset(other)` | `Boolean(Set)`    | True if this set is a superset of other                        |
 | `IsDisjoint(other)` | `Boolean(Set)`    | True if sets have no elements in common                        |
@@ -208,8 +208,8 @@ intersection, difference), and subset/superset queries. Unlike `StringSet` which
 - Separately boxed integers, booleans, floats, and strings compare by boxed value. Other objects
   compare by reference identity. Boxed values of different tags remain distinct (for example,
   boxed integer `1` and boxed boolean `true`).
-- Order of objects returned by `Items()` is not guaranteed (hash-table order).
-- Elements are retained while stored. `Items()`, `ToSeq()`, and `ToList()` return retained
+- Order of objects returned by `ToSeq()` is not guaranteed (hash-table order).
+- Elements are retained while stored. `ToSeq()`, `ToSeq()`, and `ToList()` return retained
   snapshots; elements remain valid after the source set is cleared.
 - Set operations (`Union`, `Intersect`, `Diff`) return new sets; originals are unchanged.
 - Hashing follows the same rule as equality: boxed scalars hash by value and other objects by
@@ -218,7 +218,7 @@ intersection, difference), and subset/superset queries. Unlike `StringSet` which
 
 ### Zia Example
 
-```rust
+```zia
 module SetDemo;
 
 bind Zanna.Collections.Set as Set;
@@ -292,7 +292,7 @@ DIM common AS OBJECT = setA.Intersect(setB)
 PRINT common.Count          ' Output: 2 (y, z)
 
 ' Difference: elements in A but not B
-DIM diff AS OBJECT = setA.Diff(setB)
+DIM diff AS OBJECT = setA.Difference(setB)
 PRINT diff.Count            ' Output: 1 (x only)
 
 ' Subset/superset checks
@@ -371,7 +371,7 @@ regardless of updates.
 
 ### Zia Example
 
-```rust
+```zia
 module OrderedMapDemo;
 
 bind Zanna.Collections;
@@ -507,26 +507,26 @@ keeps elements sorted, enabling efficient range queries, ordered iteration, and 
 | `First()`           | `String()`                 | Get smallest (first) element; empty string if empty                |
 | `Last()`            | `String()`                 | Get largest (last) element; empty string if empty                  |
 | `Floor(str)`        | `String(String)`           | Greatest element <= given string; empty if none                    |
-| `Ceil(str)`         | `String(String)`           | Least element >= given string; empty if none                       |
+| `Ceiling(str)`         | `String(String)`           | Least element >= given string; empty if none                       |
 | `Lower(str)`        | `String(String)`           | Greatest element < given string; empty if none                     |
 | `Higher(str)`       | `String(String)`           | Least element > given string; empty if none                        |
 | `At(index)`         | `String(Integer)`          | Get element at index; empty if out of range                        |
 | `IndexOf(str)`      | `Integer(String)`          | Get index of element (-1 if not found)                             |
-| `Items()`           | `Seq()`                    | Get all elements as a Seq in sorted order                          |
+| `ToSeq()`           | `Seq()`                    | Get all elements as a Seq in sorted order                          |
 | `Range(from, to)`   | `Seq(String, String)`      | Get elements in range [from, to]; null bounds are open-ended       |
 | `Take(n)`           | `Seq(Integer)`             | Get first n elements                                               |
 | `Skip(n)`           | `Seq(Integer)`             | Get all elements except first n                                    |
 | `Union(other)`      | `SortedSet(SortedSet)`     | Return new set with union of both sets                             |
 | `Intersect(other)`  | `SortedSet(SortedSet)`     | Return new set with intersection of both sets                      |
-| `Diff(other)`       | `SortedSet(SortedSet)`     | Return new set with elements in this but not other                 |
+| `Difference(other)`       | `SortedSet(SortedSet)`     | Return new set with elements in this but not other                 |
 | `IsSubset(other)`   | `Boolean(SortedSet)`       | True if this set is a subset of other                              |
 
 ### Notes
 
 - Elements are compared by full byte length; embedded NUL bytes are part of element identity.
 - `Range(from, to)` includes both bounds. Pass null for `from` or `to` through the runtime API to leave that side open.
-- `First()`, `Last()`, `Floor()`, `Ceil()`, `Lower()`, `Higher()`, and `At()` return owned copied strings.
-- `Items()`, `Range()`, `Take()`, and `Skip()` return independent snapshots containing copied strings.
+- `First()`, `Last()`, `Floor()`, `Ceiling()`, `Lower()`, `Higher()`, and `At()` return owned copied strings.
+- `ToSeq()`, `Range()`, `Take()`, and `Skip()` return independent snapshots containing copied strings.
 - `Take(n)` returns empty for `n <= 0`; `Skip(n)` treats a negative `n` as zero and therefore
   returns all elements.
 - The registry currently declares `Range()`, `Take()`, and `Skip()` as unqualified objects even
@@ -536,7 +536,7 @@ keeps elements sorted, enabling efficient range queries, ordered iteration, and 
 
 ### Zia Example
 
-```rust
+```zia
 module SortedSetDemo;
 
 bind Zanna.Collections.SortedSet as SortedSet;
@@ -551,7 +551,7 @@ func start() {
 
     Say(words.First());             // apple
     Say(words.Last());              // cherry
-    var ordered: Seq = words.Items();
+    var ordered: Seq = words.ToSeq();
     Say(Seq.GetStr(ordered, 1));    // banana
 }
 ```
@@ -579,12 +579,12 @@ PRINT words.IndexOf("cherry")  ' Output: 2
 
 ' Range queries
 PRINT words.Floor("cat")       ' Output: "banana" (largest <= "cat")
-PRINT words.Ceil("cat")        ' Output: "cherry" (smallest >= "cat")
+PRINT words.Ceiling("cat")        ' Output: "cherry" (smallest >= "cat")
 PRINT words.Lower("cherry")    ' Output: "banana" (largest < "cherry")
 PRINT words.Higher("cherry")   ' Output: "date" (smallest > "cherry")
 
 ' Get all items in sorted order
-DIM all AS Zanna.Collections.Seq = words.Items()
+DIM all AS Zanna.Collections.Seq = words.ToSeq()
 FOR i = 0 TO all.Count - 1
     PRINT Zanna.Collections.Seq.GetStr(all, i)  ' apple, banana, cherry, date
 NEXT
@@ -615,7 +615,7 @@ DIM common AS Zanna.Collections.SortedSet = set1.Intersect(set2)
 PRINT common.Count         ' Output: 2 (b, c)
 
 ' Difference
-DIM diff AS Zanna.Collections.SortedSet = set1.Diff(set2)
+DIM diff AS Zanna.Collections.SortedSet = set1.Difference(set2)
 PRINT diff.Count           ' Output: 1 (a only)
 
 ' Subset check
@@ -698,7 +698,7 @@ lookup, merging (which returns a new FrozenMap), and equality comparison.
 
 ### Zia Example
 
-```rust
+```zia
 module FrozenMapDemo;
 
 bind Zanna.Collections;
@@ -825,10 +825,10 @@ that return new FrozenSet instances.
 | Method             | Signature              | Description                                                   |
 |--------------------|------------------------|---------------------------------------------------------------|
 | `Has(str)`         | `Boolean(String)`      | Check if string is in the set                                 |
-| `Items()`          | `Seq()`                | Get all elements as a Seq (order undefined)                   |
+| `ToSeq()`          | `Seq()`                | Get all elements as a Seq (order undefined)                   |
 | `Union(other)`     | `FrozenSet(FrozenSet)` | Return new set with elements from either set                  |
 | `Intersect(other)` | `FrozenSet(FrozenSet)` | Return new set with elements in both sets                     |
-| `Diff(other)`      | `FrozenSet(FrozenSet)` | Return new set with elements in this but not other            |
+| `Difference(other)`      | `FrozenSet(FrozenSet)` | Return new set with elements in this but not other            |
 | `IsSubset(other)`  | `Boolean(FrozenSet)`   | True if all elements of this set are in the other set         |
 | `Equals(other)`    | `Boolean(FrozenSet)`   | True if both sets contain exactly the same elements           |
 
@@ -838,7 +838,7 @@ that return new FrozenSet instances.
   Zia; BASIC auto-boxes. Null elements are skipped and another non-string value traps while being
   unboxed.
 - Duplicate elements in the source Seq are automatically removed.
-- Elements are retained by the frozen set. `Items()` returns an independently retained snapshot
+- Elements are retained by the frozen set. `ToSeq()` returns an independently retained snapshot
   in unspecified hash-slot order.
 - All set operations return new FrozenSet instances; originals are unchanged.
 - `Equals` compares strings by value regardless of insertion order.
@@ -846,7 +846,7 @@ that return new FrozenSet instances.
 
 ### Zia Example
 
-```rust
+```zia
 module FrozenSetDemo;
 
 bind Zanna.Collections;
@@ -879,7 +879,7 @@ func start() {
     var inter = fs.Intersect(fs2);
     SayInt(inter.Count);                            // 1 (cherry)
 
-    var diff = fs.Diff(fs2);
+    var diff = fs.Difference(fs2);
     SayInt(diff.Count);                             // 2 (apple, banana)
 }
 ```
@@ -903,7 +903,7 @@ PRINT fs.Has("grape")     ' 0
 
 ' Get all items
 DIM all AS OBJECT
-all = fs.Items()
+all = fs.ToSeq()
 PRINT all.Count             ' 3
 
 ' Set operations
@@ -924,7 +924,7 @@ inter = fs.Intersect(fs2)
 PRINT inter.Count           ' 1 (cherry)
 
 DIM diff AS OBJECT
-diff = fs.Diff(fs2)
+diff = fs.Difference(fs2)
 PRINT diff.Count            ' 2 (apple, banana)
 
 ' Subset check
@@ -985,7 +985,7 @@ Supports range queries via Floor/Ceil operations.
 | `First()`         | `String()`             | Get the smallest (first) key; returns empty string if empty     |
 | `Last()`          | `String()`             | Get the largest (last) key; returns empty string if empty       |
 | `Floor(key)`      | `String(String)`       | Get the largest key <= given key; returns empty string if none  |
-| `Ceil(key)`       | `String(String)`       | Get the smallest key >= given key; returns empty string if none |
+| `Ceiling(key)`       | `String(String)`       | Get the smallest key >= given key; returns empty string if none |
 
 ### Notes
 
@@ -993,7 +993,7 @@ Supports range queries via Floor/Ceil operations.
 - Values are retained while stored and released when overwritten, removed, cleared, or finalized.
 - A null runtime key is treated as the empty string key. `Get()` returns a borrowed value; use
   `Has()` to distinguish a missing key from a present null value.
-- `First()`, `Last()`, `Floor()`, and `Ceil()` return owned copied strings, or an empty string when
+- `First()`, `Last()`, `Floor()`, and `Ceiling()` return owned copied strings, or an empty string when
   no matching key exists.
 - `Keys()` and `Values()` are independent retained snapshots in the same key-sorted order. Key
   strings are copied and values are shared, not deep-cloned.
@@ -1001,7 +1001,7 @@ Supports range queries via Floor/Ceil operations.
 
 ### Zia Example
 
-```rust
+```zia
 module TreeMapDemo;
 
 bind Zanna.Terminal;
@@ -1022,7 +1022,7 @@ func start() {
 
     // Range queries
     Say("Floor(cat): " + tm.Floor("cat"));        // banana
-    Say("Ceil(cat): " + tm.Ceil("cat"));          // cherry
+    Say("Ceil(cat): " + tm.Ceiling("cat"));          // cherry
 }
 ```
 
@@ -1049,7 +1049,7 @@ PRINT tm.Last()    ' Output: "cherry"
 
 ' Range queries
 PRINT tm.Floor("blueberry")  ' Output: "banana" (largest key <= "blueberry")
-PRINT tm.Ceil("blueberry")   ' Output: "cherry" (smallest key >= "blueberry")
+PRINT tm.Ceiling("blueberry")   ' Output: "cherry" (smallest key >= "blueberry")
 ```
 
 ### SortedMap vs Map

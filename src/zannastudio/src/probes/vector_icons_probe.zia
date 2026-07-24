@@ -1,3 +1,22 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/probes/vector_icons_probe.zia
+// Purpose: Exercise Studio vector icons and welcome-view construction.
+// Key invariants:
+//   - The welcome surface applies its brand and action icons without trapping.
+//   - Unknown icon names are ignored and empty names safely clear an icon.
+// Ownership/Lifetime:
+//   - The probe owns and destroys one isolated AppShell window.
+// Links: zannastudio/src/ui/welcome_view.zia,
+//        zannastudio/src/ui/app_shell.zia
+//
+//===----------------------------------------------------------------------===//
+
 module vector_icons_probe;
 
 // ============================================================================
@@ -26,7 +45,10 @@ func main() {
     // The welcome view now applies vector icons during Setup; building it
     // exercises Label.SetIconName ("zanna-mark") and Button.SetIconName.
     var wv = new welcome_view.WelcomeView();
-    wv.Setup(shell.workbench.welcomeHost, shell.workbench.editorRow);
+    wv.Setup(shell.workbench.welcomeHost,
+             shell.workbench.editorRow,
+             shell.workbench.scene2DHost,
+             shell.workbench.scene3DHost);
     if wv.newFileButton == null or wv.openFolderButton == null {
         fail(shell, "welcome widgets not built");
         return;

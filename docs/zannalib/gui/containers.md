@@ -34,7 +34,7 @@ Mouse-wheel events bubble to parent widgets when the scroll position cannot chan
 
 ### Example
 
-```rust
+```zia
 // Zia
 var scroll = ScrollView.New(root);
 scroll.SetSize(400, 300);
@@ -88,7 +88,7 @@ DIM leftPane AS Object = split.First
 DIM rightPane AS Object = split.Second
 ```
 
-```rust
+```zia
 // Zia
 var split = SplitPane.New(root, 1);  // Horizontal
 split.SetPosition(0.3);  // 30% / 70%
@@ -114,7 +114,7 @@ A floating overlay panel that appears above normal content. Floating panels are 
 | `AddChild(widget)`      | `Void(Object)`             | Add a child widget to the panel            |
 | `Destroy()`             | `Void()`                   | Destroy the panel and disconnect its runtime handle |
 
-```rust
+```zia
 // Zia
 var panel = FloatingPanel.New(root);
 panel.SetPosition(100, 100);
@@ -211,7 +211,7 @@ IF tabs.WasCloseClicked() THEN
 END IF
 ```
 
-```rust
+```zia
 // Zia
 var tabs = TabBar.New(root);
 var tab1 = tabs.AddTab("File.txt", 1);
@@ -297,7 +297,7 @@ Stable IDs are copied, may be empty, and reject embedded NUL bytes without chang
 The base TreeView does not require IDs to be unique; `VirtualTree` enforces uniqueness when a
 virtual model is bound.
 
-```rust
+```zia
 // Zia example
 var tree = TreeView.New(root);
 tree.SetSize(250, 400);
@@ -466,7 +466,7 @@ IF Zanna.Input.Keyboard.Ctrl() AND Zanna.Input.Keyboard.WasPressed(Zanna.Input.K
 END IF
 ```
 
-```rust
+```zia
 // Zia
 var editor = CodeEditor.New(root);
 editor.SetSize(600, 400);

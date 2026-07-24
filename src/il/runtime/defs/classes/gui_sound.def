@@ -635,6 +635,7 @@ RT_CLASS_BEGIN("Zanna.GUI.ListBox", GuiListBox, "obj", GuiListBoxNew, "Zanna.GUI
     RT_METHOD("ScrollToBottom", "void()", GuiListBoxScrollToBottom)
     RT_METHOD("SetMultiSelect", "void(i1)", GuiListBoxSetMultiSelect)
     RT_METHOD("GetSelectedText", "str()", GuiListBoxGetSelectedText)
+    RT_METHOD("GetSelectedData", "seq<str>()", GuiListBoxGetSelectedData)
     RT_METHOD("WasSelectionChanged", "i1()", GuiListBoxWasSelectionChanged)
     RT_METHOD("WasChanged", "i1()", GuiListBoxWasChanged)
     RT_METHOD("WasActivated", "i1()", GuiListBoxWasActivated)

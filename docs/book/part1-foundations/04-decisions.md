@@ -84,7 +84,7 @@ Here's the mental picture you should hold in your mind: You're walking down a pa
 
 You can't take both paths. You can't take neither. You must choose one.
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 var gateOpen = true;
@@ -108,7 +108,7 @@ This is the fundamental pattern of decision-making in programs. Master this, and
 
 The simplest form has no `else`:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 var temperature = 35;
@@ -167,7 +167,7 @@ Let's break down each part:
 
 The condition must be something that evaluates to `true` or `false` — what programmers call a boolean expression. Usually this involves comparisons:
 
-```rust
+```zia
 if age >= 18 { ... }           // is age at least 18?
 if name == "Alice" { ... }     // is name exactly "Alice"?
 if score != 0 { ... }          // is score something other than 0?
@@ -178,7 +178,7 @@ if password == secret { ... }  // do passwords match?
 
 Here's a crucial skill for programmers: you need to be able to "run" code in your head, step by step, just like a computer would. Let's practice with another example:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 var balance = 50;
@@ -218,7 +218,7 @@ Now imagine `balance` was `100`:
 
 When you need to do one thing OR another (but never both, and never neither), use `else`:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 var hour = 14;
@@ -243,7 +243,7 @@ Think of it as a fork in the road where you MUST take one path. You can't stand 
 
 Think of a light switch. It's either ON or OFF. Never both, never neither.
 
-```rust
+```zia
 if switchIsOn {
     // The light is on - room is bright
 } else {
@@ -257,7 +257,7 @@ The room is always in exactly one of these states.
 
 Imagine a bouncer at a club checking IDs:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 var age = 17;
@@ -277,7 +277,7 @@ The bouncer doesn't have three or four responses. It's binary: you're either old
 
 Sometimes there are more than two possibilities:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 var hour = 20;
@@ -310,7 +310,7 @@ The final `else` catches anything that didn't match earlier conditions. It's the
 
 Consider this buggy code:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 var score = 95;
@@ -328,7 +328,7 @@ Wait — 95 is also >= 90. Shouldn't it print "Excellent work!"? Nope. We alread
 
 The fix: Put more specific conditions first.
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 var score = 95;
@@ -346,7 +346,7 @@ Now 95 >= 90 matches first, and we get "Excellent work!"
 
 Think of `if-else if-else` like a waiter taking your order:
 
-```rust
+```zia
 if wantsAppetizer {
     // Bring appetizer
 } else if wantsMainCourse {
@@ -360,7 +360,7 @@ if wantsAppetizer {
 
 But wait — at a real restaurant, you might want appetizer AND main course AND dessert! This analogy shows why multiple separate `if` statements differ from an `if-else if` chain:
 
-```rust
+```zia
 // Multiple separate ifs - customer can order multiple things
 if wantsAppetizer {
     // Bring appetizer
@@ -385,7 +385,7 @@ Many beginners struggle with boolean expressions, so let's dig deep here. A bool
 
 These operators compare two values and return a boolean:
 
-```rust
+```zia
 x == y    // Equal: Is x the same as y?
 x != y    // Not equal: Is x different from y?
 x < y     // Less than: Is x smaller than y?
@@ -398,7 +398,7 @@ x >= y    // Greater than or equal: Is x larger than or the same as y?
 
 Let's evaluate some boolean expressions. I'll show you the expression, then work through it:
 
-```rust
+```zia
 var a = 5;
 var b = 10;
 var c = 5;
@@ -421,7 +421,7 @@ b <= a;    // Is 10 less than or equal to 5? No. Result: false
 
 String comparisons work too:
 
-```rust
+```zia
 var name = "Alice";
 
 name == "Alice";    // true - exact match
@@ -438,7 +438,7 @@ name == "Alice ";   // false - trailing space makes it different!
 
 This is the most common beginner mistake:
 
-```rust
+```zia
 // WRONG - This is assignment, not comparison!
 if score = 100 {
     ...
@@ -460,7 +460,7 @@ In English, we use "equals" for both, which causes confusion. In code, they're c
 
 You can store boolean values in variables:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 var isRaining = true;
@@ -477,7 +477,7 @@ if hasUmbrella {
 
 Notice that when a variable IS a boolean, you don't need a comparison:
 
-```rust
+```zia
 // Both of these work the same:
 if isRaining == true { ... }
 if isRaining { ... }           // This is cleaner
@@ -491,7 +491,7 @@ if !isRaining { ... }          // This is cleaner (we'll learn ! soon)
 
 You can store the result of a comparison:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 var age = 25;
@@ -516,7 +516,7 @@ Often you need to check multiple things at once. The logical operators let you c
 
 The AND operator (`&&`) returns `true` only when BOTH sides are true.
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 var age = 25;
@@ -546,7 +546,7 @@ In plain language: AND is only true when EVERYTHING is true. One false makes the
 
 Some real examples:
 
-```rust
+```zia
 var age = 25;
 var hasLicense = true;
 var hasCar = false;
@@ -561,7 +561,7 @@ age < 18 && hasCar;               // false && false = false
 
 You can chain multiple conditions:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 var hasTicket = true;
@@ -579,7 +579,7 @@ ALL three conditions must be true. Think of it as: "Do you have a ticket? Are yo
 
 The OR operator (`||`) returns `true` when AT LEAST ONE side is true.
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 var day = "Saturday";
@@ -604,7 +604,7 @@ In plain language: OR is true when ANYTHING is true. Both must be false for OR t
 
 Think of OR as being generous or permissive. "Do you have ANY valid credential?"
 
-```rust
+```zia
 var hasCash = false;
 var hasCard = true;
 var hasCoupon = false;
@@ -617,7 +617,7 @@ hasCash || hasCard || hasCoupon; // false || true || false = true
 
 #### Real Example: Multiple Payment Methods
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 var hasCash = false;
@@ -637,7 +637,7 @@ The customer can pay as long as they have at least one valid method.
 
 The NOT operator (`!`) reverses a boolean. True becomes false, false becomes true.
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 var gameOver = false;
@@ -660,7 +660,7 @@ Simple as that. NOT just flips the value.
 
 #### Common Uses of NOT
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 // Check if something is NOT the case
@@ -683,7 +683,7 @@ if !agreedToTerms {
 
 You can build complex conditions:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 var age = 42;
@@ -704,7 +704,7 @@ So: You qualify if you're in the age range, OR if you have a special pass (regar
 
 Use parentheses to make your intentions clear:
 
-```rust
+```zia
 // What does this mean?
 if a || b && c { ... }
 
@@ -714,14 +714,14 @@ if a || b && c { ... }
 
 In most languages, `&&` has higher precedence than `||`, so `a || b && c` means `a || (b && c)`. But don't make readers think about precedence rules — just use parentheses:
 
-```rust
+```zia
 if a || (b && c) { ... }    // Clear: a, OR both b and c
 if (a || b) && c { ... }    // Clear: either a or b, AND c
 ```
 
 #### Complex Example: Movie Theater
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 var age = 15;
@@ -748,7 +748,7 @@ For AND (`&&`):
 - If the left side is `false`, the whole thing must be `false`.
 - So the right side is never even checked!
 
-```rust
+```zia
 if false && someExpensiveFunction() {
     // someExpensiveFunction() never runs!
 }
@@ -758,7 +758,7 @@ For OR (`||`):
 - If the left side is `true`, the whole thing must be `true`.
 - So the right side is never even checked!
 
-```rust
+```zia
 if true || someExpensiveFunction() {
     // someExpensiveFunction() never runs!
 }
@@ -766,7 +766,7 @@ if true || someExpensiveFunction() {
 
 This is useful for safety checks:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 // Safe: if divisor is zero, the division never runs
@@ -784,7 +784,7 @@ If `divisor` is zero, the left side is false, so we never try to divide by zero.
 
 You can put `if` statements inside other `if` statements:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 var hasAccount = true;
@@ -831,7 +831,7 @@ Each decision branches into more decisions. The program follows one path through
 
 Nesting works, but deep nesting gets hard to read:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 var hasAccount = true;
@@ -870,7 +870,7 @@ This is sometimes called "pyramid of doom" or "arrow code" (because the indentat
 
 Often you can flatten nested code using "guard clauses" — checking for problems first and handling the happy path at the end:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 var hasAccount = true;
@@ -920,13 +920,13 @@ Let's build some real programs that use decisions.
 
 ### Example 1: Grade Calculator
 
-```rust
+```zia
 module Grader;
 bind Zanna.Terminal;
 
 func start() {
     Print("Enter the score (0-100): ");
-    var score = Zanna.Core.Convert.ToInt64(InputLine());
+    var score = Zanna.Core.Convert.ToInt64(TryReadLine().UnwrapOrStr(""));
 
     // First, validate the input
     if score < 0 || score > 100 {
@@ -975,13 +975,13 @@ Notice how the conditions are ordered from highest to lowest. A score of 85 isn'
 
 ### Example 2: Age-Based Access Control
 
-```rust
+```zia
 module AgeChecker;
 bind Zanna.Terminal;
 
 func start() {
     Print("Enter your age: ");
-    var age = Zanna.Core.Convert.ToInt64(InputLine());
+    var age = Zanna.Core.Convert.ToInt64(TryReadLine().UnwrapOrStr(""));
 
     Say("");  // Blank line for readability
 
@@ -1024,7 +1024,7 @@ func start() {
 
 ### Example 3: Simple Game Logic
 
-```rust
+```zia
 module BattleGame;
 bind Zanna.Terminal;
 
@@ -1055,7 +1055,7 @@ func start() {
     Say("3. Defend (reduce incoming damage by half)");
 
     Print("Your choice: ");
-    var choice = Zanna.Core.Convert.ToInt64(InputLine());
+    var choice = Zanna.Core.Convert.ToInt64(TryReadLine().UnwrapOrStr(""));
 
     var damage = 0;
     var defended = false;
@@ -1113,7 +1113,7 @@ func start() {
 
 ### Example 4: Input Validation
 
-```rust
+```zia
 module FormValidator;
 bind Zanna.Terminal;
 
@@ -1123,15 +1123,15 @@ func start() {
 
     // Get username
     Print("Username (4-20 characters): ");
-    var username = InputLine();
+    var username = TryReadLine().UnwrapOrStr("");
 
     // Get email
     Print("Email address: ");
-    var email = InputLine();
+    var email = TryReadLine().UnwrapOrStr("");
 
     // Get age
     Print("Age: ");
-    var age = Zanna.Core.Convert.ToInt64(InputLine());
+    var age = Zanna.Core.Convert.ToInt64(TryReadLine().UnwrapOrStr(""));
 
     // Validation
     var isValid = true;
@@ -1151,7 +1151,7 @@ func start() {
     }
 
     // Check email contains @
-    if Zanna.String.Has(email, "@") && Zanna.String.Has(email, ".") {
+    if Zanna.String.Contains(email, "@") && Zanna.String.Contains(email, ".") {
         Say("[ OK ] Email format appears valid");
     } else {
         Say("[FAIL] Email must contain @ and .");
@@ -1185,7 +1185,7 @@ func start() {
 
 When you're comparing one value against many specific possibilities, `match` can be cleaner than a long `if-else if` chain:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 var day = 3;
@@ -1225,7 +1225,7 @@ Use `if-else if` when:
 - You're checking multiple different variables
 - Your conditions involve complex boolean expressions
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 // GOOD use of match: checking one value against specific options
@@ -1254,7 +1254,7 @@ if score >= 90 {
 
 You can match multiple values with `|`:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 var day = 6;
@@ -1271,7 +1271,7 @@ This says: "If day is 1 OR 2 OR 3 OR 4 OR 5, it's a weekday."
 
 Match shines in menu-driven programs:
 
-```rust
+```zia
 module MenuDemo;
 bind Zanna.Terminal;
 
@@ -1306,7 +1306,7 @@ func start() {
     Say("5. Quit");
     Print("Choose an option: ");
 
-    var choice = Zanna.Core.Convert.ToInt64(InputLine());
+    var choice = Zanna.Core.Convert.ToInt64(TryReadLine().UnwrapOrStr(""));
 
     match choice {
         1 => newGame(),
@@ -1325,7 +1325,7 @@ Notice that when you need multiple statements for a case, you use `{ }` braces.
 
 Match can be used as an expression that returns a value:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 var day = 3;
@@ -1351,7 +1351,7 @@ This is more concise than setting a variable in each branch.
 ## The Two Languages
 
 **Zia**
-```rust
+```zia
 bind Zanna.Terminal;
 
 var score = 85;
@@ -1406,7 +1406,7 @@ Both express the same logic. The keywords differ, but the structure — conditio
 
 In Zia, conditions must be actual booleans. This is different from some languages where `0` counts as false and other numbers count as true.
 
-```rust
+```zia
 var count = 5;
 
 if count {           // Error in Zia: count is a number, not a boolean
@@ -1426,7 +1426,7 @@ This strictness helps prevent bugs. It forces you to be explicit about what you 
 
 Consider this ambiguity in languages with truthiness:
 
-```rust
+```zia
 var name = "";        // Empty string
 
 if name { ... }       // Does this run? Is "" truthy or falsy?
@@ -1434,7 +1434,7 @@ if name { ... }       // Does this run? Is "" truthy or falsy?
 
 Different languages disagree on whether empty strings are truthy or falsy. Zia avoids this confusion by requiring:
 
-```rust
+```zia
 if name != "" { ... }       // Explicit: "if name is not empty"
 if Zanna.String.get_Length(name) > 0 { ... }  // Also explicit
 ```
@@ -1452,7 +1452,7 @@ Your code inside an `if` block never executes, even when you think it should.
 **Diagnosis steps:**
 
 1. **Print the actual values** before the condition:
-```rust
+```zia
 bind Zanna.Terminal;
 
 var score = 85;
@@ -1469,7 +1469,7 @@ if score >= 90 {
 3. **Check your comparison operator**. Did you use `>` when you meant `>=`?
 
 4. **Check for type mismatches**. Are you comparing a string to a number?
-```rust
+```zia
 var input = "42";    // This is a STRING
 if input == 42 {     // Comparing string to number - might not work as expected
     ...
@@ -1483,7 +1483,7 @@ The code takes the `else` path when it should take the `if` path (or vice versa)
 **Diagnosis steps:**
 
 1. **Print the condition result**:
-```rust
+```zia
 bind Zanna.Terminal;
 
 var age = 17;
@@ -1492,7 +1492,7 @@ Say("DEBUG: age >= 18 evaluates to: " + result);
 ```
 
 2. **Simplify complex conditions**. Break them into parts:
-```rust
+```zia
 bind Zanna.Terminal;
 
 // Instead of:
@@ -1512,7 +1512,7 @@ Say("all together: " + (ageOK && hasIDOK && notBanned));
 ```
 
 3. **Check operator precedence**. Use parentheses to be explicit:
-```rust
+```zia
 // What does this mean?
 if a || b && c
 
@@ -1527,7 +1527,7 @@ You expected only one action, but multiple things happened.
 
 **Diagnosis:** You probably used multiple `if` statements instead of `if-else if`:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 // BUG: Both messages might print!
@@ -1551,7 +1551,7 @@ if score >= 90 {
 
 Your conditions are in the wrong order, and an earlier condition catches cases meant for later ones.
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 // BUG: score = 95 prints "You passed" instead of "Excellent"
@@ -1576,7 +1576,7 @@ if score >= 90 {
 
 When in doubt, print everything:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 var age = 17;
@@ -1604,7 +1604,7 @@ This reveals exactly what values you're working with and how the condition evalu
 ### Common Logic Errors
 
 **Off-by-one errors:**
-```rust
+```zia
 bind Zanna.Terminal;
 
 // User enters 18, expecting to pass, but fails
@@ -1615,7 +1615,7 @@ if age > 18 {    // Should be >= 18
 ```
 
 **Inverted logic:**
-```rust
+```zia
 bind Zanna.Terminal;
 
 // Meant to check if NOT empty, but checked if empty
@@ -1626,7 +1626,7 @@ if name == "" {
 ```
 
 **Wrong boolean operator:**
-```rust
+```zia
 // Used OR when AND was needed
 if username == "admin" || password == "secret" {
     // Bug! Someone can log in with just the right username
@@ -1643,7 +1643,7 @@ if username == "admin" && password == "secret" {
 ## Common Mistakes
 
 **Forgetting braces:**
-```rust
+```zia
 bind Zanna.Terminal;
 
 if score > 100
@@ -1652,7 +1652,7 @@ if score > 100
 Zia requires `{ }` around conditional blocks.
 
 **Using = instead of ==:**
-```rust
+```zia
 if score = 100 {   // Wrong: this assigns 100 to score
     ...
 }
@@ -1662,7 +1662,7 @@ if score == 100 {  // Right: this compares score to 100
 ```
 
 **Checking impossible conditions:**
-```rust
+```zia
 var score = 95;
 var grade = "";
 if score >= 90 {
@@ -1675,7 +1675,7 @@ if score >= 90 {
 ```
 
 **Overlapping conditions with separate ifs:**
-```rust
+```zia
 bind Zanna.Terminal;
 
 // Both could be true for score = 85
@@ -1689,7 +1689,7 @@ if score >= 70 {
 ```
 
 If you want only one to run, use `else if`:
-```rust
+```zia
 bind Zanna.Terminal;
 
 var score = 85;
@@ -1701,7 +1701,7 @@ if score >= 80 {
 ```
 
 **Confusing && and ||:**
-```rust
+```zia
 bind Zanna.Terminal;
 
 // Wrong: This is never true (nothing is both < 0 AND > 100)
@@ -1722,7 +1722,7 @@ if score < 0 || score > 100 {
 
 Here's a number guessing game that uses everything we've learned:
 
-```rust
+```zia
 module GuessGame;
 bind Zanna.Terminal;
 
@@ -1736,7 +1736,7 @@ func start() {
     Say("");
 
     Print("Your guess: ");
-    var guess = Zanna.Core.Convert.ToInt64(InputLine());
+    var guess = Zanna.Core.Convert.ToInt64(TryReadLine().UnwrapOrStr(""));
     guessesRemaining = guessesRemaining - 1;
 
     // Validate input

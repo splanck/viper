@@ -185,7 +185,7 @@ Typed asset decoders that need a file path spill bytes through an exclusive priv
 
 ## Example
 
-```rust
+```zia
 bind Zanna.IO;
 bind Zanna.Graphics;
 

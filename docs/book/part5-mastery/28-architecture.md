@@ -137,7 +137,7 @@ Each piece of your system should do one thing. When you describe a component, yo
 
 Consider this problematic code:
 
-```rust
+```zia
 // Bad: Everything mixed together
 class UserManager {
     func registerUser(email: String, password: String) {
@@ -185,7 +185,7 @@ This function does six different things: validates, hashes passwords, accesses t
 
 Now consider the separated version:
 
-```rust
+```zia
 // Good: Separate concerns
 class EmailValidator {
     func validate(email: String) -> ValidationResult {
@@ -298,7 +298,7 @@ Ask yourself: "What could change in the future that would require modifying this
 
 If you can list multiple unrelated reasons, the component has too many responsibilities.
 
-```rust
+```zia
 // Bad: Multiple reasons to change
 class Report {
     func gatherData() { ... }      // Changes if data sources change
@@ -312,7 +312,7 @@ class Report {
 
 This class changes if data sources change, business rules change, HTML design changes, PDF design changes, email system changes, or file storage changes. Six unrelated reasons.
 
-```rust
+```zia
 // Good: Single responsibility each
 class ReportDataGatherer {
     func gather(sources: List[DataSource]) -> RawData { ... }
@@ -347,7 +347,7 @@ High-level components should not depend on low-level components. Both should dep
 
 This principle sounds abstract. Let us make it concrete.
 
-```rust
+```zia
 // Bad: High-level depends on low-level
 class OrderProcessor {
     hide database: MySQLDatabase;  // Concrete dependency
@@ -370,7 +370,7 @@ class OrderProcessor {
 
 The `OrderProcessor` is welded to MySQL, Stripe, and SendGrid. Testing requires those services. Switching databases requires rewriting `OrderProcessor`. The high-level policy (how to process orders) is entangled with low-level details (which database to use).
 
-```rust
+```zia
 // Good: Depend on abstractions
 interface IOrderRepository {
     func save(order: Order);
@@ -432,7 +432,7 @@ The dependency arrow has been inverted. Instead of `OrderProcessor` depending on
 
 Clients should not be forced to depend on methods they do not use. Prefer small, focused interfaces over large, general ones.
 
-```rust
+```zia
 // Bad: Bloated interface
 interface IEmployee {
     func getName() -> String;
@@ -757,7 +757,7 @@ The key insight: inner circles know nothing about outer circles. Your classes do
 
 The repository pattern abstracts data access behind a collection-like interface:
 
-```rust
+```zia
 interface IProductRepository {
     func findById(id: String) -> Product?;
     func findByCategory(category: String) -> List[Product];
@@ -769,7 +769,7 @@ interface IProductRepository {
 
 The repository looks like an in-memory collection. Code using it does not know or care whether data comes from a database, file, API, or memory.
 
-```rust
+```zia
 // Database implementation
 class SqlProductRepository implements IProductRepository {
     hide db: Database;
@@ -865,7 +865,7 @@ With the repository pattern, you can:
 
 Service layer provides an API for business operations, coordinating multiple repositories and domain objects:
 
-```rust
+```zia
 class OrderService {
     hide orderRepo: IOrderRepository;
     hide productRepo: IProductRepository;
@@ -964,7 +964,7 @@ Architecture involves tradeoffs. Every choice has costs and benefits. Learning t
 
 YAGNI warns against building flexibility you do not currently need. Future requirements are unpredictable. The flexibility you build today may be useless or wrong tomorrow.
 
-```rust
+```zia
 // Over-engineered: Supports five database types nobody uses
 interface IDatabaseProvider {
     func getConnection() -> Connection;
@@ -1011,7 +1011,7 @@ Abstraction has costs: more code, more indirection, harder to trace execution. W
 - The abstraction would be more complex than the concrete code
 - You are guessing about future requirements
 
-```rust
+```zia
 // Unnecessary abstraction
 interface ICalculator {
     func add(a: Integer, b: Integer) -> Integer;
@@ -1031,7 +1031,7 @@ func add(a: Integer, b: Integer) -> Integer {
 
 The interface adds nothing. `add` is not going to have multiple implementations. Testing does not need a mock. The abstraction is pure overhead.
 
-```rust
+```zia
 // Worthwhile abstraction
 interface IPaymentProcessor {
     func charge(amount: Number, customerId: String) -> PaymentResult;
@@ -1051,7 +1051,7 @@ Here the abstraction pays for itself. You need different implementations for pro
 
 Before extracting a pattern, wait until you see it three times. Two occurrences might be coincidental. Three suggest a real pattern worth abstracting.
 
-```rust
+```zia
 // First occurrence: Just write it
 func processOrder(order: Order) {
     log("Processing order " + order.id);
@@ -1107,7 +1107,7 @@ Components must communicate. How they communicate affects coupling, testability,
 
 The simplest approach: one component holds a reference to another and calls its methods.
 
-```rust
+```zia
 class OrderProcessor {
     hide emailService: EmailService;
 
@@ -1129,7 +1129,7 @@ Cons: Tight coupling. OrderProcessor knows about EmailService.
 
 Instead of calling services directly, accept functions to call:
 
-```rust
+```zia
 class OrderProcessor {
     hide onOrderProcessed: func(Order);
 
@@ -1157,7 +1157,7 @@ Cons: Control flow is less obvious. Callbacks can nest deeply.
 
 Components publish events without knowing who listens. Other components subscribe to events they care about.
 
-```rust
+```zia
 class EventBus {
     hide subscribers: Map[String, [func(Event)]];
 
@@ -1257,7 +1257,7 @@ Cons: Control flow is hard to trace. Events can create implicit dependencies. De
 
 For large systems, manually wiring dependencies becomes tedious. Dependency injection containers automate it:
 
-```rust
+```zia
 class Container {
     hide registrations: Map[String, func() -> any];
     hide singletons: Map[String, any];
@@ -1339,7 +1339,7 @@ Let us walk through refactoring messy code into clean architecture. This is how 
 
 Here is a realistic starting point, a command-line application for managing a library:
 
-```rust
+```zia
 func main() {
     var db = Database.connect("library.db");
 
@@ -1439,7 +1439,7 @@ This works but has problems:
 
 First, create domain objects to represent our concepts:
 
-```rust
+```zia
 // domain/Book.zia
 struct Book {
     isbn: String;
@@ -1463,7 +1463,7 @@ Using `struct` instead of `class` because these are simple data holders without 
 
 Move database code to a repository:
 
-```rust
+```zia
 // infrastructure/BookRepository.zia
 class BookRepository {
     hide db: Database;
@@ -1555,7 +1555,7 @@ class LoanRepository {
 
 Create a service for business operations:
 
-```rust
+```zia
 // application/LibraryService.zia
 class LibraryService {
     hide bookRepo: BookRepository;
@@ -1666,7 +1666,7 @@ class LibraryService {
 
 Now the main function is just UI:
 
-```rust
+```zia
 // presentation/cli/Main.zia
 func main() {
     // Setup
@@ -1765,7 +1765,7 @@ func handleListBooks(library: LibraryService) {
 
 Finally, extract interfaces so we can test without a database:
 
-```rust
+```zia
 // domain/IBookRepository.zia
 interface IBookRepository {
     func findByIsbn(isbn: String) -> Book?;
@@ -1937,7 +1937,7 @@ Learn from others' mistakes.
 
 Building elaborate architectures before understanding the problem:
 
-```rust
+```zia
 // Too much too soon
 interface IUserDataAccessLayer { }
 interface IUserBusinessLogicLayer { }
@@ -1972,7 +1972,7 @@ If you only need OAuth, just use OAuth. Add others when required.
 
 The opposite extreme, ignoring architecture entirely:
 
-```rust
+```zia
 // Everything in one 5000-line file
 func main() {
     // Database setup
@@ -1990,7 +1990,7 @@ Some structure is always better than none. Even basic separation helps.
 
 Using patterns that do not fit your problem:
 
-```rust
+```zia
 // Using event sourcing for a simple CRUD app
 class UserEventStore {
     events: List[UserEvent];
@@ -2026,7 +2026,7 @@ Choose architecture based on your constraints, not others' solutions.
 
 Architectural decisions must consider who will implement and maintain the system:
 
-```rust
+```zia
 // Beautiful functional architecture
 func processOrder(order: Order) -> IO<Either<OrderError, OrderResult>> {
     // Team has never seen functional programming
@@ -2046,7 +2046,7 @@ Good architecture is not static. It evolves with the system.
 
 Every system should start as simple as possible:
 
-```rust
+```zia
 // Initial version: Just make it work
 class App {
     func handleRequest(request: Request) -> Response {
@@ -2067,7 +2067,7 @@ No layers, no patterns, no abstractions. Just working code.
 
 When code becomes hard to change, add structure:
 
-```rust
+```zia
 // Growing: Extract services
 class UserService {
     func create(data: UserData) -> User { ... }
@@ -2130,7 +2130,7 @@ But rewriting is expensive and risky. Usually, incremental improvement is better
 Architecture concepts are language-independent. Here is how they appear in Zanna's three languages.
 
 **Zia**
-```rust
+```zia
 module Application;
 
 interface IRepository[T] {
@@ -2211,7 +2211,7 @@ Architecture is not about following rules. It is about making thoughtful decisio
 
 **Exercise 28.1 (Warm-up)**: Take this monolithic function and identify separate concerns:
 
-```rust
+```zia
 func processPayment(userId: String, amount: Number) {
     // Load user from database
     var db = Database.connect("localhost:5432");
@@ -2268,7 +2268,7 @@ Write tests for your implementation.
 
 **Exercise 28.8 (Refactoring Journey)**: Take this starter code and refactor it step by step:
 
-```rust
+```zia
 bind Convert = Zanna.Core.Convert;
 
 func main() {

@@ -411,6 +411,13 @@ Constructor: `Zanna.Graphics3D.Material3D.New`
 | <a id="zanna-graphics3d-material3d-shadowmode"></a>`ShadowMode` | `i64` | read/write |
 | <a id="zanna-graphics3d-material3d-doublesided"></a>`DoubleSided` | `i1` | read/write |
 | <a id="zanna-graphics3d-material3d-color"></a>`Color` | `obj<Zanna.Math.Vec3>` | read-only |
+| <a id="zanna-graphics3d-material3d-texturepixels"></a>`TexturePixels` | `obj<Zanna.Graphics.Pixels>` | read-only |
+| <a id="zanna-graphics3d-material3d-normalmappixels"></a>`NormalMapPixels` | `obj<Zanna.Graphics.Pixels>` | read-only |
+| <a id="zanna-graphics3d-material3d-specularmappixels"></a>`SpecularMapPixels` | `obj<Zanna.Graphics.Pixels>` | read-only |
+| <a id="zanna-graphics3d-material3d-emissivemappixels"></a>`EmissiveMapPixels` | `obj<Zanna.Graphics.Pixels>` | read-only |
+| <a id="zanna-graphics3d-material3d-metallicroughnessmappixels"></a>`MetallicRoughnessMapPixels` | `obj<Zanna.Graphics.Pixels>` | read-only |
+| <a id="zanna-graphics3d-material3d-ambientocclusionmappixels"></a>`AmbientOcclusionMapPixels` | `obj<Zanna.Graphics.Pixels>` | read-only |
+| <a id="zanna-graphics3d-material3d-lightmappixels"></a>`LightmapPixels` | `obj<Zanna.Graphics.Pixels>` | read-only |
 | <a id="zanna-graphics3d-material3d-unlit"></a>`Unlit` | `i1` | read-only |
 | <a id="zanna-graphics3d-material3d-shadingmodel"></a>`ShadingModel` | `i64` | read-only |
 | <a id="zanna-graphics3d-material3d-hastexture"></a>`HasTexture` | `i1` | read-only |
@@ -2602,6 +2609,13 @@ Constructor: `Zanna.Graphics3D.TextureAtlas3D.New`
 | `Zanna.Graphics3D.Material3D.MakeInstance` | `obj(obj)` | `rt_material3d_make_instance` |
 | `Zanna.Graphics3D.Material3D.SetColor` | `void(obj,f64,f64,f64)` | `rt_material3d_set_color` |
 | <a id="zanna-graphics3d-material3d-get-color"></a>`Zanna.Graphics3D.Material3D.get_Color` | `obj<Zanna.Math.Vec3>(obj)` | `rt_material3d_get_color` |
+| <a id="zanna-graphics3d-material3d-get-texturepixels"></a>`Zanna.Graphics3D.Material3D.get_TexturePixels` | `obj<Zanna.Graphics.Pixels>(obj)` | `rt_material3d_get_texture_pixels` |
+| <a id="zanna-graphics3d-material3d-get-normalmappixels"></a>`Zanna.Graphics3D.Material3D.get_NormalMapPixels` | `obj<Zanna.Graphics.Pixels>(obj)` | `rt_material3d_get_normal_map_pixels` |
+| <a id="zanna-graphics3d-material3d-get-specularmappixels"></a>`Zanna.Graphics3D.Material3D.get_SpecularMapPixels` | `obj<Zanna.Graphics.Pixels>(obj)` | `rt_material3d_get_specular_map_pixels` |
+| <a id="zanna-graphics3d-material3d-get-emissivemappixels"></a>`Zanna.Graphics3D.Material3D.get_EmissiveMapPixels` | `obj<Zanna.Graphics.Pixels>(obj)` | `rt_material3d_get_emissive_map_pixels` |
+| <a id="zanna-graphics3d-material3d-get-metallicroughnessmappixels"></a>`Zanna.Graphics3D.Material3D.get_MetallicRoughnessMapPixels` | `obj<Zanna.Graphics.Pixels>(obj)` | `rt_material3d_get_metallic_roughness_map_pixels` |
+| <a id="zanna-graphics3d-material3d-get-ambientocclusionmappixels"></a>`Zanna.Graphics3D.Material3D.get_AmbientOcclusionMapPixels` | `obj<Zanna.Graphics.Pixels>(obj)` | `rt_material3d_get_ao_map_pixels` |
+| <a id="zanna-graphics3d-material3d-get-lightmappixels"></a>`Zanna.Graphics3D.Material3D.get_LightmapPixels` | `obj<Zanna.Graphics.Pixels>(obj)` | `rt_material3d_get_lightmap_pixels` |
 | `Zanna.Graphics3D.Material3D.SetTexture` | `void(obj,obj)` | `rt_material3d_set_texture` |
 | `Zanna.Graphics3D.Material3D.SetAlbedoRenderTarget` | `void(obj,obj)` | `rt_material3d_set_albedo_render_target` |
 | `Zanna.Graphics3D.Material3D.ClearAlbedoRenderTarget` | `void(obj)` | `rt_material3d_clear_albedo_render_target` |

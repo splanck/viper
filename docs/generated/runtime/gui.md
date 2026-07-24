@@ -1619,6 +1619,7 @@ Constructor: `Zanna.GUI.ListBox.New`
 | <a id="zanna-gui-listbox-scrolltobottom"></a>`ScrollToBottom` | `void()` | `Zanna.GUI.ListBox.ScrollToBottom` |
 | <a id="zanna-gui-listbox-setmultiselect"></a>`SetMultiSelect` | `void(i1)` | `Zanna.GUI.ListBox.SetMultiSelect` |
 | <a id="zanna-gui-listbox-getselectedtext"></a>`GetSelectedText` | `str()` | `Zanna.GUI.ListBox.GetSelectedText` |
+| <a id="zanna-gui-listbox-getselecteddata"></a>`GetSelectedData` | `seq<str>()` | `Zanna.GUI.ListBox.GetSelectedData` |
 | <a id="zanna-gui-listbox-wasselectionchanged"></a>`WasSelectionChanged` | `i1()` | `Zanna.GUI.ListBox.WasSelectionChanged` |
 | <a id="zanna-gui-listbox-waschanged"></a>`WasChanged` | `i1()` | `Zanna.GUI.ListBox.WasChanged` |
 | <a id="zanna-gui-listbox-wasactivated"></a>`WasActivated` | `i1()` | `Zanna.GUI.ListBox.WasActivated` |
@@ -2749,6 +2750,7 @@ Constructor: `Zanna.GUI.VideoWidget.New`
 | `Zanna.GUI.ListBox.ScrollToBottom` | `void(obj)` | `rt_listbox_scroll_to_bottom` |
 | `Zanna.GUI.ListBox.SetMultiSelect` | `void(obj,i1)` | `rt_listbox_set_multi_select` |
 | `Zanna.GUI.ListBox.GetSelectedText` | `str(obj)` | `rt_listbox_get_selected_text` |
+| `Zanna.GUI.ListBox.GetSelectedData` | `seq<str>(obj)` | `rt_listbox_get_selected_data` |
 | `Zanna.GUI.ListBox.WasSelectionChanged` | `i1(obj)` | `rt_listbox_was_selection_changed` |
 | `Zanna.GUI.ListBox.WasChanged` | `i1(obj)` | `rt_listbox_was_changed` |
 | `Zanna.GUI.ListBox.WasActivated` | `i1(obj)` | `rt_listbox_was_activated` |

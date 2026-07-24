@@ -35,7 +35,7 @@ This page covers helpers that are usually attached to game objects or cameras ra
 
 ## Animation, Collision, And Camera
 
-```rust
+```zia
 var clip = AnimationClip2D.New(0, 4, 80, 1)
 var animated = AnimatedSprite2D.New(sprite)
 animated.SetClip(clip)

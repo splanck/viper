@@ -45,7 +45,7 @@ Full parsing and serialization for all common structured data formats:
 
 Example — parse JSON and query with JSONPath:
 
-```rust
+```zia
 bind Zanna.Text;
 
 func start() {
@@ -86,7 +86,7 @@ New specialized collections join the existing `List`, `Map`, `Queue`, `Stack`, `
 
 Functional sequence operations are now available on `Seq`:
 
-```rust
+```zia
 var evens = Seq.Of(1, 2, 3, 4, 5, 6)
     .Filter(x => x % 2 == 0)
     .Map(x => x * x)
@@ -130,7 +130,7 @@ A complete toolkit for 2D game logic:
 
 Example — sprite animation with easing:
 
-```rust
+```zia
 var tween = Tween.New(0.0, 100.0, 0.5, Easing.ElasticOut);
 var timer = Timer.New(2.0);  // fires every 2 seconds
 
@@ -147,7 +147,7 @@ Device-agnostic input abstraction: bind logical actions (Jump, Fire, MoveLeft) t
 combination of keyboard keys, mouse buttons, or gamepad buttons. Bindings are hot-reloadable
 at runtime.
 
-```rust
+```zia
 var actions = ActionMap.New();
 actions.Bind("Jump", Key.Space, PadButton.A);
 actions.Bind("Fire", Mouse.Left, PadButton.RightTrigger);
@@ -168,7 +168,7 @@ high-frequency object creation (particles, projectiles, UI elements).
 
 Full parametric polymorphism with type inference and interface constraints:
 
-```rust
+```zia
 func max<T: Comparable>(a: T, b: T) -> T {
     return a > b ? a : b;
 }
@@ -194,7 +194,7 @@ each instantiation and emits stable mangled names (`List$I64`, `Pair$String$Inte
 
 First-class function values using the `&` operator:
 
-```rust
+```zia
 func double(x: Integer) -> Integer { return x * 2; }
 
 func apply(f: &(Integer) -> Integer, v: Integer) -> Integer {
@@ -211,7 +211,7 @@ func start() {
 `and` / `or` operators now short-circuit. The right operand is only evaluated when the left
 does not determine the result — essential for safe nil guards:
 
-```rust
+```zia
 if user != null and user.IsActive() { ... }      // IsActive() not called if user is null
 if cache.Has(key) or loadFromDisk(key) { ... }   // loadFromDisk() skipped on cache hit
 ```
@@ -221,7 +221,7 @@ if cache.Has(key) or loadFromDisk(key) { ... }   // loadFromDisk() skipped on ca
 Flow-sensitive type narrowing for optional values. After a null check, the type of the
 variable is automatically narrowed within the truthy branch:
 
-```rust
+```zia
 func greet(name: String?) {
     if name != null {
         Terminal.Say("Hello, " + name);  // name is String here, not String?
@@ -234,7 +234,7 @@ func greet(name: String?) {
 The module import keyword is now `bind` (renamed from `import`). All demos, tests, and
 documentation have been updated:
 
-```rust
+```zia
 bind Zanna.Terminal;
 bind Zanna.Collections;
 bind Zanna.Math.BigInt;
@@ -507,7 +507,7 @@ psql -h localhost -p 5432 -U admin zanna
 
 1. **`bind` replaces `import` in Zia**
 
-   ```rust
+   ```zia
    // Old
    import Zanna.Terminal;
    // New
@@ -516,7 +516,7 @@ psql -h localhost -p 5432 -U admin zanna
 
 2. **`Zanna.Strings` renamed to `Zanna.String`**
 
-   ```rust
+   ```zia
    // Old
    bind Zanna.Strings;
    // New
@@ -654,7 +654,7 @@ The ZannaLang frontend has been renamed to **Zia**. This includes:
 
 Example:
 
-```rust
+```zia
 module Hello;
 
 func start() {
@@ -695,7 +695,7 @@ A new cross-platform GUI widget library (~26,000 lines):
 
 Example:
 
-```rust
+```zia
 func main() {
     var app = Zanna.GUI.App.New("My App", 800, 600);
     Zanna.GUI.Theme.SetDark();

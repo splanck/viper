@@ -1,0 +1,599 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/ui/run_debug_view.zia
+// Purpose: Present state-aware debugger controls and breakpoint management.
+// Key invariants:
+//   - The view consumes primitive snapshots and emits action intent only.
+//   - Breakpoint navigation uses durable source records, never visible row text.
+//   - Concrete breakpoint realization is capped and rebuilt only on model/filter changes.
+//   - Wrapped controls remain reachable through a scrollable narrow sidebar.
+// Ownership/Lifetime:
+//   - Main owns one view for the lifetime of AppShell.
+//   - The view owns copied breakpoint records and borrows its Workbench host.
+// Links: zannastudio/src/ui/activity_bar.zia,
+//        zannastudio/src/ui/run_debug_support.zia,
+//        zannastudio/src/commands/debug_commands.zia
+//
+//===----------------------------------------------------------------------===//
+
+module run_debug_view;
+bind "run_debug_support";
+bind "../services/theme_colors";
+bind Zanna.GUI as GUI;
+bind Str = Zanna.String;
+
+// ============================================================================
+// MODULE: run_debug_view
+// PURPOSE: Own the state-aware Run and Debug activity-sidebar widgets.
+//
+// WHERE-THIS-FITS: Main owns this view. Debug commands publish primitive
+//          snapshots and consume action intent; no process state lives here.
+//
+// TEACHING-NOTE: Keep concrete rows bounded and identity-bearing. A visible
+//          index is never a debugger frame or breakpoint-store index.
+// ============================================================================
+/// @brief State-aware Run and Debug activity-sidebar controller.
+/// @details Command code publishes primitive session/breakpoint snapshots and
+///          consumes action constants. This module never launches a process,
+///          mutates a breakpoint store, opens a document, or saves settings.
+class RunDebugView {
+    expose GUI.VBox host;
+    expose GUI.ScrollView scrollView;
+    expose GUI.VBox content;
+    expose GUI.Label titleLabel;
+    expose GUI.Label stateLabel;
+    expose GUI.Label stateDetailLabel;
+    expose GUI.Flex sessionActionRow;
+    expose GUI.Button primaryButton;
+    expose GUI.Button restartButton;
+    expose GUI.Button stopButton;
+    expose GUI.Flex stepActionRow;
+    expose GUI.Button stepOverButton;
+    expose GUI.Button stepInButton;
+    expose GUI.Button stepOutButton;
+    expose GUI.Flex inspectActionRow;
+    expose GUI.Button variablesButton;
+    expose GUI.Button callStackButton;
+    expose GUI.Button consoleButton;
+    expose GUI.Flex breakpointHeaderRow;
+    expose GUI.Label breakpointHeaderLabel;
+    expose GUI.Label breakpointCountLabel;
+    expose GUI.Flex breakpointFilterRow;
+    expose GUI.TextInput breakpointFilterInput;
+    expose GUI.Button breakpointFilterClearButton;
+    expose GUI.ListBox breakpointList;
+    expose GUI.Label breakpointEmptyLabel;
+    expose GUI.Label breakpointDetailLabel;
+    expose GUI.Flex breakpointActionRow;
+    expose GUI.Button openBreakpointButton;
+    expose GUI.Button removeBreakpointButton;
+    expose GUI.Button conditionButton;
+    expose GUI.Button logpointButton;
+
+    expose Boolean ready;
+    expose Boolean compactControls;
+    expose Boolean targetAvailable;
+    expose Boolean buildBusy;
+    expose Boolean sessionActive;
+    expose Boolean sessionStopped;
+    expose Boolean sessionStopping;
+    expose String sessionState;
+    expose String primaryActionLabel;
+    expose String breakpointFilterText;
+    expose Integer breakpointModelVersion;
+    expose Integer visibleBreakpointCount;
+    expose Integer realizedBreakpointCount;
+    expose List[run_debug_support.BreakpointViewRecord] breakpointRecords;
+    hide Number contentExtentHeight;
+
+    expose func init() {
+        host = null;
+        scrollView = null;
+        content = null;
+        ready = false;
+        compactControls = false;
+        targetAvailable = false;
+        buildBusy = false;
+        sessionActive = false;
+        sessionStopped = false;
+        sessionStopping = false;
+        sessionState = "Idle";
+        primaryActionLabel = "Start";
+        breakpointFilterText = "";
+        breakpointModelVersion = -1;
+        visibleBreakpointCount = 0;
+        realizedBreakpointCount = 0;
+        breakpointRecords = [];
+        contentExtentHeight = 0.0;
+    }
+    /// @brief Build the complete view into the stable activity-sidebar host.
+    expose func Setup(hostArg: GUI.VBox) {
+        if hostArg == null { return; }
+        host = hostArg;
+        host.SetPadding(0.0);
+        host.SetSpacing(0.0);
+
+        scrollView = GUI.ScrollView.New(host);
+        scrollView.SetFlex(1.0);
+        scrollView.SetAccessibleName("Run and Debug sidebar");
+
+        content = GUI.VBox.New();
+        content.SetPadding(8.0);
+        content.SetSpacing(6.0);
+        scrollView.AddChild(content);
+
+        titleLabel = GUI.Label.New(content, "RUN AND DEBUG");
+        titleLabel.SetAccessibleName("Run and Debug");
+
+        stateLabel = GUI.Label.New(content, "Idle");
+        stateLabel.SetAccessibleName("Debugger state");
+        stateDetailLabel = GUI.Label.New(
+            content, "Open or save a source file to start debugging");
+        stateDetailLabel.SetWordWrap(true);
+        stateDetailLabel.SetAccessibleName("Debugger state detail");
+
+        sessionActionRow = NewActionRow(content);
+        primaryButton = GUI.Button.New(sessionActionRow, "Start");
+        primaryButton.SetStyle(1);
+        primaryButton.SetAccessibleName("Start debugging");
+        restartButton = GUI.Button.New(sessionActionRow, "Restart");
+        restartButton.SetAccessibleName("Restart debugging");
+        stopButton = GUI.Button.New(sessionActionRow, "Stop");
+        stopButton.SetAccessibleName("Stop debugging");
+
+        stepActionRow = NewActionRow(content);
+        stepOverButton = GUI.Button.New(stepActionRow, "Step Over");
+        stepOverButton.SetAccessibleName("Step over");
+        stepOverButton.SetTooltip("Step over the current source line (F10)");
+        stepInButton = GUI.Button.New(stepActionRow, "Step Into");
+        stepInButton.SetAccessibleName("Step into");
+        stepInButton.SetTooltip("Step into the next debuggable call");
+        stepOutButton = GUI.Button.New(stepActionRow, "Step Out");
+        stepOutButton.SetAccessibleName("Step out");
+        stepOutButton.SetTooltip("Run until the current function returns");
+
+        inspectActionRow = NewActionRow(content);
+        variablesButton = GUI.Button.New(inspectActionRow, "Variables");
+        variablesButton.SetAccessibleName("Open debugger variables");
+        variablesButton.SetTooltip("Open watches and local variables");
+        callStackButton = GUI.Button.New(inspectActionRow, "Call Stack");
+        callStackButton.SetAccessibleName("Open debugger call stack");
+        callStackButton.SetTooltip("Open the current debugger call stack");
+        consoleButton = GUI.Button.New(inspectActionRow, "Console");
+        consoleButton.SetAccessibleName("Open debug console");
+        consoleButton.SetTooltip("Open program output and debugger status");
+
+        breakpointHeaderRow = NewActionRow(content);
+        breakpointHeaderLabel =
+            GUI.Label.New(breakpointHeaderRow, "BREAKPOINTS");
+        breakpointHeaderLabel.SetFlex(1.0);
+        breakpointCountLabel =
+            GUI.Label.New(breakpointHeaderRow, "0 breakpoints");
+        breakpointCountLabel.SetAccessibleName("Breakpoint count");
+
+        breakpointFilterRow = NewActionRow(content);
+        breakpointFilterInput = GUI.TextInput.New(breakpointFilterRow);
+        breakpointFilterInput.SetFlex(1.0);
+        breakpointFilterInput.SetMinSize(80.0, 0.0);
+        breakpointFilterInput.SetPreferredSize(180.0, 0.0);
+        breakpointFilterInput.SetPlaceholder("Filter breakpoints");
+        breakpointFilterInput.SetAccessibleName("Filter breakpoints");
+        breakpointFilterInput.SetTooltip(
+            "Filter by file, path, line, condition, or log message");
+        breakpointFilterClearButton =
+            GUI.Button.New(breakpointFilterRow, "×");
+        breakpointFilterClearButton.SetPreferredSize(34.0, 0.0);
+        breakpointFilterClearButton.SetAccessibleName(
+            "Clear breakpoint filter");
+        breakpointFilterClearButton.SetTooltip("Clear the breakpoint filter");
+
+        breakpointEmptyLabel = GUI.Label.New(
+            content, "No breakpoints. Press F9 in an editor to add one.");
+        breakpointEmptyLabel.SetWordWrap(true);
+        breakpointEmptyLabel.SetAccessibleName("No breakpoints");
+
+        breakpointList = GUI.ListBox.New(content);
+        breakpointList.SetMinSize(0.0, 100.0);
+        breakpointList.SetPreferredSize(0.0, 180.0);
+        breakpointList.SetVisible(false);
+        breakpointList.SetAccessibleName("Source breakpoints");
+
+        breakpointDetailLabel =
+            GUI.Label.New(content, "Select a breakpoint");
+        breakpointDetailLabel.SetWordWrap(true);
+        breakpointDetailLabel.SetAccessibleName("Selected breakpoint detail");
+
+        breakpointActionRow = NewActionRow(content);
+        openBreakpointButton =
+            GUI.Button.New(breakpointActionRow, "Open");
+        openBreakpointButton.SetAccessibleName("Open selected breakpoint");
+        openBreakpointButton.SetTooltip(
+            "Open the selected breakpoint source location");
+        removeBreakpointButton =
+            GUI.Button.New(breakpointActionRow, "Remove");
+        removeBreakpointButton.SetAccessibleName(
+            "Remove selected breakpoint");
+        removeBreakpointButton.SetTooltip(
+            "Remove the selected breakpoint and sync the debugger");
+        conditionButton =
+            GUI.Button.New(breakpointActionRow, "Condition");
+        conditionButton.SetAccessibleName(
+            "Edit selected breakpoint condition");
+        conditionButton.SetTooltip(
+            "Stop only when an expression is true");
+        logpointButton =
+            GUI.Button.New(breakpointActionRow, "Logpoint");
+        logpointButton.SetAccessibleName(
+            "Edit selected breakpoint logpoint");
+        logpointButton.SetTooltip(
+            "Log a message at this line without stopping");
+
+        ready = true;
+        UpdateSession(false, false, "Idle",
+                      "Open or save a source file to start debugging",
+                      false, false, false);
+        RefreshBreakpointRows();
+    }
+
+    /// @brief Apply one primitive debugger-state snapshot to visible actions.
+    expose func UpdateSession(targetAvailableArg: Boolean,
+                              buildBusyArg: Boolean,
+                              state: String,
+                              detail: String,
+                              active: Boolean,
+                              stopped: Boolean,
+                              stopping: Boolean) {
+        targetAvailable = targetAvailableArg;
+        buildBusy = buildBusyArg;
+        sessionState = state;
+        sessionActive = active;
+        sessionStopped = stopped;
+        sessionStopping = stopping;
+        if stateLabel != null { stateLabel.SetText(state); }
+        if stateDetailLabel != null { stateDetailLabel.SetText(detail); }
+        UpdateSessionActions();
+    }
+
+    /// @brief Replace the durable breakpoint source with a new version.
+    expose func BeginBreakpoints(modelVersion: Integer) {
+        breakpointModelVersion = modelVersion;
+        breakpointRecords = [];
+    }
+
+    /// @brief Add one copied breakpoint to the pending durable source.
+    expose func AddBreakpoint(storeIndex: Integer,
+                              path: String,
+                              line: Integer,
+                              condition: String,
+                              logMessage: String) {
+        if path == "" or line <= 0 { return; }
+        breakpointRecords.add(run_debug_support.NewBreakpointRecord(
+            storeIndex, path, line, condition, logMessage));
+    }
+
+    /// @brief Publish all records and rebuild the filtered concrete rows once.
+    expose func EndBreakpoints() {
+        RefreshBreakpointRows();
+    }
+
+    /// @brief Poll view-owned controls and return one action intent.
+    expose func Pump() -> Integer {
+        if ready == false {
+            return run_debug_support.RUN_DEBUG_ACTION_NONE;
+        }
+        ApplyResponsiveControls();
+        contentExtentHeight = run_debug_support.RefreshScrollExtent(
+            content, breakpointActionRow, contentExtentHeight);
+
+        var currentFilter =
+            Str.ToLower(Str.Trim(breakpointFilterInput.get_Text()));
+        if currentFilter != breakpointFilterText {
+            breakpointFilterText = currentFilter;
+            RefreshBreakpointRows();
+        }
+        if breakpointFilterClearButton.WasClicked() {
+            breakpointFilterText = "";
+            breakpointFilterInput.SetText("");
+            RefreshBreakpointRows();
+            breakpointFilterInput.Focus();
+        }
+
+        var selectionChanged = breakpointList.WasSelectionChanged();
+        if selectionChanged { UpdateBreakpointSelectionState(); }
+
+        var action = SessionAction();
+        if action != run_debug_support.RUN_DEBUG_ACTION_NONE {
+            return action;
+        }
+        action = InspectAction();
+        if action != run_debug_support.RUN_DEBUG_ACTION_NONE {
+            return action;
+        }
+        action = BreakpointAction();
+        if action != run_debug_support.RUN_DEBUG_ACTION_NONE {
+            return action;
+        }
+        if selectionChanged and SelectedBreakpointRecord() != null {
+            return run_debug_support.RUN_DEBUG_ACTION_OPEN_BREAKPOINT;
+        }
+        return run_debug_support.RUN_DEBUG_ACTION_NONE;
+    }
+
+    /// @brief Return whether the view currently uses compact wrapped controls.
+    expose func IsCompactControls() -> Boolean {
+        return compactControls;
+    }
+
+    /// @brief Return the selected durable store index, or -1.
+    expose func SelectedBreakpointStoreIndex() -> Integer {
+        var record = SelectedBreakpointRecord();
+        if record == null { return -1; }
+        return record.storeIndex;
+    }
+
+    /// @brief Return the selected breakpoint source path, or empty.
+    expose func SelectedBreakpointPath() -> String {
+        var record = SelectedBreakpointRecord();
+        if record == null { return ""; }
+        return record.path;
+    }
+
+    /// @brief Return the selected one-based breakpoint source line, or zero.
+    expose func SelectedBreakpointLine() -> Integer {
+        var record = SelectedBreakpointRecord();
+        if record == null { return 0; }
+        return record.line;
+    }
+
+    /// @brief Construct one wrapped horizontal row in the view host.
+    hide func NewActionRow(parent: GUI.VBox) -> GUI.Flex {
+        var row = GUI.Flex.New();
+        row.SetDirection(GUI.FlexDirection.Row);
+        row.SetWrap(GUI.FlexWrap.Wrap);
+        row.SetAlign(GUI.Align.Center);
+        row.SetGap(4.0);
+        parent.AddChild(row);
+        return row;
+    }
+
+    /// @brief Apply truthful command enablement for the current session state.
+    hide func UpdateSessionActions() {
+        if primaryButton == null { return; }
+        var primaryEnabled = false;
+        primaryActionLabel = "Start";
+        if sessionState == "Paused" {
+            primaryActionLabel = "Continue";
+            primaryEnabled = sessionActive and sessionStopped
+                and sessionStopping == false;
+            primaryButton.SetTooltip("Continue the paused debugger (F7)");
+            primaryButton.SetAccessibleName("Continue debugging");
+        } else if sessionState == "Running" {
+            primaryActionLabel = "Pause";
+            primaryEnabled = sessionActive and sessionStopped == false
+                and sessionStopping == false;
+            primaryButton.SetTooltip("Pause the running debugger");
+            primaryButton.SetAccessibleName("Pause debugging");
+        } else if sessionState == "Pausing" {
+            primaryActionLabel = "Pausing...";
+            primaryButton.SetTooltip("Waiting for the debugger to pause");
+            primaryButton.SetAccessibleName("Debugger is pausing");
+        } else if sessionState == "Stopping" {
+            primaryActionLabel = "Stopping...";
+            primaryButton.SetTooltip("Waiting for the debugger to stop");
+            primaryButton.SetAccessibleName("Debugger is stopping");
+        } else if sessionState == "Restarting" {
+            primaryActionLabel = "Restarting...";
+            primaryButton.SetTooltip("Waiting for the debugger to restart");
+            primaryButton.SetAccessibleName("Debugger is restarting");
+        } else {
+            primaryEnabled = targetAvailable and buildBusy == false
+                and sessionActive == false;
+            primaryButton.SetTooltip(
+                "Start debugging the active saved source file (F6)");
+            primaryButton.SetAccessibleName("Start debugging");
+        }
+        primaryButton.SetText(primaryActionLabel);
+        primaryButton.SetEnabled(primaryEnabled);
+
+        var activeAction = sessionActive and sessionStopping == false;
+        restartButton.SetEnabled(activeAction);
+        stopButton.SetEnabled(activeAction);
+        restartButton.SetTooltip("Restart the active debugger");
+        stopButton.SetTooltip("Stop the active debugger");
+
+        var canStep = activeAction and sessionStopped;
+        stepOverButton.SetEnabled(canStep);
+        stepInButton.SetEnabled(canStep);
+        stepOutButton.SetEnabled(canStep);
+    }
+
+    /// @brief Convert one session-control edge into an action constant.
+    hide func SessionAction() -> Integer {
+        if primaryButton.WasClicked() {
+            if primaryActionLabel == "Continue" {
+                return run_debug_support.RUN_DEBUG_ACTION_CONTINUE;
+            }
+            if primaryActionLabel == "Pause" {
+                return run_debug_support.RUN_DEBUG_ACTION_PAUSE;
+            }
+            if primaryActionLabel == "Start" {
+                return run_debug_support.RUN_DEBUG_ACTION_START;
+            }
+        }
+        if restartButton.WasClicked() {
+            return run_debug_support.RUN_DEBUG_ACTION_RESTART;
+        }
+        if stopButton.WasClicked() {
+            return run_debug_support.RUN_DEBUG_ACTION_STOP;
+        }
+        if stepOverButton.WasClicked() {
+            return run_debug_support.RUN_DEBUG_ACTION_STEP_OVER;
+        }
+        if stepInButton.WasClicked() {
+            return run_debug_support.RUN_DEBUG_ACTION_STEP_IN;
+        }
+        if stepOutButton.WasClicked() {
+            return run_debug_support.RUN_DEBUG_ACTION_STEP_OUT;
+        }
+        return run_debug_support.RUN_DEBUG_ACTION_NONE;
+    }
+
+    /// @brief Convert an inspection-panel edge into an action constant.
+    hide func InspectAction() -> Integer {
+        if variablesButton.WasClicked() {
+            return run_debug_support.RUN_DEBUG_ACTION_OPEN_VARIABLES;
+        }
+        if callStackButton.WasClicked() {
+            return run_debug_support.RUN_DEBUG_ACTION_OPEN_CALL_STACK;
+        }
+        if consoleButton.WasClicked() {
+            return run_debug_support.RUN_DEBUG_ACTION_OPEN_CONSOLE;
+        }
+        return run_debug_support.RUN_DEBUG_ACTION_NONE;
+    }
+
+    /// @brief Convert a selected-breakpoint edge into an action constant.
+    hide func BreakpointAction() -> Integer {
+        if openBreakpointButton.WasClicked() {
+            return run_debug_support.RUN_DEBUG_ACTION_OPEN_BREAKPOINT;
+        }
+        if removeBreakpointButton.WasClicked() {
+            return run_debug_support.RUN_DEBUG_ACTION_REMOVE_BREAKPOINT;
+        }
+        if conditionButton.WasClicked() {
+            return run_debug_support.RUN_DEBUG_ACTION_EDIT_CONDITION;
+        }
+        if logpointButton.WasClicked() {
+            return run_debug_support.RUN_DEBUG_ACTION_EDIT_LOGPOINT;
+        }
+        return run_debug_support.RUN_DEBUG_ACTION_NONE;
+    }
+
+    /// @brief Rebuild concrete ListBox rows from the durable filtered source.
+    hide func RefreshBreakpointRows() {
+        if breakpointList == null { return; }
+        breakpointList.Clear();
+        visibleBreakpointCount = 0;
+        realizedBreakpointCount = 0;
+
+        var i = 0;
+        while i < breakpointRecords.count() {
+            var record = breakpointRecords.get(i);
+            if run_debug_support.BreakpointMatches(
+                   record, breakpointFilterText) {
+                visibleBreakpointCount = visibleBreakpointCount + 1;
+                if realizedBreakpointCount
+                   < run_debug_support.MAX_VISIBLE_BREAKPOINTS {
+                    var item = breakpointList.AddItem(
+                        run_debug_support.BreakpointLabel(record));
+                    GUI.ListBox.ItemSetData(item, "" + record.storeIndex);
+                    if record.logMessage != "" {
+                        GUI.ListBox.ItemSetTextColor(
+                            item, theme_colors.Rgb("accentInfo"));
+                    } else if record.condition != "" {
+                        GUI.ListBox.ItemSetTextColor(
+                            item, theme_colors.Rgb("accentWarning"));
+                    }
+                    realizedBreakpointCount = realizedBreakpointCount + 1;
+                }
+            }
+            i = i + 1;
+        }
+
+        UpdateBreakpointCountLabel();
+        breakpointList.SetVisible(realizedBreakpointCount > 0);
+        breakpointEmptyLabel.SetVisible(realizedBreakpointCount == 0);
+        if breakpointRecords.count() == 0 {
+            breakpointEmptyLabel.SetText(
+                "No breakpoints. Press F9 in an editor to add one.");
+        } else if visibleBreakpointCount == 0 {
+            breakpointEmptyLabel.SetText(
+                "No breakpoints match \"" + breakpointFilterText + "\".");
+        } else {
+            breakpointEmptyLabel.SetText("");
+        }
+        UpdateBreakpointSelectionState();
+    }
+
+    /// @brief Update count text without implying un-realized matches are absent.
+    hide func UpdateBreakpointCountLabel() {
+        breakpointCountLabel.SetText(run_debug_support.BreakpointCountText(
+            breakpointRecords.count(), visibleBreakpointCount,
+            realizedBreakpointCount, breakpointFilterText));
+    }
+
+    /// @brief Resolve current selection through row data into the durable model.
+    hide func SelectedBreakpointRecord()
+        -> run_debug_support.BreakpointViewRecord {
+        if breakpointList == null or breakpointList.Selected == null {
+            return null;
+        }
+        return run_debug_support.FindBreakpointRecord(
+            breakpointRecords,
+            GUI.ListBox.ItemGetData(breakpointList.Selected));
+    }
+
+    /// @brief Apply selection-aware detail text and action enablement.
+    hide func UpdateBreakpointSelectionState() {
+        var record = SelectedBreakpointRecord();
+        var selected = record != null;
+        openBreakpointButton.SetEnabled(selected);
+        removeBreakpointButton.SetEnabled(selected);
+        conditionButton.SetEnabled(selected);
+        logpointButton.SetEnabled(selected);
+        if selected == false {
+            breakpointDetailLabel.SetText("Select a breakpoint");
+            return;
+        }
+        breakpointDetailLabel.SetText(
+            run_debug_support.BreakpointDetail(record));
+    }
+
+    /// @brief Reflow wrapped rows when the activity sidebar becomes compact.
+    hide func ApplyResponsiveControls() {
+        if host == null { return; }
+        var width = host.GetLogicalWidth();
+        if width <= 0.0 { return; }
+        var compact =
+            run_debug_support.RunDebugUsesCompactControls(width);
+        if compact == compactControls { return; }
+        compactControls = compact;
+        run_debug_support.ApplyButtonBasis(
+            primaryButton, compactControls, 78.0, 64.0);
+        run_debug_support.ApplyButtonBasis(
+            restartButton, compactControls, 72.0, 64.0);
+        run_debug_support.ApplyButtonBasis(
+            stopButton, compactControls, 56.0, 52.0);
+        run_debug_support.ApplyButtonBasis(
+            stepOverButton, compactControls, 82.0, 74.0);
+        run_debug_support.ApplyButtonBasis(
+            stepInButton, compactControls, 78.0, 70.0);
+        run_debug_support.ApplyButtonBasis(
+            stepOutButton, compactControls, 78.0, 70.0);
+        run_debug_support.ApplyButtonBasis(
+            variablesButton, compactControls, 76.0, 68.0);
+        run_debug_support.ApplyButtonBasis(
+            callStackButton, compactControls, 84.0, 76.0);
+        run_debug_support.ApplyButtonBasis(
+            consoleButton, compactControls, 68.0, 64.0);
+        run_debug_support.ApplyButtonBasis(
+            openBreakpointButton, compactControls, 56.0, 52.0);
+        run_debug_support.ApplyButtonBasis(
+            removeBreakpointButton, compactControls, 68.0, 60.0);
+        run_debug_support.ApplyButtonBasis(
+            conditionButton, compactControls, 76.0, 68.0);
+        run_debug_support.ApplyButtonBasis(
+            logpointButton, compactControls, 76.0, 68.0);
+        if compactControls {
+            breakpointFilterInput.SetPreferredSize(112.0, 0.0);
+        } else {
+            breakpointFilterInput.SetPreferredSize(180.0, 0.0);
+        }
+    }
+
+}

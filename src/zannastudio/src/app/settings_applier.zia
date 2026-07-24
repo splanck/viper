@@ -45,7 +45,7 @@ bind Zanna.GUI;
 // ============================================================================
 
 /// @brief Apply the currently edited Settings overlay values to the running IDE.
-/// @param shell Workbench shell for status and toast feedback.
+/// @param shell Workbench shell for status and actionable failure feedback.
 /// @param overlay Settings/about overlay controller.
 /// @param appSettings Persistent settings model to mutate and save.
 /// @param engine Editor engine that receives appearance/editor preferences.
@@ -89,7 +89,6 @@ expose func ApplySettingsFromOverlay(shell: app_shell.AppShell,
         return false;
     }
     shell.SetStatusLeft("Settings applied");
-    GUI.Toast.Success("Settings updated");
     overlay.CloseSettings();
     return true;
 }

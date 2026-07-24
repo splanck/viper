@@ -1,0 +1,82 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/ui/scene_hierarchy_3d.zia
+// Purpose: Pure hierarchy validation helpers for transactional 3D reparenting.
+// Key invariants:
+//   - A node cannot become its own parent or move beneath its descendants.
+//   - Multi-selection validation reasons about top-level moved roots only.
+// Ownership/Lifetime:
+//   - Helpers borrow SceneNode handles; SceneEditor3D owns graph mutation.
+// Links: zannastudio/src/ui/scene_editor_3d.zia,
+//        zannastudio/src/probes/scene_editor_3d_probe.zia
+//
+//===----------------------------------------------------------------------===//
+
+module scene_hierarchy_3d;
+
+bind SceneNode = Zanna.Graphics3D.SceneNode;
+
+// ============================================================================
+// MODULE: scene_hierarchy_3d
+// PURPOSE: Validate hierarchy targets without coupling cycle logic to widgets
+//          or VSCN serialization.
+//
+// WHERE-THIS-FITS: SceneEditor3D supplies selected top-level roots, applies a
+//          validated parent change, and owns rollback/history.
+//
+// TEACHING-NOTE: Walk upward from the proposed target. This proves the target
+//          is outside every moved subtree without recursively traversing an
+//          attacker-controlled hierarchy.
+// ============================================================================
+
+/// @brief Return whether candidate is ancestor itself or one of its descendants.
+func IsWithin(candidate: SceneNode, ancestor: SceneNode) -> Boolean {
+    if candidate == null or ancestor == null { return false; }
+    var current = candidate;
+    while current != null {
+        if current == ancestor { return true; }
+        current = current.Parent;
+    }
+    return false;
+}
+
+/// @brief Return whether one proposed parent lies outside every moved subtree.
+func TargetAllowed(target: SceneNode,
+                   roots: List[SceneNode]) -> Boolean {
+    if target == null or roots.count() == 0 { return false; }
+    var index = 0;
+    while index < roots.count() {
+        if IsWithin(target, roots.get(index)) { return false; }
+        index = index + 1;
+    }
+    return true;
+}
+
+/// @brief Return whether every moved root already has the proposed parent.
+func AllAlreadyParented(roots: List[SceneNode],
+                        target: SceneNode) -> Boolean {
+    if target == null or roots.count() == 0 { return false; }
+    var index = 0;
+    while index < roots.count() {
+        if roots.get(index).Parent != target { return false; }
+        index = index + 1;
+    }
+    return true;
+}
+
+/// @brief Return a shared direct parent, or null for mixed/empty selections.
+func CommonParent(roots: List[SceneNode]) -> SceneNode {
+    if roots.count() == 0 { return null; }
+    var parent = roots.get(0).Parent;
+    var index = 1;
+    while index < roots.count() {
+        if roots.get(index).Parent != parent { return null; }
+        index = index + 1;
+    }
+    return parent;
+}

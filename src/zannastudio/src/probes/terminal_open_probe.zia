@@ -1,3 +1,23 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/probes/terminal_open_probe.zia
+// Purpose: Verify Terminal visibility and exclusive keyboard-focus ownership.
+// Key invariants:
+//   - Opening Terminal focuses its interactive output pane.
+//   - A stale editor-completion popup yields without stealing focus back.
+//   - Session actions update capabilities and return focus to terminal input.
+// Ownership/Lifetime:
+//   - The probe owns and destroys one isolated AppShell and its controllers.
+// Links: zannastudio/src/terminal/terminal_controller.zia,
+//        zannastudio/src/editor/completion.zia
+//
+//===----------------------------------------------------------------------===//
+
 module terminal_open_probe;
 
 // ============================================================================
@@ -14,9 +34,12 @@ module terminal_open_probe;
 
 bind "../ui/app_shell";
 bind "../terminal/terminal_controller";
+bind "../editor/completion";
+bind "../editor/editor_engine";
 
 bind Zanna.GUI as GUI;
 bind Terminal = Zanna.Terminal;
+bind Convert = Zanna.Core.Convert;
 
 func fail(shell: app_shell.AppShell, reason: String) {
     shell.Destroy();
@@ -26,6 +49,13 @@ func fail(shell: app_shell.AppShell, reason: String) {
 func main() {
     var shell = new app_shell.AppShell();
     shell.Build("Zanna Studio Terminal Open Probe", 1000, 700);
+
+    var engine = new editor_engine.EditorEngine();
+    engine.Setup(shell.workbench.editorRow);
+    engine.editor.Focus();
+    var completer = new completion.CompletionController();
+    completer.Setup(engine.editor, shell.app);
+    completer.SetEngine(engine);
 
     if shell.menuChrome.miTerminal == null { fail(shell, "View > Terminal menu item missing"); return; }
     if shell.toolPanels.terminalPanel == null { fail(shell, "terminal panel missing"); return; }
@@ -38,6 +68,8 @@ func main() {
     var ctrl = new terminal_controller.TerminalController();
     ctrl.Setup(shell.toolPanels.terminalPanel, shell.toolPanels.terminalPane,
                shell.toolPanels.terminalKill, shell.toolPanels.terminalRestart);
+    ctrl.SetupButtons(shell.toolPanels.terminalNew,
+                      shell.toolPanels.terminalNext);
     ctrl.Pump();
     if ctrl.HasAttemptedStart() {
         fail(shell, "terminal session attempted to start while panel hidden");
@@ -48,6 +80,20 @@ func main() {
     shell.toolPanels.ShowTerminalPanel();
     if !shell.toolPanels.terminalPanel.IsVisible() { fail(shell, "terminal not visible after ShowTerminalPanel"); return; }
     if !shell.toolPanels.terminalPane.IsVisible() { fail(shell, "terminal pane own visibility disabled"); return; }
+    if !shell.toolPanels.terminalPane.IsFocused() { fail(shell, "terminal did not take keyboard focus"); return; }
+
+    // Reproduce the old cross-feature race: an editor completion popup was
+    // visible when Terminal opened, and CompletionController.Update forced the
+    // editor to regain focus every frame. It must now dismiss without changing
+    // the terminal's ownership of Enter, Backspace, or text input.
+    completer.isVisible = true;
+    completer.popup.SetVisible(true);
+    completer.Update("");
+    if completer.isVisible { fail(shell, "stale completion remained visible over terminal"); return; }
+    if !shell.toolPanels.terminalPane.IsFocused() {
+        fail(shell, "completion stole keyboard focus from terminal");
+        return;
+    }
 
     shell.Poll();
     shell.Render();
@@ -56,6 +102,55 @@ func main() {
     if shell.toolPanels.terminalPane.GetWidth() <= 0 { fail(shell, "terminal pane has zero width"); return; }
     if shell.toolPanels.terminalPane.GetHeight() <= 0 { fail(shell, "terminal pane has zero height"); return; }
 
+    // The first visible pump starts (or attempts) the shell and establishes the
+    // controller's focus latch. Next is unavailable until another session exists.
+    ctrl.Pump();
+    shell.Render();
+    if !shell.toolPanels.terminalPane.IsFocused()
+       or shell.toolPanels.terminalNext.IsEnabled() {
+        ctrl.Stop();
+        fail(shell, "initial terminal action capabilities were incorrect: focus="
+             + shell.toolPanels.terminalPane.IsFocused()
+             + " next=" + shell.toolPanels.terminalNext.IsEnabled()
+             + " sessions=" + ctrl.sessions.count());
+        return;
+    }
+
+    // Activate New through the real pointer path. Buttons receive click focus in
+    // the toolkit, but the controller must return ownership to the PTY so the
+    // next Enter, Backspace, or text event cannot leak to another surface.
+    var harness = GUI.TestHarness.New();
+    if !harness.BindApp(shell.app) {
+        ctrl.Stop();
+        fail(shell, "terminal action automation could not bind the app");
+        return;
+    }
+    var effectiveScale = shell.app.GetEffectiveScale();
+    if effectiveScale <= 0.0 { effectiveScale = 1.0; }
+    var newX = Convert.NumToInt(
+        (shell.toolPanels.terminalNew.GetScreenX()
+         + shell.toolPanels.terminalNew.GetScreenWidth() / 2.0)
+        * effectiveScale);
+    var newY = Convert.NumToInt(
+        (shell.toolPanels.terminalNew.GetScreenY()
+         + shell.toolPanels.terminalNew.GetScreenHeight() / 2.0)
+        * effectiveScale);
+    harness.SendMouse("move", newX, newY, 0);
+    harness.SendMouse("down", newX, newY, 0);
+    harness.SendMouse("up", newX, newY, 0);
+    harness.DispatchPending();
+    ctrl.Pump();
+    shell.Render();
+    if ctrl.sessions.count() != 2
+       or !shell.toolPanels.terminalNext.IsEnabled()
+       or !shell.toolPanels.terminalPane.IsFocused() {
+        harness.UnbindApp();
+        ctrl.Stop();
+        fail(shell, "New Terminal did not enable cycling and restore PTY focus");
+        return;
+    }
+    harness.UnbindApp();
+    ctrl.Stop();
     shell.Destroy();
     Terminal.Say("RESULT: ok");
 }

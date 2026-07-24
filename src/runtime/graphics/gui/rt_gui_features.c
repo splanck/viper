@@ -804,6 +804,54 @@ static vg_notification_position_t rt_toast_position_to_vg(int64_t position) {
     }
 }
 
+/// @brief Compare optional notification strings without treating two NULL values as unequal.
+static bool rt_toast_text_equal(const char *left, const char *right) {
+    if (left == right)
+        return true;
+    if (!left || !right)
+        return false;
+    return strcmp(left, right) == 0;
+}
+
+/// @brief Show or refresh one fire-and-forget notification.
+/// @details Repeated background events often report the same condition on consecutive frames.
+///          Coalescing an exact active match keeps those events from obscuring newer, unrelated
+///          feedback. Configurable Toast handles remain distinct because callers use their IDs
+///          for action and dismissal polling.
+static uint32_t rt_toast_show_shortcut(rt_gui_app_t *app,
+                                       vg_notification_manager_t *mgr,
+                                       vg_notification_type_t type,
+                                       const char *title,
+                                       const char *message,
+                                       uint32_t duration_ms) {
+    if (!app || !mgr)
+        return 0;
+
+    uint64_t now_ms = rt_gui_feature_now_ms(app);
+    for (size_t i = 0; i < mgr->notification_count; i++) {
+        vg_notification_t *notif = mgr->notifications[i];
+        if (!notif || notif->dismissed || notif->action_label || notif->action_callback)
+            continue;
+        if (notif->type != type || !rt_toast_text_equal(notif->title, title) ||
+            !rt_toast_text_equal(notif->message, message)) {
+            continue;
+        }
+        notif->duration_ms = duration_ms;
+        notif->created_at = now_ms;
+        mgr->base.needs_paint = true;
+        return notif->id;
+    }
+
+    uint32_t id = vg_notification_show(mgr, type, title, message, duration_ms);
+    for (size_t i = 0; i < mgr->notification_count; i++) {
+        if (mgr->notifications[i] && mgr->notifications[i]->id == id) {
+            mgr->notifications[i]->created_at = now_ms;
+            break;
+        }
+    }
+    return id;
+}
+
 /// @brief Show an informational toast notification (auto-dismisses after 3 seconds).
 void rt_toast_info(rt_string message) {
     RT_ASSERT_MAIN_THREAD();
@@ -813,13 +861,7 @@ void rt_toast_info(rt_string message) {
         return;
 
     char *cmsg = rt_string_to_gui_cstr(message);
-    uint32_t id = vg_notification_show(mgr, VG_NOTIFICATION_INFO, "Info", cmsg, 3000);
-    for (size_t i = 0; i < mgr->notification_count; i++) {
-        if (mgr->notifications[i] && mgr->notifications[i]->id == id) {
-            mgr->notifications[i]->created_at = rt_gui_feature_now_ms(app);
-            break;
-        }
-    }
+    rt_toast_show_shortcut(app, mgr, VG_NOTIFICATION_INFO, "Info", cmsg, 3000);
     if (cmsg)
         free(cmsg);
 }
@@ -833,13 +875,7 @@ void rt_toast_success(rt_string message) {
         return;
 
     char *cmsg = rt_string_to_gui_cstr(message);
-    uint32_t id = vg_notification_show(mgr, VG_NOTIFICATION_SUCCESS, "Success", cmsg, 3000);
-    for (size_t i = 0; i < mgr->notification_count; i++) {
-        if (mgr->notifications[i] && mgr->notifications[i]->id == id) {
-            mgr->notifications[i]->created_at = rt_gui_feature_now_ms(app);
-            break;
-        }
-    }
+    rt_toast_show_shortcut(app, mgr, VG_NOTIFICATION_SUCCESS, "Success", cmsg, 3000);
     if (cmsg)
         free(cmsg);
 }
@@ -853,13 +889,7 @@ void rt_toast_warning(rt_string message) {
         return;
 
     char *cmsg = rt_string_to_gui_cstr(message);
-    uint32_t id = vg_notification_show(mgr, VG_NOTIFICATION_WARNING, "Warning", cmsg, 5000);
-    for (size_t i = 0; i < mgr->notification_count; i++) {
-        if (mgr->notifications[i] && mgr->notifications[i]->id == id) {
-            mgr->notifications[i]->created_at = rt_gui_feature_now_ms(app);
-            break;
-        }
-    }
+    rt_toast_show_shortcut(app, mgr, VG_NOTIFICATION_WARNING, "Warning", cmsg, 5000);
     if (cmsg)
         free(cmsg);
 }
@@ -873,13 +903,7 @@ void rt_toast_error(rt_string message) {
         return;
 
     char *cmsg = rt_string_to_gui_cstr(message);
-    uint32_t id = vg_notification_show(mgr, VG_NOTIFICATION_ERROR, "Error", cmsg, 0);
-    for (size_t i = 0; i < mgr->notification_count; i++) {
-        if (mgr->notifications[i] && mgr->notifications[i]->id == id) {
-            mgr->notifications[i]->created_at = rt_gui_feature_now_ms(app);
-            break;
-        }
-    }
+    rt_toast_show_shortcut(app, mgr, VG_NOTIFICATION_ERROR, "Error", cmsg, 0);
     if (cmsg)
         free(cmsg);
 }

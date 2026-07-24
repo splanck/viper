@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-05-31
+last-verified: 2026-07-23
 ---
 
 # Getting Started with Zanna
@@ -126,7 +126,7 @@ zanna init calculator --lang basic
 ### BASIC
 
 ```sh
-zanna run examples/basic/ex1_hello_cond.bas
+zanna run examples/vbasic/ex1_hello_cond.bas
 ```
 
 **Expected output:**
@@ -142,7 +142,7 @@ READY
 
 Create a file `hello.zia`:
 
-```rust
+```zia
 module Hello;
 
 bind Zanna.Terminal;
@@ -199,13 +199,13 @@ You can inspect the generated IL or run IL programs directly:
 
 ```sh
 # Emit IL from BASIC
-zanna build examples/basic/ex1_hello_cond.bas
+zanna build examples/vbasic/ex1_hello_cond.bas
 
 # Emit IL from Zia
 zanna build hello.zia
 
 # Save IL to a file
-zanna build examples/basic/ex1_hello_cond.bas -o hello.il
+zanna build examples/vbasic/ex1_hello_cond.bas -o hello.il
 
 # Run the IL program directly
 ilrun hello.il

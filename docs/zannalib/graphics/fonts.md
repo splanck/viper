@@ -99,7 +99,7 @@ A simple binary format used by the Linux console. Supports v1 (2-byte header) an
 
 ## Usage Example
 
-```rust
+```zia
 bind Zanna.Graphics;
 
 // Load a 16px font for the title

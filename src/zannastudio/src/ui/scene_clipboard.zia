@@ -1,0 +1,231 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/ui/scene_clipboard.zia
+// Purpose: Encode and validate bounded, typed Studio scene clipboard payloads.
+// Key invariants:
+//   - Clipboard text is self-identifying and never inferred from scene syntax.
+//   - Selection indices and the primary index are validated before use.
+//   - Canonical scene content remains byte-exact after the envelope header.
+// Ownership/Lifetime:
+//   - Encoded strings are owned by the platform clipboard.
+//   - Decoded payloads and index Lists are fresh values owned by the caller.
+// Links: zannastudio/src/ui/scene_editor_2d.zia,
+//        zannastudio/src/ui/scene_editor_3d.zia
+//
+//===----------------------------------------------------------------------===//
+
+module scene_clipboard;
+
+bind Parse = Zanna.Core.Parse;
+bind Seq = Zanna.Collections.Seq;
+bind Str = Zanna.String;
+
+// ============================================================================
+// MODULE: scene_clipboard
+// PURPOSE: Keep scene clipboard interchange explicit, bounded, and independent
+//          from presentation labels or platform-specific clipboard metadata.
+//
+// WHERE-THIS-FITS: Scene editors place canonical source content in one shared
+//          text envelope, then reconstruct only selected model identities.
+//
+// TEACHING-NOTE: The payload is deliberately text. Studio already has one
+//          cross-platform text clipboard contract, while the kind marker keeps
+//          ordinary source text from being mistaken for authored scene data.
+// ============================================================================
+
+final CLIPBOARD_MAGIC: String = "ZANNA_STUDIO_SCENE_CLIPBOARD_V1";
+final MAX_CLIPBOARD_CHARACTERS: Integer = 64020000;
+final MAX_CLIPBOARD_SELECTION: Integer = 1024;
+final MAX_INDEX_LINE_CHARACTERS: Integer = 16384;
+
+/// @brief Validated scene clipboard envelope.
+class SceneClipboardPayload {
+    expose Boolean valid;
+    expose String kind;
+    expose Integer primary;
+    expose List[Integer] indices;
+    expose String content;
+    expose String error;
+
+    expose func init() {
+        valid = false;
+        kind = "";
+        primary = -1;
+        indices = [];
+        content = "";
+        error = "Clipboard does not contain Studio scene data.";
+    }
+}
+
+func IsSceneKind(kind: String) -> Boolean {
+    return kind == "2d" or kind == "3d";
+}
+
+func Contains(indices: List[Integer], value: Integer) -> Boolean {
+    var index = 0;
+    while index < indices.count() {
+        if indices.get(index) == value { return true; }
+        index = index + 1;
+    }
+    return false;
+}
+
+func InvalidPayload(message: String) -> SceneClipboardPayload {
+    var payload = new SceneClipboardPayload();
+    payload.error = message;
+    return payload;
+}
+
+/// @brief Encode canonical scene content and stable model indices for copying.
+/// @return Empty when the kind, selection, primary, or content is invalid.
+expose func Encode(kind: String,
+                   indices: List[Integer],
+                   primary: Integer,
+                   content: String) -> String {
+    if IsSceneKind(kind) == false or content == ""
+       or indices.count() == 0
+       or indices.count() > MAX_CLIPBOARD_SELECTION
+       or Contains(indices, primary) == false {
+        return "";
+    }
+    var encodedIndices = "";
+    var checked: List[Integer] = [];
+    var index = 0;
+    while index < indices.count() {
+        var candidate = indices.get(index);
+        if candidate < 0 or candidate > 1000000
+           or Contains(checked, candidate) {
+            return "";
+        }
+        if encodedIndices != "" {
+            encodedIndices = encodedIndices + ",";
+        }
+        encodedIndices = encodedIndices + candidate;
+        if Str.get_Length(encodedIndices) > MAX_INDEX_LINE_CHARACTERS {
+            return "";
+        }
+        checked.add(candidate);
+        index = index + 1;
+    }
+    var encoded = CLIPBOARD_MAGIC + "\n"
+        + kind + "\n"
+        + primary + "\n"
+        + encodedIndices + "\n"
+        + content;
+    if Str.get_Length(encoded) > MAX_CLIPBOARD_CHARACTERS {
+        return "";
+    }
+    return encoded;
+}
+
+/// @brief Cheaply identify the kind marker without parsing canonical content.
+expose func HasKind(text: String, expectedKind: String) -> Boolean {
+    if IsSceneKind(expectedKind) == false or text == ""
+       or Str.get_Length(text) > MAX_CLIPBOARD_CHARACTERS {
+        return false;
+    }
+    var firstBreak = Str.IndexOf(text, "\n");
+    if firstBreak == 0
+       or Str.Trim(Str.Left(text, firstBreak - 1)) != CLIPBOARD_MAGIC {
+        return false;
+    }
+    var remaining = Str.Mid(text, firstBreak + 1);
+    var secondBreak = Str.IndexOf(remaining, "\n");
+    if secondBreak == 0 { return false; }
+    return Str.Trim(Str.Left(remaining, secondBreak - 1)) == expectedKind;
+}
+
+/// @brief Decode and structurally validate one Studio scene clipboard envelope.
+/// @details Canonical content begins after the fourth newline and is not split,
+///          trimmed, normalized, or interpreted by this module.
+expose func Decode(text: String) -> SceneClipboardPayload {
+    if text == "" {
+        return InvalidPayload("Clipboard is empty.");
+    }
+    if Str.get_Length(text) > MAX_CLIPBOARD_CHARACTERS {
+        return InvalidPayload(
+            "Scene clipboard data exceeds Studio's 64 MB editing limit.");
+    }
+
+    var firstBreak = Str.IndexOf(text, "\n");
+    if firstBreak == 0
+       or Str.Trim(Str.Left(text, firstBreak - 1)) != CLIPBOARD_MAGIC {
+        return InvalidPayload(
+            "Clipboard contains text, not Studio scene objects.");
+    }
+    var remaining = Str.Mid(text, firstBreak + 1);
+    var secondBreak = Str.IndexOf(remaining, "\n");
+    if secondBreak == 0 {
+        return InvalidPayload("Scene clipboard kind is missing.");
+    }
+    var kind = Str.Trim(Str.Left(remaining, secondBreak - 1));
+    if IsSceneKind(kind) == false {
+        return InvalidPayload("Scene clipboard kind is unsupported.");
+    }
+
+    remaining = Str.Mid(remaining, secondBreak + 1);
+    var thirdBreak = Str.IndexOf(remaining, "\n");
+    if thirdBreak == 0 {
+        return InvalidPayload("Scene clipboard primary selection is missing.");
+    }
+    var primaryText = Str.Trim(Str.Left(remaining, thirdBreak - 1));
+    var parsedPrimary = Parse.TryInt(primaryText);
+    if parsedPrimary.IsNone {
+        return InvalidPayload("Scene clipboard primary selection is invalid.");
+    }
+    var primary = parsedPrimary.UnwrapI64();
+
+    remaining = Str.Mid(remaining, thirdBreak + 1);
+    var fourthBreak = Str.IndexOf(remaining, "\n");
+    if fourthBreak == 0 {
+        return InvalidPayload("Scene clipboard selection is missing.");
+    }
+    var indexLine = Str.Trim(Str.Left(remaining, fourthBreak - 1));
+    if indexLine == ""
+       or Str.get_Length(indexLine) > MAX_INDEX_LINE_CHARACTERS {
+        return InvalidPayload("Scene clipboard selection is invalid.");
+    }
+    var parts = Str.Split(indexLine, ",");
+    var partCount = Seq.get_Count(parts);
+    if partCount <= 0 or partCount > MAX_CLIPBOARD_SELECTION {
+        return InvalidPayload("Scene clipboard selection is too large.");
+    }
+    var indices: List[Integer] = [];
+    var index = 0;
+    while index < partCount {
+        var token = Str.Trim(Seq.GetStr(parts, index));
+        var parsed = Parse.TryInt(token);
+        if parsed.IsNone {
+            return InvalidPayload("Scene clipboard selection is invalid.");
+        }
+        var candidate = parsed.UnwrapI64();
+        if candidate < 0 or candidate > 1000000
+           or Contains(indices, candidate) {
+            return InvalidPayload("Scene clipboard selection is invalid.");
+        }
+        indices.add(candidate);
+        index = index + 1;
+    }
+    if Contains(indices, primary) == false {
+        return InvalidPayload(
+            "Scene clipboard primary selection is not in the selection.");
+    }
+
+    var content = Str.Mid(remaining, fourthBreak + 1);
+    if content == "" {
+        return InvalidPayload("Scene clipboard content is missing.");
+    }
+    var payload = new SceneClipboardPayload();
+    payload.valid = true;
+    payload.kind = kind;
+    payload.primary = primary;
+    payload.indices = indices;
+    payload.content = content;
+    payload.error = "";
+    return payload;
+}

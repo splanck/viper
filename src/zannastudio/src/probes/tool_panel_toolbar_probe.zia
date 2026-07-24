@@ -1,0 +1,528 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/probes/tool_panel_toolbar_probe.zia
+// Purpose: Exercise responsive Problems, Output, and References toolbars.
+// Key invariants:
+//   - Output filtering, wrapping, following, copying, and clearing stay in-panel.
+//   - Problems filtering retains structured navigation and quick-fix metadata.
+//   - References filtering retains grouping and source-location identities.
+//   - Contextual actions reflect selection, filters, content, and busy state.
+//   - Wrapped controls remain reachable in zoomed side docks.
+// Ownership/Lifetime: The probe owns and destroys its shell and test harness.
+// Links: zannastudio/src/ui/tool_panel_shell.zia,
+//        zannastudio/src/commands/diagnostic_edit_commands.zia
+//
+//===----------------------------------------------------------------------===//
+
+module tool_panel_toolbar_probe;
+
+bind "../commands/diagnostic_edit_commands";
+bind "../ui/app_shell";
+bind "../ui/tool_panel_shell";
+
+bind Convert = Zanna.Core.Convert;
+bind GUI = Zanna.GUI;
+bind Str = Zanna.String;
+bind Terminal = Zanna.Terminal;
+
+/// @brief Return whether one rendered child stays inside its panel bounds.
+func ContainsWidget(parent: GUI.Widget,
+                    child: GUI.Widget) -> Boolean {
+    if parent == null or child == null { return false; }
+    return child.GetScreenX() >= parent.GetScreenX() - 1.0
+        and child.GetScreenY() >= parent.GetScreenY() - 1.0
+        and child.GetScreenX() + child.GetScreenWidth()
+            <= parent.GetScreenX() + parent.GetScreenWidth() + 1.0
+        and child.GetScreenY() + child.GetScreenHeight()
+            <= parent.GetScreenY() + parent.GetScreenHeight() + 1.0;
+}
+
+/// @brief Convert public logical widget geometry to harness framebuffer pixels.
+func HarnessCoordinate(shell: app_shell.AppShell,
+                       logical: Number) -> Integer {
+    var scale = shell.app.GetEffectiveScale();
+    if scale <= 0.0 { scale = 1.0; }
+    return Convert.NumToInt(logical * scale);
+}
+
+/// @brief Dispatch one real pointer click to a rendered widget center.
+func Click(shell: app_shell.AppShell,
+           harness: GUI.TestHarness,
+           widget: GUI.Widget) {
+    var x = HarnessCoordinate(shell,
+        widget.GetScreenX() + widget.GetScreenWidth() / 2.0);
+    var y = HarnessCoordinate(shell,
+        widget.GetScreenY() + widget.GetScreenHeight() / 2.0);
+    harness.SendMouse("move", x, y, 0);
+    harness.SendMouse("down", x, y, 0);
+    harness.SendMouse("up", x, y, 0);
+    harness.DispatchPending();
+}
+
+/// @brief Run one normal tool-panel frame after authored input.
+func Pump(shell: app_shell.AppShell) {
+    shell.toolPanels.PumpToolTabs();
+    shell.Render();
+    // Advance to the next normal frame so one-shot widget edges do not leak
+    // into later, unrelated interactions in this deterministic probe.
+    shell.Poll();
+}
+
+func Fail(shell: app_shell.AppShell,
+          harness: GUI.TestHarness,
+          reason: String) {
+    if harness != null { harness.UnbindApp(); }
+    if shell != null { shell.Destroy(); }
+    Terminal.Say("RESULT: fail " + reason);
+}
+
+func main() {
+    if tool_panel_shell.ProblemsUseCompactControls(560.0) == false
+       or tool_panel_shell.ProblemsUseCompactControls(560.01)
+       or tool_panel_shell.OutputUsesCompactControls(520.0) == false
+       or tool_panel_shell.OutputUsesCompactControls(520.01)
+       or tool_panel_shell.ReferencesUseCompactControls(480.0) == false
+       or tool_panel_shell.ReferencesUseCompactControls(480.01)
+       or diagnostic_edit_commands.ActionKindForProblemLabel(
+              "Suppress Warning")
+          != diagnostic_edit_commands.ACTION_SUPPRESS_DIAGNOSTIC
+       or diagnostic_edit_commands.ActionKindForProblemLabel(
+              "Create Missing Bind")
+          != diagnostic_edit_commands.ACTION_CREATE_MISSING_BIND
+       or diagnostic_edit_commands.ActionKindForProblemLabel(
+              "Insert required token")
+          != diagnostic_edit_commands.ACTION_APPLY_FIX
+       or diagnostic_edit_commands.ActionKindForProblemLabel(
+              "No quick fix") != 0 {
+        Terminal.Say("RESULT: fail toolbar policy helpers");
+        return;
+    }
+
+    var shell = new app_shell.AppShell();
+    shell.Build("Zanna Studio Tool Panel Toolbar Probe", 880, 620);
+    shell.Poll();
+    shell.Render();
+
+    var harness = GUI.TestHarness.New();
+    if harness.BindApp(shell.app) == false {
+        Fail(shell, harness, "automation app binding");
+        return;
+    }
+
+    // Output exposes its previously hidden capabilities in the live panel.
+    var completeOutput =
+        "compile started\nwarning: unused sprite\nerror: missing scene\n";
+    shell.toolPanels.SetBuildOutput(completeOutput);
+    Pump(shell);
+    if shell.toolPanels.IsOutputPanelActive() == false
+       or shell.toolPanels.outputPanel.IsVisible() == false
+       or shell.toolPanels.outputToolbar.IsVisible() == false
+       or shell.toolPanels.outputPane.IsVisible() == false
+       or shell.toolPanels.outputCopyButton.IsEnabled() == false
+       or shell.toolPanels.outputClearButton.IsEnabled() == false
+       or shell.toolPanels.outputFilterClearButton.IsEnabled() {
+        Fail(shell, harness, "initial Output toolbar state");
+        return;
+    }
+
+    // A live authored filter switches to structured rows without losing focus.
+    shell.toolPanels.outputFilterInput.Focus();
+    shell.toolPanels.outputFilterInput.SetText("warning");
+    Pump(shell);
+    if shell.toolPanels.outputFilterText != "warning"
+       or shell.toolPanels.outputPaneMode
+       or shell.toolPanels.outputListBox.Count != 1
+       or shell.toolPanels.outputFilterInput.IsFocused() == false
+       or shell.toolPanels.outputFilterClearButton.IsEnabled() == false {
+        Fail(shell, harness, "live Output filter");
+        return;
+    }
+
+    // Checkbox and button behavior travels through real hit testing.
+    Click(shell, harness, shell.toolPanels.outputWrapCheck);
+    Pump(shell);
+    if shell.toolPanels.outputWrapLines == false
+       or shell.toolPanels.outputWrapCheck.IsChecked() == false {
+        Fail(shell, harness, "pointer Output wrap");
+        return;
+    }
+    Click(shell, harness, shell.toolPanels.outputFollowCheck);
+    Pump(shell);
+    if shell.toolPanels.outputAutoScroll
+       or shell.toolPanels.outputFollowCheck.IsChecked() {
+        Fail(shell, harness, "pointer Output follow");
+        return;
+    }
+
+    GUI.ClipboardText.Clear();
+    Click(shell, harness, shell.toolPanels.outputCopyButton);
+    Pump(shell);
+    if GUI.ClipboardText.GetText() != completeOutput {
+        Fail(shell, harness, "Output Copy did not use complete unfiltered text");
+        return;
+    }
+
+    Click(shell, harness, shell.toolPanels.outputFilterClearButton);
+    Pump(shell);
+    if shell.toolPanels.outputFilterText != ""
+       or shell.toolPanels.outputFilterInput.get_Text() != ""
+       or shell.toolPanels.outputListBox.Count != 3
+       or shell.toolPanels.outputFilterInput.IsFocused() == false {
+        Fail(shell, harness, "pointer Output filter reset");
+        return;
+    }
+
+    Click(shell, harness, shell.toolPanels.outputClearButton);
+    Pump(shell);
+    if shell.toolPanels.IsOutputPanelActive() == false
+       or shell.toolPanels.outputPanel.IsVisible() == false
+       or shell.toolPanels.outputPane.IsVisible() == false
+       or shell.toolPanels.HasOutputContent()
+       or shell.toolPanels.outputCopyButton.IsEnabled()
+       or shell.toolPanels.outputClearButton.IsEnabled() {
+        Fail(shell, harness, "in-panel Output Clear collapsed the surface");
+        return;
+    }
+
+    // Problems retains durable records while its concrete rows are rebuilt.
+    shell.toolPanels.BeginProblems();
+    var errorItem = shell.toolPanels.AddProblem(
+        "error", "zia", "src/game.zia", 4, 7, "V-ZIA-EXPECTED",
+        "Expected expression", "Apply Fix-It");
+    shell.toolPanels.SetAddedProblemLocationData(errorItem, "101");
+    var warningItem = shell.toolPanels.AddProblem(
+        "warning", "zia", "src/game.zia", 8, 3, "W008",
+        "Unused sprite binding", "Suppress Warning");
+    shell.toolPanels.SetAddedProblemLocationData(warningItem, "102");
+    var infoItem = shell.toolPanels.AddProblem(
+        "note", "build", "src/world.zia", 2, 1, "N001",
+        "Scene import note", "No quick fix");
+    shell.toolPanels.SetAddedProblemLocationData(infoItem, "103");
+    shell.toolPanels.FinishProblems(3);
+    Pump(shell);
+    if shell.toolPanels.IsProblemsPanelActive() == false
+       or shell.toolPanels.problemsPanel.IsVisible() == false
+       or shell.toolPanels.diagListBox.Count != 4
+       or shell.toolPanels.visibleProblemCount != 3
+       or shell.toolPanels.problemsErrorCount != 1
+       or shell.toolPanels.problemsWarningCount != 1
+       or shell.toolPanels.problemsInfoCount != 1 {
+        Fail(shell, harness, "structured Problems counts");
+        return;
+    }
+
+    shell.toolPanels.diagListBox.SelectIndex(1);
+    Pump(shell);
+    if shell.toolPanels.problemsQuickFixButton.IsEnabled() == false
+       or shell.toolPanels.GetSelectedProblemAction() != "Apply Fix-It"
+       or shell.toolPanels.GetSelectedProblemLocationData() != "101" {
+        Fail(shell, harness, "selected Problems action state");
+        return;
+    }
+    Click(shell, harness, shell.toolPanels.problemsQuickFixButton);
+    shell.toolPanels.PumpToolTabs();
+    var firstQuickFixEdge =
+        shell.toolPanels.ProblemsQuickFixWasRequested();
+    shell.Render();
+    shell.Poll();
+    if firstQuickFixEdge == false {
+        Fail(shell, harness, "Problems Quick Fix activation edge");
+        return;
+    }
+
+    // Text filtering retires and recreates rows without losing their metadata.
+    shell.toolPanels.problemsFilterInput.Focus();
+    shell.toolPanels.problemsFilterInput.SetText("unused");
+    Pump(shell);
+    if shell.toolPanels.visibleProblemCount != 1
+       or shell.toolPanels.diagListBox.Count != 2
+       or shell.toolPanels.problemsFilterInput.IsFocused() == false {
+        Fail(shell, harness, "live Problems text filter");
+        return;
+    }
+    shell.toolPanels.diagListBox.SelectIndex(1);
+    Pump(shell);
+    if shell.toolPanels.GetSelectedProblemAction() != "Suppress Warning"
+       or shell.toolPanels.GetSelectedProblemLocationData() != "102"
+       or shell.toolPanels.problemsQuickFixButton.IsEnabled() == false {
+        Fail(shell, harness, "filtered Problems metadata");
+        return;
+    }
+
+    Click(shell, harness, shell.toolPanels.problemsResetButton);
+    Pump(shell);
+    Click(shell, harness, shell.toolPanels.problemsWarningCheck);
+    Pump(shell);
+    if shell.toolPanels.problemsShowWarnings
+       or shell.toolPanels.visibleProblemCount != 2
+       or shell.toolPanels.diagListBox.Count != 3 {
+        Fail(shell, harness, "pointer Problems severity filter");
+        return;
+    }
+    Click(shell, harness, shell.toolPanels.problemsResetButton);
+    Pump(shell);
+    if shell.toolPanels.problemsFilterText != ""
+       or shell.toolPanels.problemsShowErrors == false
+       or shell.toolPanels.problemsShowWarnings == false
+       or shell.toolPanels.problemsShowInfo == false
+       or shell.toolPanels.visibleProblemCount != 3 {
+        Fail(shell, harness, "pointer Problems reset");
+        return;
+    }
+
+    shell.toolPanels.SetProblemsFilter("does-not-exist");
+    Pump(shell);
+    if shell.toolPanels.visibleProblemCount != 0
+       or shell.toolPanels.diagListBox.Count != 2
+       or Str.Contains(shell.toolPanels.diagListBox.GetSelectedText(),
+                       "does-not-exist")
+       or shell.toolPanels.problemsQuickFixButton.IsEnabled() {
+        Terminal.Say(
+            "DETAIL: visible=" + shell.toolPanels.visibleProblemCount
+            + " rows=" + shell.toolPanels.diagListBox.Count
+            + " selected=" + shell.toolPanels.diagListBox.SelectedIndex
+            + " action=" + shell.toolPanels.GetSelectedProblemAction()
+            + " enabled="
+            + shell.toolPanels.problemsQuickFixButton.IsEnabled()
+            + " filter=" + shell.toolPanels.problemsFilterText);
+        Fail(shell, harness, "Problems empty filtered state");
+        return;
+    }
+    shell.toolPanels.ResetProblemFilters();
+    shell.toolPanels.diagListBox.SelectIndex(1);
+    shell.toolPanels.SetProblemsActionBusy(true);
+    Pump(shell);
+    if shell.toolPanels.problemsQuickFixButton.IsEnabled() {
+        Fail(shell, harness, "busy Problems action remained enabled");
+        return;
+    }
+    shell.toolPanels.SetProblemsActionBusy(false);
+
+    // References owns a durable grouped model, so live filtering can rebuild
+    // concrete rows without losing source-location IDs.
+    shell.toolPanels.ClearReferenceResults();
+    shell.toolPanels.AddToolGroupHeader(
+        shell.toolPanels.referencesListBox, "alpha.zia", "src/alpha.zia");
+    var alphaOne = shell.toolPanels.AddToolLocationRow(
+        shell.toolPanels.referencesListBox, "ref", "zia", "4:7",
+        "definition", "draw sprite", "");
+    shell.toolPanels.SetAddedToolRowLocationData(
+        shell.toolPanels.referencesListBox, alphaOne, "ref-alpha-one");
+    var alphaTwo = shell.toolPanels.AddToolLocationRow(
+        shell.toolPanels.referencesListBox, "ref", "zia", "9:3",
+        "", "update sprite", "");
+    shell.toolPanels.SetAddedToolRowLocationData(
+        shell.toolPanels.referencesListBox, alphaTwo, "ref-alpha-two");
+    shell.toolPanels.AddToolGroupHeader(
+        shell.toolPanels.referencesListBox, "beta.zia", "src/beta.zia");
+    var betaOne = shell.toolPanels.AddToolLocationRow(
+        shell.toolPanels.referencesListBox, "call", "zia", "12:5",
+        "", "spawn enemy", "");
+    shell.toolPanels.SetAddedToolRowLocationData(
+        shell.toolPanels.referencesListBox, betaOne, "ref-beta-one");
+    shell.toolPanels.ShowReferencesPanel();
+    Pump(shell);
+    if shell.toolPanels.IsReferencesPanelActive() == false
+       or shell.toolPanels.referencesPanel.IsVisible() == false
+       or shell.toolPanels.referencesToolbar.IsVisible() == false
+       or shell.toolPanels.referencesListBox.IsVisible() == false
+       or shell.toolPanels.referencesListBox.Count != 5
+       or shell.toolPanels.referencesResultCount != 3
+       or shell.toolPanels.visibleReferenceCount != 3
+       or shell.toolPanels.referencesCopyButton.IsEnabled() == false
+       or shell.toolPanels.referencesClearButton.IsEnabled() == false
+       or shell.toolPanels.referencesEmptyLabel.IsVisible() {
+        Fail(shell, harness, "structured References initial state");
+        return;
+    }
+
+    // Matching a heading keeps all children; matching a child keeps only that
+    // child plus its heading.
+    shell.toolPanels.referencesFilterInput.Focus();
+    shell.toolPanels.referencesFilterInput.SetText("alpha.zia");
+    Pump(shell);
+    if shell.toolPanels.referencesFilterText != "alpha.zia"
+       or shell.toolPanels.visibleReferenceCount != 2
+       or shell.toolPanels.referencesListBox.Count != 3
+       or shell.toolPanels.referencesFilterInput.IsFocused() == false {
+        Fail(shell, harness, "References group filter");
+        return;
+    }
+    shell.toolPanels.referencesListBox.SelectIndex(1);
+    if GUI.ListBox.ItemGetData(
+           shell.toolPanels.referencesListBox.Selected) != "ref-alpha-one" {
+        Fail(shell, harness, "References group-filter location metadata");
+        return;
+    }
+
+    shell.toolPanels.referencesFilterInput.SetText("spawn enemy");
+    Pump(shell);
+    shell.toolPanels.referencesListBox.SelectIndex(1);
+    if shell.toolPanels.visibleReferenceCount != 1
+       or shell.toolPanels.referencesListBox.Count != 2
+       or GUI.ListBox.ItemGetData(
+              shell.toolPanels.referencesListBox.Selected) != "ref-beta-one" {
+        Fail(shell, harness, "References child filter metadata");
+        return;
+    }
+
+    // Incremental publication under an active filter realizes a matching group
+    // exactly once and attaches metadata even when earlier rows are hidden.
+    shell.toolPanels.referencesFilterInput.SetText("late match");
+    Pump(shell);
+    if shell.toolPanels.visibleReferenceCount != 0
+       or shell.toolPanels.referencesListBox.IsVisible()
+       or shell.toolPanels.referencesEmptyLabel.IsVisible() == false {
+        Fail(shell, harness, "References filtered empty state");
+        return;
+    }
+    shell.toolPanels.AddToolGroupHeader(
+        shell.toolPanels.referencesListBox, "late.zia", "src/late.zia");
+    var lateOne = shell.toolPanels.AddToolLocationRow(
+        shell.toolPanels.referencesListBox, "ref", "zia", "20:2",
+        "", "late match result", "");
+    shell.toolPanels.SetAddedToolRowLocationData(
+        shell.toolPanels.referencesListBox, lateOne, "ref-late-one");
+    Pump(shell);
+    shell.toolPanels.referencesListBox.SelectIndex(1);
+    if shell.toolPanels.referencesResultCount != 4
+       or shell.toolPanels.visibleReferenceCount != 1
+       or shell.toolPanels.referencesListBox.Count != 2
+       or shell.toolPanels.referencesListBox.IsVisible() == false
+       or shell.toolPanels.referencesEmptyLabel.IsVisible()
+       or GUI.ListBox.ItemGetData(
+              shell.toolPanels.referencesListBox.Selected) != "ref-late-one" {
+        Fail(shell, harness, "incremental filtered References publication");
+        return;
+    }
+
+    GUI.ClipboardText.Clear();
+    Click(shell, harness, shell.toolPanels.referencesCopyButton);
+    Pump(shell);
+    var copiedReferences = GUI.ClipboardText.GetText();
+    if Str.Contains(copiedReferences, "src/alpha.zia") == false
+       or Str.Contains(copiedReferences, "spawn enemy") == false
+       or Str.Contains(copiedReferences, "late match result") == false {
+        Fail(shell, harness, "References Copy omitted unfiltered results");
+        return;
+    }
+
+    Click(shell, harness, shell.toolPanels.referencesFilterClearButton);
+    Pump(shell);
+    if shell.toolPanels.referencesFilterText != ""
+       or shell.toolPanels.referencesFilterInput.get_Text() != ""
+       or shell.toolPanels.visibleReferenceCount != 4
+       or shell.toolPanels.referencesListBox.Count != 7
+       or shell.toolPanels.referencesFilterInput.IsFocused() == false {
+        Fail(shell, harness, "pointer References filter reset");
+        return;
+    }
+
+    Click(shell, harness, shell.toolPanels.referencesClearButton);
+    Pump(shell);
+    if shell.toolPanels.IsReferencesPanelActive() == false
+       or shell.toolPanels.referencesPanel.IsVisible() == false
+       or shell.toolPanels.referencesListBox.IsVisible()
+       or shell.toolPanels.referencesListBox.Count != 0
+       or shell.toolPanels.referencesResultCount != 0
+       or shell.toolPanels.visibleReferenceCount != 0
+       or shell.toolPanels.referencesEmptyLabel.IsVisible() == false
+       or shell.toolPanels.referencesCopyButton.IsEnabled()
+       or shell.toolPanels.referencesClearButton.IsEnabled() {
+        Fail(shell, harness, "in-panel References Clear collapsed the surface");
+        return;
+    }
+
+    shell.toolPanels.AddToolGroupHeader(
+        shell.toolPanels.referencesListBox, "side.zia", "src/side.zia");
+    var sideOne = shell.toolPanels.AddToolLocationRow(
+        shell.toolPanels.referencesListBox, "ref", "zia", "3:1",
+        "", "side dock result", "");
+    shell.toolPanels.SetAddedToolRowLocationData(
+        shell.toolPanels.referencesListBox, sideOne, "ref-side-one");
+
+    // Zoomed side docks compact and wrap the same live controls; typed focus and
+    // records survive reparenting.
+    shell.toolPanels.ShowProblemsPanel();
+    shell.toolPanels.problemsFilterInput.Focus();
+    shell.app.SetUiScale(1.5);
+    shell.app.SetWindowSize(880, 620);
+    shell.toolPanels.SetDockLocationName("right");
+    shell.toolPanels.ShowProblemsPanel();
+    shell.Poll();
+    Pump(shell);
+    if shell.toolPanels.IsProblemsToolbarCompact() == false
+       or shell.toolPanels.problemsFilterInput.IsFocused() == false
+       or ContainsWidget(shell.toolPanels.problemsPanel,
+                         shell.toolPanels.problemsFilterInput) == false
+       or ContainsWidget(shell.toolPanels.problemsPanel,
+                         shell.toolPanels.problemsErrorCheck) == false
+       or ContainsWidget(shell.toolPanels.problemsPanel,
+                         shell.toolPanels.problemsWarningCheck) == false
+       or ContainsWidget(shell.toolPanels.problemsPanel,
+                         shell.toolPanels.problemsInfoCheck) == false
+       or ContainsWidget(shell.toolPanels.problemsPanel,
+                         shell.toolPanels.problemsResetButton) == false
+       or ContainsWidget(shell.toolPanels.problemsPanel,
+                         shell.toolPanels.problemsQuickFixButton) == false
+       or shell.toolPanels.problemsToolbar.GetScreenY()
+              + shell.toolPanels.problemsToolbar.GetScreenHeight()
+          > shell.toolPanels.diagListBox.GetScreenY() + 1.0 {
+        Fail(shell, harness, "Problems controls overflowed zoomed side dock");
+        return;
+    }
+
+    shell.toolPanels.ShowOutputPanel();
+    shell.Poll();
+    Pump(shell);
+    if shell.toolPanels.IsOutputToolbarCompact() == false
+       or ContainsWidget(shell.toolPanels.outputPanel,
+                         shell.toolPanels.outputFilterInput) == false
+       or ContainsWidget(shell.toolPanels.outputPanel,
+                         shell.toolPanels.outputFilterClearButton) == false
+       or ContainsWidget(shell.toolPanels.outputPanel,
+                         shell.toolPanels.outputWrapCheck) == false
+       or ContainsWidget(shell.toolPanels.outputPanel,
+                         shell.toolPanels.outputFollowCheck) == false
+       or ContainsWidget(shell.toolPanels.outputPanel,
+                         shell.toolPanels.outputCopyButton) == false
+       or ContainsWidget(shell.toolPanels.outputPanel,
+                         shell.toolPanels.outputClearButton) == false
+       or shell.toolPanels.outputToolbar.GetScreenY()
+              + shell.toolPanels.outputToolbar.GetScreenHeight()
+          > shell.toolPanels.outputPane.GetScreenY() + 1.0 {
+        Fail(shell, harness, "Output controls overflowed zoomed side dock");
+        return;
+    }
+
+    shell.toolPanels.ShowReferencesPanel();
+    shell.toolPanels.referencesFilterInput.Focus();
+    shell.toolPanels.SetDockLocationName("left");
+    shell.Poll();
+    Pump(shell);
+    if shell.toolPanels.IsReferencesToolbarCompact() == false
+       or shell.toolPanels.referencesFilterInput.IsFocused() == false
+       or ContainsWidget(shell.toolPanels.referencesPanel,
+                         shell.toolPanels.referencesFilterInput) == false
+       or ContainsWidget(shell.toolPanels.referencesPanel,
+                         shell.toolPanels.referencesFilterClearButton) == false
+       or ContainsWidget(shell.toolPanels.referencesPanel,
+                         shell.toolPanels.referencesCopyButton) == false
+       or ContainsWidget(shell.toolPanels.referencesPanel,
+                         shell.toolPanels.referencesClearButton) == false
+       or shell.toolPanels.referencesToolbar.GetScreenY()
+              + shell.toolPanels.referencesToolbar.GetScreenHeight()
+          > shell.toolPanels.referencesListBox.GetScreenY() + 1.0 {
+        Fail(shell, harness, "References controls overflowed zoomed side dock");
+        return;
+    }
+
+    harness.UnbindApp();
+    shell.Destroy();
+    Terminal.Say("RESULT: ok");
+}

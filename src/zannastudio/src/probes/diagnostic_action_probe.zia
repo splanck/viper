@@ -24,7 +24,9 @@ bind "../commands/diagnostic_edit_commands";
 bind "../core/document_manager";
 bind "../core/project_manager";
 bind "../editor/editor_engine";
+bind "../editor/editor_tabs";
 bind "../editor/project_bind_query_job";
+bind "../services/locations";
 bind "../ui/app_shell";
 
 bind Clock = Zanna.Time.Clock;
@@ -277,6 +279,9 @@ func main() {
 
     var docMgr = new document_manager.DocumentManager();
     var projMgr = new project_manager.ProjectManager();
+    var tabs = new editor_tabs.EditorTabs();
+    tabs.Setup(shell.workbench.tabBar);
+    var locStore = new locations.LocationStore();
     if projMgr.OpenFolder(rootA) == false {
         fail(shell, null, "controller workspace open");
         return;
@@ -289,13 +294,26 @@ func main() {
         + "    var unusedValue = 1;\n"
         + "}\n";
     loadActiveSource(docMgr, engine, mainPath, suppressSource);
-    engine.editor.SetCursor(2, 8);
-    if controller.Start(
-           diagnostic_edit_commands.ACTION_SUPPRESS_DIAGNOSTIC,
-           "Suppress Warning", shell, docMgr, engine, projMgr) == false
+    engine.editor.SetCursor(0, 0);
+    shell.toolPanels.BeginProblems();
+    var suppressItem = shell.toolPanels.AddProblem(
+        "warning", "zia", mainPath, 3, 9, "W-ZIA-UNUSED-VARIABLE",
+        "Unused variable: unusedValue", "Suppress Warning");
+    var suppressLocation = locStore.Add(
+        mainPath, 3, 9, 3, 20, locations.KIND_DIAGNOSTIC,
+        "Unused variable: unusedValue");
+    shell.toolPanels.SetAddedProblemLocationData(
+        suppressItem, suppressLocation);
+    shell.toolPanels.FinishProblems(1);
+    shell.toolPanels.diagListBox.SelectIndex(1);
+    if diagnostic_edit_commands.StartSelectedProblemAction(
+           controller, shell, docMgr, engine, tabs, projMgr, locStore) == false
        or engine.GetTextSnapshot() != suppressSource
+       or engine.editor.CursorLine != 2
+       or engine.editor.CursorCol != 8
        or controller.pendingSemanticJob == null {
-        fail(shell, controller, "suppression did not start asynchronously");
+        fail(shell, controller,
+             "Problems suppression did not open and start asynchronously");
         return;
     }
     if waitForAction(controller, shell, docMgr, engine, projMgr) == false

@@ -72,7 +72,7 @@ pipeline:
 4. VM loads the module and runs `main`.
 
 ```sh
-$ zanna run examples/basic/ex1_hello_cond.bas
+$ zanna run examples/vbasic/ex1_hello_cond.bas
 HELLO
 READY
 10

@@ -13,6 +13,10 @@
 //     unusable editor sliver beside fixed-width controls.
 //   - About content scrolls independently while its title and Close action stay
 //     inside the floating panel at every supported window size.
+//   - Preferences search matches setting names and live commands, and always
+//     presents either matching cards or an explicit empty state.
+//   - The preferences body reserves its vertical scrollbar gutter and never
+//     exposes accidental horizontal scrolling.
 //   - Keybinding guidance reflects the current desktop platform.
 //   - Settings and About participate in the shell's exclusive focus surface.
 // Ownership/Lifetime: AppShell owns widgets; one IdeOverlays controls their state.
@@ -33,6 +37,8 @@ bind "../commands/command_catalog";
 bind Zanna.GUI as GUI;
 bind Str = Zanna.String;
 bind Convert = Zanna.Core.Convert;
+bind Seq = Zanna.Collections.Seq;
+bind Obj = Zanna.Core.Object;
 
 final ACTION_NONE = 0;
 final ACTION_APPLY_SETTINGS = 1;
@@ -55,6 +61,23 @@ final ABOUT_PANEL_WIDTH = 520;
 final ABOUT_PANEL_HEIGHT = 420;
 final PANEL_SCREEN_MARGIN = 28;
 
+final APPEARANCE_SETTINGS_TERMS =
+    "appearance editor font size interface ui zoom color theme dark light "
+    + "minimap status bar fullscreen";
+final EDITING_SETTINGS_TERMS =
+    "editing tab size indentation spaces diagnostics typing code folding wrap "
+    + "long lines line numbers trailing whitespace save final newline auto save "
+    + "build debug modified files";
+final INTELLISENSE_SETTINGS_TERMS =
+    "intellisense diagnostics delay live checks completion autocomplete "
+    + "debounce suggestions";
+final STARTUP_SETTINGS_TERMS =
+    "startup safety restore open files launch last project session confirm "
+    + "closing close unsaved files";
+final KEYBINDING_SETTINGS_TERMS =
+    "keybindings keyboard shortcut shortcuts hotkeys commands chords bindings "
+    + "bind unbind reset";
+
 // ============================================================================
 // MODULE: ide_overlays
 // PURPOSE: Docked Settings surface and floating About panel for Zanna Studio.
@@ -68,6 +91,27 @@ final PANEL_SCREEN_MARGIN = 28;
 //          directly changing unrelated subsystems. The frame loop can then apply
 //          settings, browse files, or close panels in the right order.
 // ============================================================================
+
+/// @brief Return whether every filter token occurs in a settings haystack.
+/// @details Token matching lets natural queries such as "font editor" or
+///          "auto save" work without depending on label word order.
+expose func SettingsTermsMatch(terms: String, filter: String) -> Boolean {
+    var needle = Str.ToLower(Str.Trim(filter));
+    needle = Str.Replace(needle, "-", " ");
+    needle = Str.Replace(needle, "_", " ");
+    if needle == "" { return true; }
+    var haystack = Str.ToLower(terms);
+    var tokens = Str.Split(needle, " ");
+    var i = 0;
+    while i < Seq.get_Count(tokens) {
+        var token = Str.Trim(Obj.ToString(Seq.Get(tokens, i)));
+        if token != "" and Str.Contains(haystack, token) == false {
+            return false;
+        }
+        i = i + 1;
+    }
+    return true;
+}
 
 /// @brief Docked Preferences surface plus the floating About panel.
 /// @details Preferences lives beside the editor when there is useful room for
@@ -110,6 +154,8 @@ class IdeOverlays {
     expose GUI.Button resetStartupButton;
     expose GUI.Button applySettingsButton;
     expose GUI.TextInput settingsFilterInput;
+    expose GUI.Button settingsFilterClearButton;
+    expose GUI.Label settingsNoMatchesLabel;
     expose GUI.ListBox keybindingList;
     expose GUI.TextInput keybindingShortcutInput;
     expose GUI.Button keybindingSetButton;
@@ -127,16 +173,20 @@ class IdeOverlays {
     expose Boolean settingsVisible;
     expose Boolean aboutVisible;
     expose Boolean settingsUsesDedicatedSurface;
+    expose Boolean keybindingListInitialized;
     expose Integer settingsDockWidth;
     hide GUI.VBox settingsEditorArea;
+    hide GUI.VBox settingsContent;
     hide app_shell.AppShell ownerShell;
 
     expose func init() {
         settingsVisible = false;
         aboutVisible = false;
         settingsUsesDedicatedSurface = false;
+        keybindingListInitialized = false;
         settingsDockWidth = 0;
         settingsEditorArea = null;
+        settingsContent = null;
         ownerShell = null;
     }
 
@@ -163,7 +213,8 @@ class IdeOverlays {
         aboutPanel.SetVisible(false);
         settingsVisible = true;
         aboutVisible = false;
-        fontPathInput.Focus();
+        ApplySettingsFilter(settingsFilterInput.get_Text());
+        settingsFilterInput.Focus();
     }
 
     expose func CloseSettings() {
@@ -211,24 +262,27 @@ class IdeOverlays {
     /// @param registry Command registry with current shortcuts applied.
     /// @param filter Case-insensitive substring filter over id/label.
     expose func PopulateKeybindings(registry: command_registry.CommandRegistry,
-                                    filter: String) {
-        if keybindingList == null { return; }
+                                    filter: String) -> Integer {
+        if keybindingList == null { return 0; }
         keybindingList.Clear();
-        var needle = Str.ToLower(filter);
+        var count = 0;
         var i = 0;
         while i < registry.commands.count() {
             var cmd = registry.commands.get(i);
-            var haystack = Str.ToLower(cmd.id + " " + cmd.label);
-            if needle == "" or Str.Contains(haystack, needle) {
+            var haystack = cmd.id + " " + cmd.label + " " + cmd.shortcut;
+            if SettingsTermsMatch(haystack, filter) {
                 var text = cmd.label;
                 if cmd.shortcut != "" {
                     text = text + "   —   " + cmd.shortcut;
                 }
                 var item = keybindingList.AddItem(text);
                 GUI.ListBox.ItemSetData(item, cmd.id);
+                count = count + 1;
             }
             i = i + 1;
         }
+        keybindingListInitialized = true;
+        return count;
     }
 
     /// @brief Return the selected keybinding command id, or "".
@@ -239,23 +293,53 @@ class IdeOverlays {
         return GUI.ListBox.ItemGetData(item);
     }
 
-    /// @brief Show/hide settings cards whose titles match the filter.
-    expose func ApplySettingsFilter(filter: String) {
-        var needle = Str.ToLower(filter);
-        ApplyCardFilter(appCardRef, "appearance", needle);
-        ApplyCardFilter(editCardRef, "editing", needle);
-        ApplyCardFilter(intelliCardRef, "intellisense", needle);
-        ApplyCardFilter(startupCardRef, "startup and safety", needle);
-        ApplyCardFilter(keybindingCardRef, "keybindings", needle);
+    /// @brief Show matching settings cards, live commands, or one empty state.
+    /// @return Number of visible settings sections.
+    expose func ApplySettingsFilter(filter: String) -> Integer {
+        var normalized = Str.Trim(filter);
+        var appVisible =
+            SettingsTermsMatch(APPEARANCE_SETTINGS_TERMS, normalized);
+        var editVisible =
+            SettingsTermsMatch(EDITING_SETTINGS_TERMS, normalized);
+        var intelliVisible =
+            SettingsTermsMatch(INTELLISENSE_SETTINGS_TERMS, normalized);
+        var startupVisible =
+            SettingsTermsMatch(STARTUP_SETTINGS_TERMS, normalized);
+        var keybindingVisible =
+            SettingsTermsMatch(KEYBINDING_SETTINGS_TERMS, normalized);
+        if normalized != "" and keybindingList != null
+           and keybindingList.Count > 0 {
+            keybindingVisible = true;
+        }
+
+        SetCardVisible(appCardRef, appVisible);
+        SetCardVisible(editCardRef, editVisible);
+        SetCardVisible(intelliCardRef, intelliVisible);
+        SetCardVisible(startupCardRef, startupVisible);
+        SetCardVisible(keybindingCardRef, keybindingVisible);
+
+        var count = 0;
+        if appVisible { count = count + 1; }
+        if editVisible { count = count + 1; }
+        if intelliVisible { count = count + 1; }
+        if startupVisible { count = count + 1; }
+        if keybindingVisible { count = count + 1; }
+        if settingsNoMatchesLabel != null {
+            settingsNoMatchesLabel.SetVisible(count == 0);
+            if count == 0 {
+                settingsNoMatchesLabel.SetText(
+                    "No settings or commands match your search.");
+            }
+        }
+        if settingsFilterClearButton != null {
+            settingsFilterClearButton.SetEnabled(normalized != "");
+        }
+        return count;
     }
 
-    hide func ApplyCardFilter(card: GUI.GroupBox, title: String, needle: String) {
+    hide func SetCardVisible(card: GUI.GroupBox, visible: Boolean) {
         if card == null { return; }
-        if needle == "" or Str.Contains(title, needle) {
-            card.SetVisible(true);
-        } else {
-            card.SetVisible(false);
-        }
+        card.SetVisible(visible);
     }
 
     expose func SyncSettings(appSettings: settings.SettingsManager) {
@@ -596,7 +680,8 @@ class IdeOverlays {
 
         var intro = GUI.Label.New(
             root,
-            "Appearance, editing, and diagnostics preferences for this workspace.");
+            "Search and configure appearance, editing, language tools, startup, "
+            + "and keyboard shortcuts.");
         intro.SetMargin(1);
         intro.SetWordWrap(true);
 
@@ -607,13 +692,23 @@ class IdeOverlays {
         body.SetPadding(4.0);
         body.SetSpacing(20.0);
         settingsBodyScroll.AddChild(body);
+        settingsContent = body;
 
         var filterRow = GUI.HBox.New();
         filterRow.SetSpacing(6.0);
         body.AddChild(filterRow);
         settingsFilterInput = GUI.TextInput.New(filterRow);
         settingsFilterInput.SetFlex(1.0);
-        settingsFilterInput.SetPlaceholder("Filter settings sections...");
+        settingsFilterInput.SetPlaceholder("Search settings...");
+        settingsFilterClearButton = GUI.Button.New(filterRow, "×");
+        settingsFilterClearButton.SetStyle(2);
+        settingsFilterClearButton.SetPreferredSize(34.0, 0.0);
+        settingsFilterClearButton.SetTooltip("Clear preferences search");
+        settingsFilterClearButton.SetAccessibleName("Clear preferences search");
+        settingsFilterClearButton.SetEnabled(false);
+        settingsNoMatchesLabel = GUI.Label.New(body, "");
+        settingsNoMatchesLabel.SetWordWrap(true);
+        settingsNoMatchesLabel.SetVisible(false);
 
         var appCard = GUI.GroupBox.New(body, "Appearance");
         appCardRef = appCard;
@@ -655,17 +750,6 @@ class IdeOverlays {
         uiZoomSpinner.SetSize(110, 0);
         GUI.Label.New(uiZoomControls, "percent");
 
-        var tabWidthBox =
-            AddPreferenceRow(appCard, "Tab size", "Columns used for a hard tab.");
-        var tabWidthControls = GUI.HBox.New();
-        tabWidthControls.SetSpacing(10.0);
-        tabWidthBox.AddChild(tabWidthControls);
-        tabWidthSpinner = GUI.Spinner.New(tabWidthControls);
-        tabWidthSpinner.SetRange(2.0, 8.0);
-        tabWidthSpinner.SetStep(1.0);
-        tabWidthSpinner.SetDecimals(0);
-        tabWidthSpinner.SetSize(110, 0);
-
         var themeControls =
             AddPreferenceRow(appCard, "Color theme", "Switch between dark and light surfaces.");
         themeDropdown = GUI.Dropdown.New(themeControls);
@@ -679,6 +763,17 @@ class IdeOverlays {
 
         var editCard = GUI.GroupBox.New(body, "Editing");
         editCardRef = editCard;
+
+        var tabWidthBox =
+            AddPreferenceRow(editCard, "Tab size", "Columns used for indentation.");
+        var tabWidthControls = GUI.HBox.New();
+        tabWidthControls.SetSpacing(10.0);
+        tabWidthBox.AddChild(tabWidthControls);
+        tabWidthSpinner = GUI.Spinner.New(tabWidthControls);
+        tabWidthSpinner.SetRange(2.0, 8.0);
+        tabWidthSpinner.SetStep(1.0);
+        tabWidthSpinner.SetDecimals(0);
+        tabWidthSpinner.SetSize(110, 0);
 
         autoCheckCheck = GUI.Checkbox.New(editCard, "Run diagnostics while typing");
         codeFoldingCheck = GUI.Checkbox.New(editCard, "Enable code folding");
@@ -867,6 +962,29 @@ class IdeOverlays {
             panelW = SETTINGS_DOCK_MIN_WIDTH;
         }
         if panelW < 240 { panelW = 240; }
+        if settingsContent != null {
+            // Root padding consumes 36 px and a tall preferences page reserves
+            // the 12 px vertical scrollbar gutter. Bound the child to the
+            // remaining viewport so its own padding cannot summon a horizontal
+            // scrollbar at compact widths.
+            var contentW = panelW - 48;
+            if contentW < 180 { contentW = 180; }
+            settingsContent.SetPreferredSize(contentW, 0.0);
+            settingsContent.SetMaxSize(contentW, 0.0);
+        }
+        // List rows include command labels plus shortcuts. Bound their intrinsic
+        // content width to the live dock so one long command cannot make every
+        // preference control overflow the vertical ScrollView horizontally.
+        if keybindingList != null {
+            var contentMaxW = panelW - 72;
+            if contentMaxW < 160 { contentMaxW = 160; }
+            keybindingList.SetPreferredSize(contentMaxW, 180.0);
+        }
+        if settingsFilterInput != null {
+            var filterInputW = panelW - 120;
+            if filterInputW < 120 { filterInputW = 120; }
+            settingsFilterInput.SetPreferredSize(filterInputW, 0.0);
+        }
         if settingsDockWidth == panelW
            and settingsUsesDedicatedSurface == dedicated { return; }
         settingsDockWidth = panelW;

@@ -11,6 +11,7 @@
 //   - Index parsing and project queries never complete inside command callbacks.
 //   - Results publish only for their captured editor and index generations.
 //   - Reference retention and per-frame UI publication have hard ceilings.
+//   - Rename results stop at non-modal review before workspace mutation.
 // Ownership/Lifetime: The probe drains workers before destroying runtime/UI state.
 // Links: zannastudio/src/commands/zia_workspace_commands.zia,
 //        zannastudio/src/editor/zia_workspace_query_job.zia
@@ -29,6 +30,7 @@ bind "../editor/project_index";
 bind "../editor/zia_workspace_query_job";
 bind "../services/locations";
 bind "../ui/app_shell";
+bind "../ui/workspace_edit_preview";
 
 bind Clock = Zanna.Time.Clock;
 bind File = Zanna.IO.File;
@@ -236,6 +238,10 @@ func main() {
     var indexer = new project_index.ProjectIndexer();
     var controller =
         new zia_workspace_commands.ZiaWorkspaceCommandController();
+    var renamePreview =
+        new workspace_edit_preview.WorkspaceEditPreview();
+    renamePreview.Setup(shell);
+    controller.renamePreview = renamePreview;
 
     var uiBuilder = new Zanna.Text.StringBuilder();
     uiBuilder.AppendLine("module Main;");
@@ -273,6 +279,7 @@ func main() {
              "command blocked instead of waiting for index");
         return;
     }
+    shell.toolPanels.ShowTerminalPanel();
 
     var tick = 0;
     while controller.renderItems == null
@@ -297,12 +304,39 @@ func main() {
                        indexer, locStore) == false
        or locStore.items.count() != 221
        or shell.toolPanels.referencesListBox.Count != 222
+       or shell.toolPanels.IsTerminalPanelVisible() == false
        or Str.IndexOf(shell.statusShell.lastLeftStatus,
                       "Found 221 references") == 0 {
         fail(shell, controller, indexer,
              "incremental reference publication");
         return;
     }
+
+    // A completed rename query must hand its immutable edit set to the shared
+    // review surface and leave both the live buffer and disk untouched.
+    engine.editor.SetCursor(2, 8);
+    if controller.StartRename("renamedTarget", shell, docMgr, projMgr,
+                              engine, indexer) == false {
+        fail(shell, controller, indexer, "rename preview did not start");
+        return;
+    }
+    while renamePreview.HasPendingRename() == false
+          and tick < ZIA_WORKSPACE_PROBE_WAIT_TICKS {
+        controller.Pump(shell, docMgr, projMgr, engine, tabs, indexer,
+                        locStore);
+        Clock.Sleep(1);
+        tick = tick + 1;
+    }
+    if renamePreview.IsVisible() == false
+       or renamePreview.HasPendingRename() == false
+       or engine.GetTextSnapshot() != uiSource
+       or File.ReadAllText(mainPath) != uiSource {
+        fail(shell, controller, indexer,
+             "rename result bypassed non-modal review");
+        return;
+    }
+    renamePreview.Cancel();
+    renamePreview.Finish();
 
     // Moving the caret or changing index content invalidates the immutable
     // request anchor before navigation can apply.

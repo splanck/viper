@@ -68,7 +68,7 @@ with `GetI64`. A `New` supplier must return an object; use `Of*` for strings and
 
 ### Zia Example
 
-```rust
+```zia
 module LazyDemo;
 
 bind Zanna.Terminal;
@@ -212,7 +212,7 @@ so long string representations may be truncated; embedded string quotes are not 
 
 ### Zia Example
 
-```rust
+```zia
 module OptionDemo;
 
 bind Zanna.Terminal;
@@ -344,7 +344,7 @@ truncated; embedded string quotes are not escaped.
 
 ### Zia Example
 
-```rust
+```zia
 module ResultDemo;
 
 bind Zanna.Terminal;

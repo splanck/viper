@@ -72,7 +72,7 @@ File system operations.
 
 ### Zia Example
 
-```rust
+```zia
 module FileDemo;
 
 bind Zanna.Terminal;
@@ -252,7 +252,7 @@ file and memory backings, so prefer `Stream` when you want uniform end-of-stream
 
 ### Zia Example
 
-```rust
+```zia
 module BinFileDemo;
 
 bind Zanna.Terminal;
@@ -271,7 +271,7 @@ func start() {
 
     // Read binary data
     bf = BF.Open("/tmp/data.bin", "r");
-    Say("Size: " + Fmt.Int(bf.get_Size()));
+    Say("Size: " + Fmt.Int(bf.get_SizeBytes()));
 
     var b1 = bf.ReadByte();
     var b2 = bf.ReadByte();
@@ -287,7 +287,7 @@ func start() {
 }
 ```
 
-> **Note:** BinFile properties (`Pos`, `Size`, `Eof`) use the get_/set_ pattern; access them as `bf.get_Size()`, `bf.get_Pos()`, `bf.get_Eof()` in Zia.
+> **Note:** BinFile properties (`Pos`, `Size`, `Eof`) use the get_/set_ pattern; access them as `bf.get_SizeBytes()`, `bf.get_Pos()`, `bf.get_Eof()` in Zia.
 
 ### BASIC Example
 
@@ -388,7 +388,7 @@ Temporary file and directory creation utilities. Generates unique paths in the s
 
 ### Zia Example
 
-```rust
+```zia
 module TempFileDemo;
 
 bind Zanna.Terminal;
@@ -489,7 +489,7 @@ pages preserve filesystem enumeration order and are not sorted.
 
 ### Zia Example
 
-```rust
+```zia
 module DirDemo;
 
 bind Zanna.Terminal;
@@ -663,7 +663,7 @@ trapping for invalid, missing, inaccessible, or ordinary paths.
 
 ### Zia Example
 
-```rust
+```zia
 module PathDemo;
 
 bind Zanna.Terminal;
@@ -819,7 +819,7 @@ File globbing utilities for matching file paths against wildcard patterns and fi
 
 ### Zia Example
 
-```rust
+```zia
 module GlobDemo;
 
 bind Zanna.Terminal;

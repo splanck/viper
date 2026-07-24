@@ -40,12 +40,15 @@ bind "../editor/symbols";
 bind "../services/locations";
 bind "../scm/scm_view";
 bind "../terminal/terminal_controller";
+bind "../ui/activity_bar";
 bind "../ui/diff_view";
 bind "../ui/app_shell";
 bind "../ui/debug_breakpoint_overlay";
 bind "../ui/explorer_actions";
 bind "../ui/ide_overlays";
 bind "../ui/command_input";
+bind "../ui/scene_editor_2d";
+bind "../ui/scene_editor_3d";
 
 // ============================================================================
 // MODULE: command_context
@@ -73,6 +76,9 @@ class CommandContext {
     expose project_manager.ProjectManager projMgr;
     expose editor_engine.EditorEngine engine;
     expose editor_tabs.EditorTabs tabs;
+    expose activity_bar.ActivityBar activityBarCtrl;
+    expose scene_editor_2d.SceneEditor2D scene2DEditor;
+    expose scene_editor_3d.SceneEditor3D scene3DEditor;
 
     // Execution, debugging, terminal, and project-watch services.
     expose build_system.BuildSystem buildSys;
@@ -115,6 +121,9 @@ class CommandContext {
         projMgr = null;
         engine = null;
         tabs = null;
+        activityBarCtrl = null;
+        scene2DEditor = null;
+        scene3DEditor = null;
         buildSys = null;
         dbgSession = null;
         terminalCtrl = null;

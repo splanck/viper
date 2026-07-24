@@ -81,7 +81,7 @@ on a UTF-8 character boundary so the overlay never shows a split multi-byte glyp
 
 ## Example
 
-```rust
+```zia
 module DebugDemo;
 
 bind Zanna.Game.DebugOverlay as DebugOverlay;

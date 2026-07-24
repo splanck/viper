@@ -5,7 +5,7 @@ last-verified: 2026-05-26
 ---
 
 # 3D Physics
-> Physics3DWorld, PhysicsHit3D, PhysicsHitList3D, LedgeHit3D, Ragdoll3D, CollisionEvent3D, ContactPoint3D, Collider3D, Physics3DBody, Character3D, DistanceJoint3D, SpringJoint3D
+> PhysicsWorld3D, PhysicsHit3D, PhysicsHitList3D, LedgeHit3D, Ragdoll3D, CollisionEvent3D, ContactPoint3D, Collider3D, PhysicsBody3D, Character3D, DistanceJoint3D, SpringJoint3D
 
 **Part of [Zanna Runtime Library](../README.md) › [Graphics](README.md)**
 
@@ -55,7 +55,7 @@ and joint integration.
 |---------------------------|-----------------------|-------------|
 | `Step(dt)`                | `Void(Double)`        | Advance simulation by `dt` seconds |
 | `StepFixed(dt, fixedDt, maxSteps)` | `Integer(Double, Double, Integer)` | Accumulate variable frame time and run up to `maxSteps` fixed `fixedDt` steps, returning steps actually run |
-| `Add(body)`               | `Void(Object)`        | Add a `Physics3DBody` to the world |
+| `Add(body)`               | `Void(Object)`        | Add a `PhysicsBody3D` to the world |
 | `TryAdd(body)`            | `Boolean(Object)`     | Add a body and report allocation/validation failure without changing the world |
 | `Remove(body)`            | `Void(Object)`        | Remove a body from the world |
 | `ContainsBody(body)`      | `Boolean(Object)`     | Return whether the body is currently registered in the world |
@@ -71,7 +71,7 @@ and joint integration.
 | `ProbeLedge(origin, forward, radius, maxHeight, maxDepth, mask)` | `LedgeHit3D(Object, Object, Double, Double, Double, Integer)` | Find a grabbable ledge ahead of a foot-level origin; `Nothing` when no valid ledge exists |
 | `ProbeVault(origin, forward, radius, maxHeight, maxThickness, mask)` | `LedgeHit3D(Object, Object, Double, Double, Double, Integer)` | Like `ProbeLedge` but also requires a near-origin-level landing on the far side |
 
-`PhysicsHit3D.Body` returns a typed `Physics3DBody`; `Point`/`Normal` return `Vec3`; `PhysicsHitList3D.Get` returns a `PhysicsHit3D` — so hit results flow into typed bindings without casts.
+`PhysicsHit3D.Body` returns a typed `PhysicsBody3D`; `Point`/`Normal` return `Vec3`; `PhysicsHitList3D.Get` returns a `PhysicsHit3D` — so hit results flow into typed bindings without casts.
 | `OverlapAABB(min, max, mask)` | `Object(Object, Object, Integer)` | Return a `PhysicsHitList3D` of overlaps or `Nothing` |
 | `RebaseOrigin(dx, dy, dz)` | `Void(Double, Double, Double)` | Shift registered bodies and contact/query state by `-delta` |
 | `GetCollisionBodyA(i)`    | `Object(Integer)`     | Get the first body in contact pair `i` |
@@ -88,7 +88,7 @@ and joint integration.
 
 - `Step()` is explicit; the world does not simulate itself automatically.
 - Contact queries reflect the latest completed step.
-- Query `mask` uses the same layer bits as `Physics3DBody.CollisionLayer`. A mask of `0` matches no layers; use `-1` or an all-layers mask when you want any layer.
+- Query `mask` uses the same layer bits as `PhysicsBody3D.CollisionLayer`. A mask of `0` matches no layers; use `-1` or an all-layers mask when you want any layer.
 - Static bodies are immovable. Kinematic bodies move from explicit velocity but do not
   receive gravity or force integration.
 - `Add(body)` keeps the historical void API. `TryAdd(body)` returns `false` for invalid handles or allocation failure, returns `true` for already-present bodies, and leaves the body count stable on duplicates.
@@ -134,7 +134,7 @@ and joint integration.
   positional recovery and `0.0` disables it. `RestitutionThreshold` defaults to
   `0.5` m/s and is clamped to finite non-negative values; raising it suppresses bounce
   for slower impacts and helps resting stacks stay quiet.
-- `StepFixed(dt, fixedDt, maxSteps)` is the raw `Physics3DWorld` fixed-step helper.
+- `StepFixed(dt, fixedDt, maxSteps)` is the raw `PhysicsWorld3D` fixed-step helper.
   Use a positive `fixedDt` such as `1.0 / 60.0` and a positive `maxSteps` guard.
   The world carries the accumulator remainder between calls, returns the number of
   fixed steps actually run, reports `FixedStepAlpha` for visual interpolation, and
@@ -152,7 +152,7 @@ Query result object returned by `Raycast`, `SweepSphere`, and `SweepCapsule`.
 
 | Property | Type | Access | Description |
 |----------|------|--------|-------------|
-| `Body` | Object | Read | Hit `Physics3DBody` |
+| `Body` | Object | Read | Hit `PhysicsBody3D` |
 | `Collider` | Object | Read | Hit `Collider3D` leaf collider |
 | `Point` | Object (`Vec3`) | Read | Contact point approximation |
 | `Normal` | Object (`Vec3`) | Read | Surface normal |
@@ -187,7 +187,7 @@ List of `PhysicsHit3D` results returned by `RaycastAll`, `OverlapSphere`, and `O
 
 ## Zanna.Graphics3D.LedgeHit3D
 
-Traversal-probe result returned by `Physics3DWorld.ProbeLedge` and `ProbeVault`.
+Traversal-probe result returned by `PhysicsWorld3D.ProbeLedge` and `ProbeVault`.
 A plain snapshot handle (the `PhysicsHit3D` pattern): vectors are world-space at
 probe time and are not live — re-probe after movement.
 
@@ -338,10 +338,10 @@ sleeping, and optional CCD.
 
 | Constructor | Signature | Description |
 |-------------|-----------|-------------|
-| `New(mass)` | `Physics3DBody(Double)` | Create an empty body and assign a collider later |
-| `NewAABB(sx, sy, sz, mass)` | `Physics3DBody(Double, Double, Double, Double)` | Box body (`mass = 0` makes it static); name retained for compatibility |
-| `NewSphere(radius, mass)` | `Physics3DBody(Double, Double)` | Sphere body |
-| `NewCapsule(radius, height, mass)` | `Physics3DBody(Double, Double, Double)` | Capsule body; `height` is total height including caps |
+| `New(mass)` | `PhysicsBody3D(Double)` | Create an empty body and assign a collider later |
+| `NewAABB(sx, sy, sz, mass)` | `PhysicsBody3D(Double, Double, Double, Double)` | Box body (`mass = 0` makes it static); name retained for compatibility |
+| `NewSphere(radius, mass)` | `PhysicsBody3D(Double, Double)` | Sphere body |
+| `NewCapsule(radius, height, mass)` | `PhysicsBody3D(Double, Double, Double)` | Capsule body; `height` is total height including caps |
 
 ### Properties
 
@@ -426,7 +426,7 @@ sleeping, and optional CCD.
 
 ### Zia Example
 
-```rust
+```zia
 module Physics3DBodyDemo;
 
 bind Zanna.Graphics3D;
@@ -434,8 +434,8 @@ bind Zanna.Math.Quat as Quat;
 bind Zanna.Terminal;
 
 func start() {
-    var world = Physics3DWorld.New(0.0, 0.0, 0.0);
-    var body = Physics3DBody.Sphere(0.5, 1.0);
+    var world = PhysicsWorld3D.New(0.0, 0.0, 0.0);
+    var body = PhysicsBody3D.Sphere(0.5, 1.0);
     world.Add(body);
 
     body.SetOrientation(Quat.Identity());
@@ -446,10 +446,10 @@ func start() {
     Say("Orientation = " + toString(body.get_Orientation()));
 
     body.Sleep();
-    Say("Sleeping = " + toString(body.get_Sleeping()));
+    Say("Sleeping = " + toString(body.get_IsSleeping()));
     body.Wake();
 
-    body.set_Kinematic(true);
+    body.set_IsKinematic(true);
     body.SetVelocity(1.0, 0.0, 0.0);
     body.SetAngularVelocity(0.0, 1.0, 0.0);
     world.Step(1.0);
@@ -496,7 +496,7 @@ For structured collision events, see
 
 ## Zanna.Graphics3D.Character3D
 
-Controller-based character movement with slide-and-step collision against a `Physics3DWorld`.
+Controller-based character movement with slide-and-step collision against a `PhysicsWorld3D`.
 
 **Type:** Instance (obj)
 **Constructor:** `NEW Zanna.Graphics3D.Character3D(radius, height, mass)`
@@ -506,7 +506,7 @@ Controller-based character movement with slide-and-step collision against a `Phy
 | Property | Type | Access | Description |
 |----------|------|--------|-------------|
 | `StepHeight` | Double | Read/Write | Maximum step-up height |
-| `World` | Object | Read/Write | Attached `Physics3DWorld` |
+| `World` | Object | Read/Write | Attached `PhysicsWorld3D` |
 | `Grounded` | Boolean | Read | Character is grounded |
 | `JustLanded` | Boolean | Read | Character landed during the latest move |
 | `Position` | Object (`Vec3`) | Read | Current world position |
@@ -577,7 +577,7 @@ blends out — the natural pairing with `Health3D.JustDied()`.
 
 ## Zanna.Graphics3D.DistanceJoint3D
 
-Maintains a fixed distance between two `Physics3DBody` instances.
+Maintains a fixed distance between two `PhysicsBody3D` instances.
 
 **Type:** Instance (obj)
 **Constructor:** `NEW Zanna.Graphics3D.DistanceJoint3D(bodyA, bodyB, distance)`
@@ -592,7 +592,7 @@ Maintains a fixed distance between two `Physics3DBody` instances.
 
 ## Zanna.Graphics3D.SpringJoint3D
 
-Hooke's-law spring constraint between two `Physics3DBody` instances.
+Hooke's-law spring constraint between two `PhysicsBody3D` instances.
 
 **Type:** Instance (obj)
 **Constructor:** `NEW Zanna.Graphics3D.SpringJoint3D(bodyA, bodyB, restLength, stiffness, damping)`
@@ -609,7 +609,7 @@ Hooke's-law spring constraint between two `Physics3DBody` instances.
 
 ## Zanna.Graphics3D.HingeJoint3D
 
-Anchor constraint between two `Physics3DBody` instances that keeps authored
+Anchor constraint between two `PhysicsBody3D` instances that keeps authored
 anchor points together while allowing relative angular velocity around the
 given hinge axis.
 
@@ -619,7 +619,7 @@ given hinge axis.
 ### Notes
 
 - `anchor` and `axis` are `Vec3` values. The axis must be finite and non-zero.
-- Register with `Physics3DWorld.AddJoint(joint, 2)`.
+- Register with `PhysicsWorld3D.AddJoint(joint, 2)`.
 
 ### Methods
 
@@ -633,7 +633,7 @@ given hinge axis.
 
 ## Zanna.Graphics3D.RopeJoint3D
 
-Maximum-distance constraint between two `Physics3DBody` instances. Bodies can
+Maximum-distance constraint between two `PhysicsBody3D` instances. Bodies can
 move closer than `MaxLength`; the solver only corrects separation beyond it.
 
 **Type:** Instance (obj)
@@ -647,13 +647,13 @@ move closer than `MaxLength`; the solver only corrects separation beyond it.
 
 ### Notes
 
-- Register with `Physics3DWorld.AddJoint(joint, 3)`.
+- Register with `PhysicsWorld3D.AddJoint(joint, 3)`.
 
 ---
 
 ## Zanna.Graphics3D.SixDofJoint3D
 
-Configurable frame-anchor constraint between two `Physics3DBody` instances. By
+Configurable frame-anchor constraint between two `PhysicsBody3D` instances. By
 default it locks the two frame anchor translations together. `SetLinearLimits`
 allows bounded frame-anchor separation. `SetAngularLimits` clamps relative
 pose angle, in radians, around each joint-frame axis using the bodies' creation
@@ -673,7 +673,7 @@ relative orientation as the zero pose.
 - Angular limits are per-axis pose-angle bounds. Equal min/max values lock that
   rotary axis; the solver also removes angular velocity that would drive a
   locked axis or already-limited pose farther out of range.
-- Register with `Physics3DWorld.AddJoint(joint, 4)`.
+- Register with `PhysicsWorld3D.AddJoint(joint, 4)`.
 
 ### Methods
 
@@ -728,8 +728,8 @@ circle scaled by the per-wheel suspension load — unloaded inner wheels slide
 first, exactly like a real car.
 
 ```zia
-var chassis = Physics3DBody.NewAABB(0.9, 0.4, 1.8, 1200.0);
-Physics3DBody.SetPosition(chassis, 0.0, 1.0, 0.0);
+var chassis = PhysicsBody3D.NewAABB(0.9, 0.4, 1.8, 1200.0);
+PhysicsBody3D.SetPosition(chassis, 0.0, 1.0, 0.0);
 world.Add(chassis);
 
 var car = Vehicle3D.New(world, chassis);

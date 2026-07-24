@@ -1,0 +1,3721 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/ui/scene_editor_3d.zia
+// Purpose: Visual hierarchy, transform/material inspector, additive importer,
+//          and directly manipulable wireframe viewport for VSCN.
+// Key invariants:
+//   - The live SceneGraph is serialized back to Document.content after every
+//     accepted edit; a failed serialization rolls the graph back.
+//   - One complete gizmo drag creates one local-transform history snapshot.
+//   - Compact windows show viewport or inspector at full width, never two slivers.
+//   - Compact wrapped toolbars reserve every row so actions remain reachable.
+//   - VSCN parsing and serialization use unique bounded staging files because
+//     the runtime deliberately exposes file-oriented asset APIs.
+//   - Hierarchy traversal and preview work are capped for hostile assets.
+//   - Group inspector, reparent, and selection commands are transactional;
+//     hierarchy cycles are rejected before mutation and inspector inputs never
+//     inherit viewport shortcuts.
+// Ownership/Lifetime:
+//   - Main owns one controller; WorkbenchShell owns its persistent host widgets.
+//   - Staging files are deleted before every load/commit operation returns.
+// Links: zannastudio/src/core/document.zia,
+//        zannastudio/src/ui/scene_clipboard.zia,
+//        zannastudio/src/ui/scene_hierarchy_3d.zia,
+//        zannastudio/src/ui/scene_material_3d.zia,
+//        zannastudio/src/ui/scene_material_inspector_3d.zia,
+//        zannastudio/src/ui/scene_transform_3d.zia,
+//        docs/graphics3d-guide.md,
+//        docs/adr/0156-listbox-selected-row-data.md
+//
+//===----------------------------------------------------------------------===//
+
+module scene_editor_3d;
+
+// ============================================================================
+// MODULE: scene_editor_3d
+// PURPOSE: Present one VSCN document as a responsive hierarchy, wireframe
+//          viewport, transform toolbar, and numeric inspector.
+//
+// WHERE-THIS-FITS: Main pumps this controller only for the active 3D scene.
+//          SceneGraph is transient; Document.content remains the canonical
+//          save, session, and recovery payload.
+//
+// TEACHING-NOTE: A drag mutates the live node for visual feedback but
+//          serializes once on release. Escape restores copied scalar origins,
+//          so cancelation never requires a partial document rewrite.
+// ============================================================================
+
+bind "../core/document";
+bind "../core/project_manager";
+bind "../services/file_utils";
+bind "../services/safe_io";
+bind "scene_asset_browser";
+bind "scene_clipboard";
+bind "scene_hierarchy_3d";
+bind "scene_selection";
+bind "scene_material_inspector_3d";
+bind "scene_material_3d";
+bind "scene_transform_3d";
+
+bind Zanna.GUI as GUI;
+bind SceneGraph = Zanna.Graphics3D.SceneGraph;
+bind SceneNode = Zanna.Graphics3D.SceneNode;
+bind SceneAsset = Zanna.Graphics3D.SceneAsset;
+bind Mesh3D = Zanna.Graphics3D.Mesh3D;
+bind Material3D = Zanna.Graphics3D.Material3D;
+bind Pixels = Zanna.Graphics.Pixels;
+bind Color = Zanna.Graphics.Color;
+bind Vec3 = Zanna.Math.Vec3;
+bind Quat = Zanna.Math.Quat;
+bind Math = Zanna.Math;
+bind Convert = Zanna.Core.Convert;
+bind Input = Zanna.Input;
+bind TempFile = Zanna.IO.TempFile;
+bind Path = Zanna.IO.Path;
+bind Str = Zanna.String;
+
+final DEFAULT_VIEWPORT_WIDTH: Integer = 800;
+final DEFAULT_VIEWPORT_HEIGHT: Integer = 520;
+final MIN_VIEWPORT_WIDTH: Integer = 320;
+final MIN_VIEWPORT_HEIGHT: Integer = 240;
+final MAX_VIEWPORT_WIDTH: Integer = 1600;
+final MAX_VIEWPORT_HEIGHT: Integer = 1000;
+final MAX_SCENE_BYTES: Integer = 64000000;
+final MAX_TEXTURE_SOURCE_BYTES: Integer = 16000000;
+final MAX_EDITOR_NODES: Integer = 1024;
+final MAX_HIERARCHY_DEPTH: Integer = 256;
+final MAX_3D_SCENE_HISTORY: Integer = 100;
+final DEG_TO_RAD: Number = 0.017453292519943295;
+final RAD_TO_DEG: Number = 57.29577951308232;
+final GIZMO_PIXEL_LENGTH: Number = 36.0;
+final GIZMO_PICK_RADIUS: Number = 7.0;
+final COMPACT_SCENE_3D_WIDTH: Number = 700.0;
+
+final GIZMO_AXIS_NONE: Integer = -1;
+final GIZMO_AXIS_X: Integer = 0;
+final GIZMO_AXIS_Y: Integer = 1;
+final GIZMO_AXIS_Z: Integer = 2;
+
+final GIZMO_MODE_MOVE: Integer = scene_transform_3d.TRANSFORM_MOVE;
+final GIZMO_MODE_ROTATE: Integer = scene_transform_3d.TRANSFORM_ROTATE;
+final GIZMO_MODE_SCALE: Integer = scene_transform_3d.TRANSFORM_SCALE;
+
+final PRIMITIVE_EMPTY: Integer = 0;
+final PRIMITIVE_BOX: Integer = 1;
+final PRIMITIVE_SPHERE: Integer = 2;
+final PRIMITIVE_PLANE: Integer = 3;
+final PARENT_TARGET_MIXED: Integer = -2;
+
+/// @brief Clamp one Number used by persisted scene workspace geometry.
+func ClampNumber3D(value: Number, minimum: Number, maximum: Number) -> Number {
+    if value < minimum { return minimum; }
+    if value > maximum { return maximum; }
+    return value;
+}
+
+/// @brief Keep long orbit sessions numerically stable and easy to persist.
+func NormalizeYawDegrees(value: Integer) -> Integer {
+    var normalized = value;
+    while normalized > 180 { normalized = normalized - 360; }
+    while normalized < -180 { normalized = normalized + 360; }
+    return normalized;
+}
+
+/// @brief Squared pointer distance to a finite projected line segment.
+/// @details Pure geometry keeps gizmo hit testing deterministic and probeable.
+expose func DistanceSquaredToSegment(pointerX: Number,
+                                     pointerY: Number,
+                                     startX: Number,
+                                     startY: Number,
+                                     endX: Number,
+                                     endY: Number) -> Number {
+    var segmentX = endX - startX;
+    var segmentY = endY - startY;
+    var lengthSquared = segmentX * segmentX + segmentY * segmentY;
+    if lengthSquared <= 0.000001 {
+        var pointX = pointerX - startX;
+        var pointY = pointerY - startY;
+        return pointX * pointX + pointY * pointY;
+    }
+    var projection = ((pointerX - startX) * segmentX
+                      + (pointerY - startY) * segmentY)
+        / lengthSquared;
+    if projection < 0.0 { projection = 0.0; }
+    if projection > 1.0 { projection = 1.0; }
+    var nearestX = startX + projection * segmentX;
+    var nearestY = startY + projection * segmentY;
+    var deltaX = pointerX - nearestX;
+    var deltaY = pointerY - nearestY;
+    return deltaX * deltaX + deltaY * deltaY;
+}
+
+/// @brief Pick the nearest projected translation axis within a pixel radius.
+expose func ClosestGizmoAxis(pointerX: Number,
+                             pointerY: Number,
+                             originX: Number,
+                             originY: Number,
+                             axisXX: Number,
+                             axisXY: Number,
+                             axisYX: Number,
+                             axisYY: Number,
+                             axisZX: Number,
+                             axisZY: Number,
+                             radius: Number) -> Integer {
+    var threshold = radius * radius;
+    var centerX = pointerX - originX;
+    var centerY = pointerY - originY;
+    if centerX * centerX + centerY * centerY <= threshold {
+        return GIZMO_AXIS_NONE;
+    }
+    var bestDistance = threshold;
+    var best = GIZMO_AXIS_NONE;
+    var distance = DistanceSquaredToSegment(
+        pointerX, pointerY, originX, originY, axisXX, axisXY);
+    if distance <= bestDistance {
+        bestDistance = distance;
+        best = GIZMO_AXIS_X;
+    }
+    distance = DistanceSquaredToSegment(
+        pointerX, pointerY, originX, originY, axisYX, axisYY);
+    if distance < bestDistance {
+        bestDistance = distance;
+        best = GIZMO_AXIS_Y;
+    }
+    distance = DistanceSquaredToSegment(
+        pointerX, pointerY, originX, originY, axisZX, axisZY);
+    if distance < bestDistance {
+        best = GIZMO_AXIS_Z;
+    }
+    return best;
+}
+
+/// @brief Return whether a 3D scene width needs master/detail presentation.
+expose func UsesCompactLayout(width: Number) -> Boolean {
+    return width > 0.0 and width <= COMPACT_SCENE_3D_WIDTH;
+}
+
+/// @brief One projected viewport coordinate.
+class ProjectedPoint {
+    expose Integer x;
+    expose Integer y;
+
+    expose func init() {
+        x = 0;
+        y = 0;
+    }
+}
+
+/// @brief Persistent visual editor for one active VSCN document.
+class SceneEditor3D {
+    hide GUI.App guiApp;
+    expose GUI.VBox root;
+    expose GUI.Flex toolbar;
+    expose GUI.Flex viewToolbar;
+    expose GUI.Button newSceneButton;
+    expose GUI.Button importAssetButton;
+    expose GUI.Button addEmptyButton;
+    expose GUI.Button addChildButton;
+    expose GUI.Button addBoxButton;
+    expose GUI.Button addSphereButton;
+    expose GUI.Button addPlaneButton;
+    expose GUI.Button duplicateNodeButton;
+    expose GUI.Button deleteNodeButton;
+    expose GUI.Button orbitLeftButton;
+    expose GUI.Button orbitRightButton;
+    expose GUI.Button orbitUpButton;
+    expose GUI.Button orbitDownButton;
+    expose GUI.Button moveToolButton;
+    expose GUI.Button rotateToolButton;
+    expose GUI.Button scaleToolButton;
+    expose GUI.Checkbox snapTransformCheck;
+    expose GUI.Button zoomOutButton;
+    expose GUI.Button zoomInButton;
+    expose GUI.Button frameButton;
+    expose GUI.Button frameSelectedButton;
+    expose GUI.Button inspectorButton;
+    expose GUI.Label toolbarStatus;
+    expose GUI.Label viewStatusLabel;
+    expose GUI.SplitPane bodySplit;
+    expose GUI.ScrollView viewportScroll;
+    expose GUI.Image viewportImage;
+    expose GUI.ScrollView inspectorScroll;
+    expose GUI.ListBox hierarchyList;
+    expose GUI.Dropdown parentDropdown;
+    expose GUI.Button reparentButton;
+    expose GUI.TextInput nameInput;
+    expose GUI.Checkbox visibleCheck;
+    expose GUI.Spinner positionX;
+    expose GUI.Spinner positionY;
+    expose GUI.Spinner positionZ;
+    expose GUI.Spinner rotationX;
+    expose GUI.Spinner rotationY;
+    expose GUI.Spinner rotationZ;
+    expose GUI.Spinner scaleX;
+    expose GUI.Spinner scaleY;
+    expose GUI.Spinner scaleZ;
+    expose GUI.Button applyTransformButton;
+    expose scene_asset_browser.SceneAssetBrowser importAssetBrowser;
+    expose scene_material_inspector_3d.SceneMaterialInspector3D materialInspector;
+    expose GUI.Label selectionInfo;
+    expose GUI.Label detailLabel;
+
+    expose project_manager.ProjectManager projectManager;
+    expose document.Document currentDoc;
+    expose SceneGraph scene;
+    expose Pixels viewportPixels;
+    expose List[SceneNode] flatNodes;
+    expose List[Integer] flatDepths;
+    expose List[Integer] parentTargetIndices;
+    expose List[Integer] projectedX;
+    expose List[Integer] projectedY;
+    expose String currentSerialized;
+    expose String loadError;
+    expose Integer selectedIndex;
+    expose List[Integer] selectedIndices;
+    expose Integer revision;
+    expose Integer viewYawDegrees;
+    expose Integer viewPitchDegrees;
+    expose Integer viewScale;
+    expose Integer renderedViewportWidth;
+    expose Integer renderedViewportHeight;
+    expose Integer gizmoMode;
+    expose Boolean gizmoSnapEnabled;
+    expose Number viewTargetX;
+    expose Number viewTargetY;
+    expose Number viewTargetZ;
+    expose Boolean hierarchyClipped;
+    expose Boolean compactLayout;
+    expose Boolean inspectorRequestedVisible;
+    expose Boolean compactInspectorShown;
+    expose List[String] undoStack;
+    expose List[String] redoStack;
+    hide String cleanSerialized;
+    hide Boolean renderDirty;
+    hide Integer visibleRevision;
+    hide Integer gizmoHoverAxis;
+    hide Integer gizmoDragAxis;
+    hide Boolean gizmoDragChanged;
+    hide Number gizmoDragAccumulated;
+    hide Number gizmoDragStartX;
+    hide Number gizmoDragStartY;
+    hide Number gizmoDragStartZ;
+    hide List[Integer] gizmoDragIndices;
+    hide List[Number] gizmoDragStartXs;
+    hide List[Number] gizmoDragStartYs;
+    hide List[Number] gizmoDragStartZs;
+    hide Integer snapTransformRevision;
+    hide Boolean restoreInspectorScrollPending;
+    hide Number pendingInspectorScrollY;
+
+    expose func init() {
+        guiApp = null;
+        root = null;
+        toolbar = null;
+        viewToolbar = null;
+        newSceneButton = null;
+        importAssetButton = null;
+        addEmptyButton = null;
+        addChildButton = null;
+        addBoxButton = null;
+        addSphereButton = null;
+        addPlaneButton = null;
+        duplicateNodeButton = null;
+        deleteNodeButton = null;
+        orbitLeftButton = null;
+        orbitRightButton = null;
+        orbitUpButton = null;
+        orbitDownButton = null;
+        moveToolButton = null;
+        rotateToolButton = null;
+        scaleToolButton = null;
+        snapTransformCheck = null;
+        zoomOutButton = null;
+        zoomInButton = null;
+        frameButton = null;
+        frameSelectedButton = null;
+        inspectorButton = null;
+        toolbarStatus = null;
+        viewStatusLabel = null;
+        bodySplit = null;
+        viewportScroll = null;
+        viewportImage = null;
+        inspectorScroll = null;
+        hierarchyList = null;
+        parentDropdown = null;
+        reparentButton = null;
+        nameInput = null;
+        visibleCheck = null;
+        positionX = null;
+        positionY = null;
+        positionZ = null;
+        rotationX = null;
+        rotationY = null;
+        rotationZ = null;
+        scaleX = null;
+        scaleY = null;
+        scaleZ = null;
+        applyTransformButton = null;
+        importAssetBrowser = new scene_asset_browser.SceneAssetBrowser();
+        materialInspector = new
+            scene_material_inspector_3d.SceneMaterialInspector3D();
+        selectionInfo = null;
+        detailLabel = null;
+        projectManager = null;
+        currentDoc = null;
+        scene = null;
+        viewportPixels = null;
+        flatNodes = [];
+        flatDepths = [];
+        parentTargetIndices = [];
+        projectedX = [];
+        projectedY = [];
+        currentSerialized = "";
+        loadError = "";
+        selectedIndex = -1;
+        selectedIndices = [];
+        revision = 0;
+        viewYawDegrees = 35;
+        viewPitchDegrees = -25;
+        viewScale = 28;
+        renderedViewportWidth = DEFAULT_VIEWPORT_WIDTH;
+        renderedViewportHeight = DEFAULT_VIEWPORT_HEIGHT;
+        gizmoMode = GIZMO_MODE_MOVE;
+        gizmoSnapEnabled = false;
+        viewTargetX = 0.0;
+        viewTargetY = 0.0;
+        viewTargetZ = 0.0;
+        hierarchyClipped = false;
+        compactLayout = false;
+        inspectorRequestedVisible = true;
+        compactInspectorShown = false;
+        undoStack = [];
+        redoStack = [];
+        cleanSerialized = "";
+        renderDirty = true;
+        visibleRevision = 0;
+        gizmoHoverAxis = GIZMO_AXIS_NONE;
+        gizmoDragAxis = GIZMO_AXIS_NONE;
+        gizmoDragChanged = false;
+        gizmoDragAccumulated = 0.0;
+        gizmoDragStartX = 0.0;
+        gizmoDragStartY = 0.0;
+        gizmoDragStartZ = 0.0;
+        gizmoDragIndices = [];
+        gizmoDragStartXs = [];
+        gizmoDragStartYs = [];
+        gizmoDragStartZs = [];
+        snapTransformRevision = 0;
+        restoreInspectorScrollPending = false;
+        pendingInspectorScrollY = 0.0;
+    }
+
+    /// @brief Build the editor into WorkbenchShell.scene3DHost.
+    expose func Setup(host: GUI.VBox, app: GUI.App) {
+        guiApp = app;
+        root = GUI.VBox.New();
+        root.SetSpacing(0.0);
+        root.SetPadding(0.0);
+        root.SetFlex(1.0);
+        root.SetName("scene-editor-3d");
+        root.SetAccessibleName("3D scene editor");
+        host.AddChild(root);
+
+        toolbar = GUI.Flex.New();
+        toolbar.SetDirection(GUI.FlexDirection.Row);
+        toolbar.SetWrap(GUI.FlexWrap.Wrap);
+        toolbar.SetAlign(GUI.Align.Center);
+        toolbar.SetGap(4.0);
+        toolbar.SetPadding(4.0);
+        root.AddChild(toolbar);
+        newSceneButton = GUI.Button.New(toolbar, "New");
+        newSceneButton.SetTooltip("Replace this document with an empty 3D scene");
+        importAssetButton = GUI.Button.New(toolbar, "Import Asset...");
+        importAssetButton.SetTooltip(
+            "Import VSCN, glTF, GLB, FBX, OBJ, or STL into this scene document");
+        addEmptyButton = GUI.Button.New(toolbar, "+ Empty");
+        addChildButton = GUI.Button.New(toolbar, "+ Child");
+        addBoxButton = GUI.Button.New(toolbar, "+ Box");
+        addSphereButton = GUI.Button.New(toolbar, "+ Sphere");
+        addPlaneButton = GUI.Button.New(toolbar, "+ Plane");
+        duplicateNodeButton = GUI.Button.New(toolbar, "Duplicate");
+        duplicateNodeButton.SetTooltip(
+            "Duplicate selected hierarchy roots with their complete subtrees");
+        deleteNodeButton = GUI.Button.New(toolbar, "Delete");
+        toolbarStatus = GUI.Label.New(toolbar, "Open or create a 3D scene");
+        toolbarStatus.SetFlex(1.0);
+
+        viewToolbar = GUI.Flex.New();
+        viewToolbar.SetDirection(GUI.FlexDirection.Row);
+        viewToolbar.SetWrap(GUI.FlexWrap.Wrap);
+        viewToolbar.SetAlign(GUI.Align.Center);
+        viewToolbar.SetGap(4.0);
+        viewToolbar.SetPadding(4.0);
+        root.AddChild(viewToolbar);
+        GUI.Label.New(viewToolbar, "View");
+        inspectorButton = GUI.Button.New(viewToolbar, "Hide Inspector");
+        inspectorButton.SetStyle(2);
+        inspectorButton.SetTooltip(
+            "Hide the node inspector and give the viewport the full width");
+        GUI.Label.New(viewToolbar, "Transform");
+        moveToolButton = GUI.Button.New(viewToolbar, "Move");
+        moveToolButton.SetTooltip(
+            "Move the selected node along one axis (W in viewport)");
+        rotateToolButton = GUI.Button.New(viewToolbar, "Rotate");
+        rotateToolButton.SetTooltip(
+            "Rotate the selected node around one axis (E in viewport)");
+        scaleToolButton = GUI.Button.New(viewToolbar, "Scale");
+        scaleToolButton.SetTooltip(
+            "Scale the selected node along one axis (R in viewport)");
+        snapTransformCheck = GUI.Checkbox.New(viewToolbar, "Snap");
+        snapTransformCheck.SetTooltip(
+            "Quantize the resulting transform using the current tool's step");
+        snapTransformCheck.SetChecked(false);
+        snapTransformRevision = snapTransformCheck.GetRevision();
+        UpdateGizmoModeControls();
+        orbitLeftButton = GUI.Button.New(viewToolbar, "Yaw -");
+        orbitLeftButton.SetTooltip("Orbit the view left");
+        orbitRightButton = GUI.Button.New(viewToolbar, "Yaw +");
+        orbitRightButton.SetTooltip("Orbit the view right");
+        orbitUpButton = GUI.Button.New(viewToolbar, "Pitch +");
+        orbitUpButton.SetTooltip("Orbit the view upward");
+        orbitDownButton = GUI.Button.New(viewToolbar, "Pitch -");
+        orbitDownButton.SetTooltip("Orbit the view downward");
+        GUI.Label.New(viewToolbar, "Zoom");
+        zoomOutButton = GUI.Button.New(viewToolbar, "-");
+        zoomOutButton.SetTooltip("Zoom out");
+        zoomInButton = GUI.Button.New(viewToolbar, "+");
+        zoomInButton.SetTooltip("Zoom in");
+        frameButton = GUI.Button.New(viewToolbar, "Frame all");
+        frameButton.SetTooltip("Frame every scene node in the viewport");
+        frameSelectedButton = GUI.Button.New(viewToolbar, "Frame selected");
+        frameSelectedButton.SetTooltip(
+            "Center and frame the selected node in the viewport");
+        viewStatusLabel = GUI.Label.New(viewToolbar, "");
+        viewStatusLabel.SetFlex(1.0);
+
+        bodySplit = GUI.SplitPane.New(root, 1);
+        bodySplit.SetFlex(1.0);
+        bodySplit.SetPosition(0.65);
+        bodySplit.SetMinFirst(320.0);
+        bodySplit.SetMinSecond(320.0);
+
+        viewportScroll = GUI.ScrollView.New(bodySplit.First);
+        viewportScroll.SetFlex(1.0);
+        viewportImage = GUI.Image.New(viewportScroll);
+        viewportImage.SetScaleMode(0);
+        viewportImage.SetFilter(0);
+        viewportImage.SetName("scene-3d-viewport");
+        viewportImage.SetAccessibleName("3D scene viewport");
+        viewportImage.SetTooltip(
+            "Drag colored transform axes. Middle/right-drag to orbit. "
+            + "Use the wheel to zoom.");
+
+        inspectorScroll = GUI.ScrollView.New(bodySplit.Second);
+        inspectorScroll.SetFlex(1.0);
+        var inspector = GUI.VBox.New();
+        inspector.SetSpacing(6.0);
+        inspector.SetPadding(8.0);
+        inspectorScroll.AddChild(inspector);
+
+        GUI.Label.New(inspector, "Scene hierarchy");
+        hierarchyList = GUI.ListBox.New(inspector);
+        hierarchyList.SetAccessibleName("3D scene hierarchy");
+        hierarchyList.SetPreferredSize(0.0, 220.0);
+        hierarchyList.SetMultiSelect(true);
+        hierarchyList.SetTooltip(
+            "Ctrl/Command-click to select several nodes; Shift-click selects a range");
+        var parentRow = GUI.HBox.New();
+        parentRow.SetSpacing(4.0);
+        inspector.AddChild(parentRow);
+        GUI.Label.New(parentRow, "Parent");
+        parentDropdown = GUI.Dropdown.New(parentRow);
+        parentDropdown.SetFlex(1.0);
+        parentDropdown.SetAccessibleName("Selected node parent target");
+        parentDropdown.SetTooltip(
+            "Choose a hierarchy parent; local transforms remain unchanged");
+        reparentButton = GUI.Button.New(parentRow, "Reparent");
+        reparentButton.SetTooltip(
+            "Move selected hierarchy roots beneath this parent as one undoable edit");
+        var importGroup = GUI.GroupBox.New(inspector, "Project 3D imports");
+        importAssetBrowser.Setup(
+            importGroup,
+            "Import Project 3D Asset...",
+            ".vscn,.gltf,.glb,.fbx,.obj,.stl",
+            "Import Asset");
+        GUI.Label.New(inspector, "Name");
+        nameInput = GUI.TextInput.New(inspector);
+        nameInput.SetPlaceholder("Node name");
+        visibleCheck = GUI.Checkbox.New(inspector, "Visible");
+
+        GUI.Label.New(inspector, "Position");
+        var positionRow = GUI.HBox.New();
+        positionRow.SetSpacing(4.0);
+        inspector.AddChild(positionRow);
+        positionX = AddTransformSpinner(positionRow, "X", 0.0);
+        positionY = AddTransformSpinner(positionRow, "Y", 0.0);
+        positionZ = AddTransformSpinner(positionRow, "Z", 0.0);
+
+        GUI.Label.New(inspector, "Rotation (degrees)");
+        var rotationRow = GUI.HBox.New();
+        rotationRow.SetSpacing(4.0);
+        inspector.AddChild(rotationRow);
+        rotationX = AddRotationSpinner(rotationRow, "X");
+        rotationY = AddRotationSpinner(rotationRow, "Y");
+        rotationZ = AddRotationSpinner(rotationRow, "Z");
+
+        GUI.Label.New(inspector, "Scale");
+        var scaleRow = GUI.HBox.New();
+        scaleRow.SetSpacing(4.0);
+        inspector.AddChild(scaleRow);
+        scaleX = AddTransformSpinner(scaleRow, "X", 1.0);
+        scaleY = AddTransformSpinner(scaleRow, "Y", 1.0);
+        scaleZ = AddTransformSpinner(scaleRow, "Z", 1.0);
+        applyTransformButton = GUI.Button.New(inspector, "Apply node properties");
+        applyTransformButton.SetTooltip(
+            "Apply the visible local transform fields to the current selection");
+
+        materialInspector.Setup(inspector);
+
+        selectionInfo = GUI.Label.New(inspector, "No node selected");
+        selectionInfo.SetWordWrap(true);
+        detailLabel = GUI.Label.New(inspector, "");
+        detailLabel.SetWordWrap(true);
+        SetEditorControlsEnabled(false);
+    }
+
+    /// @brief Borrow Studio's multi-root project index for non-modal assets.
+    expose func SetWorkspaceContext(
+        nextProjectManager: project_manager.ProjectManager) {
+        projectManager = nextProjectManager;
+    }
+
+    /// @brief Pump the active document and return true when VSCN content changed.
+    expose func Pump(activeDoc: document.Document) -> Boolean {
+        if activeDoc == null or activeDoc.kind != file_utils.DOC_KIND_SCENE_3D {
+            return false;
+        }
+        if activeDoc != currentDoc or activeDoc.content != currentSerialized {
+            Activate(activeDoc);
+        }
+        if activeDoc == currentDoc and activeDoc.isModified == false
+           and activeDoc.content == currentSerialized {
+            cleanSerialized = currentSerialized;
+        }
+
+        RefreshResponsiveLayout();
+        if inspectorButton.WasClicked() { ToggleInspectorPane(); }
+
+        var changed = false;
+        if newSceneButton.WasClicked() {
+            scene = SceneGraph.New();
+            loadError = "";
+            selectedIndex = -1;
+            selectedIndices = [];
+            viewTargetX = 0.0;
+            viewTargetY = 0.0;
+            viewTargetZ = 0.0;
+            SetEditorControlsEnabled(true);
+            RefreshHierarchy(null);
+            changed = CommitScene("Created empty 3D scene") or changed;
+        }
+        if importAssetButton.WasClicked() {
+            changed = ImportAsset() or changed;
+        }
+        var projectImportPath = importAssetBrowser.Pump(
+            projectManager, currentDoc != null);
+        if projectImportPath != "" {
+            changed = ImportAssetPath(projectImportPath) or changed;
+        }
+        var projectMapPath = materialInspector.assetBrowser.Pump(
+            projectManager,
+            scene != null and SelectedNode() != null
+            and selectedIndices.count() == 1);
+        if projectMapPath != "" {
+            changed = ApplyMaterialMapPath(
+                selectedIndex,
+                materialInspector.mapSlot.Selected,
+                projectMapPath) or changed;
+        }
+        UpdateViewportSize();
+        if moveToolButton.WasClicked() { SetGizmoMode(GIZMO_MODE_MOVE); }
+        if rotateToolButton.WasClicked() { SetGizmoMode(GIZMO_MODE_ROTATE); }
+        if scaleToolButton.WasClicked() { SetGizmoMode(GIZMO_MODE_SCALE); }
+        var nextSnapRevision = snapTransformCheck.GetRevision();
+        if nextSnapRevision != snapTransformRevision {
+            snapTransformRevision = nextSnapRevision;
+            SetGizmoSnapEnabled(snapTransformCheck.IsChecked());
+        }
+        if scene == null {
+            if renderDirty { RenderViewport(); }
+            ApplyPendingWorkspaceScroll();
+            CaptureWorkspaceState();
+            return changed;
+        }
+
+        if addEmptyButton.WasClicked() {
+            changed = AddPrimitive(PRIMITIVE_EMPTY, false) or changed;
+        }
+        if addChildButton.WasClicked() {
+            changed = AddPrimitive(PRIMITIVE_EMPTY, true) or changed;
+        }
+        if addBoxButton.WasClicked() {
+            changed = AddPrimitive(PRIMITIVE_BOX, false) or changed;
+        }
+        if addSphereButton.WasClicked() {
+            changed = AddPrimitive(PRIMITIVE_SPHERE, false) or changed;
+        }
+        if addPlaneButton.WasClicked() {
+            changed = AddPrimitive(PRIMITIVE_PLANE, false) or changed;
+        }
+        if duplicateNodeButton.WasClicked() {
+            changed = DuplicateSelectedNodes() > 0 or changed;
+        }
+        if deleteNodeButton.WasClicked() {
+            changed = DeleteSelectedNodes() or changed;
+        }
+        if hierarchyList.WasSelectionChanged() {
+            selectedIndex = hierarchyList.SelectedIndex;
+            selectedIndices = scene_selection.FromData(
+                hierarchyList.GetSelectedData(),
+                flatNodes.count(),
+                selectedIndex);
+            RefreshSelectedFields();
+            SetEditorControlsEnabled(scene != null);
+            renderDirty = true;
+        }
+        if parentDropdown.WasChanged() {
+            UpdateParentControlAvailability();
+        }
+        if reparentButton.WasClicked() {
+            changed = ReparentSelectedNodes(
+                SelectedParentTargetIndex()) or changed;
+        }
+        if applyTransformButton.WasClicked() {
+            if selectedIndices.count() > 1 {
+                changed = ApplySelectedTransformDeltas(
+                    positionX.Value, positionY.Value, positionZ.Value,
+                    rotationX.Value, rotationY.Value, rotationZ.Value,
+                    scaleX.Value, scaleY.Value, scaleZ.Value) or changed;
+            } else if selectedIndices.count() == 1 {
+                changed = ApplySelectedNode() or changed;
+            }
+        }
+        if nameInput.WasSubmitted() and selectedIndices.count() == 1 {
+            changed = ApplySelectedNode() or changed;
+        }
+        if materialInspector.applyButton.WasClicked()
+           and selectedIndices.count() == 1 {
+            changed = ApplyMaterialFromControls() or changed;
+        }
+        if materialInspector.removeButton.WasClicked()
+           and selectedIndices.count() == 1 {
+            changed = RemoveNodeMaterial(selectedIndex) or changed;
+        }
+        if materialInspector.mapSlot.WasChanged() {
+            materialInspector.RefreshMapSummary(SelectedNode());
+            UpdateMaterialControls(true);
+        }
+        if materialInspector.chooseMapButton.WasClicked()
+           and selectedIndices.count() == 1 {
+            changed = ChooseMaterialMap() or changed;
+        }
+        if materialInspector.clearMapButton.WasClicked()
+           and selectedIndices.count() == 1 {
+            changed = ClearMaterialMap(
+                selectedIndex, materialInspector.mapSlot.Selected) or changed;
+        }
+        var nextVisibleRevision = visibleCheck.GetRevision();
+        if nextVisibleRevision != visibleRevision {
+            visibleRevision = nextVisibleRevision;
+            var visibleNode = SelectedNode();
+            if visibleNode != null and selectedIndices.count() == 1 {
+                visibleNode.Visible = visibleCheck.IsChecked();
+                changed = CommitScene("Updated node visibility") or changed;
+                RefreshHierarchy(visibleNode);
+            }
+        }
+
+        if orbitLeftButton.WasClicked() {
+            viewYawDegrees = NormalizeYawDegrees(viewYawDegrees - 15);
+            renderDirty = true;
+        }
+        if orbitRightButton.WasClicked() {
+            viewYawDegrees = NormalizeYawDegrees(viewYawDegrees + 15);
+            renderDirty = true;
+        }
+        if orbitUpButton.WasClicked() {
+            viewPitchDegrees = ClampInt3D(viewPitchDegrees + 10, -80, 80);
+            renderDirty = true;
+        }
+        if orbitDownButton.WasClicked() {
+            viewPitchDegrees = ClampInt3D(viewPitchDegrees - 10, -80, 80);
+            renderDirty = true;
+        }
+        if zoomOutButton.WasClicked() {
+            viewScale = ClampInt3D(viewScale - 4, 4, 120);
+            renderDirty = true;
+        }
+        if zoomInButton.WasClicked() {
+            viewScale = ClampInt3D(viewScale + 4, 4, 120);
+            renderDirty = true;
+        }
+        if frameButton.WasClicked() {
+            FrameAll();
+            renderDirty = true;
+        }
+        if frameSelectedButton.WasClicked() {
+            FrameSelected();
+            renderDirty = true;
+        }
+
+        changed = PumpViewportNavigation() or changed;
+        if renderDirty { RenderViewport(); }
+        ApplyPendingWorkspaceScroll();
+        CaptureWorkspaceState();
+        return changed;
+    }
+
+    /// @brief Load one document transactionally through the runtime VSCN loader.
+    expose func Activate(doc: document.Document) {
+        LoadDocumentModel(doc, false);
+    }
+
+    /// @brief Return whether a committed VSCN edit can be undone.
+    expose func CanUndo() -> Boolean {
+        return undoStack.count() > 0;
+    }
+
+    /// @brief Return whether an undone VSCN edit can be redone.
+    expose func CanRedo() -> Boolean {
+        return redoStack.count() > 0;
+    }
+
+    /// @brief Restore the preceding canonical VSCN snapshot.
+    expose func Undo() -> Boolean {
+        if currentDoc == null or undoStack.count() == 0 { return false; }
+        var index = undoStack.count() - 1;
+        var target = undoStack.get(index);
+        undoStack.removeAt(index);
+        PushHistory(redoStack, currentSerialized);
+        currentDoc.content = target;
+        currentDoc.isModified = target != cleanSerialized;
+        revision = revision + 1;
+        LoadDocumentModel(currentDoc, true);
+        toolbarStatus.SetText("Undid 3D scene edit");
+        return true;
+    }
+
+    /// @brief Reapply the next canonical VSCN snapshot.
+    expose func Redo() -> Boolean {
+        if currentDoc == null or redoStack.count() == 0 { return false; }
+        var index = redoStack.count() - 1;
+        var target = redoStack.get(index);
+        redoStack.removeAt(index);
+        PushHistory(undoStack, currentSerialized);
+        currentDoc.content = target;
+        currentDoc.isModified = target != cleanSerialized;
+        revision = revision + 1;
+        LoadDocumentModel(currentDoc, true);
+        toolbarStatus.SetText("Redid 3D scene edit");
+        return true;
+    }
+
+    /// @brief Load one document model with optional undo-history retention.
+    hide func LoadDocumentModel(doc: document.Document,
+                                preserveHistory: Boolean) {
+        var switchingDocument = currentDoc != doc;
+        if currentDoc != null { CaptureWorkspaceState(); }
+        if preserveHistory == false {
+            var savedState = doc.scene3DWorkspace;
+            var canRestoreHistory = switchingDocument
+                and savedState != null
+                and savedState.historyContent == doc.content;
+            if canRestoreHistory {
+                undoStack = savedState.undoStack;
+                redoStack = savedState.redoStack;
+                cleanSerialized = savedState.cleanSerialized;
+            } else {
+                undoStack = [];
+                redoStack = [];
+                if doc.isModified == false { cleanSerialized = doc.content; }
+                else { cleanSerialized = ""; }
+            }
+        }
+        currentDoc = doc;
+        currentSerialized = doc.content;
+        RestoreWorkspaceState(doc);
+        gizmoHoverAxis = GIZMO_AXIS_NONE;
+        ResetGizmoDrag(true);
+        loadError = "";
+        scene = LoadGraphFromContent(doc.content);
+        if scene == null {
+            SetEditorControlsEnabled(false);
+            toolbarStatus.SetText("Scene needs repair");
+            detailLabel.SetText("The VSCN asset could not be loaded. The original "
+                                + "document is preserved.\n\n" + loadError);
+        } else {
+            SetEditorControlsEnabled(true);
+            toolbarStatus.SetText("3D scene ready");
+            detailLabel.SetText("");
+        }
+        RefreshHierarchy(null);
+        renderDirty = true;
+    }
+
+    /// @brief Snapshot live hierarchy, camera, inspector, and undo state.
+    hide func CaptureWorkspaceState() {
+        if currentDoc == null or currentDoc.scene3DWorkspace == null { return; }
+        var state = currentDoc.scene3DWorkspace;
+        state.initialized = true;
+        state.selectedIndex = selectedIndex;
+        state.selectedIndices = selectedIndices;
+        state.transformMode = gizmoMode;
+        state.transformSnapEnabled = gizmoSnapEnabled;
+        state.viewYawDegrees = NormalizeYawDegrees(viewYawDegrees);
+        state.viewPitchDegrees = ClampInt3D(viewPitchDegrees, -80, 80);
+        state.viewScale = ClampInt3D(viewScale, 4, 120);
+        state.viewTargetX = ClampNumber3D(
+            viewTargetX, -1000000.0, 1000000.0);
+        state.viewTargetY = ClampNumber3D(
+            viewTargetY, -1000000.0, 1000000.0);
+        state.viewTargetZ = ClampNumber3D(
+            viewTargetZ, -1000000.0, 1000000.0);
+        if bodySplit != null {
+            state.splitPosition = ClampNumber3D(
+                bodySplit.GetPosition(), 0.20, 0.85);
+        }
+        if inspectorScroll != null {
+            state.inspectorScrollY = ClampNumber3D(
+                LogicalScrollY(inspectorScroll), 0.0, 1000000.0);
+        }
+        state.inspectorRequestedVisible = inspectorRequestedVisible;
+        state.compactInspectorShown = compactInspectorShown;
+        state.undoStack = undoStack;
+        state.redoStack = redoStack;
+        state.cleanSerialized = cleanSerialized;
+        state.historyContent = currentSerialized;
+    }
+
+    /// @brief Restore a document's validated hierarchy, camera, and inspector.
+    hide func RestoreWorkspaceState(doc: document.Document) {
+        var state = doc.scene3DWorkspace;
+        if state == null or state.initialized == false {
+            selectedIndex = -1;
+            selectedIndices = [];
+            gizmoMode = GIZMO_MODE_MOVE;
+            gizmoSnapEnabled = false;
+            viewYawDegrees = 35;
+            viewPitchDegrees = -25;
+            viewScale = 28;
+            viewTargetX = 0.0;
+            viewTargetY = 0.0;
+            viewTargetZ = 0.0;
+            if bodySplit != null { bodySplit.SetPosition(0.65); }
+            pendingInspectorScrollY = 0.0;
+            inspectorRequestedVisible = true;
+            compactInspectorShown = false;
+            restoreInspectorScrollPending = true;
+            SyncGizmoModeControls();
+            return;
+        }
+
+        selectedIndex = ClampInt3D(
+            state.selectedIndex, -1, MAX_EDITOR_NODES - 1);
+        selectedIndices = state.selectedIndices;
+        gizmoMode = ClampInt3D(
+            state.transformMode, GIZMO_MODE_MOVE, GIZMO_MODE_SCALE);
+        gizmoSnapEnabled = state.transformSnapEnabled;
+        viewYawDegrees = NormalizeYawDegrees(
+            ClampInt3D(state.viewYawDegrees, -36000, 36000));
+        viewPitchDegrees = ClampInt3D(state.viewPitchDegrees, -80, 80);
+        viewScale = ClampInt3D(state.viewScale, 4, 120);
+        viewTargetX = ClampNumber3D(
+            state.viewTargetX, -1000000.0, 1000000.0);
+        viewTargetY = ClampNumber3D(
+            state.viewTargetY, -1000000.0, 1000000.0);
+        viewTargetZ = ClampNumber3D(
+            state.viewTargetZ, -1000000.0, 1000000.0);
+        if bodySplit != null {
+            bodySplit.SetPosition(ClampNumber3D(
+                state.splitPosition, 0.20, 0.85));
+        }
+        pendingInspectorScrollY = ClampNumber3D(
+            state.inspectorScrollY, 0.0, 1000000.0);
+        inspectorRequestedVisible = state.inspectorRequestedVisible;
+        compactInspectorShown = state.compactInspectorShown;
+        restoreInspectorScrollPending = true;
+        SyncGizmoModeControls();
+    }
+
+    /// @brief Toggle the inspector without making either compact pane unusable.
+    expose func ToggleInspectorPane() {
+        if compactLayout {
+            compactInspectorShown = !compactInspectorShown;
+        } else {
+            inspectorRequestedVisible = !inspectorRequestedVisible;
+        }
+        ApplyInspectorLayout();
+        CaptureWorkspaceState();
+    }
+
+    /// @brief Reconcile wrapping chrome and master/detail layout after resize.
+    expose func RefreshResponsiveLayout() {
+        if root == null or bodySplit == null { return; }
+        var width = root.GetLogicalWidth();
+        if width <= 0.0 { return; }
+        var nextCompact = UsesCompactLayout(width);
+        if nextCompact != compactLayout {
+            compactLayout = nextCompact;
+            ApplyResponsiveChrome();
+            renderDirty = true;
+        }
+        ApplyInspectorLayout();
+    }
+
+    /// @brief Keep all scene creation and navigation actions reachable.
+    hide func ApplyResponsiveChrome() {
+        if compactLayout {
+            // Flex measurement cannot infer wrapped cross-axis height before
+            // its parent assigns a width. Reserve the three creation rows and
+            // four denser view rows required at defensive compact widths.
+            toolbar.SetPreferredSize(0.0, 96.0);
+            viewToolbar.SetPreferredSize(0.0, 132.0);
+            newSceneButton.SetText("New");
+            importAssetButton.SetText("Import...");
+            addEmptyButton.SetText("+ Node");
+            moveToolButton.SetText("M");
+            rotateToolButton.SetText("R");
+            scaleToolButton.SetText("S");
+            orbitLeftButton.SetText("←");
+            orbitRightButton.SetText("→");
+            orbitUpButton.SetText("↑");
+            orbitDownButton.SetText("↓");
+            frameButton.SetText("All");
+            frameSelectedButton.SetText("Selected");
+            toolbarStatus.SetVisible(false);
+            viewStatusLabel.SetVisible(false);
+        } else {
+            toolbar.SetPreferredSize(0.0, 0.0);
+            viewToolbar.SetPreferredSize(0.0, 0.0);
+            newSceneButton.SetText("New");
+            importAssetButton.SetText("Import Asset...");
+            addEmptyButton.SetText("+ Empty");
+            moveToolButton.SetText("Move");
+            rotateToolButton.SetText("Rotate");
+            scaleToolButton.SetText("Scale");
+            orbitLeftButton.SetText("Yaw -");
+            orbitRightButton.SetText("Yaw +");
+            orbitUpButton.SetText("Pitch +");
+            orbitDownButton.SetText("Pitch -");
+            frameButton.SetText("Frame all");
+            frameSelectedButton.SetText("Frame selected");
+            toolbarStatus.SetVisible(true);
+            viewStatusLabel.SetVisible(true);
+        }
+        UpdateGizmoModeControls();
+        UpdateInspectorButton();
+    }
+
+    /// @brief Apply wide split or compact one-pane-at-a-time presentation.
+    hide func ApplyInspectorLayout() {
+        if bodySplit == null { return; }
+        var desiredSide = 0;
+        if compactLayout {
+            desiredSide = 2;
+            if compactInspectorShown { desiredSide = 1; }
+        } else if !inspectorRequestedVisible {
+            desiredSide = 2;
+        }
+
+        if bodySplit.GetCollapsedSide() != desiredSide {
+            if desiredSide == 1 { bodySplit.CollapseFirst(); }
+            else if desiredSide == 2 { bodySplit.CollapseSecond(); }
+            else { bodySplit.Restore(); }
+            renderDirty = true;
+        }
+        UpdateInspectorButton();
+    }
+
+    /// @brief Describe the destination of the inspector toggle.
+    hide func UpdateInspectorButton() {
+        if inspectorButton == null { return; }
+        if compactLayout {
+            if compactInspectorShown {
+                inspectorButton.SetText("Viewport");
+                inspectorButton.SetTooltip("Return to the full-width 3D viewport");
+                inspectorButton.SetStyle(1);
+            } else {
+                inspectorButton.SetText("Inspector");
+                inspectorButton.SetTooltip("Show the node inspector at full width");
+                inspectorButton.SetStyle(2);
+            }
+        } else if inspectorRequestedVisible {
+            inspectorButton.SetText("Hide Inspector");
+            inspectorButton.SetTooltip(
+                "Hide the node inspector and give the viewport the full width");
+            inspectorButton.SetStyle(2);
+        } else {
+            inspectorButton.SetText("Show Inspector");
+            inspectorButton.SetTooltip("Restore the node inspector");
+            inspectorButton.SetStyle(1);
+        }
+    }
+
+    /// @brief Apply deferred inspector scroll after hierarchy layout is known.
+    hide func ApplyPendingWorkspaceScroll() {
+        if restoreInspectorScrollPending == false { return; }
+        if inspectorScroll != null {
+            SetLogicalScroll(
+                inspectorScroll, 0.0, pendingInspectorScrollY);
+        }
+        restoreInspectorScrollPending = false;
+    }
+
+    /// @brief Select one viewport transform tool without mutating scene data.
+    expose func SetGizmoMode(nextMode: Integer) {
+        if scene_transform_3d.IsValidMode(nextMode) == false
+           or nextMode == gizmoMode {
+            return;
+        }
+        if gizmoDragAxis != GIZMO_AXIS_NONE { CancelGizmoDrag(); }
+        gizmoMode = nextMode;
+        gizmoHoverAxis = GIZMO_AXIS_NONE;
+        UpdateGizmoModeControls();
+        toolbarStatus.SetText(
+            scene_transform_3d.ModeLabel(gizmoMode) + " tool selected");
+        renderDirty = true;
+        CaptureWorkspaceState();
+    }
+
+    /// @brief Toggle mode-aware snapping and keep the native checkbox in sync.
+    expose func SetGizmoSnapEnabled(enabled: Boolean) {
+        if enabled == gizmoSnapEnabled
+           and snapTransformCheck != null
+           and snapTransformCheck.IsChecked() == enabled {
+            return;
+        }
+        gizmoSnapEnabled = enabled;
+        SyncGizmoModeControls();
+        renderDirty = true;
+        CaptureWorkspaceState();
+    }
+
+    /// @brief Reconcile persisted gizmo fields with their native widgets.
+    hide func SyncGizmoModeControls() {
+        if snapTransformCheck == null { return; }
+        snapTransformCheck.SetChecked(gizmoSnapEnabled);
+        snapTransformRevision = snapTransformCheck.GetRevision();
+        UpdateGizmoModeControls();
+    }
+
+    /// @brief Present an unambiguous active transform mode and snap precision.
+    hide func UpdateGizmoModeControls() {
+        if moveToolButton == null { return; }
+        moveToolButton.SetStyle(0);
+        rotateToolButton.SetStyle(0);
+        scaleToolButton.SetStyle(0);
+        if gizmoMode == GIZMO_MODE_ROTATE {
+            rotateToolButton.SetStyle(1);
+        } else if gizmoMode == GIZMO_MODE_SCALE {
+            scaleToolButton.SetStyle(1);
+        } else {
+            moveToolButton.SetStyle(1);
+        }
+        var snapState = "off";
+        if gizmoSnapEnabled {
+            snapState = scene_transform_3d.SnapDescription(gizmoMode);
+        }
+        snapTransformCheck.SetTooltip(
+            scene_transform_3d.ModeLabel(gizmoMode)
+            + " snap: " + snapState);
+        if viewportImage != null {
+            viewportImage.SetTooltip(
+                "Drag colored axes to "
+                + Str.ToLower(scene_transform_3d.ModeLabel(gizmoMode))
+                + ". Middle/right-drag to orbit. Use the wheel to zoom.");
+        }
+    }
+
+    /// @brief Return the monotonic accepted-edit revision.
+    expose func GetRevision() -> Integer {
+        return revision;
+    }
+
+    /// @brief Add a named empty node through the normal committed edit path.
+    /// @return New flattened node index, or -1 on failure.
+    expose func AddEmptyNode(name: String,
+                             parentIndex: Integer) -> Integer {
+        if scene == null { return -1; }
+        var parent: SceneNode = null;
+        if parentIndex >= 0 and parentIndex < flatNodes.count() {
+            parent = flatNodes.get(parentIndex);
+        }
+        var node = SceneNode.New();
+        var nodeName = Str.Trim(name);
+        if nodeName == "" { nodeName = "Node " + scene.NodeCount; }
+        node.Name = nodeName;
+        if parent != null {
+            parent.AddChild(node);
+        } else {
+            scene.Add(node);
+        }
+        if CommitScene("Added " + nodeName) == false { return -1; }
+        RefreshHierarchy(node);
+        return selectedIndex;
+    }
+
+    /// @brief Update one node's local transform and commit it.
+    expose func SetNodeTransform(nodeIndex: Integer,
+                                 px: Number,
+                                 py: Number,
+                                 pz: Number,
+                                 sx: Number,
+                                 sy: Number,
+                                 sz: Number) -> Boolean {
+        if scene == null or nodeIndex < 0 or nodeIndex >= flatNodes.count() {
+            return false;
+        }
+        var node = flatNodes.get(nodeIndex);
+        node.SetPosition(px, py, pz);
+        node.SetScale(sx, sy, sz);
+        selectedIndex = nodeIndex;
+        selectedIndices = scene_selection.Single(
+            nodeIndex, flatNodes.count());
+        if CommitScene("Updated node transform") == false { return false; }
+        positionX.SetValue(px);
+        positionY.SetValue(py);
+        positionZ.SetValue(pz);
+        scaleX.SetValue(sx);
+        scaleY.SetValue(sy);
+        scaleZ.SetValue(sz);
+        return true;
+    }
+
+    /// @brief Update one node's local Euler rotation in editor-friendly degrees.
+    expose func SetNodeEulerRotation(nodeIndex: Integer,
+                                     xDegrees: Number,
+                                     yDegrees: Number,
+                                     zDegrees: Number) -> Boolean {
+        if scene == null or nodeIndex < 0 or nodeIndex >= flatNodes.count() {
+            return false;
+        }
+        var node = flatNodes.get(nodeIndex);
+        node.Rotation = Quat.FromEuler(xDegrees * DEG_TO_RAD,
+                                       yDegrees * DEG_TO_RAD,
+                                       zDegrees * DEG_TO_RAD).Normalize();
+        selectedIndex = nodeIndex;
+        selectedIndices = scene_selection.Single(
+            nodeIndex, flatNodes.count());
+        if CommitScene("Updated node rotation") == false { return false; }
+        rotationX.SetValue(xDegrees);
+        rotationY.SetValue(yDegrees);
+        rotationZ.SetValue(zDegrees);
+        return true;
+    }
+
+    /// @brief Translate one node along a displayed local gizmo axis and commit.
+    /// @details This is the deterministic command path behind direct viewport
+    ///          manipulation. The projected handle reflects parent rotation and
+    ///          scale while the edit remains an inspector-compatible local value.
+    expose func TranslateNodeAlongGizmoAxis(nodeIndex: Integer,
+                                            axis: Integer,
+                                            amount: Number) -> Boolean {
+        return TransformNodeAlongGizmoAxis(
+            nodeIndex, GIZMO_MODE_MOVE, axis, amount, false);
+    }
+
+    /// @brief Apply one deterministic Move, Rotate, or Scale axis edit.
+    /// @details This is the probeable command boundary behind live gizmo drags.
+    ///          The amount is expressed in units, degrees, or scale depending
+    ///          on mode; optional snapping quantizes the resulting value.
+    expose func TransformNodeAlongGizmoAxis(nodeIndex: Integer,
+                                            transformMode: Integer,
+                                            axis: Integer,
+                                            amount: Number,
+                                            snapEnabled: Boolean) -> Boolean {
+        if scene == null or nodeIndex < 0 or nodeIndex >= flatNodes.count()
+           or scene_transform_3d.IsValidMode(transformMode) == false
+           or (axis != GIZMO_AXIS_X and axis != GIZMO_AXIS_Y
+               and axis != GIZMO_AXIS_Z)
+           or (amount > -0.0000001 and amount < 0.0000001) {
+            return false;
+        }
+        var node = flatNodes.get(nodeIndex);
+        var sourceX = 0.0;
+        var sourceY = 0.0;
+        var sourceZ = 0.0;
+        if transformMode == GIZMO_MODE_ROTATE {
+            var rotation = node.Rotation;
+            var euler = QuaternionToEulerDegrees(rotation);
+            sourceX = euler.X;
+            sourceY = euler.Y;
+            sourceZ = euler.Z;
+        } else if transformMode == GIZMO_MODE_SCALE {
+            var scale = node.Scale;
+            sourceX = scale.X;
+            sourceY = scale.Y;
+            sourceZ = scale.Z;
+        } else {
+            var position = node.Position;
+            sourceX = position.X;
+            sourceY = position.Y;
+            sourceZ = position.Z;
+        }
+        var sourceValue = sourceZ;
+        if axis == GIZMO_AXIS_X { sourceValue = sourceX; }
+        else if axis == GIZMO_AXIS_Y { sourceValue = sourceY; }
+        var targetValue = scene_transform_3d.AxisTarget(
+            transformMode, sourceValue, amount, snapEnabled);
+        if scene_transform_3d.NearlyEqual(sourceValue, targetValue) {
+            return false;
+        }
+        var targetX = sourceX;
+        var targetY = sourceY;
+        var targetZ = sourceZ;
+        if axis == GIZMO_AXIS_X { targetX = targetValue; }
+        else if axis == GIZMO_AXIS_Y { targetY = targetValue; }
+        else { targetZ = targetValue; }
+        if transformMode == GIZMO_MODE_ROTATE {
+            return SetNodeEulerRotation(
+                nodeIndex, targetX, targetY, targetZ);
+        }
+        if transformMode == GIZMO_MODE_SCALE {
+            var localPosition = node.Position;
+            return SetNodeTransform(
+                nodeIndex,
+                localPosition.X, localPosition.Y, localPosition.Z,
+                targetX, targetY, targetZ);
+        }
+        var localScale = node.Scale;
+        return SetNodeTransform(
+            nodeIndex, targetX, targetY, targetZ,
+            localScale.X, localScale.Y, localScale.Z);
+    }
+
+    /// @brief Apply one axis amount to every selected local transform.
+    /// @details The complete group is serialized once so undo restores every
+    ///          member together. Rotate and scale use each node's local origin.
+    expose func TransformSelectedAlongGizmoAxis(
+        transformMode: Integer,
+        axis: Integer,
+        amount: Number,
+        snapEnabled: Boolean) -> Boolean {
+        if scene == null
+           or scene_transform_3d.IsValidMode(transformMode) == false
+           or (axis != GIZMO_AXIS_X and axis != GIZMO_AXIS_Y
+               and axis != GIZMO_AXIS_Z)
+           or (amount > -0.0000001 and amount < 0.0000001) {
+            return false;
+        }
+        selectedIndices = scene_selection.Normalize(
+            selectedIndices, flatNodes.count(), selectedIndex);
+        if selectedIndices.count() == 0 { return false; }
+        var previousSelection = selectedIndices;
+        var previousPrimary = selectedIndex;
+        var changed = false;
+        var selectionIndex = 0;
+        while selectionIndex < selectedIndices.count() {
+            var nodeIndex = selectedIndices.get(selectionIndex);
+            var node = flatNodes.get(nodeIndex);
+            var sourceX = 0.0;
+            var sourceY = 0.0;
+            var sourceZ = 0.0;
+            if transformMode == GIZMO_MODE_ROTATE {
+                var euler = QuaternionToEulerDegrees(node.Rotation);
+                sourceX = euler.X;
+                sourceY = euler.Y;
+                sourceZ = euler.Z;
+            } else if transformMode == GIZMO_MODE_SCALE {
+                var scale = node.Scale;
+                sourceX = scale.X;
+                sourceY = scale.Y;
+                sourceZ = scale.Z;
+            } else {
+                var position = node.Position;
+                sourceX = position.X;
+                sourceY = position.Y;
+                sourceZ = position.Z;
+            }
+            var sourceValue = sourceZ;
+            if axis == GIZMO_AXIS_X { sourceValue = sourceX; }
+            else if axis == GIZMO_AXIS_Y { sourceValue = sourceY; }
+            var targetValue = scene_transform_3d.AxisTarget(
+                transformMode, sourceValue, amount, snapEnabled);
+            if scene_transform_3d.NearlyEqual(
+                   sourceValue, targetValue) == false {
+                if axis == GIZMO_AXIS_X { sourceX = targetValue; }
+                else if axis == GIZMO_AXIS_Y { sourceY = targetValue; }
+                else { sourceZ = targetValue; }
+                ApplyNodeTransformValues(
+                    node, transformMode, sourceX, sourceY, sourceZ);
+                changed = true;
+            }
+            selectionIndex = selectionIndex + 1;
+        }
+        if changed == false { return false; }
+        if CommitScene(
+               scene_transform_3d.ModeHistoryVerb(transformMode)
+               + " " + selectedIndices.count() + " selected node(s)") == false {
+            RollBackGroupEdit(
+                previousSelection, previousPrimary,
+                "The selected transforms could not be committed.");
+            return false;
+        }
+        RefreshSelectedFields();
+        SetEditorControlsEnabled(true);
+        renderDirty = true;
+        return true;
+    }
+
+    /// @brief Apply explicit relative inspector values to every selected node.
+    /// @details Position and Euler values are added to each local transform;
+    ///          scale values multiply each local scale. The batch commits once
+    ///          and reloads the prior canonical graph on any commit failure.
+    expose func ApplySelectedTransformDeltas(
+        positionDeltaX: Number,
+        positionDeltaY: Number,
+        positionDeltaZ: Number,
+        rotationDeltaX: Number,
+        rotationDeltaY: Number,
+        rotationDeltaZ: Number,
+        scaleFactorX: Number,
+        scaleFactorY: Number,
+        scaleFactorZ: Number) -> Boolean {
+        if scene == null { return false; }
+        selectedIndices = scene_selection.Normalize(
+            selectedIndices, flatNodes.count(), selectedIndex);
+        if selectedIndices.count() < 2 { return false; }
+        var positionChanged =
+            scene_transform_3d.NearlyEqual(positionDeltaX, 0.0) == false
+            or scene_transform_3d.NearlyEqual(positionDeltaY, 0.0) == false
+            or scene_transform_3d.NearlyEqual(positionDeltaZ, 0.0) == false;
+        var rotationChanged =
+            scene_transform_3d.NearlyEqual(rotationDeltaX, 0.0) == false
+            or scene_transform_3d.NearlyEqual(rotationDeltaY, 0.0) == false
+            or scene_transform_3d.NearlyEqual(rotationDeltaZ, 0.0) == false;
+        var scaleChanged =
+            scene_transform_3d.NearlyEqual(scaleFactorX, 1.0) == false
+            or scene_transform_3d.NearlyEqual(scaleFactorY, 1.0) == false
+            or scene_transform_3d.NearlyEqual(scaleFactorZ, 1.0) == false;
+        if positionChanged == false
+           and rotationChanged == false and scaleChanged == false {
+            detailLabel.SetText("The batch transform is already neutral.");
+            return false;
+        }
+
+        var previousSelection = selectedIndices;
+        var previousPrimary = selectedIndex;
+        var selectionIndex = 0;
+        while selectionIndex < selectedIndices.count() {
+            var node = flatNodes.get(selectedIndices.get(selectionIndex));
+            var position = node.Position;
+            node.SetPosition(
+                position.X + positionDeltaX,
+                position.Y + positionDeltaY,
+                position.Z + positionDeltaZ);
+            var euler = QuaternionToEulerDegrees(node.Rotation);
+            node.Rotation = Quat.FromEuler(
+                (euler.X + rotationDeltaX) * DEG_TO_RAD,
+                (euler.Y + rotationDeltaY) * DEG_TO_RAD,
+                (euler.Z + rotationDeltaZ) * DEG_TO_RAD).Normalize();
+            var scale = node.Scale;
+            node.SetScale(
+                scale.X * scaleFactorX,
+                scale.Y * scaleFactorY,
+                scale.Z * scaleFactorZ);
+            selectionIndex = selectionIndex + 1;
+        }
+        var count = selectedIndices.count();
+        if CommitScene(
+               "Applied transform deltas to " + count + " selected nodes")
+           == false {
+            RollBackGroupEdit(
+                previousSelection, previousPrimary,
+                "The batch transform could not be committed.");
+            return false;
+        }
+        detailLabel.SetText("");
+        RefreshSelectedFields();
+        SetEditorControlsEnabled(true);
+        renderDirty = true;
+        return true;
+    }
+
+    /// @brief Apply one copy-on-edit PBR material component transaction.
+    /// @details Existing material state is cloned before visible fields change,
+    ///          preserving shared siblings and unexposed texture/custom slots.
+    expose func ApplyNodeMaterial(nodeIndex: Integer,
+                                  red: Number,
+                                  green: Number,
+                                  blue: Number,
+                                  alpha: Number,
+                                  metallic: Number,
+                                  roughness: Number,
+                                  ambientOcclusion: Number,
+                                  alphaMode: Integer,
+                                  doubleSided: Boolean,
+                                  unlit: Boolean) -> Boolean {
+        if scene == null or nodeIndex < 0 or nodeIndex >= flatNodes.count() {
+            return false;
+        }
+        var node = flatNodes.get(nodeIndex);
+        var current = node.Material;
+        if scene_material_3d.Matches(
+               current, red, green, blue, alpha, metallic, roughness,
+               ambientOcclusion, alphaMode, doubleSided, unlit) {
+            return false;
+        }
+        var next = scene_material_3d.MakeUnique(
+            current, red, green, blue, alpha, metallic, roughness,
+            ambientOcclusion, alphaMode, doubleSided, unlit);
+        if next == null {
+            toolbarStatus.SetText("Material edit failed");
+            detailLabel.SetText(
+                "Studio could not allocate a node-local material copy.");
+            GUI.Toast.Error("3D material edit failed");
+            return false;
+        }
+        node.Material = next;
+        selectedIndex = nodeIndex;
+        selectedIndices = scene_selection.Single(
+            nodeIndex, flatNodes.count());
+        if CommitScene("Updated material on " + NodeDisplayName(node)) == false {
+            return false;
+        }
+        RefreshMaterialFields(node);
+        return true;
+    }
+
+    /// @brief Remove one selected material component as a history transaction.
+    expose func RemoveNodeMaterial(nodeIndex: Integer) -> Boolean {
+        if scene == null or nodeIndex < 0 or nodeIndex >= flatNodes.count() {
+            return false;
+        }
+        var node = flatNodes.get(nodeIndex);
+        if node.Material == null { return false; }
+        node.Material = null;
+        selectedIndex = nodeIndex;
+        selectedIndices = scene_selection.Single(
+            nodeIndex, flatNodes.count());
+        if CommitScene("Removed material from " + NodeDisplayName(node)) == false {
+            return false;
+        }
+        RefreshMaterialFields(node);
+        return true;
+    }
+
+    /// @brief Load and embed one texture map as a node-local material edit.
+    expose func ApplyMaterialMapPath(nodeIndex: Integer,
+                                     slot: Integer,
+                                     path: String) -> Boolean {
+        if scene == null or nodeIndex < 0 or nodeIndex >= flatNodes.count()
+           or scene_material_3d.IsMapSlot(slot) == false
+           or Str.Trim(path) == "" {
+            return false;
+        }
+        var sourceBytes = safe_io.SizeBytes(path);
+        if sourceBytes < 0 or sourceBytes > MAX_TEXTURE_SOURCE_BYTES {
+            toolbarStatus.SetText("Texture map not loaded");
+            detailLabel.SetText(
+                "Choose a readable texture no larger than 16 MB.");
+            GUI.Toast.Error("3D texture map could not be read");
+            return false;
+        }
+        var texture = scene_material_3d.LoadTexturePath(path);
+        if texture == null {
+            toolbarStatus.SetText("Texture map not loaded");
+            detailLabel.SetText(
+                "Studio could not decode " + Path.Name(path)
+                + ". Use PNG, JPEG, BMP, GIF, or a valid KTX2 asset; "
+                + "raster maps may contain at most 16,777,216 pixels.");
+            GUI.Toast.Error("Unsupported or invalid 3D texture map");
+            return false;
+        }
+        return AssignMaterialMap(nodeIndex, slot, texture);
+    }
+
+    /// @brief Clear one editable map slot as a single history transaction.
+    expose func ClearMaterialMap(nodeIndex: Integer,
+                                 slot: Integer) -> Boolean {
+        if scene == null or nodeIndex < 0 or nodeIndex >= flatNodes.count()
+           or scene_material_3d.IsMapSlot(slot) == false {
+            return false;
+        }
+        var node = flatNodes.get(nodeIndex);
+        if scene_material_3d.HasMap(node.Material, slot) == false {
+            return false;
+        }
+        return AssignMaterialMap(nodeIndex, slot, null);
+    }
+
+    /// @brief Import one supported asset path into the active VSCN document.
+    expose func ImportAssetPath(path: String) -> Boolean {
+        if path == "" or currentDoc == null { return false; }
+        var imported = SceneAsset.LoadResult(path);
+        if imported == null or imported.IsOk == false {
+            var message = "Unsupported or invalid 3D asset";
+            if imported != null { message = imported.UnwrapErrStr(); }
+            detailLabel.SetText("3D import failed:\n" + message);
+            toolbarStatus.SetText("Import failed");
+            GUI.Toast.Error("3D import failed: " + message);
+            return false;
+        }
+        var asset = imported.Unwrap() as SceneAsset;
+        var importedScene = asset.InstantiateScene() as SceneGraph;
+        if importedScene == null {
+            detailLabel.SetText("3D import failed: the asset has no scene hierarchy.");
+            toolbarStatus.SetText("Import failed");
+            GUI.Toast.Error("3D import failed: no scene hierarchy");
+            return false;
+        }
+
+        var importedCount = importedScene.NodeCount - 1;
+        var firstImported: SceneNode = null;
+        if importedCount > 0 {
+            firstImported = importedScene.Root.GetChild(0);
+        }
+        if scene == null {
+            scene = importedScene;
+        } else if importedCount > 0 {
+            var importedRoot = importedScene.Root;
+            while importedRoot.ChildCount > 0 {
+                var importedNode = importedRoot.GetChild(0);
+                importedRoot.RemoveChild(importedNode);
+                if scene.TryAdd(importedNode) == false {
+                    var failedDoc = currentDoc;
+                    if failedDoc != null { LoadDocumentModel(failedDoc, true); }
+                    detailLabel.SetText(
+                        "3D import failed while merging the asset hierarchy. "
+                        + "The document was restored.");
+                    toolbarStatus.SetText("Import rolled back");
+                    GUI.Toast.Error("3D asset merge failed");
+                    return false;
+                }
+            }
+        }
+        loadError = "";
+        selectedIndex = -1;
+        selectedIndices = [];
+        SetEditorControlsEnabled(true);
+        if importedCount == 0 and scene != importedScene {
+            detailLabel.SetText("The selected asset contains no scene nodes.");
+            toolbarStatus.SetText("Nothing to import");
+            return false;
+        }
+        RefreshHierarchy(firstImported);
+        FrameAll();
+        return CommitScene(
+            "Imported " + importedCount + " node(s) from " + Path.Name(path));
+    }
+
+    hide func AddTransformSpinner(parent: GUI.HBox,
+                                  label: String,
+                                  value: Number) -> GUI.Spinner {
+        GUI.Label.New(parent, label);
+        var spinner = GUI.Spinner.New(parent);
+        spinner.SetRange(-1000000.0, 1000000.0);
+        spinner.SetStep(0.1);
+        spinner.SetDecimals(3);
+        spinner.SetValue(value);
+        spinner.SetPreferredSize(72.0, 0.0);
+        return spinner;
+    }
+
+    hide func AddRotationSpinner(parent: GUI.HBox,
+                                 label: String) -> GUI.Spinner {
+        GUI.Label.New(parent, label);
+        var spinner = GUI.Spinner.New(parent);
+        spinner.SetRange(-36000.0, 36000.0);
+        spinner.SetStep(1.0);
+        spinner.SetDecimals(2);
+        spinner.SetValue(0.0);
+        spinner.SetPreferredSize(76.0, 0.0);
+        return spinner;
+    }
+
+    hide func LoadGraphFromContent(content: String) -> SceneGraph {
+        var tempPath = TempFile.PathWithExt("zannastudio_scene3d_load_", ".vscn");
+        if tempPath == "" or safe_io.WriteAllText(tempPath, content) == false {
+            loadError = "Studio could not stage the scene for validation.";
+            if tempPath != "" { safe_io.DeleteFile(tempPath); }
+            return null;
+        }
+        var loaded = SceneAsset.LoadResult(tempPath);
+        safe_io.DeleteFile(tempPath);
+        if loaded == null or loaded.IsOk == false {
+            loadError = "Invalid or unsupported VSCN data.";
+            if loaded != null { loadError = loaded.UnwrapErrStr(); }
+            return null;
+        }
+        var asset = loaded.Unwrap() as SceneAsset;
+        var graph = asset.InstantiateScene() as SceneGraph;
+        if graph == null {
+            loadError = "The VSCN asset contains no instantiable scene.";
+        }
+        return graph;
+    }
+
+    hide func ImportAsset() -> Boolean {
+        var baseDir = "";
+        if currentDoc != null and currentDoc.filePath != "" {
+            baseDir = Path.Directory(currentDoc.filePath);
+        }
+        var path = GUI.FileDialog.Open(
+            "Import 3D Asset", baseDir, "*.vscn;*.gltf;*.glb;*.fbx;*.obj;*.stl");
+        if path == "" { return false; }
+        return ImportAssetPath(path);
+    }
+
+    hide func CommitScene(message: String) -> Boolean {
+        if scene == null or currentDoc == null { return false; }
+        var tempPath = TempFile.PathWithExt("zannastudio_scene3d_save_", ".vscn");
+        if tempPath == "" or scene.Save(tempPath) == 0 {
+            if tempPath != "" { safe_io.DeleteFile(tempPath); }
+            RollBackFailedCommit("The 3D scene could not be serialized.");
+            return false;
+        }
+        var readResult = safe_io.ReadAllTextBounded(tempPath, MAX_SCENE_BYTES);
+        safe_io.DeleteFile(tempPath);
+        if readResult.ok == false or readResult.text == "" {
+            RollBackFailedCommit(
+                "The serialized 3D scene exceeded Studio's 64 MB editing limit.");
+            return false;
+        }
+        if readResult.text == currentSerialized { return false; }
+        PushHistory(undoStack, currentSerialized);
+        redoStack = [];
+        currentSerialized = readResult.text;
+        currentDoc.content = readResult.text;
+        currentDoc.isModified = currentSerialized != cleanSerialized;
+        revision = revision + 1;
+        renderDirty = true;
+        toolbarStatus.SetText(message);
+        detailLabel.SetText("");
+        return true;
+    }
+
+    /// @brief Append one bounded canonical VSCN history snapshot.
+    hide func PushHistory(stack: List[String], content: String) {
+        if content == "" { return; }
+        stack.add(content);
+        if stack.count() > MAX_3D_SCENE_HISTORY { stack.removeAt(0); }
+    }
+
+    hide func RollBackFailedCommit(message: String) {
+        var doc = currentDoc;
+        if doc != null { LoadDocumentModel(doc, true); }
+        detailLabel.SetText(message + " The last edit was rolled back.");
+        toolbarStatus.SetText("Edit rolled back");
+        GUI.Toast.Error("3D scene edit rolled back");
+    }
+
+    hide func AddPrimitive(kind: Integer, asChild: Boolean) -> Boolean {
+        if scene == null { return false; }
+        var node = SceneNode.New();
+        var name = "Empty " + scene.NodeCount;
+        if kind == PRIMITIVE_BOX {
+            name = "Box " + scene.NodeCount;
+            node.Mesh = Mesh3D.Box(1.0, 1.0, 1.0);
+            node.Material = Material3D.FromColor(0.30, 0.62, 0.92);
+        } else if kind == PRIMITIVE_SPHERE {
+            name = "Sphere " + scene.NodeCount;
+            node.Mesh = Mesh3D.Sphere(0.5, 16);
+            node.Material = Material3D.FromColor(0.92, 0.52, 0.26);
+        } else if kind == PRIMITIVE_PLANE {
+            name = "Plane " + scene.NodeCount;
+            node.Mesh = Mesh3D.Plane(4.0, 4.0);
+            node.Material = Material3D.FromColor(0.42, 0.70, 0.42);
+        }
+        node.Name = name;
+        var parent = SelectedNode();
+        if asChild and parent != null {
+            parent.AddChild(node);
+        } else {
+            scene.Add(node);
+        }
+        if CommitScene("Added " + name) == false { return false; }
+        RefreshHierarchy(node);
+        return true;
+    }
+
+    hide func FindNodeIndex(nodes: List[SceneNode],
+                            needle: SceneNode) -> Integer {
+        var index = 0;
+        while index < nodes.count() {
+            if nodes.get(index) == needle { return index; }
+            index = index + 1;
+        }
+        return -1;
+    }
+
+    /// @brief Return selected roots in an arbitrary flattened source graph.
+    hide func TopLevelIndicesFor(nodes: List[SceneNode],
+                                 indices: List[Integer],
+                                 primary: Integer) -> List[Integer] {
+        var roots: List[Integer] = [];
+        var normalized = scene_selection.Normalize(
+            indices, nodes.count(), primary);
+        var selectionIndex = 0;
+        while selectionIndex < normalized.count() {
+            var candidate = normalized.get(selectionIndex);
+            var parent = nodes.get(candidate).Parent;
+            var hasSelectedAncestor = false;
+            while parent != null and hasSelectedAncestor == false {
+                var parentIndex = FindNodeIndex(nodes, parent);
+                if parentIndex >= 0
+                   and scene_selection.Contains(
+                       normalized, parentIndex) {
+                    hasSelectedAncestor = true;
+                }
+                parent = parent.Parent;
+            }
+            if hasSelectedAncestor == false { roots.add(candidate); }
+            selectionIndex = selectionIndex + 1;
+        }
+        return roots;
+    }
+
+    /// @brief Return selected hierarchy roots, excluding selected descendants.
+    hide func TopLevelSelectedIndices() -> List[Integer] {
+        selectedIndices = scene_selection.Normalize(
+            selectedIndices, flatNodes.count(), selectedIndex);
+        return TopLevelIndicesFor(
+            flatNodes, selectedIndices, selectedIndex);
+    }
+
+    /// @brief Return live handles for the top-level roots of current selection.
+    hide func TopLevelSelectedNodes() -> List[SceneNode] {
+        var nodes: List[SceneNode] = [];
+        var indices = TopLevelSelectedIndices();
+        var index = 0;
+        while index < indices.count() {
+            nodes.add(flatNodes.get(indices.get(index)));
+            index = index + 1;
+        }
+        return nodes;
+    }
+
+    /// @brief Return the maximum child-edge depth beneath one live node.
+    hide func SubtreeRelativeDepth(node: SceneNode) -> Integer {
+        if node == null { return 0; }
+        var maximum = 0;
+        var child = 0;
+        while child < node.ChildCount {
+            var depth = 1 + SubtreeRelativeDepth(node.GetChild(child));
+            if depth > maximum { maximum = depth; }
+            if maximum >= MAX_HIERARCHY_DEPTH { return maximum; }
+            child = child + 1;
+        }
+        return maximum;
+    }
+
+    /// @brief Return whether all moved subtrees remain visible within the cap.
+    hide func ParentTargetFits(targetIndex: Integer,
+                               roots: List[SceneNode]) -> Boolean {
+        var rootDepth = 0;
+        if targetIndex >= 0 {
+            if targetIndex >= flatDepths.count() { return false; }
+            rootDepth = flatDepths.get(targetIndex) + 1;
+        }
+        var index = 0;
+        while index < roots.count() {
+            if rootDepth + SubtreeRelativeDepth(roots.get(index))
+               > MAX_HIERARCHY_DEPTH {
+                return false;
+            }
+            index = index + 1;
+        }
+        return true;
+    }
+
+    /// @brief Move selected hierarchy roots beneath one existing target.
+    /// @param targetIndex Flattened target index, or -1 for the scene root.
+    /// @details Local transforms remain unchanged. Cycles, excessive depth,
+    ///          unchanged parents, and invalid targets are byte/history no-ops.
+    ///          The complete operation serializes once and selection is remapped
+    ///          by live node identity after preorder changes.
+    expose func ReparentSelectedNodes(targetIndex: Integer) -> Boolean {
+        if scene == null or (targetIndex < -1)
+           or targetIndex >= flatNodes.count() {
+            return false;
+        }
+        selectedIndices = scene_selection.Normalize(
+            selectedIndices, flatNodes.count(), selectedIndex);
+        var roots = TopLevelSelectedNodes();
+        if roots.count() == 0 { return false; }
+
+        var target = scene.Root;
+        if targetIndex >= 0 { target = flatNodes.get(targetIndex); }
+        if scene_hierarchy_3d.TargetAllowed(target, roots) == false {
+            detailLabel.SetText(
+                "A node cannot be reparented to itself or one of its descendants.");
+            return false;
+        }
+        if ParentTargetFits(targetIndex, roots) == false {
+            detailLabel.SetText(
+                "That parent would exceed Studio's hierarchy depth limit.");
+            return false;
+        }
+        if scene_hierarchy_3d.AllAlreadyParented(roots, target) {
+            detailLabel.SetText(
+                "The selected hierarchy roots already use that parent.");
+            return false;
+        }
+
+        var previousSelection = selectedIndices;
+        var previousPrimary = selectedIndex;
+        var selectedNodes: List[SceneNode] = [];
+        var selectionIndex = 0;
+        while selectionIndex < selectedIndices.count() {
+            selectedNodes.add(
+                flatNodes.get(selectedIndices.get(selectionIndex)));
+            selectionIndex = selectionIndex + 1;
+        }
+        var primaryNode = SelectedNode();
+
+        var rootIndex = 0;
+        while rootIndex < roots.count() {
+            var node = roots.get(rootIndex);
+            var previousParent = node.Parent;
+            if previousParent != null {
+                previousParent.RemoveChild(node);
+            } else {
+                scene.Remove(node);
+            }
+            if target.TryAddChild(node) == false {
+                RollBackGroupEdit(
+                    previousSelection, previousPrimary,
+                    "Studio could not attach every selected hierarchy root. "
+                    + "The document was restored.");
+                return false;
+            }
+            rootIndex = rootIndex + 1;
+        }
+
+        // Resolve every identity before accepting serialized bytes. If the
+        // resulting preorder cannot represent the complete prior selection,
+        // currentDoc still contains the old canonical graph and rollback is
+        // exact.
+        var destinationNodes = FlattenGraph(scene);
+        var nextSelection: List[Integer] = [];
+        selectionIndex = 0;
+        while selectionIndex < selectedNodes.count() {
+            var mapped = FindNodeIndex(
+                destinationNodes, selectedNodes.get(selectionIndex));
+            if mapped >= 0 { nextSelection.add(mapped); }
+            selectionIndex = selectionIndex + 1;
+        }
+        var nextPrimary = FindNodeIndex(destinationNodes, primaryNode);
+        if nextSelection.count() != selectedNodes.count()
+           or nextPrimary < 0 {
+            RollBackGroupEdit(
+                previousSelection, previousPrimary,
+                "Studio could not retain the reparented selection.");
+            return false;
+        }
+
+        var targetName = "scene root";
+        if targetIndex >= 0 { targetName = NodeDisplayName(target); }
+        if CommitScene(
+               "Reparented " + roots.count() + " hierarchy root(s) to "
+               + targetName) == false {
+            RollBackGroupEdit(
+                previousSelection, previousPrimary,
+                "The selected hierarchy could not be reparented.");
+            return false;
+        }
+
+        RefreshHierarchy(null);
+        SelectSceneNodes(nextSelection, nextPrimary);
+        detailLabel.SetText(
+            "Local transforms were preserved while changing parent.");
+        return true;
+    }
+
+    /// @brief Remove selected hierarchy roots as one safe history transaction.
+    expose func DeleteSelectedNodes() -> Boolean {
+        if scene == null { return false; }
+        var roots = TopLevelSelectedIndices();
+        if roots.count() == 0 { return false; }
+        var previousSelection = selectedIndices;
+        var previousPrimary = selectedIndex;
+        var firstRemoved = flatNodes.count();
+        var index = roots.count() - 1;
+        while index >= 0 {
+            var nodeIndex = roots.get(index);
+            if nodeIndex < firstRemoved { firstRemoved = nodeIndex; }
+            scene.Remove(flatNodes.get(nodeIndex));
+            index = index - 1;
+        }
+        selectedIndex = firstRemoved;
+        selectedIndices = scene_selection.Single(
+            selectedIndex, scene.NodeCount - 1);
+        var message = "Deleted " + previousSelection.count()
+            + " selected node(s)";
+        if CommitScene(message) == false {
+            RollBackGroupEdit(
+                previousSelection, previousPrimary,
+                "The selected nodes could not be deleted.");
+            return false;
+        }
+        RefreshHierarchy(null);
+        return true;
+    }
+
+    /// @brief Flatten one cloned graph in the same pre-order as the inspector.
+    hide func FlattenGraph(graph: SceneGraph) -> List[SceneNode] {
+        var nodes: List[SceneNode] = [];
+        if graph == null { return nodes; }
+        var root = graph.Root;
+        var child = 0;
+        while child < root.ChildCount and nodes.count() < MAX_EDITOR_NODES {
+            AppendFlattenedClone(root.GetChild(child), nodes);
+            child = child + 1;
+        }
+        return nodes;
+    }
+
+    hide func AppendFlattenedClone(node: SceneNode,
+                                   nodes: List[SceneNode]) {
+        if node == null or nodes.count() >= MAX_EDITOR_NODES { return; }
+        nodes.add(node);
+        var child = 0;
+        while child < node.ChildCount and nodes.count() < MAX_EDITOR_NODES {
+            AppendFlattenedClone(node.GetChild(child), nodes);
+            child = child + 1;
+        }
+    }
+
+    /// @brief Return a useful scene-unique name for one duplicated root.
+    hide func UniqueDuplicateNodeName(source: SceneNode) -> String {
+        var stem = NodeDisplayName(source) + " Copy";
+        if scene.Find(stem).IsNone { return stem; }
+        var suffix = 2;
+        while suffix <= flatNodes.count() + 2 {
+            var candidate = stem + " " + suffix;
+            if scene.Find(candidate).IsNone { return candidate; }
+            suffix = suffix + 1;
+        }
+        return stem + " " + (flatNodes.count() + 3);
+    }
+
+    /// @brief Reload canonical content after a partially applied group action.
+    hide func RollBackGroupEdit(previousSelection: List[Integer],
+                                previousPrimary: Integer,
+                                message: String) {
+        var doc = currentDoc;
+        if doc != null { LoadDocumentModel(doc, true); }
+        SelectSceneNodes(previousSelection, previousPrimary);
+        toolbarStatus.SetText("Group edit rolled back");
+        detailLabel.SetText(message);
+    }
+
+    /// @brief Duplicate selected hierarchy roots from a canonical full clone.
+    /// @return Number of selected nodes represented in the duplicate selection.
+    expose func DuplicateSelectedNodes() -> Integer {
+        if scene == null or currentSerialized == "" { return 0; }
+        var roots = TopLevelSelectedIndices();
+        if roots.count() == 0 { return 0; }
+        var previousSelection = selectedIndices;
+        var previousPrimary = selectedIndex;
+        var cloneGraph = LoadGraphFromContent(currentSerialized);
+        var cloneNodes = FlattenGraph(cloneGraph);
+        if cloneGraph == null or cloneNodes.count() != flatNodes.count() {
+            detailLabel.SetText(
+                "Studio could not build a complete hierarchy clone. "
+                + "No nodes were changed.");
+            return 0;
+        }
+
+        var duplicateSelectionNodes: List[SceneNode] = [];
+        var selectionIndex = 0;
+        while selectionIndex < previousSelection.count() {
+            duplicateSelectionNodes.add(
+                cloneNodes.get(previousSelection.get(selectionIndex)));
+            selectionIndex = selectionIndex + 1;
+        }
+        var primaryClone: SceneNode = null;
+        if previousPrimary >= 0 and previousPrimary < cloneNodes.count() {
+            primaryClone = cloneNodes.get(previousPrimary);
+        }
+
+        var rootIndex = 0;
+        while rootIndex < roots.count() {
+            var sourceIndex = roots.get(rootIndex);
+            var source = flatNodes.get(sourceIndex);
+            var clone = cloneNodes.get(sourceIndex);
+            var cloneParent = clone.Parent;
+            var destinationParent = source.Parent;
+            if cloneParent == null or destinationParent == null {
+                RollBackGroupEdit(
+                    previousSelection, previousPrimary,
+                    "The duplicate hierarchy had no valid parent.");
+                return 0;
+            }
+            cloneParent.RemoveChild(clone);
+            clone.Name = UniqueDuplicateNodeName(source);
+            var position = clone.Position;
+            clone.SetPosition(position.X + 1.0, position.Y, position.Z);
+            if destinationParent.TryAddChild(clone) == false {
+                RollBackGroupEdit(
+                    previousSelection, previousPrimary,
+                    "Studio could not attach every duplicated subtree. "
+                    + "The document was restored.");
+                return 0;
+            }
+            rootIndex = rootIndex + 1;
+        }
+        if scene.NodeCount - 1 > MAX_EDITOR_NODES {
+            RollBackGroupEdit(
+                previousSelection, previousPrimary,
+                "Duplicating this selection would exceed Studio's "
+                + MAX_EDITOR_NODES + "-node editing limit.");
+            return 0;
+        }
+
+        var message = "Duplicated " + roots.count()
+            + " selected hierarchy root(s)";
+        if CommitScene(message) == false {
+            RollBackGroupEdit(
+                previousSelection, previousPrimary,
+                "The selected hierarchy could not be duplicated.");
+            return 0;
+        }
+        RefreshHierarchy(null);
+        var duplicateIndices: List[Integer] = [];
+        var duplicatePrimary = -1;
+        selectionIndex = 0;
+        while selectionIndex < duplicateSelectionNodes.count() {
+            var duplicateIndex =
+                FindFlatIndex(duplicateSelectionNodes.get(selectionIndex));
+            if duplicateIndex >= 0 { duplicateIndices.add(duplicateIndex); }
+            selectionIndex = selectionIndex + 1;
+        }
+        if primaryClone != null {
+            duplicatePrimary = FindFlatIndex(primaryClone);
+        }
+        if duplicatePrimary < 0 and duplicateIndices.count() > 0 {
+            duplicatePrimary = duplicateIndices.get(0);
+        }
+        SelectSceneNodes(duplicateIndices, duplicatePrimary);
+        return duplicateIndices.count();
+    }
+
+    hide func ApplySelectedNode() -> Boolean {
+        var node = SelectedNode();
+        if node == null { return false; }
+        var nextName = Str.Trim(nameInput.Text);
+        if nextName == "" { nextName = "Node"; }
+        node.Name = nextName;
+        node.Visible = visibleCheck.IsChecked();
+        node.SetPosition(positionX.Value, positionY.Value, positionZ.Value);
+        node.Rotation = Quat.FromEuler(rotationX.Value * DEG_TO_RAD,
+                                       rotationY.Value * DEG_TO_RAD,
+                                       rotationZ.Value * DEG_TO_RAD).Normalize();
+        node.SetScale(scaleX.Value, scaleY.Value, scaleZ.Value);
+        if CommitScene("Updated " + nextName) == false { return false; }
+        RefreshHierarchy(node);
+        return true;
+    }
+
+    /// @brief Commit the visible material draft for the selected node.
+    hide func ApplyMaterialFromControls() -> Boolean {
+        if materialInspector == null or materialInspector.colorPicker == null {
+            return false;
+        }
+        return ApplyNodeMaterial(
+            selectedIndex,
+            scene_material_3d.UnitFromByte(
+                materialInspector.colorPicker.GetRed()),
+            scene_material_3d.UnitFromByte(
+                materialInspector.colorPicker.GetGreen()),
+            scene_material_3d.UnitFromByte(
+                materialInspector.colorPicker.GetBlue()),
+            materialInspector.alpha.Value,
+            materialInspector.metallic.Value,
+            materialInspector.roughness.Value,
+            materialInspector.ambientOcclusion.Value,
+            materialInspector.alphaMode.Selected,
+            materialInspector.doubleSided.IsChecked(),
+            materialInspector.unlit.IsChecked());
+    }
+
+    /// @brief Open the native picker for the currently selected texture slot.
+    hide func ChooseMaterialMap() -> Boolean {
+        var node = SelectedNode();
+        if node == null { return false; }
+        var baseDir = "";
+        if currentDoc != null and currentDoc.filePath != "" {
+            baseDir = Path.Directory(currentDoc.filePath);
+        }
+        var slot = materialInspector.mapSlot.Selected;
+        var path = GUI.FileDialog.Open(
+            "Choose " + scene_material_3d.MapSlotName(slot) + " Map",
+            baseDir,
+            "*.png;*.jpg;*.jpeg;*.bmp;*.gif;*.ktx2");
+        if path == "" { return false; }
+        return ApplyMaterialMapPath(selectedIndex, slot, path);
+    }
+
+    /// @brief Assign a loaded object to one cloned material map slot.
+    hide func AssignMaterialMap(nodeIndex: Integer,
+                                slot: Integer,
+                                texture: Any) -> Boolean {
+        if scene == null or nodeIndex < 0 or nodeIndex >= flatNodes.count()
+           or scene_material_3d.IsMapSlot(slot) == false {
+            return false;
+        }
+        var node = flatNodes.get(nodeIndex);
+        var next = scene_material_3d.WithMap(node.Material, slot, texture);
+        if next == null {
+            toolbarStatus.SetText("Texture map edit failed");
+            detailLabel.SetText(
+                "Studio could not create a node-local material copy.");
+            GUI.Toast.Error("3D texture map edit failed");
+            return false;
+        }
+        node.Material = next;
+        selectedIndex = nodeIndex;
+        selectedIndices = scene_selection.Single(
+            nodeIndex, flatNodes.count());
+        var action = "Embedded ";
+        if texture == null { action = "Cleared "; }
+        if CommitScene(
+               action + scene_material_3d.MapSlotName(slot)
+               + " map on " + NodeDisplayName(node)) == false {
+            return false;
+        }
+        RefreshMaterialFields(node);
+        return true;
+    }
+
+    hide func SetEditorControlsEnabled(enabled: Boolean) {
+        if addEmptyButton == null { return; }
+        selectedIndices = scene_selection.Normalize(
+            selectedIndices, flatNodes.count(), selectedIndex);
+        var hasSelection = enabled and selectedIndex >= 0
+            and selectedIndex < flatNodes.count()
+            and selectedIndices.count() > 0;
+        var hasSingle = hasSelection and selectedIndices.count() == 1;
+        addEmptyButton.SetEnabled(enabled);
+        addChildButton.SetEnabled(hasSingle);
+        addBoxButton.SetEnabled(enabled);
+        addSphereButton.SetEnabled(enabled);
+        addPlaneButton.SetEnabled(enabled);
+        duplicateNodeButton.SetEnabled(hasSelection);
+        moveToolButton.SetEnabled(hasSelection);
+        rotateToolButton.SetEnabled(hasSelection);
+        scaleToolButton.SetEnabled(hasSelection);
+        snapTransformCheck.SetEnabled(hasSelection);
+        deleteNodeButton.SetEnabled(hasSelection);
+        frameSelectedButton.SetEnabled(hasSelection);
+        hierarchyList.SetEnabled(enabled);
+        parentDropdown.SetEnabled(hasSelection);
+        reparentButton.SetEnabled(hasSelection);
+        nameInput.SetEnabled(hasSingle);
+        visibleCheck.SetEnabled(hasSingle);
+        positionX.SetEnabled(hasSelection);
+        positionY.SetEnabled(hasSelection);
+        positionZ.SetEnabled(hasSelection);
+        rotationX.SetEnabled(hasSelection);
+        rotationY.SetEnabled(hasSelection);
+        rotationZ.SetEnabled(hasSelection);
+        scaleX.SetEnabled(hasSelection);
+        scaleY.SetEnabled(hasSelection);
+        scaleZ.SetEnabled(hasSelection);
+        applyTransformButton.SetEnabled(hasSelection);
+        duplicateNodeButton.SetText("Duplicate");
+        deleteNodeButton.SetText("Delete");
+        applyTransformButton.SetText("Apply node properties");
+        applyTransformButton.SetTooltip(
+            "Set the selected node's name, visibility, and local transform");
+        if selectedIndices.count() > 1 {
+            duplicateNodeButton.SetText(
+                "Duplicate (" + selectedIndices.count() + ")");
+            deleteNodeButton.SetText(
+                "Delete (" + selectedIndices.count() + ")");
+            applyTransformButton.SetText(
+                "Apply deltas to " + selectedIndices.count());
+            applyTransformButton.SetTooltip(
+                "Add position/rotation and multiply scale for every "
+                + "selected node as one undoable edit");
+        }
+        UpdateParentControlAvailability();
+        UpdateMaterialControls(hasSingle);
+    }
+
+    /// @brief Update material fields without rebuilding hierarchy/node identity.
+    hide func RefreshMaterialFields(node: SceneNode) {
+        if materialInspector == null { return; }
+        var material: Material3D = null;
+        if node != null { material = node.Material; }
+        materialInspector.Refresh(
+            node, MaterialUsageCount(material), scene != null);
+    }
+
+    /// @brief Keep material actions truthful for selection and sharing state.
+    hide func UpdateMaterialControls(editorEnabled: Boolean) {
+        if materialInspector == null { return; }
+        var node = SelectedNode();
+        if selectedIndices.count() != 1 { node = null; }
+        var material: Material3D = null;
+        if node != null { material = node.Material; }
+        materialInspector.UpdateControls(
+            editorEnabled, node, MaterialUsageCount(material));
+    }
+
+    /// @brief Count selected-scene nodes sharing one material identity.
+    hide func MaterialUsageCount(material: Material3D) -> Integer {
+        if material == null { return 0; }
+        var count = 0;
+        var index = 0;
+        while index < flatNodes.count() {
+            if flatNodes.get(index).Material == material { count = count + 1; }
+            index = index + 1;
+        }
+        return count;
+    }
+
+    /// @brief Return a non-empty node name for status messages.
+    hide func NodeDisplayName(node: SceneNode) -> String {
+        if node == null { return "node"; }
+        var name = Str.Trim(node.Name);
+        if name == "" { return "unnamed node"; }
+        return name;
+    }
+
+    hide func SelectedNode() -> SceneNode {
+        if selectedIndex < 0 or selectedIndex >= flatNodes.count() { return null; }
+        return flatNodes.get(selectedIndex);
+    }
+
+    hide func SelectIndex(index: Integer) {
+        if index < 0 or index >= flatNodes.count() {
+            selectedIndex = -1;
+            selectedIndices = [];
+        } else {
+            selectedIndex = index;
+            selectedIndices = scene_selection.Single(
+                index, flatNodes.count());
+            RestoreHierarchyListSelection();
+        }
+        RefreshSelectedFields();
+        SetEditorControlsEnabled(scene != null);
+        renderDirty = true;
+    }
+
+    /// @brief Select validated hierarchy rows with one explicit primary node.
+    expose func SelectSceneNodes(indices: List[Integer],
+                                 primary: Integer) -> Boolean {
+        selectedIndices = scene_selection.Normalize(
+            indices, flatNodes.count(), primary);
+        selectedIndex = primary;
+        if selectedIndex < 0 or selectedIndex >= flatNodes.count() {
+            selectedIndex = -1;
+            if selectedIndices.count() > 0 {
+                selectedIndex = selectedIndices.get(0);
+            }
+        }
+        RestoreHierarchyListSelection();
+        RefreshSelectedFields();
+        SetEditorControlsEnabled(scene != null);
+        renderDirty = true;
+        CaptureWorkspaceState();
+        return selectedIndices.count() > 0;
+    }
+
+    /// @brief Return whether at least one valid hierarchy node is selected.
+    expose func HasSceneNodeSelection() -> Boolean {
+        var normalized = scene_selection.Normalize(
+            selectedIndices, flatNodes.count(), selectedIndex);
+        return scene != null and normalized.count() > 0;
+    }
+
+    /// @brief Return whether Select All has a hierarchy target.
+    expose func CanSelectAllSceneNodes() -> Boolean {
+        return scene != null and flatNodes.count() > 0;
+    }
+
+    /// @brief Return whether the text clipboard may contain pasteable data.
+    /// @details Explicit paste performs typed envelope and VSCN validation;
+    ///          per-frame menu state only asks the cheap native HasText query.
+    expose func CanPasteSceneNodes() -> Boolean {
+        return scene != null and GUI.ClipboardText.HasText();
+    }
+
+    /// @brief Select every editable hierarchy row without changing history.
+    expose func SelectAllSceneNodes() -> Boolean {
+        if CanSelectAllSceneNodes() == false { return false; }
+        var all: List[Integer] = [];
+        var index = 0;
+        while index < flatNodes.count() {
+            all.add(index);
+            index = index + 1;
+        }
+        var primary = selectedIndex;
+        if primary < 0 or primary >= flatNodes.count() { primary = 0; }
+        if SelectSceneNodes(all, primary) == false { return false; }
+        toolbarStatus.SetText(
+            "Selected all " + selectedIndices.count() + " scene nodes");
+        detailLabel.SetText("");
+        return true;
+    }
+
+    /// @brief Copy selected hierarchy identities with canonical VSCN content.
+    expose func CopySelectedNodes() -> Boolean {
+        if scene == null or currentSerialized == "" { return false; }
+        selectedIndices = scene_selection.Normalize(
+            selectedIndices, flatNodes.count(), selectedIndex);
+        if selectedIndices.count() == 0 { return false; }
+        if selectedIndex < 0
+           or scene_selection.Contains(selectedIndices, selectedIndex) == false {
+            selectedIndex = selectedIndices.get(0);
+        }
+        var encoded = scene_clipboard.Encode(
+            "3d", selectedIndices, selectedIndex, currentSerialized);
+        if encoded == "" {
+            toolbarStatus.SetText("Scene nodes not copied");
+            detailLabel.SetText(
+                "The selected hierarchy exceeds Studio's scene clipboard limit.");
+            return false;
+        }
+        GUI.ClipboardText.SetText(encoded);
+        toolbarStatus.SetText(
+            "Copied " + selectedIndices.count() + " scene node(s)");
+        detailLabel.SetText("");
+        return true;
+    }
+
+    /// @brief Copy and remove selected hierarchy roots as one undoable edit.
+    expose func CutSelectedNodes() -> Boolean {
+        var count = selectedIndices.count();
+        if CopySelectedNodes() == false { return false; }
+        if DeleteSelectedNodes() == false {
+            detailLabel.SetText(
+                "The nodes were copied, but Studio could not remove them.");
+            return false;
+        }
+        toolbarStatus.SetText("Cut " + count + " scene node(s)");
+        return true;
+    }
+
+    /// @brief Paste selected VSCN subtrees as siblings of the primary node.
+    /// @details A source graph is instantiated from the clipboard's canonical
+    ///          VSCN. Selected descendants remain attached to selected roots,
+    ///          and any attachment/serialization failure restores the complete
+    ///          destination document and its prior selection.
+    expose func PasteSceneNodesFromClipboard() -> Boolean {
+        if scene == null or currentDoc == null { return false; }
+        var payload = scene_clipboard.Decode(GUI.ClipboardText.GetText());
+        if payload.valid == false {
+            toolbarStatus.SetText("Nothing pasted");
+            detailLabel.SetText(payload.error);
+            return false;
+        }
+        if payload.kind != "3d" {
+            toolbarStatus.SetText("Nothing pasted");
+            detailLabel.SetText(
+                "Clipboard contains 2D objects. Paste them into a 2D scene.");
+            return false;
+        }
+
+        var sourceGraph = LoadGraphFromContent(payload.content);
+        var sourceNodes = FlattenGraph(sourceGraph);
+        if sourceGraph == null
+           or sourceGraph.NodeCount - 1 != sourceNodes.count()
+           or sourceNodes.count() > MAX_EDITOR_NODES {
+            toolbarStatus.SetText("Nothing pasted");
+            detailLabel.SetText(
+                "Clipboard contains invalid, incomplete, or oversized VSCN data.");
+            return false;
+        }
+        var sourceSelection = scene_selection.Normalize(
+            payload.indices, sourceNodes.count(), payload.primary);
+        if sourceSelection.count() != payload.indices.count()
+           or payload.primary < 0
+           or payload.primary >= sourceNodes.count() {
+            toolbarStatus.SetText("Nothing pasted");
+            detailLabel.SetText(
+                "Clipboard node identities no longer match its VSCN data.");
+            return false;
+        }
+        var sourceRoots = TopLevelIndicesFor(
+            sourceNodes, sourceSelection, payload.primary);
+        if sourceRoots.count() == 0 {
+            toolbarStatus.SetText("Nothing pasted");
+            detailLabel.SetText("Clipboard contains no pasteable hierarchy roots.");
+            return false;
+        }
+
+        var previousSelection = selectedIndices;
+        var previousPrimary = selectedIndex;
+        var selectionNodes: List[SceneNode] = [];
+        var index = 0;
+        while index < sourceSelection.count() {
+            selectionNodes.add(
+                sourceNodes.get(sourceSelection.get(index)));
+            index = index + 1;
+        }
+        var primaryNode = sourceNodes.get(payload.primary);
+        var destinationParent = scene.Root;
+        if selectedIndex >= 0 and selectedIndex < flatNodes.count()
+           and flatNodes.get(selectedIndex).Parent != null {
+            destinationParent = flatNodes.get(selectedIndex).Parent;
+        }
+
+        index = 0;
+        while index < sourceRoots.count() {
+            var rootIndex = sourceRoots.get(index);
+            var rootNode = sourceNodes.get(rootIndex);
+            var sourceParent = rootNode.Parent;
+            if sourceParent == null {
+                RollBackGroupEdit(
+                    previousSelection, previousPrimary,
+                    "Clipboard hierarchy had no valid parent.");
+                return false;
+            }
+            sourceParent.RemoveChild(rootNode);
+            rootNode.Name = UniqueDuplicateNodeName(rootNode);
+            var position = rootNode.Position;
+            rootNode.SetPosition(
+                position.X + 1.0, position.Y, position.Z);
+            if destinationParent.TryAddChild(rootNode) == false {
+                RollBackGroupEdit(
+                    previousSelection, previousPrimary,
+                    "Studio could not attach every pasted subtree. "
+                    + "The document was restored.");
+                return false;
+            }
+            index = index + 1;
+        }
+        if scene.NodeCount - 1 > MAX_EDITOR_NODES {
+            RollBackGroupEdit(
+                previousSelection, previousPrimary,
+                "Pasting this hierarchy would exceed Studio's "
+                + MAX_EDITOR_NODES + "-node editing limit.");
+            return false;
+        }
+
+        // Resolve selection identities before serialization. The canonical
+        // VSCN is reloaded below so the active edit graph is independent from
+        // the temporary clipboard graph and its retained shared resources.
+        var destinationNodes = FlattenGraph(scene);
+        var pastedIndices: List[Integer] = [];
+        index = 0;
+        while index < selectionNodes.count() {
+            var pastedIndex = FindNodeIndex(
+                destinationNodes, selectionNodes.get(index));
+            if pastedIndex >= 0 { pastedIndices.add(pastedIndex); }
+            index = index + 1;
+        }
+        var pastedPrimary = FindNodeIndex(
+            destinationNodes, primaryNode);
+        if pastedPrimary < 0 and pastedIndices.count() > 0 {
+            pastedPrimary = pastedIndices.get(0);
+        }
+        if pastedIndices.count() != selectionNodes.count()
+           or pastedPrimary < 0 {
+            RollBackGroupEdit(
+                previousSelection, previousPrimary,
+                "Studio could not retain the pasted hierarchy selection.");
+            return false;
+        }
+
+        var message = "Pasted " + sourceRoots.count()
+            + " hierarchy root(s)";
+        if CommitScene(message) == false {
+            RollBackGroupEdit(
+                previousSelection, previousPrimary,
+                "The pasted hierarchy could not be committed.");
+            return false;
+        }
+        var acceptedDoc = currentDoc;
+        if acceptedDoc == null {
+            RollBackGroupEdit(
+                previousSelection, previousPrimary,
+                "The pasted hierarchy lost its destination document.");
+            return false;
+        }
+        LoadDocumentModel(acceptedDoc, true);
+        if scene == null {
+            RollBackGroupEdit(
+                previousSelection, previousPrimary,
+                "Studio could not reload the accepted pasted hierarchy.");
+            return false;
+        }
+        SelectSceneNodes(pastedIndices, pastedPrimary);
+        detailLabel.SetText("");
+        return pastedIndices.count() > 0;
+    }
+
+    /// @brief Restore all hierarchy rows while keeping one primary row.
+    hide func RestoreHierarchyListSelection() {
+        if hierarchyList == null { return; }
+        hierarchyList.Select(null);
+        var index = 0;
+        while index < selectedIndices.count() {
+            var selected = selectedIndices.get(index);
+            if selected != selectedIndex {
+                hierarchyList.SelectIndex(selected);
+            }
+            index = index + 1;
+        }
+        if selectedIndex >= 0 { hierarchyList.SelectIndex(selectedIndex); }
+    }
+
+    /// @brief Resolve the current dropdown row to its flattened target identity.
+    hide func SelectedParentTargetIndex() -> Integer {
+        if parentDropdown == null
+           or parentDropdown.Selected < 0
+           or parentDropdown.Selected >= parentTargetIndices.count() {
+            return PARENT_TARGET_MIXED;
+        }
+        return parentTargetIndices.get(parentDropdown.Selected);
+    }
+
+    /// @brief Select one currently offered parent target by stable node index.
+    /// @details This mirrors a dropdown choice for command/probe callers without
+    ///          synthesizing native pointer input. It never changes scene data.
+    expose func SelectParentTarget(targetIndex: Integer) -> Boolean {
+        if parentDropdown == null { return false; }
+        var option = 0;
+        while option < parentTargetIndices.count() {
+            if parentTargetIndices.get(option) == targetIndex {
+                parentDropdown.SetSelected(option);
+                UpdateParentControlAvailability();
+                return true;
+            }
+            option = option + 1;
+        }
+        return false;
+    }
+
+    /// @brief Resolve -1/root or one current flattened hierarchy target.
+    hide func ParentTargetNode(targetIndex: Integer) -> SceneNode {
+        if scene == null { return null; }
+        if targetIndex == -1 { return scene.Root; }
+        if targetIndex >= 0 and targetIndex < flatNodes.count() {
+            return flatNodes.get(targetIndex);
+        }
+        return null;
+    }
+
+    /// @brief Rebuild cycle-safe parent choices from stable live node handles.
+    hide func RefreshParentTargets() {
+        if parentDropdown == null or reparentButton == null { return; }
+        parentDropdown.Clear();
+        parentTargetIndices = [];
+        if scene == null or selectedIndices.count() == 0 {
+            parentDropdown.SetPlaceholder("Select a node");
+            parentDropdown.SetEnabled(false);
+            reparentButton.SetEnabled(false);
+            reparentButton.SetText("Reparent");
+            return;
+        }
+
+        var roots = TopLevelSelectedNodes();
+        if roots.count() == 0 {
+            parentDropdown.SetPlaceholder("Select a node");
+            parentDropdown.SetEnabled(false);
+            reparentButton.SetEnabled(false);
+            return;
+        }
+        var commonParent = scene_hierarchy_3d.CommonParent(roots);
+        var mixedParents = commonParent == null and roots.count() > 1;
+        var selectedOption = -1;
+        if mixedParents {
+            parentDropdown.AddItem("Multiple parents — choose target");
+            parentTargetIndices.add(PARENT_TARGET_MIXED);
+            selectedOption = 0;
+        }
+
+        if scene_hierarchy_3d.TargetAllowed(scene.Root, roots)
+           and ParentTargetFits(-1, roots) {
+            var option = parentDropdown.AddItem("Scene root");
+            parentTargetIndices.add(-1);
+            if mixedParents == false
+               and (commonParent == scene.Root or commonParent == null) {
+                selectedOption = option;
+            }
+        }
+
+        var candidateIndex = 0;
+        while candidateIndex < flatNodes.count() {
+            var candidate = flatNodes.get(candidateIndex);
+            if scene_hierarchy_3d.TargetAllowed(candidate, roots)
+               and ParentTargetFits(candidateIndex, roots) {
+                var prefix = "";
+                var depth = flatDepths.get(candidateIndex);
+                var indent = 0;
+                while indent < depth and indent < 16 {
+                    prefix = prefix + "  ";
+                    indent = indent + 1;
+                }
+                var option = parentDropdown.AddItem(
+                    prefix + NodeDisplayName(candidate));
+                parentTargetIndices.add(candidateIndex);
+                if mixedParents == false and commonParent == candidate {
+                    selectedOption = option;
+                }
+            }
+            candidateIndex = candidateIndex + 1;
+        }
+
+        if selectedOption < 0 and parentTargetIndices.count() > 0 {
+            selectedOption = 0;
+        }
+        if selectedOption >= 0 { parentDropdown.SetSelected(selectedOption); }
+        parentDropdown.SetPlaceholder("Choose parent");
+        UpdateParentControlAvailability();
+    }
+
+    /// @brief Enable Reparent only for a valid, changed, depth-safe target.
+    hide func UpdateParentControlAvailability() {
+        if parentDropdown == null or reparentButton == null { return; }
+        var roots = TopLevelSelectedNodes();
+        var targetIndex = SelectedParentTargetIndex();
+        var target = ParentTargetNode(targetIndex);
+        var available = roots.count() > 0
+            and target != null
+            and scene_hierarchy_3d.TargetAllowed(target, roots)
+            and ParentTargetFits(targetIndex, roots)
+            and scene_hierarchy_3d.AllAlreadyParented(roots, target) == false;
+        parentDropdown.SetEnabled(roots.count() > 0
+                                  and parentTargetIndices.count() > 0);
+        reparentButton.SetEnabled(available);
+        reparentButton.SetText("Reparent");
+        if roots.count() > 1 {
+            reparentButton.SetText("Reparent (" + roots.count() + ")");
+        }
+        reparentButton.SetTooltip(
+            "Move " + roots.count() + " selected hierarchy root(s) beneath "
+            + "the chosen parent; local transforms stay unchanged");
+    }
+
+    hide func RefreshSelectedFields() {
+        var node = SelectedNode();
+        RefreshParentTargets();
+        if node == null {
+            nameInput.SetText("");
+            visibleCheck.SetChecked(false);
+            visibleRevision = visibleCheck.GetRevision();
+            positionX.SetValue(0.0);
+            positionY.SetValue(0.0);
+            positionZ.SetValue(0.0);
+            rotationX.SetValue(0.0);
+            rotationY.SetValue(0.0);
+            rotationZ.SetValue(0.0);
+            scaleX.SetValue(1.0);
+            scaleY.SetValue(1.0);
+            scaleZ.SetValue(1.0);
+            selectionInfo.SetText("No node selected");
+            RefreshMaterialFields(null);
+            return;
+        }
+        if selectedIndices.count() > 1 {
+            nameInput.SetText("");
+            nameInput.SetPlaceholder(
+                selectedIndices.count() + " nodes selected");
+            visibleCheck.SetChecked(false);
+            visibleRevision = visibleCheck.GetRevision();
+            positionX.SetValue(0.0);
+            positionY.SetValue(0.0);
+            positionZ.SetValue(0.0);
+            rotationX.SetValue(0.0);
+            rotationY.SetValue(0.0);
+            rotationZ.SetValue(0.0);
+            scaleX.SetValue(1.0);
+            scaleY.SetValue(1.0);
+            scaleZ.SetValue(1.0);
+            selectionInfo.SetText(
+                selectedIndices.count() + " nodes selected  |  primary "
+                + NodeDisplayName(node)
+                + "  |  inspector adds position/rotation and multiplies "
+                + "scale for the group");
+            RefreshMaterialFields(null);
+            return;
+        }
+        nameInput.SetPlaceholder("Node name");
+        nameInput.SetText(node.Name);
+        visibleCheck.SetChecked(node.Visible);
+        visibleRevision = visibleCheck.GetRevision();
+        var position = node.Position;
+        positionX.SetValue(position.X);
+        positionY.SetValue(position.Y);
+        positionZ.SetValue(position.Z);
+        var rotation = node.Rotation;
+        var euler = QuaternionToEulerDegrees(rotation);
+        rotationX.SetValue(euler.X);
+        rotationY.SetValue(euler.Y);
+        rotationZ.SetValue(euler.Z);
+        var scale = node.Scale;
+        scaleX.SetValue(scale.X);
+        scaleY.SetValue(scale.Y);
+        scaleZ.SetValue(scale.Z);
+        var kind = "empty";
+        if node.Mesh != null { kind = "mesh"; }
+        var materialState = "no material";
+        if node.Material != null { materialState = "material"; }
+        selectionInfo.SetText(
+            kind + " node  |  children " + node.ChildCount
+            + "  |  " + materialState + "  |  local transform");
+        RefreshMaterialFields(node);
+    }
+
+    hide func QuaternionToEulerDegrees(rotation: Quat) -> Vec3 {
+        if rotation == null { return Vec3.New(0.0, 0.0, 0.0); }
+        var x = rotation.X;
+        var y = rotation.Y;
+        var z = rotation.Z;
+        var w = rotation.W;
+        var pitch = Math.Atan2(
+            2.0 * (w * x + y * z),
+            1.0 - 2.0 * (x * x + y * y));
+        var yaw = Math.Asin(Math.Clamp(
+            2.0 * (w * y - z * x), -1.0, 1.0));
+        var roll = Math.Atan2(
+            2.0 * (w * z + x * y),
+            1.0 - 2.0 * (y * y + z * z));
+        return Vec3.New(
+            pitch * RAD_TO_DEG,
+            yaw * RAD_TO_DEG,
+            roll * RAD_TO_DEG);
+    }
+
+    hide func RefreshHierarchy(preferred: SceneNode) {
+        flatNodes = [];
+        flatDepths = [];
+        hierarchyList.Clear();
+        hierarchyClipped = false;
+        if scene != null {
+            var sceneRoot = scene.Root;
+            var child = 0;
+            while child < sceneRoot.ChildCount
+                  and flatNodes.count() < MAX_EDITOR_NODES {
+                AppendHierarchy(sceneRoot.GetChild(child), 0);
+                child = child + 1;
+            }
+            if child < sceneRoot.ChildCount { hierarchyClipped = true; }
+        }
+
+        var i = 0;
+        var preferredIndex = -1;
+        while i < flatNodes.count() {
+            var node = flatNodes.get(i);
+            var prefix = "";
+            var depth = flatDepths.get(i);
+            var indent = 0;
+            while indent < depth and indent < 16 {
+                prefix = prefix + "  ";
+                indent = indent + 1;
+            }
+            if depth > 0 { prefix = prefix + "└ "; }
+            var visibleMarker = "○ ";
+            if node.Visible { visibleMarker = "● "; }
+            var componentMarker = "";
+            if node.Mesh != null { componentMarker = " [mesh]"; }
+            if node.Material != null { componentMarker = componentMarker + " [mat]"; }
+            var name = node.Name;
+            if name == "" { name = "(unnamed)"; }
+            var item = hierarchyList.AddItem(
+                prefix + visibleMarker + name + componentMarker);
+            hierarchyList.ItemSetData(item, "" + i);
+            if preferred != null and node == preferred { preferredIndex = i; }
+            i = i + 1;
+        }
+        if preferredIndex >= 0 {
+            selectedIndex = preferredIndex;
+            selectedIndices = scene_selection.Single(
+                preferredIndex, flatNodes.count());
+        } else if selectedIndex >= flatNodes.count() {
+            selectedIndex = -1;
+            selectedIndices = [];
+        } else {
+            selectedIndices = scene_selection.Normalize(
+                selectedIndices, flatNodes.count(), selectedIndex);
+            if selectedIndex < 0 and selectedIndices.count() > 0 {
+                selectedIndex = selectedIndices.get(0);
+            }
+        }
+        RestoreHierarchyListSelection();
+        RefreshSelectedFields();
+        SetEditorControlsEnabled(scene != null);
+        renderDirty = true;
+    }
+
+    hide func AppendHierarchy(node: SceneNode, depth: Integer) {
+        if node == null { return; }
+        if flatNodes.count() >= MAX_EDITOR_NODES
+           or depth > MAX_HIERARCHY_DEPTH {
+            hierarchyClipped = true;
+            return;
+        }
+        flatNodes.add(node);
+        flatDepths.add(depth);
+        var child = 0;
+        while child < node.ChildCount
+              and flatNodes.count() < MAX_EDITOR_NODES {
+            AppendHierarchy(node.GetChild(child), depth + 1);
+            child = child + 1;
+        }
+        if child < node.ChildCount { hierarchyClipped = true; }
+    }
+
+    hide func FrameAll() {
+        if flatNodes.count() == 0 {
+            viewScale = 28;
+            viewTargetX = 0.0;
+            viewTargetY = 0.0;
+            viewTargetZ = 0.0;
+            return;
+        }
+        var first = flatNodes.get(0).WorldPosition;
+        var minimumX = first.X;
+        var minimumY = first.Y;
+        var minimumZ = first.Z;
+        var maximumX = first.X;
+        var maximumY = first.Y;
+        var maximumZ = first.Z;
+        var i = 0;
+        while i < flatNodes.count() {
+            var p = flatNodes.get(i).WorldPosition;
+            if p.X < minimumX { minimumX = p.X; }
+            if p.Y < minimumY { minimumY = p.Y; }
+            if p.Z < minimumZ { minimumZ = p.Z; }
+            if p.X > maximumX { maximumX = p.X; }
+            if p.Y > maximumY { maximumY = p.Y; }
+            if p.Z > maximumZ { maximumZ = p.Z; }
+            i = i + 1;
+        }
+        viewTargetX = (minimumX + maximumX) * 0.5;
+        viewTargetY = (minimumY + maximumY) * 0.5;
+        viewTargetZ = (minimumZ + maximumZ) * 0.5;
+
+        var furthest = 1.0;
+        i = 0;
+        while i < flatNodes.count() {
+            var p = flatNodes.get(i).WorldPosition;
+            var dx = p.X - viewTargetX;
+            var dy = p.Y - viewTargetY;
+            var dz = p.Z - viewTargetZ;
+            var distance = Math.Sqrt(dx * dx + dy * dy + dz * dz);
+            if distance > furthest { furthest = distance; }
+            i = i + 1;
+        }
+        var available = renderedViewportWidth;
+        if renderedViewportHeight < available {
+            available = renderedViewportHeight;
+        }
+        viewScale = ClampInt3D(Convert.NumToInt(
+            (available * 0.38) / furthest), 4, 120);
+    }
+
+    hide func FrameSelected() {
+        selectedIndices = scene_selection.Normalize(
+            selectedIndices, flatNodes.count(), selectedIndex);
+        if selectedIndices.count() == 0 { return; }
+        var first = flatNodes.get(selectedIndices.get(0)).WorldPosition;
+        var minimumX = first.X;
+        var minimumY = first.Y;
+        var minimumZ = first.Z;
+        var maximumX = first.X;
+        var maximumY = first.Y;
+        var maximumZ = first.Z;
+        var index = 1;
+        while index < selectedIndices.count() {
+            var world = flatNodes.get(
+                selectedIndices.get(index)).WorldPosition;
+            if world.X < minimumX { minimumX = world.X; }
+            if world.Y < minimumY { minimumY = world.Y; }
+            if world.Z < minimumZ { minimumZ = world.Z; }
+            if world.X > maximumX { maximumX = world.X; }
+            if world.Y > maximumY { maximumY = world.Y; }
+            if world.Z > maximumZ { maximumZ = world.Z; }
+            index = index + 1;
+        }
+        viewTargetX = (minimumX + maximumX) * 0.5;
+        viewTargetY = (minimumY + maximumY) * 0.5;
+        viewTargetZ = (minimumZ + maximumZ) * 0.5;
+
+        var furthest = 1.0;
+        index = 0;
+        while index < selectedIndices.count() {
+            var world = flatNodes.get(
+                selectedIndices.get(index)).WorldPosition;
+            var dx = world.X - viewTargetX;
+            var dy = world.Y - viewTargetY;
+            var dz = world.Z - viewTargetZ;
+            var distance = Math.Sqrt(dx * dx + dy * dy + dz * dz);
+            if distance > furthest { furthest = distance; }
+            index = index + 1;
+        }
+        var available = renderedViewportWidth;
+        if renderedViewportHeight < available {
+            available = renderedViewportHeight;
+        }
+        viewScale = ClampInt3D(Convert.NumToInt(
+            (available * 0.38) / furthest), 4, 120);
+        if selectedIndices.count() == 1 and viewScale < 48 {
+            viewScale = 48;
+        }
+    }
+
+    hide func UpdateViewportSize() {
+        if viewportScroll == null { return; }
+        var width = Convert.NumToInt(
+            viewportScroll.GetLogicalWidth() - 2.0);
+        var height = Convert.NumToInt(
+            viewportScroll.GetLogicalHeight() - 2.0);
+        if width <= 0 { width = DEFAULT_VIEWPORT_WIDTH; }
+        if height <= 0 { height = DEFAULT_VIEWPORT_HEIGHT; }
+        width = ClampInt3D(
+            width, MIN_VIEWPORT_WIDTH, MAX_VIEWPORT_WIDTH);
+        height = ClampInt3D(
+            height, MIN_VIEWPORT_HEIGHT, MAX_VIEWPORT_HEIGHT);
+        if width != renderedViewportWidth
+           or height != renderedViewportHeight {
+            renderedViewportWidth = width;
+            renderedViewportHeight = height;
+            renderDirty = true;
+        }
+    }
+
+    hide func Project(x: Number, y: Number, z: Number) -> ProjectedPoint {
+        var yaw = viewYawDegrees * DEG_TO_RAD;
+        var pitch = viewPitchDegrees * DEG_TO_RAD;
+        var cosYaw = Math.Cos(yaw);
+        var sinYaw = Math.Sin(yaw);
+        var cosPitch = Math.Cos(pitch);
+        var sinPitch = Math.Sin(pitch);
+        var relativeX = x - viewTargetX;
+        var relativeY = y - viewTargetY;
+        var relativeZ = z - viewTargetZ;
+        var rotatedX = relativeX * cosYaw - relativeZ * sinYaw;
+        var rotatedZ = relativeX * sinYaw + relativeZ * cosYaw;
+        var rotatedY = relativeY * cosPitch - rotatedZ * sinPitch;
+        var projected = new ProjectedPoint();
+        projected.x = renderedViewportWidth / 2
+            + Convert.NumToInt(rotatedX * viewScale);
+        projected.y = renderedViewportHeight / 2
+            - Convert.NumToInt(rotatedY * viewScale);
+        return projected;
+    }
+
+    /// @brief Pump viewport selection, orbit, zoom, and transform gizmos.
+    /// @return True only when a complete gizmo drag committed document content.
+    hide func PumpViewportNavigation() -> Boolean {
+        if gizmoDragAxis != GIZMO_AXIS_NONE {
+            if Input.Keyboard.WasPressed(Input.Key.Escape) {
+                CancelGizmoDrag();
+                return false;
+            }
+            if !Input.Mouse.IsDown(Input.Mouse.ButtonLeft) {
+                return FinishGizmoDrag();
+            }
+            ApplyGizmoMouseDelta();
+            return false;
+        }
+        PumpGizmoShortcuts();
+        if viewportImage == null or viewportImage.IsHovered() == false {
+            if gizmoHoverAxis != GIZMO_AXIS_NONE {
+                gizmoHoverAxis = GIZMO_AXIS_NONE;
+                renderDirty = true;
+            }
+            return false;
+        }
+        var wheel = Input.Mouse.WheelYFloat();
+        if wheel > 0.0 {
+            viewScale = ClampInt3D(viewScale + 4, 4, 120);
+            renderDirty = true;
+        } else if wheel < 0.0 {
+            viewScale = ClampInt3D(viewScale - 4, 4, 120);
+            renderDirty = true;
+        }
+        if Input.Mouse.WasPressed(Input.Mouse.ButtonMiddle)
+           or Input.Mouse.WasPressed(Input.Mouse.ButtonRight) {
+            FocusActiveGizmoButton();
+        }
+        if Input.Mouse.IsDown(Input.Mouse.ButtonMiddle)
+           or Input.Mouse.IsDown(Input.Mouse.ButtonRight) {
+            var deltaX = Convert.NumToInt(
+                PhysicalPointerToUi(Input.Mouse.DeltaX()));
+            var deltaY = Convert.NumToInt(
+                PhysicalPointerToUi(Input.Mouse.DeltaY()));
+            if deltaX != 0 or deltaY != 0 {
+                viewYawDegrees = NormalizeYawDegrees(
+                    viewYawDegrees + deltaX);
+                viewPitchDegrees = ClampInt3D(
+                    viewPitchDegrees - deltaY, -80, 80);
+                renderDirty = true;
+            }
+            return false;
+        }
+        var mouseX = Convert.NumToInt(
+            PhysicalPointerToUi(Input.Mouse.X())
+            - viewportImage.GetScreenX());
+        var mouseY = Convert.NumToInt(
+            PhysicalPointerToUi(Input.Mouse.Y())
+            - viewportImage.GetScreenY());
+        var hoveredAxis = GizmoAxisForPointer(mouseX, mouseY);
+        if hoveredAxis != gizmoHoverAxis {
+            gizmoHoverAxis = hoveredAxis;
+            renderDirty = true;
+        }
+        if Input.Mouse.WasPressed(Input.Mouse.ButtonLeft) {
+            FocusActiveGizmoButton();
+        }
+        if Input.Mouse.WasPressed(Input.Mouse.ButtonLeft)
+           and hoveredAxis != GIZMO_AXIS_NONE {
+            BeginGizmoDrag(hoveredAxis);
+            return false;
+        }
+        if Input.Mouse.WasClicked(Input.Mouse.ButtonLeft) == false {
+            return false;
+        }
+        var best = -1;
+        var bestDistance = 196;
+        var i = 0;
+        while i < projectedX.count() {
+            var dx = projectedX.get(i) - mouseX;
+            var dy = projectedY.get(i) - mouseY;
+            var distance = dx * dx + dy * dy;
+            if distance < bestDistance {
+                bestDistance = distance;
+                best = i;
+            }
+            i = i + 1;
+        }
+        if best >= 0 {
+            if scene_selection.Contains(selectedIndices, best) {
+                selectedIndex = best;
+                selectedIndices = scene_selection.Normalize(
+                    selectedIndices, flatNodes.count(), selectedIndex);
+                RestoreHierarchyListSelection();
+                RefreshSelectedFields();
+                SetEditorControlsEnabled(scene != null);
+                renderDirty = true;
+            } else {
+                SelectIndex(best);
+            }
+            if Input.Mouse.WasDoubleClicked(Input.Mouse.ButtonLeft) {
+                FrameSelected();
+                renderDirty = true;
+            }
+        }
+        return false;
+    }
+
+    /// @brief Apply conventional transform shortcuts only while viewport owns focus.
+    hide func PumpGizmoShortcuts() {
+        if GizmoControlsOwnFocus() == false {
+            return;
+        }
+        if Input.Keyboard.WasPressed(Input.Key.W) {
+            SetGizmoMode(GIZMO_MODE_MOVE);
+        } else if Input.Keyboard.WasPressed(Input.Key.E) {
+            SetGizmoMode(GIZMO_MODE_ROTATE);
+        } else if Input.Keyboard.WasPressed(Input.Key.R) {
+            SetGizmoMode(GIZMO_MODE_SCALE);
+        }
+    }
+
+    /// @brief Use the active focusable tool button as the viewport key proxy.
+    hide func FocusActiveGizmoButton() {
+        if gizmoMode == GIZMO_MODE_ROTATE {
+            rotateToolButton.Focus();
+        } else if gizmoMode == GIZMO_MODE_SCALE {
+            scaleToolButton.Focus();
+        } else {
+            moveToolButton.Focus();
+        }
+    }
+
+    /// @brief Return whether W/E/R belong to this scene viewport this frame.
+    hide func GizmoControlsOwnFocus() -> Boolean {
+        return (moveToolButton != null and moveToolButton.IsFocused())
+            or (rotateToolButton != null and rotateToolButton.IsFocused())
+            or (scaleToolButton != null and scaleToolButton.IsFocused());
+    }
+
+    /// @brief Return whether duplicate/delete keys belong to the scene surface.
+    /// @details Text, numeric, color, and material inputs remain outside this
+    ///          focus set even while their node stays selected.
+    expose func SceneSelectionCommandsOwnFocus() -> Boolean {
+        return (hierarchyList != null and hierarchyList.IsFocused())
+            or GizmoControlsOwnFocus()
+            or (duplicateNodeButton != null
+                and duplicateNodeButton.IsFocused())
+            or (deleteNodeButton != null and deleteNodeButton.IsFocused())
+            or (frameSelectedButton != null
+                and frameSelectedButton.IsFocused());
+    }
+
+    /// @brief Return the hovered transform axis for one viewport coordinate.
+    hide func GizmoAxisForPointer(mouseX: Integer,
+                                  mouseY: Integer) -> Integer {
+        var node = SelectedNode();
+        if node == null { return GIZMO_AXIS_NONE; }
+        var world = node.WorldPosition;
+        var origin = Project(world.X, world.Y, world.Z);
+        var xEnd = GizmoAxisEndpoint(node, GIZMO_AXIS_X);
+        var yEnd = GizmoAxisEndpoint(node, GIZMO_AXIS_Y);
+        var zEnd = GizmoAxisEndpoint(node, GIZMO_AXIS_Z);
+        return ClosestGizmoAxis(
+            mouseX, mouseY, origin.x, origin.y,
+            xEnd.x, xEnd.y, yEnd.x, yEnd.y, zEnd.x, zEnd.y,
+            GIZMO_PICK_RADIUS);
+    }
+
+    /// @brief Project one parent-aware local transform handle.
+    hide func GizmoAxisEndpoint(node: SceneNode,
+                                axis: Integer) -> ProjectedPoint {
+        if node == null { return new ProjectedPoint(); }
+        var world = node.WorldPosition;
+        var localLength = GizmoLocalLength(node, axis);
+        var deltaX = 0.0;
+        var deltaY = 0.0;
+        var deltaZ = 0.0;
+        if axis == GIZMO_AXIS_X { deltaX = localLength; }
+        else if axis == GIZMO_AXIS_Y { deltaY = localLength; }
+        else { deltaZ = localLength; }
+
+        var parent = node.Parent;
+        if parent != null {
+            var parentScale = parent.WorldScale;
+            deltaX = deltaX * parentScale.X;
+            deltaY = deltaY * parentScale.Y;
+            deltaZ = deltaZ * parentScale.Z;
+            var rotation = parent.WorldRotation;
+            var crossX = 2.0
+                * (rotation.Y * deltaZ - rotation.Z * deltaY);
+            var crossY = 2.0
+                * (rotation.Z * deltaX - rotation.X * deltaZ);
+            var crossZ = 2.0
+                * (rotation.X * deltaY - rotation.Y * deltaX);
+            var rotatedX = deltaX + rotation.W * crossX
+                + rotation.Y * crossZ - rotation.Z * crossY;
+            var rotatedY = deltaY + rotation.W * crossY
+                + rotation.Z * crossX - rotation.X * crossZ;
+            var rotatedZ = deltaZ + rotation.W * crossZ
+                + rotation.X * crossY - rotation.Y * crossX;
+            deltaX = rotatedX;
+            deltaY = rotatedY;
+            deltaZ = rotatedZ;
+        }
+        return Project(
+            world.X + deltaX, world.Y + deltaY, world.Z + deltaZ);
+    }
+
+    /// @brief Local distance that produces a stable world-space handle length.
+    hide func GizmoLocalLength(node: SceneNode,
+                               axis: Integer) -> Number {
+        var worldLength = 1.0;
+        if viewScale > 0 { worldLength = GIZMO_PIXEL_LENGTH / viewScale; }
+        if node == null or node.Parent == null { return worldLength; }
+        var scale = node.Parent.WorldScale;
+        var axisScale = scale.Z;
+        if axis == GIZMO_AXIS_X { axisScale = scale.X; }
+        else if axis == GIZMO_AXIS_Y { axisScale = scale.Y; }
+        if axisScale < 0.0 { axisScale = 0.0 - axisScale; }
+        if axisScale < 0.0001 { axisScale = 0.0001; }
+        return worldLength / axisScale;
+    }
+
+    /// @brief Start one captured transactional transform gesture.
+    hide func BeginGizmoDrag(axis: Integer) {
+        var node = SelectedNode();
+        if node == null or (axis != GIZMO_AXIS_X
+           and axis != GIZMO_AXIS_Y and axis != GIZMO_AXIS_Z) {
+            return;
+        }
+        var sourceX = 0.0;
+        var sourceY = 0.0;
+        var sourceZ = 0.0;
+        if gizmoMode == GIZMO_MODE_ROTATE {
+            var rotation = node.Rotation;
+            var euler = QuaternionToEulerDegrees(rotation);
+            sourceX = euler.X;
+            sourceY = euler.Y;
+            sourceZ = euler.Z;
+        } else if gizmoMode == GIZMO_MODE_SCALE {
+            var scale = node.Scale;
+            sourceX = scale.X;
+            sourceY = scale.Y;
+            sourceZ = scale.Z;
+        } else {
+            var position = node.Position;
+            sourceX = position.X;
+            sourceY = position.Y;
+            sourceZ = position.Z;
+        }
+        gizmoDragAxis = axis;
+        gizmoDragChanged = false;
+        gizmoDragAccumulated = 0.0;
+        gizmoDragStartX = sourceX;
+        gizmoDragStartY = sourceY;
+        gizmoDragStartZ = sourceZ;
+        gizmoDragIndices = scene_selection.Normalize(
+            selectedIndices, flatNodes.count(), selectedIndex);
+        gizmoDragStartXs = [];
+        gizmoDragStartYs = [];
+        gizmoDragStartZs = [];
+        var selectionIndex = 0;
+        while selectionIndex < gizmoDragIndices.count() {
+            var selectedNode = flatNodes.get(
+                gizmoDragIndices.get(selectionIndex));
+            var startX = 0.0;
+            var startY = 0.0;
+            var startZ = 0.0;
+            if gizmoMode == GIZMO_MODE_ROTATE {
+                var selectedEuler =
+                    QuaternionToEulerDegrees(selectedNode.Rotation);
+                startX = selectedEuler.X;
+                startY = selectedEuler.Y;
+                startZ = selectedEuler.Z;
+            } else if gizmoMode == GIZMO_MODE_SCALE {
+                var selectedScale = selectedNode.Scale;
+                startX = selectedScale.X;
+                startY = selectedScale.Y;
+                startZ = selectedScale.Z;
+            } else {
+                var selectedPosition = selectedNode.Position;
+                startX = selectedPosition.X;
+                startY = selectedPosition.Y;
+                startZ = selectedPosition.Z;
+            }
+            gizmoDragStartXs.add(startX);
+            gizmoDragStartYs.add(startY);
+            gizmoDragStartZs.add(startZ);
+            selectionIndex = selectionIndex + 1;
+        }
+        Input.Mouse.Capture();
+        toolbarStatus.SetText(
+            scene_transform_3d.ModeAction(gizmoMode)
+            + " " + gizmoDragIndices.count()
+            + " selected node(s) on " + GizmoAxisLabel(axis) + " axis"
+            + GizmoSnapStatus());
+        renderDirty = true;
+    }
+
+    /// @brief Apply one frame of pointer motion from the gesture origin.
+    hide func ApplyGizmoMouseDelta() {
+        var node = SelectedNode();
+        if node == null {
+            ResetGizmoDrag(true);
+            return;
+        }
+        var deltaX = PhysicalPointerToUi(Input.Mouse.DeltaX());
+        var deltaY = PhysicalPointerToUi(Input.Mouse.DeltaY());
+        if deltaX == 0 and deltaY == 0 { return; }
+
+        var world = node.WorldPosition;
+        var origin = Project(world.X, world.Y, world.Z);
+        var endpoint = GizmoAxisEndpoint(node, gizmoDragAxis);
+        var axisX = endpoint.x - origin.x;
+        var axisY = endpoint.y - origin.y;
+        var amount = scene_transform_3d.AxisDragAmount(
+            gizmoMode, deltaX, deltaY, axisX, axisY,
+            GizmoLocalLength(node, gizmoDragAxis));
+        if amount > -0.0000001 and amount < 0.0000001 { return; }
+        gizmoDragAccumulated = gizmoDragAccumulated + amount;
+
+        var sourceValue = gizmoDragStartZ;
+        if gizmoDragAxis == GIZMO_AXIS_X { sourceValue = gizmoDragStartX; }
+        else if gizmoDragAxis == GIZMO_AXIS_Y {
+            sourceValue = gizmoDragStartY;
+        }
+        var targetValue = scene_transform_3d.AxisTarget(
+            gizmoMode, sourceValue, gizmoDragAccumulated,
+            gizmoSnapEnabled);
+        ApplyLiveGizmoTarget(node, targetValue);
+        gizmoDragChanged =
+            scene_transform_3d.NearlyEqual(sourceValue, targetValue) == false;
+        renderDirty = true;
+    }
+
+    /// @brief Commit one complete axis drag as a single undoable edit.
+    hide func FinishGizmoDrag() -> Boolean {
+        var changed = gizmoDragChanged;
+        var node = SelectedNode();
+        var completedMode = gizmoMode;
+        var transformedCount = gizmoDragIndices.count();
+        ResetGizmoDrag(true);
+        renderDirty = true;
+        if changed == false or node == null { return false; }
+        if CommitScene(
+               scene_transform_3d.ModeHistoryVerb(completedMode)
+               + " " + transformedCount + " selected node(s)") {
+            return true;
+        }
+        return false;
+    }
+
+    /// @brief Restore the drag origin and leave document/history untouched.
+    hide func CancelGizmoDrag() {
+        if gizmoDragAxis != GIZMO_AXIS_NONE {
+            var selectionIndex = 0;
+            while selectionIndex < gizmoDragIndices.count()
+                  and selectionIndex < gizmoDragStartXs.count()
+                  and selectionIndex < gizmoDragStartYs.count()
+                  and selectionIndex < gizmoDragStartZs.count() {
+                var nodeIndex = gizmoDragIndices.get(selectionIndex);
+                if nodeIndex >= 0 and nodeIndex < flatNodes.count() {
+                    ApplyNodeTransformValues(
+                        flatNodes.get(nodeIndex),
+                        gizmoMode,
+                        gizmoDragStartXs.get(selectionIndex),
+                        gizmoDragStartYs.get(selectionIndex),
+                        gizmoDragStartZs.get(selectionIndex));
+                }
+                selectionIndex = selectionIndex + 1;
+            }
+            var node = SelectedNode();
+            if node != null {
+                if gizmoMode == GIZMO_MODE_ROTATE {
+                    rotationX.SetValue(gizmoDragStartX);
+                    rotationY.SetValue(gizmoDragStartY);
+                    rotationZ.SetValue(gizmoDragStartZ);
+                } else if gizmoMode == GIZMO_MODE_SCALE {
+                    scaleX.SetValue(gizmoDragStartX);
+                    scaleY.SetValue(gizmoDragStartY);
+                    scaleZ.SetValue(gizmoDragStartZ);
+                } else {
+                    positionX.SetValue(gizmoDragStartX);
+                    positionY.SetValue(gizmoDragStartY);
+                    positionZ.SetValue(gizmoDragStartZ);
+                }
+            }
+        }
+        ResetGizmoDrag(true);
+        toolbarStatus.SetText("Transform canceled");
+        renderDirty = true;
+    }
+
+    /// @brief Apply one snapped target while deferring serialization to release.
+    hide func ApplyLiveGizmoTarget(node: SceneNode,
+                                   targetValue: Number) {
+        if node == null { return; }
+        var primarySource = gizmoDragStartZ;
+        if gizmoDragAxis == GIZMO_AXIS_X {
+            primarySource = gizmoDragStartX;
+        } else if gizmoDragAxis == GIZMO_AXIS_Y {
+            primarySource = gizmoDragStartY;
+        }
+        var delta = targetValue - primarySource;
+        var selectionIndex = 0;
+        while selectionIndex < gizmoDragIndices.count()
+              and selectionIndex < gizmoDragStartXs.count()
+              and selectionIndex < gizmoDragStartYs.count()
+              and selectionIndex < gizmoDragStartZs.count() {
+            var targetX = gizmoDragStartXs.get(selectionIndex);
+            var targetY = gizmoDragStartYs.get(selectionIndex);
+            var targetZ = gizmoDragStartZs.get(selectionIndex);
+            if gizmoDragAxis == GIZMO_AXIS_X {
+                targetX = targetX + delta;
+            } else if gizmoDragAxis == GIZMO_AXIS_Y {
+                targetY = targetY + delta;
+            } else {
+                targetZ = targetZ + delta;
+            }
+            var nodeIndex = gizmoDragIndices.get(selectionIndex);
+            if nodeIndex >= 0 and nodeIndex < flatNodes.count() {
+                ApplyNodeTransformValues(
+                    flatNodes.get(nodeIndex),
+                    gizmoMode,
+                    targetX,
+                    targetY,
+                    targetZ);
+            }
+            selectionIndex = selectionIndex + 1;
+        }
+        var primaryX = gizmoDragStartX;
+        var primaryY = gizmoDragStartY;
+        var primaryZ = gizmoDragStartZ;
+        if gizmoDragAxis == GIZMO_AXIS_X { primaryX = targetValue; }
+        else if gizmoDragAxis == GIZMO_AXIS_Y { primaryY = targetValue; }
+        else { primaryZ = targetValue; }
+        if gizmoMode == GIZMO_MODE_ROTATE {
+            rotationX.SetValue(primaryX);
+            rotationY.SetValue(primaryY);
+            rotationZ.SetValue(primaryZ);
+        } else if gizmoMode == GIZMO_MODE_SCALE {
+            scaleX.SetValue(primaryX);
+            scaleY.SetValue(primaryY);
+            scaleZ.SetValue(primaryZ);
+        } else {
+            positionX.SetValue(primaryX);
+            positionY.SetValue(primaryY);
+            positionZ.SetValue(primaryZ);
+        }
+    }
+
+    /// @brief Apply three local transform components without serializing.
+    hide func ApplyNodeTransformValues(node: SceneNode,
+                                       transformMode: Integer,
+                                       x: Number,
+                                       y: Number,
+                                       z: Number) {
+        if node == null { return; }
+        if transformMode == GIZMO_MODE_ROTATE {
+            node.Rotation = Quat.FromEuler(
+                x * DEG_TO_RAD,
+                y * DEG_TO_RAD,
+                z * DEG_TO_RAD).Normalize();
+        } else if transformMode == GIZMO_MODE_SCALE {
+            node.SetScale(x, y, z);
+        } else {
+            node.SetPosition(x, y, z);
+        }
+    }
+
+    /// @brief Clear gesture-only state and release pointer capture if owned.
+    hide func ResetGizmoDrag(releaseCapture: Boolean) {
+        var wasDragging = gizmoDragAxis != GIZMO_AXIS_NONE;
+        gizmoDragAxis = GIZMO_AXIS_NONE;
+        gizmoDragChanged = false;
+        gizmoDragAccumulated = 0.0;
+        gizmoDragStartX = 0.0;
+        gizmoDragStartY = 0.0;
+        gizmoDragStartZ = 0.0;
+        gizmoDragIndices = [];
+        gizmoDragStartXs = [];
+        gizmoDragStartYs = [];
+        gizmoDragStartZs = [];
+        if releaseCapture and wasDragging and Input.Mouse.IsCaptured() {
+            Input.Mouse.Release();
+        }
+    }
+
+    /// @brief Return the app's logical-to-framebuffer scale for legacy pixel APIs.
+    hide func EffectiveUiScale() -> Number {
+        if guiApp == null { return 1.0; }
+        var scale = guiApp.GetEffectiveScale();
+        if scale <= 0.0 { return 1.0; }
+        return scale;
+    }
+
+    /// @brief Convert a GUI-app pointer coordinate into effective UI units.
+    hide func PhysicalPointerToUi(value: Number) -> Number {
+        return value / EffectiveUiScale();
+    }
+
+    /// @brief Read a legacy framebuffer scroll offset as logical UI units.
+    hide func LogicalScrollY(scroll: GUI.ScrollView) -> Number {
+        if scroll == null { return 0.0; }
+        return scroll.GetScrollY() / EffectiveUiScale();
+    }
+
+    /// @brief Apply logical offsets through ScrollView's framebuffer-pixel API.
+    hide func SetLogicalScroll(scroll: GUI.ScrollView,
+                               x: Number,
+                               y: Number) {
+        if scroll == null { return; }
+        var scale = EffectiveUiScale();
+        scroll.SetScroll(x * scale, y * scale);
+    }
+
+    /// @brief Apply logical content dimensions through the legacy pixel API.
+    hide func SetLogicalContentSize(scroll: GUI.ScrollView,
+                                    width: Number,
+                                    height: Number) {
+        if scroll == null { return; }
+        var scale = EffectiveUiScale();
+        scroll.SetContentSize(width * scale, height * scale);
+    }
+
+    hide func GizmoAxisLabel(axis: Integer) -> String {
+        if axis == GIZMO_AXIS_X { return "X"; }
+        if axis == GIZMO_AXIS_Y { return "Y"; }
+        return "Z";
+    }
+
+    hide func GizmoSnapStatus() -> String {
+        if gizmoSnapEnabled == false { return ""; }
+        return "  |  snap "
+            + scene_transform_3d.SnapDescription(gizmoMode);
+    }
+
+    /// @brief Draw a deterministic editor wireframe independent of 3D backend.
+    hide func RenderViewport() {
+        renderDirty = false;
+        viewportPixels = Pixels.New(
+            renderedViewportWidth, renderedViewportHeight);
+        viewportPixels.FillColor(Color.RGB(22, 26, 34));
+        projectedX = [];
+        projectedY = [];
+
+        var gridColor = Color.RGB(47, 55, 67);
+        var axisX = Color.RGB(170, 70, 70);
+        var axisZ = Color.RGB(70, 110, 180);
+        var gridCenterX = Convert.NumToInt(viewTargetX);
+        var gridCenterZ = Convert.NumToInt(viewTargetZ);
+        var line = -10;
+        while line <= 10 {
+            var worldX = gridCenterX + line;
+            var worldZ = gridCenterZ + line;
+            var a = Project(worldX, 0.0, gridCenterZ - 10);
+            var b = Project(worldX, 0.0, gridCenterZ + 10);
+            var c = Project(gridCenterX - 10, 0.0, worldZ);
+            var d = Project(gridCenterX + 10, 0.0, worldZ);
+            var colorA = gridColor;
+            var colorB = gridColor;
+            if worldX == 0 { colorA = axisZ; }
+            if worldZ == 0 { colorB = axisX; }
+            viewportPixels.DrawLine(a.x, a.y, b.x, b.y, colorA);
+            viewportPixels.DrawLine(c.x, c.y, d.x, d.y, colorB);
+            line = line + 1;
+        }
+
+        if scene == null {
+            var messageY = renderedViewportHeight / 2 - 12;
+            viewportPixels.DrawTextCentered(
+                messageY, "Unable to display this 3D scene",
+                Color.RGB(230, 115, 115));
+            viewportPixels.DrawTextCentered(
+                messageY + 22, "Repair the VSCN or create a new scene",
+                Color.RGB(180, 188, 202));
+        } else {
+            var i = 0;
+            while i < flatNodes.count() {
+                var node = flatNodes.get(i);
+                var world = node.WorldPosition;
+                var point = Project(world.X, world.Y, world.Z);
+                projectedX.add(point.x);
+                projectedY.add(point.y);
+
+                var parent = node.Parent;
+                var parentIndex = FindFlatIndex(parent);
+                if parentIndex >= 0 {
+                    var parentWorld = parent.WorldPosition;
+                    var parentPoint = Project(
+                        parentWorld.X, parentWorld.Y, parentWorld.Z);
+                    viewportPixels.DrawLine(
+                        parentPoint.x, parentPoint.y, point.x, point.y,
+                        Color.RGB(86, 96, 112));
+                }
+
+                var markerColor = Color.RGB(150, 165, 188);
+                if node.Mesh != null {
+                    markerColor = Color.RGB(91, 180, 235);
+                }
+                if node.Visible == false {
+                    markerColor = Color.RGB(92, 98, 108);
+                }
+                if scene_selection.Contains(selectedIndices, i) {
+                    markerColor = Color.RGB(104, 220, 255);
+                }
+                if i == selectedIndex {
+                    markerColor = Color.RGB(255, 195, 78);
+                    var xEnd = GizmoAxisEndpoint(node, GIZMO_AXIS_X);
+                    var yEnd = GizmoAxisEndpoint(node, GIZMO_AXIS_Y);
+                    var zEnd = GizmoAxisEndpoint(node, GIZMO_AXIS_Z);
+                    var selectedXColor = axisX;
+                    var selectedYColor = Color.RGB(80, 190, 105);
+                    var selectedZColor = axisZ;
+                    if gizmoHoverAxis == GIZMO_AXIS_X
+                       or gizmoDragAxis == GIZMO_AXIS_X {
+                        selectedXColor = Color.RGB(255, 105, 105);
+                    }
+                    if gizmoHoverAxis == GIZMO_AXIS_Y
+                       or gizmoDragAxis == GIZMO_AXIS_Y {
+                        selectedYColor = Color.RGB(115, 240, 140);
+                    }
+                    if gizmoHoverAxis == GIZMO_AXIS_Z
+                       or gizmoDragAxis == GIZMO_AXIS_Z {
+                        selectedZColor = Color.RGB(105, 165, 255);
+                    }
+                    viewportPixels.DrawLine(
+                        point.x, point.y, xEnd.x, xEnd.y, selectedXColor);
+                    viewportPixels.DrawLine(
+                        point.x, point.y, yEnd.x, yEnd.y, selectedYColor);
+                    viewportPixels.DrawLine(
+                        point.x, point.y, zEnd.x, zEnd.y, selectedZColor);
+                    DrawGizmoHandle(xEnd, selectedXColor);
+                    DrawGizmoHandle(yEnd, selectedYColor);
+                    DrawGizmoHandle(zEnd, selectedZColor);
+                }
+                if node.Mesh != null {
+                    viewportPixels.DrawFrame(
+                        point.x - 6, point.y - 6, 13, 13, markerColor);
+                } else {
+                    viewportPixels.DrawDisc(point.x, point.y, 4, markerColor);
+                }
+                i = i + 1;
+            }
+        }
+
+        viewportImage.SetPixels(
+            viewportPixels, renderedViewportWidth, renderedViewportHeight);
+        viewportImage.SetSize(renderedViewportWidth, renderedViewportHeight);
+        SetLogicalContentSize(
+            viewportScroll,
+            renderedViewportWidth, renderedViewportHeight);
+        var clipped = "";
+        if hierarchyClipped { clipped = "  |  hierarchy preview clipped"; }
+        var count = 0;
+        if scene != null { count = scene.NodeCount - 1; }
+        var interaction = "";
+        if gizmoDragAxis != GIZMO_AXIS_NONE {
+            interaction = "  |  "
+                + Str.ToLower(scene_transform_3d.ModeAction(gizmoMode))
+                + " " + GizmoAxisLabel(gizmoDragAxis);
+        }
+        var snapStatus = "";
+        if gizmoSnapEnabled {
+            snapStatus = " snap "
+                + scene_transform_3d.SnapDescription(gizmoMode);
+        }
+        viewStatusLabel.SetText(
+            count + " nodes  |  view " + viewYawDegrees
+            + "/" + viewPitchDegrees + "  |  " + viewScale + " px/u"
+            + "  |  " + scene_transform_3d.ModeLabel(gizmoMode)
+            + snapStatus
+            + clipped + interaction);
+    }
+
+    /// @brief Draw a mode-specific endpoint so tools are distinguishable.
+    hide func DrawGizmoHandle(point: ProjectedPoint,
+                              color: Integer) {
+        if gizmoMode == GIZMO_MODE_SCALE {
+            viewportPixels.DrawFrame(
+                point.x - 4, point.y - 4, 9, 9, color);
+            return;
+        }
+        if gizmoMode == GIZMO_MODE_ROTATE {
+            viewportPixels.DrawLine(
+                point.x, point.y - 4, point.x + 4, point.y, color);
+            viewportPixels.DrawLine(
+                point.x + 4, point.y, point.x, point.y + 4, color);
+            viewportPixels.DrawLine(
+                point.x, point.y + 4, point.x - 4, point.y, color);
+            viewportPixels.DrawLine(
+                point.x - 4, point.y, point.x, point.y - 4, color);
+            return;
+        }
+        viewportPixels.DrawDisc(point.x, point.y, 3, color);
+    }
+
+    hide func FindFlatIndex(node: SceneNode) -> Integer {
+        if node == null { return -1; }
+        var i = 0;
+        while i < flatNodes.count() {
+            if flatNodes.get(i) == node { return i; }
+            i = i + 1;
+        }
+        return -1;
+    }
+}
+
+/// @brief Clamp one integer without platform-specific math helpers.
+func ClampInt3D(value: Integer,
+                minimum: Integer,
+                maximum: Integer) -> Integer {
+    if value < minimum { return minimum; }
+    if value > maximum { return maximum; }
+    return value;
+}

@@ -425,6 +425,7 @@ RT_FUNC(GuiListBoxScrollToTop, rt_listbox_scroll_to_top, "Zanna.GUI.ListBox.Scro
 RT_FUNC(GuiListBoxScrollToBottom, rt_listbox_scroll_to_bottom, "Zanna.GUI.ListBox.ScrollToBottom", "void(obj)")
 RT_FUNC(GuiListBoxSetMultiSelect, rt_listbox_set_multi_select, "Zanna.GUI.ListBox.SetMultiSelect", "void(obj,i1)")
 RT_FUNC(GuiListBoxGetSelectedText, rt_listbox_get_selected_text, "Zanna.GUI.ListBox.GetSelectedText", "str(obj)")
+RT_FUNC(GuiListBoxGetSelectedData, rt_listbox_get_selected_data, "Zanna.GUI.ListBox.GetSelectedData", "seq<str>(obj)")
 RT_FUNC(GuiListBoxWasSelectionChanged, rt_listbox_was_selection_changed, "Zanna.GUI.ListBox.WasSelectionChanged", "i1(obj)")
 RT_FUNC(GuiListBoxWasChanged, rt_listbox_was_changed, "Zanna.GUI.ListBox.WasChanged", "i1(obj)")
 RT_FUNC(GuiListBoxWasActivated, rt_listbox_was_activated, "Zanna.GUI.ListBox.WasActivated", "i1(obj)")

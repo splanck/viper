@@ -84,7 +84,7 @@ counts discrete frames (deterministic). Ms mode counts delta time (frame-rate in
 
 ### Zia Example
 
-```rust
+```zia
 module TimerDemo;
 
 bind Zanna.Terminal;
@@ -261,7 +261,7 @@ A finite state machine for managing game/application states like menus, gameplay
 
 ### Zia Example
 
-```rust
+```zia
 module StateMachineDemo;
 
 bind Zanna.Terminal;
@@ -395,7 +395,7 @@ Smooth value interpolation for camera follow, UI animations, and other cases whe
 
 ### Zia Example
 
-```rust
+```zia
 module SmoothValueDemo;
 
 bind Zanna.Terminal;
@@ -487,7 +487,7 @@ When removing during iteration, read `NextActive(slot)` **before** calling
 
 ### Zia Example
 
-```rust
+```zia
 module ObjectPoolDemo;
 
 bind Zanna.Terminal;

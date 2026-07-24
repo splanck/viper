@@ -10,7 +10,7 @@ Close your eyes and imagine this task: print every number from 1 to 1000 on the 
 
 With what we know so far, you might start writing:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 Say(1);
@@ -40,7 +40,7 @@ Before we dive into syntax, let's appreciate what loops really give us.
 **Problem 1**: Print "Hello" five times.
 
 Without loops:
-```rust
+```zia
 bind Zanna.Terminal;
 
 Say("Hello");
@@ -51,7 +51,7 @@ Say("Hello");
 ```
 
 With loops:
-```rust
+```zia
 bind Zanna.Terminal;
 
 for i in 1..=5 {
@@ -64,7 +64,7 @@ The loop version is shorter. But more importantly, if you want to change it to p
 **Problem 2**: Add up all numbers from 1 to 100.
 
 Without loops:
-```rust
+```zia
 var sum = 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9 + 10 + 11 + 12 + 13 + 14 + 15 +
           16 + 17 + 18 + 19 + 20 + 21 + 22 + 23 + 24 + 25 + 26 + 27 + 28 + 29 +
           30 + 31 + 32 + 33 + 34 + 35 + 36 + 37 + 38 + 39 + 40 + 41 + 42 + 43 +
@@ -72,7 +72,7 @@ var sum = 1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9 + 10 + 11 + 12 + 13 + 14 + 15 +
 ```
 
 With loops:
-```rust
+```zia
 bind Zanna.Terminal;
 
 var sum = 0;
@@ -113,7 +113,7 @@ That's a loop. The condition is "is it a workday?" The body is your morning acti
 
 The simplest loop repeats as long as a condition is true. We call it `while` because it loops *while* something remains true.
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 var count = 1;
@@ -193,7 +193,7 @@ This mental tracing is how programmers debug loops. When a loop behaves unexpect
 
 Notice that `while` checks the condition *before* running the body. If the condition is false from the start, the body never runs - not even once:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 var x = 10;
@@ -218,7 +218,7 @@ This is important. A `while` loop guarantees zero or more iterations. It might n
 
 What if the condition never becomes false?
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 while true {
@@ -232,7 +232,7 @@ The condition is literally `true`. It will never become `false`. This loop runs 
 
 The most common cause is forgetting to update the variable you're checking:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 var count = 1;
@@ -254,7 +254,7 @@ We print "1" infinitely because `count` never changes. The condition `count <= 5
 
 Another classic mistake - changing the wrong variable:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 var i = 0;
@@ -282,7 +282,7 @@ Sometimes you *want* a loop that runs forever - or at least until something exte
 
 **Game loops** run continuously, processing input and drawing frames until the player quits:
 
-```rust
+```zia
 while true {
     // Handle input
     // Update game state
@@ -297,7 +297,7 @@ while true {
 
 **Server loops** wait for connections indefinitely:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 while true {
@@ -309,7 +309,7 @@ while true {
 
 The key is intentionality. An infinite loop is a bug when accidental, but a feature when deliberate. When writing an intentional infinite loop, add a comment explaining why:
 
-```rust
+```zia
 // Main game loop - runs until player quits
 while true {
     ...
@@ -322,7 +322,7 @@ while true {
 
 When you know how many times to repeat, `for` is cleaner than `while`. Instead of manually initializing, checking, and incrementing a counter, `for` handles all of that:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 for i in 1..6 {
@@ -353,7 +353,7 @@ for variable in range {
 The `1..6` is called a *range*. It represents a sequence of numbers. But there's something important to understand:
 
 **`..` (two dots) excludes the end:**
-```rust
+```zia
 bind Zanna.Terminal;
 
 for i in 1..5 {
@@ -364,7 +364,7 @@ for i in 1..5 {
 The range `1..5` includes 1, 2, 3, 4 but stops *before* 5.
 
 **`..=` (two dots and equals) includes the end:**
-```rust
+```zia
 bind Zanna.Terminal;
 
 for i in 1..=5 {
@@ -376,7 +376,7 @@ The range `1..=5` includes 1, 2, 3, 4, and 5.
 
 Why have two notations? The exclusive range (`..`) makes certain patterns elegant:
 
-```rust
+```zia
 // Process array indices 0 through length-1
 for i in 0..array.Length {
     // When length is 5, i goes 0, 1, 2, 3, 4
@@ -388,7 +388,7 @@ If you're iterating over array indices, exclusive ranges match naturally. If you
 
 ### Range Examples
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 // Count from 0 to 9
@@ -421,7 +421,7 @@ for i in 5..5 {
 
 To count backward, use `.rev()` to reverse the range:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 for i in (1..=10).rev() {
@@ -447,7 +447,7 @@ Note the parentheses around the range - they're necessary because we're calling 
 
 Classic countdown:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 for i in (1..=5).rev() {
@@ -470,7 +470,7 @@ Liftoff!
 
 Sometimes you don't want every number - you want every second number, or every tenth:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 // Count by 2s: even numbers from 0 to 10
@@ -491,7 +491,7 @@ for i in (0..=100).step(5) {
 
 You can combine stepping with reversing:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 // Count down by 2s
@@ -507,7 +507,7 @@ the counter itself. Name the variable `_` (a single underscore) to say so
 explicitly — the compiler treats `_` as an intentional discard and will not
 warn about it being unused:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 // Fire three times; we don't care which iteration we're on.
@@ -533,7 +533,7 @@ Both loops can accomplish the same tasks, but each has its natural use cases.
 - "Count down from 5 to 1"
 - "Go through each index of an array"
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 // We know: exactly 10 iterations
@@ -548,14 +548,14 @@ for i in 1..=10 {
 - "Run until the user quits"
 - "Search until we find a match"
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 // We don't know: depends on user input
 var password = "";
 while password != "secret" {
     Print("Password: ");
-    password = InputLine();
+    password = TryReadLine().UnwrapOrStr("");
 }
 Say("Access granted!");
 ```
@@ -570,7 +570,7 @@ The user might guess correctly on the first try (1 iteration) or the hundredth (
 
 Sometimes you want to stop a loop before its natural end. The `break` statement immediately exits the loop:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 for i in 1..100 {
@@ -602,7 +602,7 @@ When `i` becomes 8, `8 * 8 = 64 > 50`, so we print the message and `break`. Exec
 
 **Searching**: Stop when you find what you're looking for.
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 var numbers = [4, 8, 15, 16, 23, 42];
@@ -627,7 +627,7 @@ Without `break`, the loop would continue checking every element even after findi
 
 **Early termination**: Stop when continuing is pointless.
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 // Check if a number is prime
@@ -652,12 +652,12 @@ Once we find any divisor, we know the number isn't prime. No point checking more
 
 **User-controlled loops**:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 while true {
     Print("Enter a command (quit to exit): ");
-    var command = InputLine();
+    var command = TryReadLine().UnwrapOrStr("");
 
     if command == "quit" {
         Say("Goodbye!");
@@ -676,7 +676,7 @@ The loop is infinite, but `break` provides an exit when the user types "quit".
 
 While `break` exits the loop entirely, `continue` skips the *rest of the current iteration* and moves to the next one:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 for i in 1..=10 {
@@ -709,7 +709,7 @@ When `continue` executes, the program jumps back to the loop header, increments 
 
 **Processing only valid data:**
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 var values = [10, -5, 20, -15, 30, 0, 40];
@@ -732,7 +732,7 @@ Processing: 40
 
 **Skipping specific cases:**
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 // Print numbers 1-20, but skip multiples of 3
@@ -747,7 +747,7 @@ for i in 1..=20 {
 **Avoiding deeply nested conditions:**
 
 Without `continue`:
-```rust
+```zia
 bind Zanna.Terminal;
 
 var items = [10, -5, 25, 3];
@@ -764,7 +764,7 @@ for i in 0..items.Length {
 ```
 
 With `continue` (cleaner):
-```rust
+```zia
 bind Zanna.Terminal;
 
 var items = [10, -5, 25, 3];
@@ -795,7 +795,7 @@ Think of a checkout line. `break` is leaving the store. `continue` is letting so
 
 Loops can contain other loops. When they do, the inner loop runs completely for each iteration of the outer loop.
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 for row in 1..=3 {
@@ -839,7 +839,7 @@ With nested loops, iterations *multiply*. A 100-iteration outer loop with a 100-
 
 ### Practical Example: Multiplication Table
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 Say("    1   2   3   4   5");
@@ -874,7 +874,7 @@ Output:
 
 Nested loops are natural for 2D structures - grids, tables, game boards:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 // Draw a 5x5 checkerboard pattern
@@ -903,7 +903,7 @@ Output:
 
 `break` and `continue` affect only the innermost loop they're in:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 for i in 1..=3 {
@@ -939,7 +939,7 @@ Certain loop structures appear again and again in programming. Learning to recog
 
 Count how many items match a condition.
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 var numbers = [1, 5, 3, 8, 2, 9, 4, 7, 6];
@@ -964,7 +964,7 @@ The pattern:
 
 Add up values.
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 var total = 0;
@@ -981,7 +981,7 @@ The pattern:
 4. Accumulator holds the total
 
 Variations:
-```rust
+```zia
 // Sum of squares
 var sumOfSquares = 0;
 for i in 1..=10 {
@@ -999,7 +999,7 @@ for i in 1..=5 {
 
 Find the largest or smallest value.
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 var values = [23, 7, 42, 15, 8, 31];
@@ -1015,7 +1015,7 @@ Say("Maximum is " + max);  // 42
 ```
 
 For minimum, just change `>` to `<`:
-```rust
+```zia
 var values = [23, 7, 42, 15, 8, 31];
 var min = values[0];
 for i in 1..values.Length {
@@ -1029,7 +1029,7 @@ for i in 1..values.Length {
 
 Find an item that matches a condition.
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 var names = ["Alice", "Bob", "Charlie", "Diana"];
@@ -1054,7 +1054,7 @@ if foundIndex >= 0 {
 
 Collect items that match a condition.
 
-```rust
+```zia
 var numbers = [1, 5, 3, 8, 2, 9, 4, 7, 6];
 var evens = [];  // Empty array to hold results
 
@@ -1071,7 +1071,7 @@ for i in 0..numbers.Length {
 
 Create new values based on existing ones.
 
-```rust
+```zia
 var numbers = [1, 2, 3, 4, 5];
 var squares = [];
 
@@ -1086,7 +1086,7 @@ for i in 0..numbers.Length {
 
 Construct a string piece by piece.
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 var result = "";
@@ -1109,7 +1109,7 @@ Say(message);  // "2,4,6,8,10,"
 
 Keep asking until valid input is provided.
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 var valid = false;
@@ -1117,7 +1117,7 @@ var age = 0;
 
 while !valid {
     Print("Enter your age (0-120): ");
-    age = Zanna.Core.Convert.ToInt64(InputLine());
+    age = Zanna.Core.Convert.ToInt64(TryReadLine().UnwrapOrStr(""));
 
     if age >= 0 && age <= 120 {
         valid = true;
@@ -1148,7 +1148,7 @@ The loop runs one too many or one too few times.
 - Starting at 1 when you should start at 0
 - Wrong comparison operator (`<` vs `<=`)
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 // Intended: print 1-10
@@ -1183,7 +1183,7 @@ The loop never stops.
 
 The following examples are intentionally broken and expected to time out:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 // Bug: count never changes
@@ -1224,7 +1224,7 @@ The loop body never executes.
 - Empty range
 - Wrong direction range
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 // Bug: 10 is not less than 5, so body never runs
@@ -1255,7 +1255,7 @@ for i in (1..=10).rev() {
 
 Variable defined inside loop isn't available outside.
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 for i in 1..=5 {
@@ -1268,7 +1268,7 @@ The variable `squared` is created fresh each iteration and discarded at the end 
 
 **Fix**: Declare the variable outside the loop.
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 var lastSquared = 0;
@@ -1288,7 +1288,7 @@ When a loop misbehaves:
 4. **Verify the condition** - is it what you think?
 5. **Check your updates** - is the right variable changing in the right direction?
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 // Debugging version
@@ -1306,7 +1306,7 @@ while count < 5 {
 ## The Two Languages
 
 **Zia**
-```rust
+```zia
 bind Zanna.Terminal;
 
 // while loop
@@ -1358,7 +1358,7 @@ Both languages express the same ideas with different syntax. The concepts - chec
 
 Let's improve our guessing game from Chapter 4 with loops:
 
-```rust
+```zia
 module GuessGame;
 bind Zanna.Terminal;
 
@@ -1379,7 +1379,7 @@ func start() {
         var triesLeft = MAX_TRIES - tries;
 
         Print("Guess #" + tries + ": ");
-        var guess = Zanna.Core.Convert.ToInt64(InputLine());
+        var guess = Zanna.Core.Convert.ToInt64(TryReadLine().UnwrapOrStr(""));
 
         if guess == SECRET {
             Say("");

@@ -32,7 +32,7 @@ Consider a steering wheel. You turn it left, the vehicle goes left. Turn it righ
 
 Now imagine you're writing software to control vehicles. Would you write separate code for each vehicle type?
 
-```rust
+```zia
 // Without polymorphism - repetitive and fragile
 if vehicleType == "car" {
     car.turnCarSteeringWheel(angle);
@@ -45,7 +45,7 @@ if vehicleType == "car" {
 
 Or would you write code that works with any steerable thing?
 
-```rust
+```zia
 // With polymorphism - elegant and extensible
 vehicle.steer(angle);
 ```
@@ -56,7 +56,7 @@ The second approach is polymorphism. One piece of code, many types of vehicles, 
 
 When you buy something, the cashier says "How would you like to pay?" You might use cash, credit card, debit card, mobile payment, or gift card. The cashier doesn't need different training for each payment method. They just need to know: "Can this payment method complete the transaction?"
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 interface PaymentMethod {
@@ -87,7 +87,7 @@ class MobilePayment implements PaymentMethod {
 
 The cashier's checkout code doesn't care which specific payment method you use:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 func checkout(items: List[Item], payment: PaymentMethod) {
@@ -138,7 +138,7 @@ Every new class type requires modifying this function. Miss one place? Bug. Forg
 
 With polymorphism:
 
-```rust
+```zia
 // With polymorphism - clean and maintainable
 func processEntity(entity: GameEntity) {
     entity.update();
@@ -189,7 +189,7 @@ There are two flavors of polymorphism, and understanding both will deepen your m
 
 This is what we've been discussing: the decision about which method to call happens *at runtime*, based on the actual object type.
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 class Animal {
@@ -227,7 +227,7 @@ The answer: **Dog's version**. The actual object type determines the method call
 
 This is called *dynamic dispatch* or *late binding*. The decision is made at runtime because the compiler can't always know what type an object will be. Consider:
 
-```rust
+```zia
 bind Zanna.Math.Random as Random;
 
 func makeRandomAnimal() -> Animal {
@@ -262,7 +262,7 @@ This happens automatically. You just write `object.method()` and the right imple
 
 The other form of polymorphism happens at compile time: *method overloading*.
 
-```rust
+```zia
 bind Zanna.Terminal;
 bind Zanna.Text.Fmt as Fmt;
 
@@ -295,7 +295,7 @@ class Printer {
 
 Same method name, different parameter types. The compiler chooses the right version based on the arguments:
 
-```rust
+```zia
 var p = new Printer();
 p.Print("hello");           // Calls print(text: String)
 p.Print(42);                // Calls print(number: Integer)
@@ -310,7 +310,7 @@ This is *static polymorphism* or *early binding* — the decision is made at com
 
 There's a third kind of polymorphism you'll encounter later: generics (parametric polymorphism). This lets you write code that works with any type:
 
-```rust
+```zia
 func first[T](items: List[T]) -> T {
     return items[0];
 }
@@ -334,7 +334,7 @@ One of the most practical applications of polymorphism is creating collections o
 
 Consider a game with many different kinds of classes:
 
-```rust
+```zia
 interface Updatable {
     func update(deltaTime: Number);
 }
@@ -401,7 +401,7 @@ One loop handles everything. Players, enemies, projectiles, particles — all di
 
 The same pattern works for drawing:
 
-```rust
+```zia
 interface Drawable {
     func draw();
     func getDepth() -> Integer;  // For sorting (draw back-to-front)
@@ -706,7 +706,7 @@ New event types? New handlers? Just implement the interface and register.
 
 Encapsulate actions as objects for undo/redo:
 
-```rust
+```zia
 interface Command {
     func execute();
     func undo();
@@ -802,7 +802,7 @@ Polymorphic thinking focuses on what something *can do*:
 
 When you design with polymorphism, ask: "What behaviors do I need?" not "What types do I have?"
 
-```rust
+```zia
 // Type-focused (brittle)
 func feedAnimal(animal: Animal, animalType: String) {
     if animalType == "dog" {
@@ -837,7 +837,7 @@ If your code expects a `Shape`, you can give it a `Circle`, `Rectangle`, or `Tri
 
 Think of polymorphism as creating "slots" that can be filled by different things:
 
-```rust
+```zia
 // This function has a "slot" for any Drawable
 func render(item: Drawable) {
     item.draw();
@@ -939,7 +939,7 @@ class Enemy extends GameEntity implements Attackable, Drawable, Movable {
 
 Now you have maximum flexibility:
 
-```rust
+```zia
 var drawables: List[Drawable] = [player, tree1, tree2, enemy1, enemy2];
 var attackables: List[Attackable] = [player, enemy1, enemy2];
 var movables: List[Movable] = [player, enemy1, enemy2];
@@ -958,7 +958,7 @@ The Player can be in all three collections. The Tree only appears in drawables. 
 
 Let's build a complete rendering system that demonstrates polymorphism's power:
 
-```rust
+```zia
 module DrawingSystem;
 
 bind Zanna.Terminal;
@@ -1162,7 +1162,7 @@ Notice how `Group` is itself `Drawable`. This is the *Composite Pattern* — tre
 ## The Two Languages
 
 **Zia**
-```rust
+```zia
 bind Zanna.Terminal;
 
 interface Animal {
@@ -1219,7 +1219,7 @@ NEXT
 
 Polymorphism isn't limited to classes and interfaces. Zanna also supports **enumerations** — fixed sets of named constants — with exhaustive pattern matching through `match`:
 
-```rust
+```zia
 enum Direction { North, South, East, West }
 
 func describe(dir: Direction) -> String {
@@ -1243,7 +1243,7 @@ Enums are especially useful for state machines, command types, and any domain wh
 
 ### Mistake 1: Confusing Variable Type with Object Type
 
-```rust
+```zia
 var animal: Animal = new Dog();
 ```
 
@@ -1271,7 +1271,7 @@ interface Drawable {
 
 Not everything needs to share code. Often, shared *behavior contracts* (interfaces) are more flexible than shared *implementation* (inheritance).
 
-```rust
+```zia
 // Awkward: forcing inheritance for unrelated things
 class Drawable { func draw() { } }
 class DrawableCircle extends Drawable { ... }

@@ -43,7 +43,7 @@ tags as registry identifiers.
 
 ## Quick start
 
-```rust
+```zia
 module LocalizationQuickStart;
 
 bind Zanna.Terminal;
@@ -65,7 +65,7 @@ func start() {
 
 Every `Locale` has a walkable fallback chain. `en-Latn-US` falls back through `en-US → en → root`; `MessageBundle` can use the same chain for locale-qualified keys such as `en-US:greet`, `en:greet`, and `root:greet` before walking explicit fallback bundles.
 
-```rust
+```zia
 module LocaleFallbacks;
 
 bind Zanna.Terminal;

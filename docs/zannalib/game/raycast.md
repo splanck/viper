@@ -25,7 +25,7 @@ and traverses every touched cell with grid DDA; it is not capped by a fixed numb
 
 ## Example
 
-```rust
+```zia
 module RaycastExample;
 
 func start() {

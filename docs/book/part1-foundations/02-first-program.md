@@ -126,7 +126,7 @@ So let's write it together.
 
 Open your text editor and create a new file. Type the following code exactly as shown — every character matters:
 
-```rust
+```zia
 module Hello;
 
 bind Zanna.Terminal;
@@ -254,7 +254,7 @@ Now let's slow down and understand exactly what each line of code does and *why*
 
 ### Line 1: `module Hello;`
 
-```rust
+```zia
 module Hello;
 ```
 
@@ -271,7 +271,7 @@ This line gives your program a name. In Zia, every program is organized into *mo
 **Can you omit this line?** For a tiny single-file program, Zanna can still
 compile and run your code by giving the file an implicit module name:
 
-```rust
+```zia
 func start() {
     Zanna.Terminal.Say("Hello, World!");
 }
@@ -283,7 +283,7 @@ clearer, and avoid depending on file-name inference.
 
 ### Line 2: `bind Zanna.Terminal;`
 
-```rust
+```zia
 bind Zanna.Terminal;
 ```
 
@@ -295,7 +295,7 @@ This line imports the Terminal module from Zanna's standard library. The *standa
 
 **What happens without this line?**
 
-```rust
+```zia
 module Hello;
 
 func start() {
@@ -318,7 +318,7 @@ The blank line isn't required. The compiler ignores blank lines completely. They
 
 ### Line 4: `func start() {`
 
-```rust
+```zia
 func start() {
 ```
 
@@ -338,7 +338,7 @@ This line defines a *function* called `start`. There's a lot packed into this on
 
 **What happens if you name it something else?**
 
-```rust
+```zia
 module Hello;
 
 bind Zanna.Terminal;
@@ -357,7 +357,7 @@ The program compiles, but the computer doesn't know what to run. It's like havin
 
 ### Line 5: `    Say("Hello, World!");`
 
-```rust
+```zia
     Say("Hello, World!");
 ```
 
@@ -375,7 +375,7 @@ This is the line that actually makes something happen. Let's examine each piece:
 
 **What if you forget the semicolon?**
 
-```rust
+```zia
     Zanna.Terminal.Say("Hello, World!")
 ```
 
@@ -388,8 +388,8 @@ The compiler reached the closing brace and realized the previous statement was n
 
 **What if you misspell `Say`?**
 
-```rust
-    Zanna.Terminal.Sya("Hello, World!");  // typo: 'Sya' instead of 'Say'
+```zia
+    Zanna.Terminal.Say("Hello, World!");  // typo: 'Sya' instead of 'Say'
 ```
 
 Error:
@@ -401,7 +401,7 @@ The compiler can't find a function with that name. Function names must be spelle
 
 **What if you forget the quotes around the text?**
 
-```rust
+```zia
     Zanna.Terminal.Say(Hello, World!);
 ```
 
@@ -415,7 +415,7 @@ Without quotes, the compiler tries to interpret `Hello` and `World` as variable 
 
 ### Line 5: `}`
 
-```rust
+```zia
 }
 ```
 
@@ -423,7 +423,7 @@ The closing curly brace marks the end of the `start` function. Everything betwee
 
 **What if you forget it?**
 
-```rust
+```zia
 module Hello;
 
 func start() {
@@ -505,7 +505,7 @@ When things go wrong (and they will — that's normal!), error messages are your
 **What it means:** You started a string with a quote but never closed it.
 
 **What the code probably looks like:**
-```rust
+```zia
 Zanna.Terminal.Say("Hello, World!);  // Missing closing quote
 ```
 
@@ -516,7 +516,7 @@ Zanna.Terminal.Say("Hello, World!);  // Missing closing quote
 **What it means:** The compiler expected a semicolon to end a statement.
 
 **What the code probably looks like:**
-```rust
+```zia
 Zanna.Terminal.Say("Hello, World!")  // Missing semicolon
 ```
 
@@ -539,8 +539,8 @@ Zanna.Terminal.Say("Hello, World!")  // Missing semicolon
 **What it means:** You tried to use a function that doesn't exist in the Terminal module.
 
 **What the code probably looks like:**
-```rust
-Zanna.Terminal.Sya("Hello");  // Typo: 'Sya' instead of 'Say'
+```zia
+Zanna.Terminal.Say("Hello");  // Typo: 'Sya' instead of 'Say'
 Zanna.Terminal.Display("Hello");  // No such function
 ```
 
@@ -564,7 +564,7 @@ You've proven that everything works. Now let's have some fun.
 
 Edit your program to say something different:
 
-```rust
+```zia
 module Hello;
 
 bind Zanna.Terminal;
@@ -587,7 +587,7 @@ Each time you save and run, you're practicing the fundamental programming cycle:
 
 A single `Say` prints one line. What if you want more?
 
-```rust
+```zia
 module Hello;
 
 bind Zanna.Terminal;
@@ -612,7 +612,7 @@ The program runs from top to bottom. Each `Say` happens in order. This is *seque
 
 What if you want multiple things on the same line? Use `Print` instead of `Say`:
 
-```rust
+```zia
 module Hello;
 
 bind Zanna.Terminal;
@@ -639,7 +639,7 @@ The final `Say` ensures we end with a newline (otherwise your terminal prompt wo
 
 With what you know, you can create simple text art:
 
-```rust
+```zia
 module Art;
 
 bind Zanna.Terminal;
@@ -674,7 +674,7 @@ Let's intentionally break our program to understand error messages better. This 
 
 This example is intentionally broken and expected to fail:
 
-```rust
+```zia
 module Hello;
 
 func start() {
@@ -700,7 +700,7 @@ The compiler is surprisingly helpful once you learn to read its messages.
 
 This example is intentionally broken and expected to fail:
 
-```rust
+```zia
 module Hello;
 
 func start() {
@@ -719,11 +719,11 @@ This is common — errors sometimes manifest on a different line than where the 
 
 ### Misspelled Function
 
-```rust
+```zia
 module Hello;
 
 func start() {
-    Zanna.Terminal.Sya("Hello, World!");
+    Zanna.Terminal.Say("Hello, World!");
 }
 ```
 

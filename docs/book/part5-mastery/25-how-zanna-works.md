@@ -56,7 +56,7 @@ Source Code → Lexer → Parser → Semantic Analyzer → IL Generator → Runt
 
 Let's trace a simple program through this entire journey. We'll use this example:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 func add(a: Integer, b: Integer) -> Integer {
@@ -116,7 +116,7 @@ The lexer also recognizes:
 
 The lexer catches errors involving malformed individual tokens:
 
-```rust
+```zia
 var x = 3.14.15;    // Error: invalid number literal (two decimal points)
 var@name = 5;       // Error: unexpected character '@' in identifier
 var s = "unclosed;  // Error: unterminated string literal
@@ -171,7 +171,7 @@ This tree shows that `add` is a function with two parameters, and its body conta
 
 Why not just a list of tokens? Because code has hierarchical structure. Consider this expression:
 
-```rust
+```zia
 var result = (3 + 4) * 2;
 ```
 
@@ -193,7 +193,7 @@ The tree shows that we multiply the result of an addition by 2—exactly what th
 
 The parser catches *structural* errors—violations of grammar:
 
-```rust
+```zia
 func broken( {           // Error: expected parameter or ')'
     var x = ;            // Error: expected expression after '='
     if x < 5             // Error: expected '{' after condition
@@ -226,7 +226,7 @@ The *semantic analyzer* checks that your code actually makes sense. This is wher
 
 Every expression has a type. The semantic analyzer ensures types are used consistently:
 
-```rust
+```zia
 var x: Integer = "hello";      // Error: cannot assign String to Integer
 var y = add("a", "b");     // Error: 'add' expects Integer arguments, got String
 var z = 5 + "three";       // Error: cannot add Integer and String
@@ -238,7 +238,7 @@ Type checking is your first line of defense against bugs. When the type checker 
 
 Variables exist within scopes. The semantic analyzer ensures you only use variables that exist:
 
-```rust
+```zia
 func test() {
     Terminal.Say(x);  // Error: 'x' not defined
     var x = 5;         // too late!
@@ -256,7 +256,7 @@ func another() {
 
 Functions that declare a return type must actually return a value:
 
-```rust
+```zia
 func getValue() -> Integer {  // Error: may not return a value
     var x = 5;
 }
@@ -272,7 +272,7 @@ func maybeReturn(flag: Boolean) -> Integer {  // Error: not all paths return a v
 
 When working with entities and values, the semantic analyzer ensures you use them correctly:
 
-```rust
+```zia
 class Player {
     expose name: String;
     hide health: Integer;       // hidden from outside
@@ -360,7 +360,7 @@ IL is a convenient place to optimize code. Transformations that would be complex
 Here's the same function in both Zanna languages:
 
 **Zia**
-```rust
+```zia
 func square(x: Integer) -> Integer {
     return x * x;
 }
@@ -394,7 +394,7 @@ IL is worth understanding in detail because it reveals exactly what your code do
 
 Zanna's IL uses a *stack-based* execution model. Operations push values onto a conceptual stack and pop values off:
 
-```rust
+```zia
 var result = (3 + 4) * 2;
 ```
 
@@ -475,7 +475,7 @@ call @funcname(%arg1, %arg2)  ; call function
 
 Let's trace a more complex function through IL:
 
-```rust
+```zia
 func factorial(n: Integer) -> Integer {
     if n <= 1 {
         return 1;
@@ -597,7 +597,7 @@ One of the runtime's most important jobs is managing memory. In many languages, 
 
 When you create a value or class, memory is allocated:
 
-```rust
+```zia
 func createStuff() {
     var list = [1, 2, 3];      // Memory allocated for array
     var name = "Alice";         // Memory allocated for string
@@ -636,14 +636,14 @@ After:   [Player ✓] [name ✓] [inventory ✓] [          ]
 Understanding value types and reference types helps you predict memory behavior:
 
 **Value types** are stored directly:
-```rust
+```zia
 var x: i64 = 42;     // 42 stored directly in x's memory slot
 var y = x;           // y gets its own copy of 42
 x = 100;             // x is now 100, y is still 42
 ```
 
 **Reference types** store a pointer to heap memory:
-```rust
+```zia
 var a = [1, 2, 3];   // Array lives on heap; 'a' holds a reference
 var b = a;           // 'b' references the SAME array
 a[0] = 999;          // Both a[0] and b[0] are now 999!
@@ -655,7 +655,7 @@ This distinction matters for performance and correctness. Modifying a reference 
 
 While you don't manage memory directly, understanding GC helps you write efficient code:
 
-```rust
+```zia
 // Less efficient: creates many temporary strings
 func buildName(first: String, last: String) -> String {
     var result = "";
@@ -682,20 +682,20 @@ One of the most practical benefits of understanding the compilation pipeline is 
 These are caught before your program runs:
 
 **Lexical Errors** (Stage 1 - Tokenization)
-```rust
+```zia
 var x = 3.14.15;     // Invalid number: two decimal points
 var s = "unterminated  // String never closed
 ```
 
 **Syntax Errors** (Stage 2 - Parsing)
-```rust
+```zia
 func missing(         // Error: missing closing parenthesis
     var x = ;         // Error: missing expression
     if x { }          // Error: missing condition
 ```
 
 **Semantic Errors** (Stage 3 - Analysis)
-```rust
+```zia
 var x: Integer = "hello";     // Type mismatch
 unknown_function();        // Undefined function
 var y = z + 1;            // Undefined variable 'z'
@@ -708,7 +708,7 @@ Compile-time errors are the best kind—they're caught before anyone runs your p
 Some errors can only be detected when the program runs:
 
 **Division by Zero**
-```rust
+```zia
 func divide(a: Integer, b: Integer) -> Integer {
     return a / b;  // What if b is 0?
 }
@@ -722,14 +722,14 @@ func start() {
 The compiler can't know what value `x` will have—the user provides it at runtime.
 
 **Array Index Out of Bounds**
-```rust
+```zia
 var arr = [1, 2, 3];
 var i = getUserInput();
 var value = arr[i];  // Runtime error if i >= 3 or i < 0
 ```
 
 **Null Reference**
-```rust
+```zia
 func findPlayer(name: String) -> Player? {
     // might return null if not found
 }
@@ -775,7 +775,7 @@ Let's follow a complete program through every stage of compilation. This will so
 
 ### The Source Code
 
-```rust
+```zia
 func max(a: Integer, b: Integer) -> Integer {
     if a > b {
         return a;
@@ -913,19 +913,19 @@ Understanding the compilation pipeline gives you powerful debugging strategies.
 1. **Read the error message carefully**. It tells you which stage failed.
 
 2. **Lexer errors**: Look for typos, unclosed strings, invalid characters
-   ```rust
+   ```zia
    var name = "hello;    // Missing closing quote
    var x = 3..14;        // Extra dot
    ```
 
 3. **Parser errors**: Check matching brackets, semicolons, statement structure
-   ```rust
+   ```zia
    if condition {        // Missing expression after 'if'
    func test( {          // Missing parameter list
    ```
 
 4. **Semantic errors**: Check types, names, and logic
-   ```rust
+   ```zia
    var x: Integer = getInput();  // Does getInput() return Integer?
    process(x, y, z);         // Are x, y, z defined? Right types?
    ```
@@ -933,7 +933,7 @@ Understanding the compilation pipeline gives you powerful debugging strategies.
 ### When Your Code Runs but Misbehaves
 
 1. **Print intermediate values** to narrow down where logic goes wrong
-   ```rust
+   ```zia
    bind Zanna.Terminal;
 
    func calculate(x: Integer) -> Integer {
@@ -961,7 +961,7 @@ Understanding the compilation pipeline gives you powerful debugging strategies.
 
 IL helps you understand why some code is slow:
 
-```rust
+```zia
 bind Fmt = Zanna.Text.Fmt;
 
 // This creates many temporary strings
@@ -985,7 +985,7 @@ Zanna's architecture allows three different languages to share one runtime. Let'
 ### Same Logic, Different Syntax
 
 **Zia** (modern, curly-brace syntax)
-```rust
+```zia
 bind Zanna.Terminal;
 
 func greet(name: String) {
@@ -1124,7 +1124,7 @@ Write the same function in Zia and BASIC. Use `--dump-il` on both and compare. W
 
 **Exercise 25.5 - IL Reading**
 Look at the IL for this function:
-```rust
+```zia
 func sum_to_n(n: Integer) -> Integer {
     var total = 0;
     var i = 1;
@@ -1139,7 +1139,7 @@ Trace the execution by hand for `sum_to_n(3)`. Track the values in each register
 
 **Exercise 25.6 - Memory Investigation**
 Create a program that makes many strings in a loop:
-```rust
+```zia
 bind Fmt = Zanna.Text.Fmt;
 
 func makeManyStrings() -> String {
@@ -1154,7 +1154,7 @@ Think about what happens to memory. When are strings created? When might they be
 
 **Exercise 25.7 - Performance Thinking**
 Consider these two functions:
-```rust
+```zia
 func version1(n: Integer) -> Integer {
     var sum = 0;
     for i in 0..n {
@@ -1171,7 +1171,7 @@ Both compute the sum 0 + 1 + 2 + ... + (n-1). Use `--dump-il` to see how differe
 
 **Exercise 25.8 (Challenge) - Recursive IL Tracing**
 Trace the complete IL execution of:
-```rust
+```zia
 func fib(n: Integer) -> Integer {
     if n <= 1 {
         return n;

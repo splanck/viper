@@ -134,7 +134,7 @@ DIM label3 AS Zanna.GUI.Label
 label3 = NEW Zanna.GUI.Label(vbox, "Third")
 ```
 
-```rust
+```zia
 // Zia
 var vbox = VBox.New();
 vbox.SetSpacing(10.0);
@@ -170,7 +170,7 @@ host = NEW Zanna.GUI.TextInput(group)
 host.SetPlaceholder("Host name")
 ```
 
-```rust
+```zia
 var group = GroupBox.New(root, "Connection");
 var host = TextInput.New(group);
 host.SetPlaceholder("Host name");

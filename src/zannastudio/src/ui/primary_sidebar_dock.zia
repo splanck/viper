@@ -1,0 +1,470 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/ui/primary_sidebar_dock.zia
+// Purpose: Direct, persisted left/right docking for Studio's primary sidebar.
+// Key invariants:
+//   - One live view tree moves between stable nested splitter hosts.
+//   - The editor/workbench tree is never reparented during a sidebar move.
+//   - Logical sidebar width is independent of its mirrored splitter position.
+//   - Typed stationary targets accept only primary-sidebar drag payloads.
+//   - Controller-authored restores never publish user persistence edges.
+// Ownership/Lifetime:
+//   - WorkbenchShell owns one controller for the lifetime of the IDE window.
+//   - The controller owns header/target widgets, but not activity view content.
+// Links: zannastudio/src/ui/workbench_shell.zia,
+//        zannastudio/src/ui/workspace_dock.zia
+//
+//===----------------------------------------------------------------------===//
+
+module primary_sidebar_dock;
+
+// ============================================================================
+// MODULE: primary_sidebar_dock
+// PURPOSE: Keep primary-sidebar movement, focus recovery, target feedback, and
+//          mirrored splitter math out of the central workbench constructor.
+//
+// WHERE-THIS-FITS: WorkbenchShell builds the stable left/right hosts and the
+//          Explorer/Source Control/Run-and-Debug tree, then injects those
+//          widgets here. Main consumes one-shot position/width edges for the
+//          ordinary settings debounce.
+// ============================================================================
+
+bind "../ui/workspace_dock";
+
+bind Zanna.GUI as GUI;
+bind Convert = Zanna.Core.Convert;
+
+/// @brief Own direct manipulation and durable geometry for the primary sidebar.
+class PrimarySidebarDock {
+    expose GUI.HBox header;
+    expose GUI.Label dragHandle;
+    expose GUI.Button leftButton;
+    expose GUI.Button rightButton;
+    expose GUI.Button leftTarget;
+    expose GUI.Button rightTarget;
+    expose Boolean sidebarVisible;
+    expose Number sidebarWidthFraction;
+
+    hide GUI.HBox workbenchHost;
+    hide GUI.Toolbar activityBar;
+    hide GUI.SplitPane leftSplit;
+    hide GUI.SplitPane rightSplit;
+    hide GUI.VBox leftHost;
+    hide GUI.VBox rightHost;
+    hide GUI.VBox viewStack;
+    hide GUI.TreeView sidebarTree;
+    hide GUI.Widget dropTarget;
+    hide Integer location;
+    hide Number appliedWidthFraction;
+    hide Boolean widthDirty;
+    hide Boolean locationDirty;
+    hide Boolean dragWasActive;
+    hide Boolean targetsVisible;
+    hide Integer targetHoverLocation;
+
+    expose func init() {
+        header = null;
+        dragHandle = null;
+        leftButton = null;
+        rightButton = null;
+        leftTarget = null;
+        rightTarget = null;
+        sidebarVisible = true;
+        sidebarWidthFraction = 0.24;
+        workbenchHost = null;
+        activityBar = null;
+        leftSplit = null;
+        rightSplit = null;
+        leftHost = null;
+        rightHost = null;
+        viewStack = null;
+        sidebarTree = null;
+        dropTarget = null;
+        location = workspace_dock.DOCK_LEFT;
+        appliedWidthFraction = 0.24;
+        widthDirty = false;
+        locationDirty = false;
+        dragWasActive = false;
+        targetsVisible = false;
+        targetHoverLocation = workspace_dock.DOCK_NONE;
+    }
+
+    /// @brief Build the persistent header above all primary-sidebar views.
+    expose func BuildHeader(parent: GUI.VBox) {
+        if parent == null or header != null { return; }
+        header = GUI.HBox.New();
+        header.SetSpacing(4.0);
+        header.SetPadding(4.0);
+        parent.AddChild(header);
+
+        dragHandle = GUI.Label.New(header, DefaultHeaderText());
+        dragHandle.SetFlex(1.0);
+        dragHandle.SetTooltip(
+            "Drag to move Explorer, Source Control, and Run and Debug");
+        dragHandle.SetDraggable(true);
+        dragHandle.SetDragData(
+            workspace_dock.PRIMARY_SIDEBAR_DRAG_TYPE,
+            workspace_dock.PRIMARY_SIDEBAR_DRAG_DATA);
+
+        leftButton = GUI.Button.New(header, "←");
+        leftButton.SetPreferredSize(28.0, 24.0);
+        leftButton.SetAccessibleName("Move primary sidebar left");
+        leftButton.SetTooltip("Move the primary sidebar to the left");
+        rightButton = GUI.Button.New(header, "→");
+        rightButton.SetPreferredSize(28.0, 24.0);
+        rightButton.SetAccessibleName("Move primary sidebar right");
+        rightButton.SetTooltip("Move the primary sidebar to the right");
+    }
+
+    /// @brief Attach the stable workbench topology and build typed drop targets.
+    expose func Configure(host: GUI.HBox,
+                          rail: GUI.Toolbar,
+                          leftSplitter: GUI.SplitPane,
+                          rightSplitter: GUI.SplitPane,
+                          leftSidebarHost: GUI.VBox,
+                          rightSidebarHost: GUI.VBox,
+                          sidebarViews: GUI.VBox,
+                          tree: GUI.TreeView,
+                          targetSurface: GUI.Widget) {
+        workbenchHost = host;
+        activityBar = rail;
+        leftSplit = leftSplitter;
+        rightSplit = rightSplitter;
+        leftHost = leftSidebarHost;
+        rightHost = rightSidebarHost;
+        viewStack = sidebarViews;
+        sidebarTree = tree;
+        dropTarget = targetSurface;
+        BuildTargets();
+        ApplyWidthToSplitters();
+        ApplyVisibleTopology();
+        UpdateButtons();
+    }
+
+    /// @brief Toggle the content pane while leaving the activity rail reachable.
+    expose func ToggleVisible() {
+        SetVisible(sidebarVisible == false);
+    }
+
+    /// @brief Set effective content visibility without changing durable width.
+    expose func SetVisible(visible: Boolean) {
+        if visible == sidebarVisible { return; }
+        if !visible { CaptureWidth(); }
+        sidebarVisible = visible;
+        ApplyVisibleTopology();
+    }
+
+    /// @brief Apply a persisted logical sidebar width in [15, 45] percent.
+    expose func SetWidthPercent(pct: Integer) {
+        var clamped = pct;
+        if clamped < 15 { clamped = 15; }
+        if clamped > 45 { clamped = 45; }
+        sidebarWidthFraction = clamped / 100.0;
+        appliedWidthFraction = sidebarWidthFraction;
+        ApplyWidthToSplitters();
+        ApplyVisibleTopology();
+        widthDirty = false;
+    }
+
+    /// @brief Consume one live splitter drag as a logical width percentage.
+    expose func TakeChangedWidthPercent() -> Integer {
+        CaptureWidth();
+        if !widthDirty { return -1; }
+        widthDirty = false;
+        var scaled = sidebarWidthFraction * 100.0;
+        var pct = 15;
+        while pct < 45 and scaled >= pct + 0.5 {
+            pct = pct + 1;
+        }
+        return pct;
+    }
+
+    /// @brief Apply persisted left/right placement without publishing an edge.
+    expose func SetLocationName(name: String) {
+        ApplyLocation(workspace_dock.SidebarLocationFromName(name), false);
+        locationDirty = false;
+    }
+
+    /// @brief Move to a left/right location and publish one durable edge.
+    expose func MoveTo(newLocation: Integer) {
+        ApplyLocation(newLocation, true);
+    }
+
+    /// @brief Return "left" or "right" for current placement.
+    expose func GetLocationName() -> String {
+        return workspace_dock.SidebarLocationName(location);
+    }
+
+    /// @brief Consume one user-authored left/right placement edge.
+    expose func TakeChangedLocation() -> String {
+        if !locationDirty { return ""; }
+        locationDirty = false;
+        return GetLocationName();
+    }
+
+    /// @brief Return whether the two stationary drag targets are shown.
+    expose func AreTargetsVisible() -> Boolean {
+        return targetsVisible;
+    }
+
+    /// @brief Poll explicit buttons and typed target drops.
+    expose func Pump() {
+        if leftButton != null and leftButton.WasClicked() {
+            MoveTo(workspace_dock.DOCK_LEFT);
+        } else if rightButton != null and rightButton.WasClicked() {
+            MoveTo(workspace_dock.DOCK_RIGHT);
+        }
+
+        var droppedLocation = TakeTargetDrop();
+        var dragging = dragHandle != null and dragHandle.IsBeingDragged();
+        if dragging {
+            SetTargetsVisible(true);
+            var hover = HoverLocation();
+            if hover != targetHoverLocation { ApplyTargetFeedback(hover); }
+            dragHandle.SetText(workspace_dock.SidebarDragHint(hover));
+        } else if dragWasActive {
+            dragHandle.SetText(DefaultHeaderText());
+        }
+        if !dragging { SetTargetsVisible(false); }
+        dragWasActive = dragging;
+
+        if droppedLocation != workspace_dock.DOCK_NONE {
+            MoveTo(droppedLocation);
+        }
+    }
+
+    /// @brief Restore default placement/width and clear stale user edges.
+    expose func Reset(visible: Boolean) {
+        SetLocationName("left");
+        SetWidthPercent(24);
+        SetVisible(visible);
+        widthDirty = false;
+        locationDirty = false;
+        SetTargetsVisible(false);
+    }
+
+    hide func DefaultHeaderText() -> String {
+        return "Sidebar  -  drag";
+    }
+
+    /// @brief Reparent only the sidebar view tree and activity rail.
+    hide func ApplyLocation(newLocation: Integer, userAuthored: Boolean) {
+        if !workspace_dock.IsSidebarLocation(newLocation) { return; }
+        if newLocation == location {
+            UpdateButtons();
+            return;
+        }
+        CaptureWidth();
+        var treeHadFocus =
+            sidebarTree != null and sidebarTree.IsFocused();
+        var leftButtonHadFocus =
+            leftButton != null and leftButton.IsFocused();
+        var rightButtonHadFocus =
+            rightButton != null and rightButton.IsFocused();
+
+        if newLocation == workspace_dock.DOCK_RIGHT {
+            if rightHost != null and viewStack != null {
+                rightHost.AddChild(viewStack);
+            }
+            if workbenchHost != null {
+                workbenchHost.AddChild(leftSplit);
+                workbenchHost.AddChild(activityBar);
+            }
+        } else {
+            if leftHost != null and viewStack != null {
+                leftHost.AddChild(viewStack);
+            }
+            if workbenchHost != null {
+                workbenchHost.AddChild(activityBar);
+                workbenchHost.AddChild(leftSplit);
+            }
+        }
+        location = newLocation;
+        ApplyWidthToSplitters();
+        ApplyVisibleTopology();
+        UpdateButtons();
+
+        if treeHadFocus {
+            sidebarTree.Focus();
+        } else if leftButtonHadFocus or rightButtonHadFocus or userAuthored {
+            if location == workspace_dock.DOCK_RIGHT { leftButton.Focus(); }
+            else { rightButton.Focus(); }
+        }
+        if userAuthored { locationDirty = true; }
+    }
+
+    /// @brief Apply mirrored width values without interpreting them as input.
+    hide func ApplyWidthToSplitters() {
+        if leftSplit != null {
+            leftSplit.SetPosition(sidebarWidthFraction);
+        }
+        if rightSplit != null {
+            rightSplit.SetPosition(1.0 - sidebarWidthFraction);
+        }
+        appliedWidthFraction = sidebarWidthFraction;
+    }
+
+    /// @brief Reveal exactly one sidebar splitter, or collapse both when hidden.
+    hide func ApplyVisibleTopology() {
+        if leftSplit == null or rightSplit == null { return; }
+        if sidebarVisible and location == workspace_dock.DOCK_LEFT {
+            rightSplit.CollapseSecond();
+            leftSplit.Restore();
+            return;
+        }
+        if sidebarVisible and location == workspace_dock.DOCK_RIGHT {
+            leftSplit.CollapseFirst();
+            rightSplit.Restore();
+            return;
+        }
+        leftSplit.CollapseFirst();
+        rightSplit.CollapseSecond();
+    }
+
+    /// @brief Capture one active splitter change as logical sidebar width.
+    hide func CaptureWidth() {
+        if !sidebarVisible { return; }
+        var current = sidebarWidthFraction;
+        if location == workspace_dock.DOCK_LEFT {
+            if leftSplit == null or leftSplit.GetCollapsedSide() != 0 { return; }
+            current = leftSplit.GetPosition();
+        } else {
+            if rightSplit == null or rightSplit.GetCollapsedSide() != 0 { return; }
+            current = 1.0 - rightSplit.GetPosition();
+        }
+        if current < 0.15 or current > 0.45 { return; }
+        var delta = current - appliedWidthFraction;
+        if delta < 0.0 { delta = 0.0 - delta; }
+        if delta <= 0.0005 { return; }
+        sidebarWidthFraction = current;
+        appliedWidthFraction = current;
+        widthDirty = true;
+    }
+
+    hide func UpdateButtons() {
+        if leftButton != null {
+            leftButton.SetEnabled(location != workspace_dock.DOCK_LEFT);
+        }
+        if rightButton != null {
+            rightButton.SetEnabled(location != workspace_dock.DOCK_RIGHT);
+        }
+    }
+
+    /// @brief Build late, manually positioned cards above normal workbench layout.
+    hide func BuildTargets() {
+        if dropTarget == null or leftTarget != null { return; }
+        leftTarget = GUI.Button.New(dropTarget, "Move Sidebar Left");
+        ConfigureTarget(leftTarget, workspace_dock.DOCK_LEFT, "←");
+        rightTarget = GUI.Button.New(dropTarget, "Move Sidebar Right");
+        ConfigureTarget(rightTarget, workspace_dock.DOCK_RIGHT, "→");
+    }
+
+    hide func ConfigureTarget(target: GUI.Button,
+                              targetLocation: Integer,
+                              icon: String) {
+        target.SetName(
+            "primary-sidebar-target-"
+            + workspace_dock.SidebarLocationName(targetLocation));
+        target.SetStyle(2);
+        target.SetIcon(icon);
+        target.SetTooltipRich(
+            "Move primary sidebar",
+            "Move Explorer, Source Control, and Run and Debug to this edge");
+        target.SetPosition(0, 0);
+        target.SetSize(1, 1);
+        target.SetDropTarget(true);
+        target.SetAcceptedDropTypes(
+            workspace_dock.PRIMARY_SIDEBAR_DRAG_TYPE);
+        target.SetVisible(false);
+    }
+
+    hide func SetTargetsVisible(visible: Boolean) {
+        if leftTarget == null or rightTarget == null {
+            targetsVisible = false;
+            return;
+        }
+        if visible {
+            LayoutTargets();
+            if !targetsVisible {
+                leftTarget.SetVisible(true);
+                rightTarget.SetVisible(true);
+                ApplyTargetFeedback(workspace_dock.DOCK_NONE);
+            }
+        } else if targetsVisible {
+            leftTarget.SetVisible(false);
+            rightTarget.SetVisible(false);
+            targetHoverLocation = workspace_dock.DOCK_NONE;
+        }
+        targetsVisible = visible;
+    }
+
+    hide func LayoutTargets() {
+        if dropTarget == null { return; }
+        var width = dropTarget.GetLogicalWidth();
+        var height = dropTarget.GetLogicalHeight();
+        var targetWidth = Convert.NumToInt(
+            workspace_dock.DockTargetWidth(width));
+        var targetHeight = Convert.NumToInt(
+            workspace_dock.DockTargetHeight(height));
+        if targetWidth < 1 or targetHeight < 1 { return; }
+        leftTarget.SetPosition(
+            Convert.NumToInt(workspace_dock.DockTargetX(
+                workspace_dock.DOCK_LEFT, width)),
+            Convert.NumToInt(workspace_dock.DockTargetY(
+                workspace_dock.DOCK_LEFT, height)));
+        leftTarget.SetSize(targetWidth, targetHeight);
+        rightTarget.SetPosition(
+            Convert.NumToInt(workspace_dock.DockTargetX(
+                workspace_dock.DOCK_RIGHT, width)),
+            Convert.NumToInt(workspace_dock.DockTargetY(
+                workspace_dock.DOCK_RIGHT, height)));
+        rightTarget.SetSize(targetWidth, targetHeight);
+    }
+
+    hide func HoverLocation() -> Integer {
+        if leftTarget != null and leftTarget.IsDragOver() {
+            return workspace_dock.DOCK_LEFT;
+        }
+        if rightTarget != null and rightTarget.IsDragOver() {
+            return workspace_dock.DOCK_RIGHT;
+        }
+        return workspace_dock.DOCK_NONE;
+    }
+
+    hide func ApplyTargetFeedback(hover: Integer) {
+        targetHoverLocation = hover;
+        leftTarget.SetText(workspace_dock.SidebarTargetText(
+            workspace_dock.DOCK_LEFT, location,
+            hover == workspace_dock.DOCK_LEFT));
+        rightTarget.SetText(workspace_dock.SidebarTargetText(
+            workspace_dock.DOCK_RIGHT, location,
+            hover == workspace_dock.DOCK_RIGHT));
+        leftTarget.SetStyle(TargetStyle(workspace_dock.DOCK_LEFT, hover));
+        rightTarget.SetStyle(TargetStyle(workspace_dock.DOCK_RIGHT, hover));
+    }
+
+    hide func TargetStyle(targetLocation: Integer, hover: Integer) -> Integer {
+        if targetLocation == hover { return 1; }
+        if targetLocation == location { return 0; }
+        return 2;
+    }
+
+    hide func TargetDropped(target: GUI.Button) -> Boolean {
+        if target == null or !target.WasDropped() { return false; }
+        return target.GetDropType()
+                   == workspace_dock.PRIMARY_SIDEBAR_DRAG_TYPE
+            and target.GetDropData()
+                   == workspace_dock.PRIMARY_SIDEBAR_DRAG_DATA;
+    }
+
+    hide func TakeTargetDrop() -> Integer {
+        if TargetDropped(leftTarget) { return workspace_dock.DOCK_LEFT; }
+        if TargetDropped(rightTarget) { return workspace_dock.DOCK_RIGHT; }
+        return workspace_dock.DOCK_NONE;
+    }
+}

@@ -49,7 +49,7 @@ Complete language reference for Zia. This document describes **syntax**, **types
 
 A Zia source file has the following structure:
 
-```rust
+```zia
 module ModuleName;
 
 // Bind declarations (bring other modules into scope)
@@ -75,7 +75,7 @@ func start() { ... }
 
 The `start()` function is the program entry point. It takes no parameters and returns void:
 
-```rust
+```zia
 func start() {
     // Program execution begins here
 }
@@ -87,7 +87,7 @@ func start() {
 
 ### Comments
 
-```rust
+```zia
 // Single-line comment
 
 /* Multi-line
@@ -106,7 +106,7 @@ identifier  ::= [a-zA-Z_][a-zA-Z0-9_]*
 
 #### Integer Literals
 
-```rust
+```zia
 42          // Decimal
 1_000_000   // Decimal with digit separators
 0xFF        // Hexadecimal
@@ -120,7 +120,7 @@ identifier  ::= [a-zA-Z_][a-zA-Z0-9_]*
 
 #### Floating-Point Literals
 
-```rust
+```zia
 3.14159     // Decimal
 1_024.5     // Decimal with digit separators
 1e10        // Scientific notation
@@ -134,7 +134,7 @@ so values with the high bit set are interpreted as negative `Integer` values.
 
 #### String Literals
 
-```rust
+```zia
 "Hello, World!"           // Basic string
 "Line 1\nLine 2"          // With escape sequences
 "Value: ${expression}"    // String interpolation
@@ -163,20 +163,20 @@ plain string literal.
 
 #### Boolean Literals
 
-```rust
+```zia
 true
 false
 ```
 
 #### Null Literal
 
-```rust
+```zia
 null    // Used with optional types
 ```
 
 #### Unit Literal
 
-```rust
+```zia
 ()      // Unit literal
 ```
 
@@ -219,7 +219,7 @@ locals, globals, or fields.
 
 Optional types can hold a value or `null`:
 
-```rust
+```zia
 var name: String? = null;   // Optional string
 var count: Integer? = 42;   // Optional with value
 ```
@@ -240,7 +240,7 @@ access when a null value is possible.
 
 Parameterized types with type arguments:
 
-```rust
+```zia
 List[Integer]           // List of integers
 List[Player]            // List of class instances
 Map[String, Integer]    // Map from strings to integers
@@ -259,7 +259,7 @@ Generic declarations may constrain type parameters to interfaces. Constraints
 are supported on functions, methods, classes, structs, and interfaces, and are
 checked when a generic is instantiated:
 
-```rust
+```zia
 interface Named {
     func name() -> String;
 }
@@ -280,7 +280,7 @@ by any base class; struct arguments satisfy constraints through their own
 
 Reference types defined with the `class` keyword:
 
-```rust
+```zia
 var player: Player = new Player();
 ```
 
@@ -288,7 +288,7 @@ var player: Player = new Player();
 
 Copy-semantics types defined with the `struct` keyword:
 
-```rust
+```zia
 var point: Point;
 ```
 
@@ -296,7 +296,7 @@ var point: Point;
 
 Tuple types group multiple values into a single type:
 
-```rust
+```zia
 var pair: (Integer, String) = (42, "hello");
 var x = pair.0;     // Access by index
 ```
@@ -305,7 +305,7 @@ var x = pair.0;     // Access by index
 
 Arrays with a compile-time size:
 
-```rust
+```zia
 var grid: Integer[100];     // Fixed array of 100 integers
 ```
 
@@ -318,7 +318,7 @@ fields, and assignable values; assignment copies the inline elements.
 
 Sets hold unique values. Created with set literals or the `Set` constructor:
 
-```rust
+```zia
 var s: Set[Integer] = {1, 2, 3};
 var empty: Set[Integer] = {};
 ```
@@ -327,7 +327,7 @@ var empty: Set[Integer] = {};
 
 Function signatures as types:
 
-```rust
+```zia
 (Integer, Integer) -> Integer   // Function taking two ints, returning int
 () -> void                      // Function taking nothing, returning void
 ```
@@ -338,7 +338,7 @@ Function signatures as types:
 
 ### Literals
 
-```rust
+```zia
 42                  // Integer literal
 3.14                // Number literal
 "hello"             // String literal
@@ -348,7 +348,7 @@ null                // Null literal
 
 ### Identifiers
 
-```rust
+```zia
 variableName        // Variable reference
 ```
 
@@ -367,7 +367,7 @@ The `&` operator explicitly obtains a typed function reference. A bare function
 name is also accepted where the expected type is a function reference, or where
 a runtime API exposes a safe callback bridge:
 
-```rust
+```zia
 bind Zanna.Threads;
 
 func handler(arg: Any) {
@@ -479,13 +479,13 @@ custom value semantics.
 
 ### Ternary Operator
 
-```rust
+```zia
 condition ? thenValue : elseValue
 ```
 
 ### Match Expression
 
-```rust
+```zia
 var result = match value {
     0 => "zero";
     n if n > 0 => "positive";
@@ -495,14 +495,14 @@ var result = match value {
 
 ### Field Access
 
-```rust
+```zia
 object.field            // Access field
 object.method()         // Call method
 ```
 
 ### Optional Chaining and Unwrapping
 
-```rust
+```zia
 object?.field           // Null if object is null, otherwise optional field value
 object?.field?.subfield // Chained optional access
 object?.method(args)    // Calls method only when object is non-null
@@ -525,14 +525,14 @@ null at runtime, the program terminates. On a value whose static type has alread
 been narrowed to a non-optional reference, `!` is accepted as a redundant runtime
 assertion. Use after a null guard or when you are certain the value is non-null:
 
-```rust
+```zia
 if maybePage == null { return null; }
 var page = maybePage!;              // Safe: null was handled above
 ```
 
 ### Indexing
 
-```rust
+```zia
 list[index]             // Access list element
 map["key"]              // Access map value (keys are String)
 string[index]           // Read one-character String
@@ -546,7 +546,7 @@ mutable. String indexes are read-only.
 
 A block can produce a value when the last statement is an expression without a trailing semicolon:
 
-```rust
+```zia
 var x = {
     var a = 10;
     var b = 20;
@@ -562,7 +562,7 @@ semantics.
 
 `if`/`else` can be used as value-producing expressions:
 
-```rust
+```zia
 var sign = if x > 0 { "positive" } else { "non-positive" };
 ```
 
@@ -578,7 +578,7 @@ otherwise it unwraps the inner value. The enclosing function must return an
 optional type, and the unwrapped operand value must be assignable to that
 optional's inner type.
 
-```rust
+```zia
 func findUser(id: Integer) -> User? {
     var record = database.lookup(id)?;  // Returns null if lookup returns null
     return record.toUser();              // toUser is a user-defined method on User
@@ -588,7 +588,7 @@ func findUser(id: Integer) -> User? {
 For a `Result[T]` operand, `?` returns the `Err` immediately from an enclosing
 function that also returns `Result[...]`; otherwise it unwraps the `Ok` payload:
 
-```rust
+```zia
 func readScore(path: String) -> Result[Integer] {
     var text: String = readFile(path)?;
     return Ok(parseScore(text));
@@ -599,14 +599,14 @@ func readScore(path: String) -> Result[Integer] {
 
 ### Function/Method Calls
 
-```rust
+```zia
 functionName(arg1, arg2)
 object.methodName(arg1)
 ```
 
 Strings also support instance-style calls for common `Zanna.String` operations:
 
-```rust
+```zia
 var name = "  zanna  ".Trim().ToUpper();
 var part = "abcdef".Substring(1, 3);   // "bcd"
 ```
@@ -619,7 +619,7 @@ Named arguments may be supplied in **any order**, and they may **skip parameters
 that have default values**, even in the middle of the list — the omitted
 parameters use their defaults:
 
-```rust
+```zia
 func createRect(x: Integer, y: Integer, w: Integer = 100, h: Integer = 50) -> Rect { ... }
 
 var r = createRect(x: 10, y: 20, w: 100, h: 50);    // OK: user-defined function
@@ -630,7 +630,7 @@ var part = "abcdef".Substring(1, 3);                 // Runtime API: positional 
 
 ### Object Creation
 
-```rust
+```zia
 new ClassName(args)     // Create a class or struct value
 ```
 
@@ -638,7 +638,7 @@ new ClassName(args)     // Create a class or struct value
 
 Struct types can be initialized with field assignments:
 
-```rust
+```zia
 struct Point {
     Integer x;
     Integer y;
@@ -665,7 +665,7 @@ be initialized inside the declaring type.
 
 Tuples group multiple values. Access elements with `.0`, `.1`, etc.:
 
-```rust
+```zia
 var pair = (42, "hello");
 var num = pair.0;           // 42
 var str = pair.1;           // "hello"
@@ -674,7 +674,7 @@ var (n: Integer, s: String) = pair;
 
 Tuple destructuring is supported for tuple declarations with matching arity:
 
-```rust
+```zia
 var (x, y) = (1, 2);
 final (code: Integer, label: String) = (200, "ok");
 var (r, g, b) = (255, 128, 0);
@@ -685,7 +685,7 @@ annotations are checked against the corresponding tuple element.
 
 ### Collection Literals
 
-```rust
+```zia
 var list = [1, 2, 3];              // List[Integer]
 var map = {"key": 42, "other": 7}; // Map[String, Integer]
 var set = {1, 2, 3};               // Set[Integer]
@@ -700,7 +700,7 @@ List, map, and set literals permit a trailing comma.
 
 ### Generic Collection Operations
 
-```rust
+```zia
 var nums: List[Integer] = [];
 nums.add(10);
 nums.set(0, 20);
@@ -735,7 +735,7 @@ example `Map.New()`, `List.New()`, `Set.New()`).
 parameter type is inferred from the element type, so it can be written without an
 annotation (see [Parameter Type Inference](#parameter-type-inference)):
 
-```rust
+```zia
 var nums: List[Integer] = [1, 2, 3, 4, 5];
 
 var doubled = nums.map((n) => n * 2);          // List[Integer] -> List[U]
@@ -769,7 +769,7 @@ sub-width integral values such as `Byte` are accepted for `get`, `set`,
 
 ### Range Expressions
 
-```rust
+```zia
 start..end              // Exclusive range [start, end)
 start..=end             // Inclusive range [start, end]
 ```
@@ -777,7 +777,7 @@ start..=end             // Inclusive range [start, end]
 Ranges can be used directly as list-producing expressions or as `for ... in`
 sources. Range-only modifiers are available before iteration:
 
-```rust
+```zia
 var values = (0..=10).rev().step(2);  // List[Integer]
 for (i in (0..10).rev()) { ... }
 for (i in (0..10).step(2)) { ... }
@@ -795,7 +795,7 @@ element.
 
 ### Type Operations
 
-```rust
+```zia
 value is Type           // Type check (returns Boolean)
 value as Type           // Type cast
 ```
@@ -818,7 +818,7 @@ fallback.
 
 ### Lambda Expressions
 
-```rust
+```zia
 (x: Integer) => x + 1             // Single parameter
 (a: Integer, b: Integer) => a + b // Multiple parameters
 () => 42                          // No parameters
@@ -832,7 +832,7 @@ function type is known from the context (see [Parameter Type Inference](#paramet
 variable inside the lambda is a compile-time error, because it would silently
 mutate the private copy rather than the original:
 
-```rust
+```zia
 var counter = 0;
 var inc = () => { counter = counter + 1; };  // error: cannot assign to captured 'counter'
 ```
@@ -840,7 +840,7 @@ var inc = () => { counter = counter + 1; };  // error: cannot assign to captured
 To share mutable state, capture a class instance and mutate its fields (reference
 semantics), or have the lambda return the new value:
 
-```rust
+```zia
 class Counter { expose var n: Integer; func init() { n = 0; } }
 var c = new Counter();
 var inc = () => { c.n = c.n + 1; };  // OK: mutates the captured object's field
@@ -853,7 +853,7 @@ parameter, a variable with a function-type annotation, or a collection
 combinator argument — its parameter types may be omitted and are inferred from
 that context:
 
-```rust
+```zia
 func apply(f: (Integer) -> Integer, x: Integer) -> Integer { return f(x); }
 
 var y = apply((n) => n * 2, 21);          // n inferred as Integer
@@ -867,7 +867,7 @@ from (for example a bare `var f = (x) => x + 1;`).
 
 `Result[T]` represents either `Ok(T)` or `Err(String)`:
 
-```rust
+```zia
 var ok: Result[Integer] = Ok(7);
 var err: Result[Integer] = Err("bad");
 
@@ -881,7 +881,7 @@ var message = err.unwrapErr();
 
 Result patterns are supported in `match` statements and expressions:
 
-```rust
+```zia
 match ok {
     Ok(value) => SayInt(value);
     Err(message) => Say(message);
@@ -898,7 +898,7 @@ Postfix `?` unwraps `Ok` and propagates `Err` from functions that return
 The `is` operator returns `Boolean`. For classes it checks runtime type identity
 with subclass relationships; for interfaces it checks implemented interfaces:
 
-```rust
+```zia
 class Animal { }
 class Dog extends Animal { }
 class Cat extends Animal { }
@@ -923,7 +923,7 @@ evaluated. Optional values can be checked against their inner type; the result i
 
 ### Variable Declaration
 
-```rust
+```zia
 var name = value;                   // Type inferred
 var name: Type = value;             // Explicit type
 var name: Type;                     // Default initialized
@@ -935,7 +935,7 @@ let name = value;                   // Compatibility alias for final
 
 Any expression can be used as a statement:
 
-```rust
+```zia
 functionCall();
 object.method();
 x = x + 1;
@@ -943,7 +943,7 @@ x = x + 1;
 
 ### Block Statement
 
-```rust
+```zia
 {
     statement1;
     statement2;
@@ -952,7 +952,7 @@ x = x + 1;
 
 ### If Statement
 
-```rust
+```zia
 if condition {
     // then branch
 }
@@ -975,14 +975,14 @@ if condition1 {
 Parentheses around conditions are optional. Braced blocks are preferred, but a
 single statement body is accepted for compact control flow:
 
-```rust
+```zia
 if ready startWork();
 while pending tick();
 ```
 
 ### While Statement
 
-```rust
+```zia
 while condition {
     // body
 }
@@ -990,7 +990,7 @@ while condition {
 
 ### For Statement (C-style)
 
-```rust
+```zia
 for (init; condition; update) {
     // body
 }
@@ -1007,7 +1007,7 @@ assigned in the update expression.
 
 ### For-In Statement
 
-```rust
+```zia
 for variable in iterable {
     // body
 }
@@ -1068,26 +1068,26 @@ for i in 0..=10 {       // 0 to 10
 
 ### Return Statement
 
-```rust
+```zia
 return;                 // Return void
 return expression;      // Return value
 ```
 
 ### Break Statement
 
-```rust
+```zia
 break;                  // Exit innermost loop
 ```
 
 ### Continue Statement
 
-```rust
+```zia
 continue;               // Skip to next iteration
 ```
 
 ### Guard Statement
 
-```rust
+```zia
 guard condition else {
     return;             // Must exit scope
 }
@@ -1096,7 +1096,7 @@ guard condition else {
 
 ### Match Statement
 
-```rust
+```zia
 match value {
     pattern1 => { /* body */ }
     pattern2 => { /* body */ }
@@ -1121,7 +1121,7 @@ Supported patterns:
 
 Range pattern example:
 
-```rust
+```zia
 func classify(n: Integer) -> String {
     return match n {
         0 => "zero";
@@ -1134,7 +1134,7 @@ func classify(n: Integer) -> String {
 
 OR pattern example:
 
-```rust
+```zia
 match x {
     1 | 2 | 3 => Say("small");
     10 | 20 => Say("round");
@@ -1144,7 +1144,7 @@ match x {
 
 Statement arms may use a single statement directly after `=>`:
 
-```rust
+```zia
 func classify(x: Integer) -> Integer {
     match x {
         1 => return 10;
@@ -1158,7 +1158,7 @@ func classify(x: Integer) -> Integer {
 
 Structured exception handling for runtime errors:
 
-```rust
+```zia
 try {
     riskyOperation();
 } catch(e) {
@@ -1199,7 +1199,7 @@ try {
 when the block exits normally and before `return`, `break`, or `continue` leaves
 the scope.
 
-```rust
+```zia
 func writeLine(path: String, text: String) {
     var file = openFile(path);
     defer file.close();
@@ -1221,7 +1221,7 @@ lifetimes, and `deinit`.
 
 Raises a `RuntimeError`:
 
-```rust
+```zia
 throw someErrorValue;
 ```
 
@@ -1233,7 +1233,7 @@ Inside a catch clause, `throw;` rethrows the active error.
 
 ### Function Declaration
 
-```rust
+```zia
 func functionName(param1: Type1, param2: Type2) -> ReturnType {
     // body
     return value;
@@ -1249,7 +1249,7 @@ func noReturn(param: Type) {
 
 Parameters may have default values. When a call omits trailing arguments, the default expressions are used:
 
-```rust
+```zia
 func greet(name: String, greeting: String = "Hello") -> String {
     return greeting + ", " + name;
 }
@@ -1267,7 +1267,7 @@ Parameter and argument lists permit a trailing comma.
 
 Functions can be parameterized over types with optional interface constraints:
 
-```rust
+```zia
 func identity[T](x: T) -> T {
     return x;
 }
@@ -1290,7 +1290,7 @@ Type inference works through generic container parameters such as `List[T]` and
 Methods may also declare type parameters and constraints. Explicit generic
 method calls use the same bracket syntax after the method name:
 
-```rust
+```zia
 class Box {
     expose func id[T: Named](value: T) -> T {
         return value;
@@ -1305,7 +1305,7 @@ var user: User = box.id[User](currentUser);
 
 Use `async func` to return a `Zanna.Threads.Future`, and `await` to unwrap the completed payload:
 
-```rust
+```zia
 async func fetchName() -> String {
     return "zanna";
 }
@@ -1325,7 +1325,7 @@ func start() {
 
 The last parameter of a function may be variadic, accepting zero or more arguments that are collected into a `List`:
 
-```rust
+```zia
 func sum(nums: ...Integer) -> Integer {
     var total = 0;
     for i in 0..nums.count() {
@@ -1346,7 +1346,7 @@ Only the last parameter may be variadic. Inside the function body, the variadic 
 
 Functions whose body is a single expression can use `=` shorthand:
 
-```rust
+```zia
 func double(x: Integer) -> Integer = x * 2;
 func greet(name: String) -> String = "Hello, " + name;
 ```
@@ -1357,7 +1357,7 @@ This desugars to a `return` statement wrapping the expression. Works for both to
 
 `foreign func` declares a function whose body is provided by another module — typically the BASIC frontend or another linked translation unit. Foreign declarations have a signature but no body; the linker resolves the implementation at build time.
 
-```rust
+```zia
 foreign func Factorial(n: Integer) -> Integer;
 expose foreign func Render(canvas: Canvas, frame: Integer);
 ```
@@ -1371,7 +1371,7 @@ Use a foreign declaration when the function is implemented in BASIC and called f
 
 Create compile-time type aliases with `type`:
 
-```rust
+```zia
 type Name = String;
 type Score = Integer;
 
@@ -1387,7 +1387,7 @@ Aliases are resolved during semantic analysis and have no runtime representation
 
 ### Global Variable Declaration
 
-```rust
+```zia
 var globalName: Type = initialValue;
 final CONSTANT = value;             // Scalar constants may be folded at compile time
 final ITEMS: List[String] = ["a"];  // Aggregate/object finals initialize once at startup
@@ -1401,7 +1401,7 @@ Classes are reference types with identity, stored on the heap.
 
 ### Class Declaration
 
-```rust
+```zia
 class ClassName[T: InterfaceName] {
     // Fields
     T fieldName;
@@ -1422,7 +1422,7 @@ class ClassName[T: InterfaceName] {
 
 Fields and methods can be marked with visibility:
 
-```rust
+```zia
 class Player {
     Integer health;         // Default visibility
     hide Integer secret;    // Private field
@@ -1436,7 +1436,7 @@ Class fields may use familiar `var name: Type;` syntax or the original
 interface, `Any`, or optional reference type. Weak fields cannot be `static`,
 and are loaded like ordinary fields:
 
-```rust
+```zia
 class Node {
     expose weak var parent: Node?;
 }
@@ -1458,7 +1458,7 @@ assignment is a compile-time error. This is the way to express immutable
 instance state. `final` composes with `expose`/`hide` and with `static` (a
 `static final` is a class-level constant), but not with `weak`.
 
-```rust
+```zia
 class Circle {
     expose final radius: Number;      // set once in init, then immutable
     expose static final PI = 3.14159; // class-level constant
@@ -1475,7 +1475,7 @@ class Circle {
 
 ### Class Inheritance
 
-```rust
+```zia
 class ChildClass extends ParentClass {
     // Additional fields and methods
 }
@@ -1489,7 +1489,7 @@ class Widget extends UI.Control {
 
 Within a child class, `super` refers to the parent class's implementation. Use it to call the parent's methods:
 
-```rust
+```zia
 class Child extends Parent {
     override func greet() -> String {
         return super.greet() + " (child)";
@@ -1501,7 +1501,7 @@ class Child extends Parent {
 
 Methods that override a parent's method must be marked with `override`:
 
-```rust
+```zia
 class Base {
     func describe() -> String { return "Base"; }
 }
@@ -1517,7 +1517,7 @@ when the parent initializer must run.
 
 ### Creating Instances
 
-```rust
+```zia
 var obj = new ClassName(args);
 ```
 
@@ -1528,7 +1528,7 @@ classes without `init`, arguments are matched in field declaration order.
 
 Within methods, fields can be accessed directly or with `self`:
 
-```rust
+```zia
 class Counter {
     Integer count;
 
@@ -1543,7 +1543,7 @@ class Counter {
 
 Properties provide computed get/set accessors for class fields:
 
-```rust
+```zia
 class Temperature {
     Number celsius;
 
@@ -1566,7 +1566,7 @@ class Temperature {
 
 Fields and methods marked `static` belong to the class type, not to instances:
 
-```rust
+```zia
 class Counter {
     expose static Integer instanceCount;
 
@@ -1590,7 +1590,7 @@ class Counter {
 
 The `deinit` block defines cleanup logic that runs when an object is destroyed:
 
-```rust
+```zia
 class FileHandle {
     Integer fd;
 
@@ -1616,7 +1616,7 @@ Struct types have copy semantics — assignments copy the entire struct.
 
 ### Struct Declaration
 
-```rust
+```zia
 struct StructName[T: InterfaceName] {
     // Fields
     T fieldName;
@@ -1630,7 +1630,7 @@ struct StructName[T: InterfaceName] {
 
 ### Using Struct Types
 
-```rust
+```zia
 struct Point {
     Integer x;
     Integer y;
@@ -1655,7 +1655,7 @@ Interfaces define contracts that classes and structs can implement.
 
 ### Interface Declaration
 
-```rust
+```zia
 interface InterfaceName {
     func methodSignature(params) -> ReturnType;
 
@@ -1672,7 +1672,7 @@ struct does not provide its own implementation.
 
 ### Implementing Interfaces
 
-```rust
+```zia
 class MyClass implements InterfaceName {
     expose func methodSignature(params) -> ReturnType {
         // Implementation
@@ -1699,7 +1699,7 @@ Implemented interface names may be qualified, such as
 
 Interface-typed variables use runtime itable dispatch. Calling a method on an interface variable performs a lookup through the interface table (itable) to find the correct implementation:
 
-```rust
+```zia
 interface IShape {
     func area() -> Number;
 }
@@ -1725,7 +1725,7 @@ Enums define a type with a fixed set of named integer constants. Each variant is
 
 ### Declaration
 
-```rust
+```zia
 enum Color {
     Red,
     Green,
@@ -1739,7 +1739,7 @@ Variants are automatically numbered starting from 0. A trailing comma after the 
 
 Variants may specify explicit integer values. Unspecified variants auto-increment from the previous value.
 
-```rust
+```zia
 enum HttpStatus {
     OK = 200,
     NOT_FOUND = 404,
@@ -1749,7 +1749,7 @@ enum HttpStatus {
 
 Mixed auto-increment and explicit values:
 
-```rust
+```zia
 enum Priority {
     Low,          // 0
     Medium = 5,   // 5
@@ -1762,7 +1762,7 @@ enum Priority {
 
 Access variants with dot notation:
 
-```rust
+```zia
 var c: Color = Color.Red;
 var s = HttpStatus.NOT_FOUND;
 ```
@@ -1772,7 +1772,7 @@ backed by an `Integer` — with the relational operators `<`, `<=`, `>`, and `>=
 which compare the underlying integer values (declaration order, unless overridden
 by explicit values):
 
-```rust
+```zia
 if c != Color.Red {
     // ...
 }
@@ -1787,7 +1787,7 @@ Enum variants have their declared enum type in source. They can be widened to
 are not implicitly assignable back to enum variables. Prefer comparing variants
 of the same enum, or use `match` for branching:
 
-```rust
+```zia
 if s == HttpStatus.NOT_FOUND {
     // ...
 }
@@ -1800,7 +1800,7 @@ var statusCode: Integer = HttpStatus.NOT_FOUND; // accepted
 
 Use `expose` to make an enum accessible from other modules:
 
-```rust
+```zia
 expose enum Direction {
     North,
     South,
@@ -1813,7 +1813,7 @@ expose enum Direction {
 
 When matching on an enum, the compiler verifies that all variants are covered:
 
-```rust
+```zia
 // Error: Non-exhaustive patterns: missing variants Direction.East, Direction.West
 match dir {
     Direction.North => handleNorth();
@@ -1823,7 +1823,7 @@ match dir {
 
 Use the wildcard `_` to cover remaining variants:
 
-```rust
+```zia
 match dir {
     Direction.North => handleNorth();
     _ => handleOther();
@@ -1834,7 +1834,7 @@ match dir {
 
 Enums can be used as parameter types, return types, and variable types:
 
-```rust
+```zia
 func describeColor(c: Color) -> String {
     return match c {
         Color.Red => "red",
@@ -1859,7 +1859,7 @@ enumVariant ::= IDENT ["=" ["-"] INTEGER]
 
 A source file may begin with a module declaration:
 
-```rust
+```zia
 module ModuleName;
 ```
 
@@ -1872,7 +1872,7 @@ declarations can be qualified (`ModuleName.thing`) on a name collision.
 
 Bind modules or runtime namespaces to use their types and functions:
 
-```rust
+```zia
 // File binds - import Zia source files
 bind "path/to/module";          // Relative or simple path
 bind "./sibling";               // Same directory
@@ -1904,7 +1904,7 @@ interface, or enum name, the compiler scopes each colliding declaration under
 its declaring module name. Use the bound module name or bind alias to
 disambiguate:
 
-```rust
+```zia
 bind "./alpha"; // module Alpha; expose class WishDup { ... }
 bind "./beta";  // module Beta;  expose class WishDup { ... }
 
@@ -1921,7 +1921,7 @@ Zanna.Terminal.SayInt(Alpha.VALUE + Beta.VALUE);
 When you bind a runtime namespace like `Zanna.Terminal`, all its functions
 become available without qualification:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 Say("Hello!");           // Instead of Zanna.Terminal.Say("Hello!")
@@ -1930,7 +1930,7 @@ var name = ReadLine();   // Instead of Zanna.Terminal.ReadLine()
 
 You can also use an alias to avoid conflicts:
 
-```rust
+```zia
 bind Zanna.Terminal as T;
 
 T.Say("Hello!");
@@ -1938,7 +1938,7 @@ T.Say("Hello!");
 
 Or import only specific items:
 
-```rust
+```zia
 bind Zanna.Terminal { Say, ReadLine };
 
 Say("Hello!");      // Works
@@ -1957,7 +1957,7 @@ Namespaces organize declarations under qualified names to prevent name collision
 
 ### Basic Namespace
 
-```rust
+```zia
 namespace MyLib {
     func helper() -> Integer {
         return 42;
@@ -1975,7 +1975,7 @@ namespace MyLib {
 
 Access namespaced members using dot notation:
 
-```rust
+```zia
 var result = MyLib.helper();
 var p = new MyLib.Parser();
 var version = Config.VERSION;
@@ -1986,7 +1986,7 @@ Config.debug = true;
 
 Namespaces can use dotted names for nested organization:
 
-```rust
+```zia
 namespace MyLib.Internal {
     func secret() -> String {
         return "hidden";
@@ -2001,7 +2001,7 @@ var s = MyLib.Internal.secret();
 
 Namespaces can be nested within other namespaces:
 
-```rust
+```zia
 namespace Outer {
     namespace Inner {
         func nested() -> Integer {
@@ -2026,7 +2026,7 @@ Namespaces can contain:
 - Global variables (final or var)
 - Other namespaces
 
-```rust
+```zia
 namespace Config {
     final VERSION = 42;
     var debug = false;
@@ -2060,7 +2060,7 @@ Zia programs have access to the registered Zanna runtime APIs through the `Zanna
 
 #### Terminal I/O
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 // Output with newline
@@ -2101,14 +2101,14 @@ Flush();             // Flush output buffer
 
 #### Time
 
-```rust
+```zia
 Zanna.Time.Clock.Sleep(ms);         // Sleep for milliseconds
 Zanna.Time.Clock.Ticks();      // Monotonic milliseconds (CLOCK_MONOTONIC, not Unix epoch)
 ```
 
 #### Math
 
-```rust
+```zia
 bind Zanna.Math;
 
 Abs(x);                  // Absolute value (f64)
@@ -2126,7 +2126,7 @@ Ceil(x);                 // Ceiling
 
 #### Random
 
-```rust
+```zia
 // Use the fully qualified name, or bind Zanna.Math and use Zanna.Math.Random.NextInt
 Zanna.Math.Random.NextInt(max);   // Random integer [0, max)
 
@@ -2138,7 +2138,7 @@ rng.NextInt(10, 20);              // Random integer [10, 20]
 
 #### Generic Collections
 
-```rust
+```zia
 // Language-level generic collections
 var list: List[Integer] = [];
 list.add(value);                    // Add element
@@ -2296,7 +2296,7 @@ The "on" warnings fire by default; the `-Wall` ones require opting in. `W017`
 line immediately before, the flagged construct. Accept either the code or the
 slug, and list multiple codes separated by commas:
 
-```rust
+```zia
 var unusedButIntentional = compute();  // @suppress(W001)
 var scratch = compute();               // @suppress(unused-variable)
 // @suppress(W005, W010)

@@ -33,9 +33,22 @@ bind Map = Zanna.Collections.Map;
 bind Seq = Zanna.Collections.Seq;
 bind WorkspaceEdit = Zanna.Workspace.Edit;
 bind Hash = Zanna.Crypto.Hash;
+bind SceneDocument = Zanna.Game2D.SceneDocument;
 
 final MAX_TEXT_OPEN_BYTES = 4000000;
+final MAX_SCENE3D_OPEN_BYTES = 64000000;
 final TEXT_SNIFF_BYTES = 4096;
+
+/// @brief Return the bounded in-memory document budget for one durable path.
+/// @details Embedded VSCN meshes and materials are legitimately larger than
+///          source files, while every other editor surface keeps the tighter
+///          text budget to protect interactive latency.
+func MaxOpenBytesForPath(path: String) -> Integer {
+    if file_utils.DetectKind(path) == file_utils.DOC_KIND_SCENE_3D {
+        return MAX_SCENE3D_OPEN_BYTES;
+    }
+    return MAX_TEXT_OPEN_BYTES;
+}
 
 /// @brief Explain why a path cannot enter the Studio text editor.
 /// @details File extensions catch known binary formats, while a bounded prefix
@@ -55,7 +68,11 @@ expose func TextOpenBlockReason(path: String) -> String {
     if size < 0 {
         return "The file could not be read.";
     }
-    if size > MAX_TEXT_OPEN_BYTES {
+    var maxBytes = MaxOpenBytesForPath(path);
+    if size > maxBytes {
+        if maxBytes == MAX_SCENE3D_OPEN_BYTES {
+            return "3D scene assets larger than 64 MB cannot be opened in Studio.";
+        }
         return "Files larger than 4 MB cannot be opened in the text editor.";
     }
     if HasNulByteInPrefix(path) {
@@ -176,6 +193,35 @@ class DocumentManager {
         return doc;
     }
 
+    /// @brief Create a canonical untitled 2D scene document and activate it.
+    expose func NewScene2DDocument() -> document.Document {
+        untitledCount = untitledCount + 1;
+        var doc = new document.Document();
+        doc.fileName = "Untitled Scene " + untitledCount;
+        doc.language = "scene";
+        doc.kind = file_utils.DOC_KIND_SCENE_2D;
+        doc.isNew = true;
+        var scene = SceneDocument.New(32, 18, 32, 32);
+        doc.content = scene.ToJson();
+        documents.add(doc);
+        activeIndex = documents.count() - 1;
+        return doc;
+    }
+
+    /// @brief Create an empty canonical VSCN document and activate it.
+    expose func NewScene3DDocument() -> document.Document {
+        untitledCount = untitledCount + 1;
+        var doc = new document.Document();
+        doc.fileName = "Untitled 3D Scene " + untitledCount;
+        doc.language = "scene3d";
+        doc.kind = file_utils.DOC_KIND_SCENE_3D;
+        doc.isNew = true;
+        doc.content = file_utils.DefaultScene3DContent();
+        documents.add(doc);
+        activeIndex = documents.count() - 1;
+        return doc;
+    }
+
     /// @brief Open a file from disk, or activate it if already open.
     /// @param path Absolute file path.
     /// @return The Document (existing or freshly loaded).
@@ -200,7 +246,7 @@ class DocumentManager {
             doc.content = BlockedPreviewText(canonicalPath, blockReason);
         } else {
             var readResult = safe_io.ReadAllTextBounded(canonicalPath,
-                                                        MAX_TEXT_OPEN_BYTES);
+                                                        MaxOpenBytesForPath(canonicalPath));
             if readResult.ok {
                 doc.content = readResult.text;
             } else {
@@ -316,7 +362,13 @@ class DocumentManager {
         if activeIndex < 0 { return false; }
         var doc = documents.get(activeIndex);
         if doc.isReadOnlyPreview { return false; }
-        var canonicalPath = NormalizeDocumentPath(path);
+        var normalizedInput = path;
+        if file_utils.IsVisualKind(doc.kind)
+           and Path.Extension(normalizedInput) == "" {
+            normalizedInput = normalizedInput
+                + file_utils.DefaultExtensionForKind(doc.kind);
+        }
+        var canonicalPath = NormalizeDocumentPath(normalizedInput);
         if SaveAsBlockReason(activeIndex, canonicalPath) != "" { return false; }
         if WriteTextForSaveAs(canonicalPath, doc.content) == false {
             return false;
@@ -347,10 +399,23 @@ class DocumentManager {
             return "There is no document to save.";
         }
         if path == "" { return "Choose a destination path."; }
-        if file_utils.DetectKind(path) == file_utils.DOC_KIND_BINARY_UNSUPPORTED {
+        var doc = documents.get(index);
+        var candidate = path;
+        if file_utils.IsVisualKind(doc.kind)
+           and Path.Extension(candidate) == "" {
+            candidate = candidate + file_utils.DefaultExtensionForKind(doc.kind);
+        }
+        if file_utils.IsVisualKind(doc.kind)
+           and file_utils.DetectKind(candidate) != doc.kind {
+            if doc.kind == file_utils.DOC_KIND_SCENE_2D {
+                return "Save 2D scenes with a .scene or .level extension.";
+            }
+            return "Save 3D scenes with a .vscn extension.";
+        }
+        if file_utils.DetectKind(candidate) == file_utils.DOC_KIND_BINARY_UNSUPPORTED {
             return "Choose a text or source-code file extension.";
         }
-        var existing = FindByPath(path);
+        var existing = FindByPath(candidate);
         if existing >= 0 and existing != index {
             return "That file is already open in another tab.";
         }
@@ -413,7 +478,7 @@ class DocumentManager {
         if expectedMtime >= 0 and beforeMtime != expectedMtime { return false; }
         if expectedSize >= 0 and beforeSize != expectedSize { return false; }
         var readResult = safe_io.ReadAllTextBounded(path,
-                                                    MAX_TEXT_OPEN_BYTES);
+                                                    MaxOpenBytesForPath(path));
         if readResult.ok == false { return false; }
         var existingText = readResult.text;
         if IO.File.Exists(path) == false
@@ -493,7 +558,7 @@ class DocumentManager {
         var diskText = "";
         if doc.isReadOnlyPreview == false and IsEditableTextFile(doc.filePath) {
             var readResult = safe_io.ReadAllTextBounded(doc.filePath,
-                                                        MAX_TEXT_OPEN_BYTES);
+                                                        MaxOpenBytesForPath(doc.filePath));
             if readResult.ok { diskText = readResult.text; }
         }
         RefreshDiskMetadataFromKnownText(doc, diskText);
@@ -581,7 +646,7 @@ class DocumentManager {
             return document.EXTERNAL_STATE_CHANGED;
         }
         var readResult = safe_io.ReadAllTextBounded(doc.filePath,
-                                                    MAX_TEXT_OPEN_BYTES);
+                                                    MaxOpenBytesForPath(doc.filePath));
         if readResult.ok == false
            or Hash.Sha256(readResult.text) != doc.lastContentHashOnDisk {
             return document.EXTERNAL_STATE_CHANGED;
@@ -688,7 +753,7 @@ class DocumentManager {
             doc.content = BlockedPreviewText(doc.filePath, blockReason);
         } else {
             var readResult = safe_io.ReadAllTextBounded(doc.filePath,
-                                                        MAX_TEXT_OPEN_BYTES);
+                                                        MaxOpenBytesForPath(doc.filePath));
             if readResult.ok == false { return false; }
             doc.isReadOnlyPreview = false;
             doc.content = readResult.text;
@@ -711,9 +776,10 @@ class DocumentManager {
         }
         var size = safe_io.SizeBytes(path);
         var details = message + "\n\nPath: " + path + "\n";
-        if size > MAX_TEXT_OPEN_BYTES {
+        var maxBytes = MaxOpenBytesForPath(path);
+        if size > maxBytes {
             details = details + "Size: " + size + " bytes\n"
-                + "Limit: " + MAX_TEXT_OPEN_BYTES + " bytes\n";
+                + "Limit: " + maxBytes + " bytes\n";
         }
         return details;
     }
@@ -864,7 +930,6 @@ class DocumentManager {
         return documents.get(index);
     }
 
-    /// @brief Set the active document by index. Out-of-range is a no-op.
     /// @brief Move a document to a new position (tab drag-reorder; plan 07).
     /// @details Mirrors the TabBar's visual reorder so tab indexes and
     ///          document indexes stay aligned; the active document follows
@@ -893,6 +958,7 @@ class DocumentManager {
         }
     }
 
+    /// @brief Set the active document by index. Out-of-range is a no-op.
     expose func SetActive(index: Integer) {
         if index >= 0 and index < documents.count() {
             activeIndex = index;

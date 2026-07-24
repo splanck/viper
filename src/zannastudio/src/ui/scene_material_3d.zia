@@ -1,0 +1,319 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/ui/scene_material_3d.zia
+// Purpose: Clone-safe PBR material editing contracts for Studio's 3D scene
+//          inspector.
+// Key invariants:
+//   - Editing one node never mutates a material shared by another node.
+//   - Unexposed texture, environment, and custom-parameter state survives edits.
+//   - User-authored scalar values are bounded before reaching the runtime.
+//   - Inspector thumbnails read canonical material pixels and remain disposable.
+// Ownership/Lifetime: Returned materials are independent runtime objects owned
+//                     by the receiving SceneNode.
+// Links: zannastudio/src/ui/scene_editor_3d.zia,
+//        zannastudio/src/ui/scene_material_inspector_3d.zia,
+//        zannastudio/src/probes/scene_editor_3d_probe.zia
+//
+//===----------------------------------------------------------------------===//
+
+module scene_material_3d;
+
+bind Material3D = Zanna.Graphics3D.Material3D;
+bind TextureAsset3D = Zanna.Graphics3D.TextureAsset3D;
+bind Pixels = Zanna.Graphics.Pixels;
+bind Math = Zanna.Math;
+bind Convert = Zanna.Core.Convert;
+bind Path = Zanna.IO.Path;
+bind Str = Zanna.String;
+
+// ============================================================================
+// MODULE: scene_material_3d
+// PURPOSE: Keep material draft normalization and copy-on-edit semantics outside
+//          the already-large scene controller.
+//
+// WHERE-THIS-FITS: SceneMaterialInspector3D owns widgets. SceneEditor3D owns
+//          selection, history, and node assignment. This module reads, loads,
+//          and creates material/texture values only.
+//
+// TEACHING-NOTE: Imported nodes commonly share one material. Mutating that
+//          object in place would recolor unrelated nodes, so every accepted
+//          inspector edit clones first and preserves fields the inspector does
+//          not expose.
+// ============================================================================
+
+final ALPHA_OPAQUE: Integer = 0;
+final ALPHA_MASK: Integer = 1;
+final ALPHA_BLEND: Integer = 2;
+
+final MAP_ALBEDO: Integer = 0;
+final MAP_NORMAL: Integer = 1;
+final MAP_METALLIC_ROUGHNESS: Integer = 2;
+final MAP_AMBIENT_OCCLUSION: Integer = 3;
+final MAP_EMISSIVE: Integer = 4;
+
+final DEFAULT_COLOR: Integer = 0xFFFFFF;
+final DEFAULT_ALPHA: Number = 1.0;
+final DEFAULT_METALLIC: Number = 0.0;
+final DEFAULT_ROUGHNESS: Number = 0.5;
+final DEFAULT_AO: Number = 1.0;
+final MATERIAL_VALUE_EPSILON: Number = 0.0000001;
+final MAX_EDITABLE_MAP_PIXELS: Integer = 16777216;
+final MATERIAL_MAP_PREVIEW_EDGE: Integer = 128;
+
+/// @brief Clamp a normalized material component to its public unit interval.
+func ClampUnit(value: Number) -> Number {
+    if value < 0.0 { return 0.0; }
+    if value > 1.0 { return 1.0; }
+    return value;
+}
+
+/// @brief Clamp a picker channel and convert it to a normalized component.
+func UnitFromByte(value: Integer) -> Number {
+    var channel = value;
+    if channel < 0 { channel = 0; }
+    if channel > 255 { channel = 255; }
+    return channel / 255.0;
+}
+
+/// @brief Normalize one alpha-mode id to the stable opaque/mask/blend range.
+func AlphaModeOrOpaque(value: Integer) -> Integer {
+    if value < ALPHA_OPAQUE or value > ALPHA_BLEND {
+        return ALPHA_OPAQUE;
+    }
+    return value;
+}
+
+/// @brief Return whether one compact-inspector texture slot is supported.
+func IsMapSlot(slot: Integer) -> Boolean {
+    return slot >= MAP_ALBEDO and slot <= MAP_EMISSIVE;
+}
+
+/// @brief Return the concise user-facing name for one editable map slot.
+func MapSlotName(slot: Integer) -> String {
+    if slot == MAP_ALBEDO { return "Albedo"; }
+    if slot == MAP_NORMAL { return "Normal"; }
+    if slot == MAP_METALLIC_ROUGHNESS { return "Metallic / Roughness"; }
+    if slot == MAP_AMBIENT_OCCLUSION { return "Ambient Occlusion"; }
+    if slot == MAP_EMISSIVE { return "Emissive"; }
+    return "Texture";
+}
+
+/// @brief Return whether a material currently owns the selected editable map.
+func HasMap(material: Material3D, slot: Integer) -> Boolean {
+    if material == null { return false; }
+    if slot == MAP_ALBEDO { return material.HasTexture; }
+    if slot == MAP_NORMAL { return material.HasNormalMap; }
+    if slot == MAP_METALLIC_ROUGHNESS {
+        return material.HasMetallicRoughnessMap;
+    }
+    if slot == MAP_AMBIENT_OCCLUSION {
+        return material.HasAmbientOcclusionMap;
+    }
+    if slot == MAP_EMISSIVE { return material.HasEmissiveMap; }
+    return false;
+}
+
+/// @brief Return the decoded Pixels currently backing one editable map slot.
+/// @details The runtime keeps the original Pixels/TextureAsset3D source and VSCN
+///          provenance. This borrowed view is for inspection, never mutation.
+func MapPixels(material: Material3D, slot: Integer) -> Pixels {
+    if material == null { return null; }
+    if slot == MAP_ALBEDO { return material.TexturePixels; }
+    if slot == MAP_NORMAL { return material.NormalMapPixels; }
+    if slot == MAP_METALLIC_ROUGHNESS {
+        return material.MetallicRoughnessMapPixels;
+    }
+    if slot == MAP_AMBIENT_OCCLUSION {
+        return material.AmbientOcclusionMapPixels;
+    }
+    if slot == MAP_EMISSIVE { return material.EmissiveMapPixels; }
+    return null;
+}
+
+/// @brief Clone or scale one canonical material map into a bounded thumbnail.
+/// @details The returned Pixels is disposable UI state. Source dimensions are
+///          bounded before resize so a malformed/imported map cannot turn an
+///          inspector refresh into unbounded work.
+func MapPreviewPixels(material: Material3D,
+                      slot: Integer) -> Pixels {
+    var source = MapPixels(material, slot);
+    if source == null
+       or EditableMapDimensionsAllowed(source.Width, source.Height) == false {
+        return null;
+    }
+    var width = MATERIAL_MAP_PREVIEW_EDGE;
+    var height = source.Height * MATERIAL_MAP_PREVIEW_EDGE / source.Width;
+    if source.Height > source.Width {
+        height = MATERIAL_MAP_PREVIEW_EDGE;
+        width = source.Width * MATERIAL_MAP_PREVIEW_EDGE / source.Height;
+    }
+    if width < 1 { width = 1; }
+    if height < 1 { height = 1; }
+    try {
+        if width == source.Width and height == source.Height {
+            return source.Clone();
+        }
+        return source.Resize(width, height);
+    } catch {
+        return null;
+    }
+    return null;
+}
+
+/// @brief Bound decoded raster maps before they are retained by scene history.
+expose func EditableMapDimensionsAllowed(width: Integer,
+                                         height: Integer) -> Boolean {
+    if width <= 0 or height <= 0 { return false; }
+    return width <= MAX_EDITABLE_MAP_PIXELS / height;
+}
+
+/// @brief Load one supported image or strict KTX2 texture for scene embedding.
+/// @details Strict KTX2 loading rejects unsupported/corrupt containers instead
+///          of silently substituting a checker texture.
+func LoadTexturePath(path: String) -> Any {
+    var cleanPath = Str.Trim(path);
+    if cleanPath == "" { return null; }
+    try {
+        if Str.ToLower(Path.Extension(cleanPath)) == ".ktx2" {
+            return TextureAsset3D.LoadKtx2AssetStrict(cleanPath);
+        }
+        var image = Pixels.Load(cleanPath);
+        if image == null
+           or EditableMapDimensionsAllowed(image.Width, image.Height)
+              == false {
+            return null;
+        }
+        return image;
+    } catch {
+        return null;
+    }
+    return null;
+}
+
+/// @brief Return a ColorPicker-compatible 0x00RRGGBB value.
+func PackedRgb(material: Material3D) -> Integer {
+    if material == null or material.Color == null { return DEFAULT_COLOR; }
+    var color = material.Color;
+    var red = ByteFromUnit(color.X);
+    var green = ByteFromUnit(color.Y);
+    var blue = ByteFromUnit(color.Z);
+    return red * 65536 + green * 256 + blue;
+}
+
+/// @brief Count advanced maps retained invisibly by the compact inspector.
+func RetainedMapCount(material: Material3D) -> Integer {
+    if material == null { return 0; }
+    var count = 0;
+    if material.HasTexture { count = count + 1; }
+    if material.HasNormalMap { count = count + 1; }
+    if material.HasSpecularMap { count = count + 1; }
+    if material.HasEmissiveMap { count = count + 1; }
+    if material.HasMetallicRoughnessMap { count = count + 1; }
+    if material.HasAmbientOcclusionMap { count = count + 1; }
+    if material.HasEnvMap { count = count + 1; }
+    if material.HasLightmap { count = count + 1; }
+    return count;
+}
+
+/// @brief Return whether an existing material already matches one draft.
+func Matches(material: Material3D,
+             red: Number,
+             green: Number,
+             blue: Number,
+             alpha: Number,
+             metallic: Number,
+             roughness: Number,
+             ambientOcclusion: Number,
+             alphaMode: Integer,
+             doubleSided: Boolean,
+             unlit: Boolean) -> Boolean {
+    if material == null or material.Color == null { return false; }
+    var color = material.Color;
+    return Near(color.X, ClampUnit(red))
+        and Near(color.Y, ClampUnit(green))
+        and Near(color.Z, ClampUnit(blue))
+        and Near(material.Alpha, ClampUnit(alpha))
+        and Near(material.Metallic, ClampUnit(metallic))
+        and Near(material.Roughness, ClampUnit(roughness))
+        and Near(material.AmbientOcclusion, ClampUnit(ambientOcclusion))
+        and material.AlphaMode == AlphaModeOrOpaque(alphaMode)
+        and material.DoubleSided == doubleSided
+        and material.Unlit == unlit;
+}
+
+/// @brief Create a node-local edited material while preserving hidden state.
+/// @details Existing materials are cloned so texture maps, environment maps,
+///          shading extensions, and custom parameters survive the visible edit.
+func MakeUnique(material: Material3D,
+                red: Number,
+                green: Number,
+                blue: Number,
+                alpha: Number,
+                metallic: Number,
+                roughness: Number,
+                ambientOcclusion: Number,
+                alphaMode: Integer,
+                doubleSided: Boolean,
+                unlit: Boolean) -> Material3D {
+    var next: Material3D = null;
+    if material != null {
+        next = Material3D.Clone(material) as Material3D;
+    } else {
+        next = Material3D.PBR(
+            ClampUnit(red), ClampUnit(green), ClampUnit(blue)) as Material3D;
+    }
+    if next == null { return null; }
+    next.SetColor(ClampUnit(red), ClampUnit(green), ClampUnit(blue));
+    next.Alpha = ClampUnit(alpha);
+    next.Metallic = ClampUnit(metallic);
+    next.Roughness = ClampUnit(roughness);
+    next.AmbientOcclusion = ClampUnit(ambientOcclusion);
+    next.DoubleSided = doubleSided;
+    next.SetUnlit(unlit);
+    // Set the explicit mode after Alpha, whose runtime setter may auto-promote.
+    next.AlphaMode = AlphaModeOrOpaque(alphaMode);
+    return next;
+}
+
+/// @brief Clone a material and replace or clear one editable texture map.
+/// @details Passing null clears the chosen slot. Other maps and custom state
+///          remain on the clone, and a missing material becomes default PBR.
+func WithMap(material: Material3D,
+             slot: Integer,
+             texture: Any) -> Material3D {
+    if IsMapSlot(slot) == false { return null; }
+    var next: Material3D = null;
+    if material != null {
+        next = Material3D.Clone(material) as Material3D;
+    } else {
+        next = Material3D.PBR(1.0, 1.0, 1.0) as Material3D;
+    }
+    if next == null { return null; }
+    if slot == MAP_ALBEDO { next.SetTexture(texture); }
+    else if slot == MAP_NORMAL { next.SetNormalMap(texture); }
+    else if slot == MAP_METALLIC_ROUGHNESS {
+        next.SetMetallicRoughnessMap(texture);
+    } else if slot == MAP_AMBIENT_OCCLUSION {
+        next.SetAmbientOcclusionMap(texture);
+    } else if slot == MAP_EMISSIVE {
+        next.SetEmissiveMap(texture);
+    }
+    return next;
+}
+
+/// @brief Convert one normalized component to a rounded picker channel.
+hide func ByteFromUnit(value: Number) -> Integer {
+    return Convert.NumToInt(Math.Round(ClampUnit(value) * 255.0));
+}
+
+/// @brief Compare normalized material scalars without exact-float assumptions.
+hide func Near(left: Number, right: Number) -> Boolean {
+    var difference = left - right;
+    if difference < 0.0 { difference = 0.0 - difference; }
+    return difference <= MATERIAL_VALUE_EPSILON;
+}

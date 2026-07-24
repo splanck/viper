@@ -118,7 +118,7 @@ the buffer edge and accept `0x00RRGGBB`, `Color.RGB()`, or tagged `Color.RGBA()`
 
 #### Zia Example — Drawing into an off-screen buffer
 
-```rust
+```zia
 module PixelsDrawDemo;
 
 bind Zanna.Graphics;
@@ -174,7 +174,7 @@ primitives.
 
 ### Zia Example
 
-```rust
+```zia
 module PixelsDemo;
 
 bind Zanna.Terminal;
@@ -190,7 +190,7 @@ func start() {
     p.SetColor(0, 0, Color.RGB(255, 0, 0));
     p.SetColor(1, 0, Color.RGBA(0, 0, 255, 128));
     var c = p.GetColor(0, 0);
-    Say("Pixel(0,0) red: " + Fmt.Int(Color.GetR(c)));
+    Say("Pixel(0,0) red: " + Fmt.Int(Color.GetRed(c)));
 
     // Raw storage is available when needed
     p.Set(2, 0, 0x10203040);
@@ -371,7 +371,7 @@ are normalized to 1 ms.
 
 ### Zia Example
 
-```rust
+```zia
 module SpriteDemo;
 
 bind Zanna.Terminal;
@@ -546,7 +546,7 @@ Region names must be non-empty. Empty names are ignored so accidental default st
 
 ### Zia Example
 
-```rust
+```zia
 module SpriteSheetDemo;
 
 bind Zanna.Graphics;
@@ -714,7 +714,7 @@ ignored or return an out-of-bounds hit result.
 
 ### Zia Example
 
-```rust
+```zia
 module TilemapDemo;
 
 bind Zanna.Terminal;

@@ -1,0 +1,95 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/ui/scene_selection.zia
+// Purpose: Validate and normalize stable row identities from scene ListBoxes.
+// Key invariants:
+//   - Selection identities are model indices stored in item data, never labels.
+//   - Invalid and duplicate indices are discarded without changing row order.
+//   - A valid primary row remains represented even during programmatic restore.
+// Ownership/Lifetime:
+//   - Returned Lists are fresh values owned by the caller.
+//   - Runtime Seq values returned by ListBox are borrowed only for conversion.
+// Links: zannastudio/src/ui/scene_editor_2d.zia,
+//        zannastudio/src/ui/scene_editor_3d.zia,
+//        docs/adr/0156-listbox-selected-row-data.md
+//
+//===----------------------------------------------------------------------===//
+
+module scene_selection;
+
+bind Parse = Zanna.Core.Parse;
+bind Seq = Zanna.Collections.Seq;
+
+// ============================================================================
+// MODULE: scene_selection
+// PURPOSE: Keep GUI row selection separate from mutable scene presentation.
+//
+// WHERE-THIS-FITS: Scene editors attach the current flattened model index to
+//          each retained ListBox row and use these helpers at the GUI boundary.
+//
+// TEACHING-NOTE: Display labels are user-facing and may be duplicated or
+//          renamed. Item data is the deliberate identity channel.
+// ============================================================================
+
+/// @brief Return whether a normalized selection contains one model index.
+expose func Contains(indices: List[Integer], value: Integer) -> Boolean {
+    var index = 0;
+    while index < indices.count() {
+        if indices.get(index) == value { return true; }
+        index = index + 1;
+    }
+    return false;
+}
+
+/// @brief Normalize a process-local selection against the current model size.
+expose func Normalize(indices: List[Integer],
+                      itemCount: Integer,
+                      primary: Integer) -> List[Integer] {
+    var normalized: List[Integer] = [];
+    if itemCount <= 0 { return normalized; }
+    var index = 0;
+    while index < indices.count() {
+        var candidate = indices.get(index);
+        if candidate >= 0 and candidate < itemCount
+           and Contains(normalized, candidate) == false {
+            normalized.add(candidate);
+        }
+        index = index + 1;
+    }
+    if primary >= 0 and primary < itemCount
+       and Contains(normalized, primary) == false {
+        normalized.add(primary);
+    }
+    return normalized;
+}
+
+/// @brief Convert byte-exact ListBox item data to validated model indices.
+expose func FromData(rowData: Any,
+                     itemCount: Integer,
+                     primary: Integer) -> List[Integer] {
+    var selected: List[Integer] = [];
+    if rowData != null {
+        var index = 0;
+        while index < Seq.get_Count(rowData) {
+            var candidate = Parse.IntOr(Seq.GetStr(rowData, index), -1);
+            if candidate >= 0 and candidate < itemCount
+               and Contains(selected, candidate) == false {
+                selected.add(candidate);
+            }
+            index = index + 1;
+        }
+    }
+    return Normalize(selected, itemCount, primary);
+}
+
+/// @brief Return a single valid selection, or an empty list.
+expose func Single(index: Integer, itemCount: Integer) -> List[Integer] {
+    var selected: List[Integer] = [];
+    if index >= 0 and index < itemCount { selected.add(index); }
+    return selected;
+}

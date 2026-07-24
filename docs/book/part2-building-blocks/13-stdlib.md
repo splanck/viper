@@ -73,7 +73,7 @@ You've used `Zanna.Terminal` throughout this book. It's how your programs talk t
 
 ### Basic Input and Output
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 Say("Hello!");              // Print with newline
@@ -93,7 +93,7 @@ var char = GetKey();        // Read a single keypress
 
 For interactive applications, you can control the cursor and colors:
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 Clear();                    // Clear the screen
@@ -107,7 +107,7 @@ These are essential for building text-based games, progress bars, or any program
 
 ### Practical Example: A Simple Menu
 
-```rust
+```zia
 bind Zanna.Terminal;
 bind Convert = Zanna.Core.Convert;
 
@@ -134,7 +134,7 @@ Math operations beyond basic arithmetic live in `Zanna.Math`. These functions ha
 
 ### Basic Functions
 
-```rust
+```zia
 bind Zanna.Math as Math;
 
 Math.Abs(-5.0);          // 5.0 (absolute value)
@@ -146,7 +146,7 @@ Math.ClampInt(15, 0, 10); // 10 (constrain to range 0-10)
 
 ### Rounding
 
-```rust
+```zia
 bind Zanna.Math as Math;
 
 Math.Floor(3.7);       // 3.0 (round down)
@@ -157,7 +157,7 @@ Math.Round(3.4);       // 3.0
 
 ### Powers and Roots
 
-```rust
+```zia
 bind Zanna.Math as Math;
 
 Math.Sqrt(16.0);       // 4.0 (square root)
@@ -169,7 +169,7 @@ Math.Exp(1.0);         // ~2.718 (e^x)
 
 ### Trigonometry
 
-```rust
+```zia
 bind Zanna.Math as Math;
 
 Math.Sin(0.0);         // 0.0
@@ -180,7 +180,7 @@ Math.Atan2(y, x);      // Angle from coordinates
 
 ### Constants
 
-```rust
+```zia
 bind Zanna.Math as Math;
 
 Math.Pi;               // 3.14159265358979...
@@ -191,7 +191,7 @@ Math.Euler;                // 2.71828182845904...
 
 **Game development:** Calculate distances, angles, movement vectors.
 
-```rust
+```zia
 bind Zanna.Math as Math;
 
 // Distance between two points
@@ -204,7 +204,7 @@ func distance(x1: Number, y1: Number, x2: Number, y2: Number) -> Number {
 
 **Scientific calculations:** Statistics, physics simulations, financial modeling.
 
-```rust
+```zia
 bind Zanna.Math as Math;
 
 // Compound interest
@@ -215,7 +215,7 @@ func compoundInterest(principal: Number, rate: Number, years: Integer) -> Number
 
 **Graphics:** Smooth animations, circular motion, wave patterns.
 
-```rust
+```zia
 bind Zanna.Math as Math;
 
 // Move in a circle
@@ -242,7 +242,7 @@ Games need dice rolls. Simulations need random data. Testing needs random inputs
 
 ### Basic Random Values
 
-```rust
+```zia
 bind Zanna.Math.Random as Random;
 
 Random.Range(1, 100);  // Random integer from 1 to 100 (inclusive)
@@ -252,7 +252,7 @@ Random.Dice(2);        // 1 or 2 — simulates a coin flip
 
 ### Working with Collections
 
-```rust
+```zia
 bind Zanna.Math.Random as Random;
 bind Seq = Zanna.Collections.Seq;
 bind Box = Zanna.Core.Box;
@@ -272,7 +272,7 @@ SayInt(deck.Count);
 
 For testing or game replays, you can *seed* the random number generator:
 
-```rust
+```zia
 bind Zanna.Math.Random as Random;
 
 Random.Seed(12345);  // Same seed = same sequence of "random" numbers
@@ -283,7 +283,7 @@ This is crucial for debugging. If a bug only appears sometimes, set a seed to re
 ### Practical Examples
 
 **Dice roll:**
-```rust
+```zia
 bind Zanna.Math.Random as Random;
 bind Zanna.Terminal;
 bind Zanna.Text.Fmt as Fmt;
@@ -293,7 +293,7 @@ Say("You rolled: " + Fmt.Int(die));
 ```
 
 **Coin flip:**
-```rust
+```zia
 bind Zanna.Math.Random as Random;
 bind Zanna.Terminal;
 
@@ -305,7 +305,7 @@ if Random.Chance(0.5) {
 ```
 
 **Random enemy spawn:**
-```rust
+```zia
 bind Zanna.Math.Random as Random;
 
 // Simple weighted random (for illustration)
@@ -322,7 +322,7 @@ if roll <= 50 {
 ```
 
 **Password generator:**
-```rust
+```zia
 bind Zanna.Math.Random as Random;
 
 func generatePassword(length: Integer) -> String {
@@ -348,7 +348,7 @@ Time is surprisingly complex. Leap years, time zones, daylight saving, calendar 
 
 ### Getting the Current Time
 
-```rust
+```zia
 bind Zanna.Time;
 bind Zanna.Terminal;
 bind Zanna.Text.Fmt as Fmt;
@@ -367,7 +367,7 @@ Say("Second: " + Fmt.Int(Time.DateTime.Second(dt)));
 
 Dates need to be displayed in different formats depending on context:
 
-```rust
+```zia
 bind Zanna.Time;
 bind Zanna.Text.Fmt as Fmt;
 bind Zanna.Terminal;
@@ -394,23 +394,23 @@ Say(Fmt.IntPad(y, 4, "0") + "-" + Fmt.IntPad(mo, 2, "0") + "-" + Fmt.IntPad(d, 2
 
 For performance measurement or timing games:
 
-```rust
+```zia
 bind Zanna.Time;
 bind Zanna.Terminal;
 bind Zanna.Text.Fmt as Fmt;
 
-var start = Time.Clock.Ticks();
+var start = Time.Clock.NowMs();
 
 // Do some work...
 processData();
 
-var elapsed = Time.Clock.Ticks() - start;
+var elapsed = Time.Clock.NowMs() - start;
 Say("Processing took " + Fmt.Int(elapsed) + " ms");
 ```
 
 ### Delays and Pauses
 
-```rust
+```zia
 bind Zanna.Terminal;
 bind Zanna.Time;
 
@@ -421,20 +421,20 @@ Say("Done!");
 
 ### Practical Example: Simple Stopwatch
 
-```rust
+```zia
 bind Zanna.Terminal;
 bind Zanna.Time;
 bind Zanna.Text.Fmt as Fmt;
 
 func stopwatch() {
     Say("Press Enter to start...");
-    InputLine();
+    TryReadLine().UnwrapOrStr("");
 
-    var start = Time.Clock.Ticks();
+    var start = Time.Clock.NowMs();
     Say("Stopwatch running. Press Enter to stop.");
-    InputLine();
+    TryReadLine().UnwrapOrStr("");
 
-    var elapsed = Time.Clock.Ticks() - start;
+    var elapsed = Time.Clock.NowMs() - start;
     var seconds = elapsed * 1.0 / 1000.0;
 
     Say("Elapsed: " + Fmt.NumFixed(seconds, 2) + " seconds");
@@ -468,7 +468,7 @@ $ zia myprogram.zia input.txt --verbose
 
 You can access those arguments:
 
-```rust
+```zia
 bind Zanna.System.Environment;
 bind Zanna.Terminal;
 
@@ -486,7 +486,7 @@ for i in 0..count {
 
 Operating systems have configuration through environment variables:
 
-```rust
+```zia
 bind Env = Zanna.System.Environment;
 
 var home = Env.GetVariable("HOME");       // /Users/alice
@@ -502,7 +502,7 @@ if Env.HasVariable("DEBUG") {
 
 ### System Information
 
-```rust
+```zia
 bind Env = Zanna.System.Environment;
 bind Zanna.System.Machine as Machine;
 
@@ -512,7 +512,7 @@ var home = Env.GetVariable("HOME");  // User's home directory
 
 ### Practical Example: Cross-Platform Configuration
 
-```rust
+```zia
 bind Env = Zanna.System.Environment;
 bind Zanna.IO.Path as Path;
 bind Zanna.System.Machine as Machine;
@@ -538,7 +538,7 @@ Concatenating strings with `+` gets messy when mixing numbers and text. `Zanna.T
 
 ### Basic Formatting
 
-```rust
+```zia
 bind Zanna.Text.Fmt as Fmt;
 bind Zanna.Terminal;
 
@@ -556,7 +556,7 @@ Say(Fmt.NumFixed(3.14159, 4));   // "3.1416"
 
 ### Number Formatting
 
-```rust
+```zia
 bind Zanna.Text.Fmt as Fmt;
 
 // Decimal places
@@ -575,7 +575,7 @@ Fmt.Oct(8);                  // "10"
 
 ### Practical Example: Formatted Table
 
-```rust
+```zia
 bind Zanna.Terminal;
 bind Zanna.Text.Fmt as Fmt;
 
@@ -607,7 +607,7 @@ Beyond basic concatenation, `Zanna.String` provides advanced text operations as 
 
 ### Padding and Alignment
 
-```rust
+```zia
 // PadLeft, PadRight, and Repeat are instance methods on String values
 var padded = "42".PadLeft(5, "0");    // "00042"
 var rpad   = "hi".PadRight(5, " ");   // "hi   "
@@ -615,14 +615,14 @@ var rpad   = "hi".PadRight(5, " ");   // "hi   "
 
 ### Repetition and Reversal
 
-```rust
+```zia
 var dashes = "-".Repeat(40);          // A line of dashes
 var rev    = "hello".Flip();          // "olleh"
 ```
 
 ### Text Searching and Splitting
 
-```rust
+```zia
 // String methods for searching
 var s = "Hello, World!";
 var idx  = s.IndexOf("World");       // 7
@@ -637,7 +637,7 @@ var parts = "a,b,c".Split(",");      // Seq of ["a", "b", "c"]
 
 ### Practical Example: Validating User Input
 
-```rust
+```zia
 func isValidUsername(username: String) -> Boolean {
     // Must be 3-20 characters
     if username.Length < 3 || username.Length > 20 {
@@ -668,7 +668,7 @@ Use the language-level generic collections first. Reach for `Zanna.Collections.*
 
 ### Generic List
 
-```rust
+```zia
 bind Zanna.Terminal;
 bind Zanna.Text.Fmt as Fmt;
 
@@ -688,7 +688,7 @@ list.clear();
 
 ### Generic Map
 
-```rust
+```zia
 bind Zanna.Terminal;
 bind Zanna.Text.Fmt as Fmt;
 
@@ -720,7 +720,7 @@ scores.remove("Bob");
 
 ### Generic Set
 
-```rust
+```zia
 bind Zanna.Collections;
 bind Zanna.Terminal;
 bind Zanna.Text.Fmt as Fmt;
@@ -743,7 +743,7 @@ Non-empty set literals like `{"a", "b"}` are supported. The empty literal `{}` i
 
 Some containers are runtime classes rather than language literals. These live under `Zanna.Collections`:
 
-```rust
+```zia
 bind Zanna.Collections;
 bind Zanna.Core;
 bind Zanna.Terminal;
@@ -763,7 +763,7 @@ Use these when you need FIFO/LIFO behavior, heaps, ordered maps, frozen collecti
 
 ### Practical Example: Word Frequency Counter
 
-```rust
+```zia
 bind Zanna.String as Str;
 bind Zanna.Terminal;
 bind Zanna.Text.Fmt as Fmt;
@@ -801,7 +801,7 @@ Converting strings to other types is so common it gets its own module.
 
 ### Basic Parsing
 
-```rust
+```zia
 bind Convert = Zanna.Core.Convert;
 
 Convert.ToInt64("42");        // 42
@@ -814,7 +814,7 @@ Convert.ToStringDouble(3.14); // "3.14"
 
 Parsing can fail. Handle it gracefully:
 
-```rust
+```zia
 bind Convert = Zanna.Core.Convert;
 bind Zanna.Terminal;
 
@@ -827,7 +827,7 @@ try {
 
 ### Practical Example: Robust Input Function
 
-```rust
+```zia
 bind Zanna.Terminal;
 bind Convert = Zanna.Core.Convert;
 bind Parse = Zanna.Core.Parse;
@@ -835,7 +835,7 @@ bind Parse = Zanna.Core.Parse;
 func getNumber(prompt: String) -> Integer {
     while true {
         Print(prompt);
-        var input = InputLine().Trim();
+        var input = TryReadLine().UnwrapOrStr("").Trim();
 
         if !Parse.IsInt(input) {
             Say("Please enter a valid number.");
@@ -858,7 +858,7 @@ We covered file operations in Chapter 9, but let's review the key patterns.
 
 ### File Operations
 
-```rust
+```zia
 bind File = Zanna.IO.File;
 
 // Reading
@@ -882,7 +882,7 @@ File.Delete("temp.txt");
 
 ### Directory Operations
 
-```rust
+```zia
 bind Zanna.IO.Dir as Dir;
 
 Dir.Make("output");
@@ -902,7 +902,7 @@ Dir.Remove("temp");
 
 The **critical** module for working with file paths:
 
-```rust
+```zia
 bind Zanna.IO.Path as Path;
 
 // Join paths safely (handles OS-specific separators)
@@ -921,7 +921,7 @@ Path.Stem("/path/to/file.txt");     // "file"
 
 Never concatenate paths with `+`:
 
-```rust
+```zia
 bind Zanna.IO.Path as Path;
 
 var dir = "users";
@@ -946,7 +946,7 @@ For hashing, encoding, and unique identifiers.
 
 Hashing converts data into a fixed-size fingerprint. The same input always produces the same hash, but you can't reverse a hash back to the original.
 
-```rust
+```zia
 bind Zanna.Crypto.Hash as Hash;
 
 var sha = Hash.SHA256("hello");    // 64-character hex string
@@ -967,7 +967,7 @@ should use SHA-256, HMAC-SHA256, `Password`, `KeyDerive`, or `Cipher`.
 
 Base64 encoding converts binary data to text. This lives in `Zanna.Text.Codec`:
 
-```rust
+```zia
 bind Codec = Zanna.Text.Codec;
 
 var encoded = Codec.Base64Enc("Hello, World!");
@@ -986,7 +986,7 @@ var decoded = Codec.Base64Dec(encoded);
 
 GUIDs (Globally Unique Identifiers) are guaranteed-unique strings:
 
-```rust
+```zia
 bind Uuid = Zanna.Text.Uuid;
 
 var id = Uuid.Generate();
@@ -1003,7 +1003,7 @@ var id = Uuid.Generate();
 
 **Never store passwords in plain text.** Hash them:
 
-```rust
+```zia
 bind Zanna.Crypto.Hash as Hash;
 bind Uuid = Zanna.Text.Uuid;
 bind Zanna.Terminal;
@@ -1036,7 +1036,7 @@ if checkPassword(inputPassword, storedSalt, storedHash) {
 
 Here's a complete program using multiple standard library modules:
 
-```rust
+```zia
 module StdlibDemo;
 
 bind Zanna.Terminal;
@@ -1103,7 +1103,7 @@ func start() {
 
     // Performance measurement
     Say("Performance Test:");
-    var startMs = Clock.Ticks();
+    var startMs = Clock.NowMs();
 
     var sum = 0.0;
     var k = 0;
@@ -1112,7 +1112,7 @@ func start() {
         k = k + 1;
     }
 
-    var elapsed = Clock.Ticks() - startMs;
+    var elapsed = Clock.NowMs() - startMs;
     Say("  100,000 square roots in " + Fmt.Int(elapsed) + " ms");
 
     Say("");
@@ -1130,7 +1130,7 @@ Here are some things the standard library does that would be *very hard* to writ
 
 A naive approach:
 
-```rust
+```zia
 // DON'T DO THIS - slow and possibly inaccurate
 func naiveSqrt(n: Number) -> Number {
     var guess = n / 2.0;
@@ -1147,7 +1147,7 @@ The standard library implementation is faster, handles edge cases (0, negative n
 
 ### Correct Date Formatting
 
-```rust
+```zia
 // DON'T DO THIS - buggy and incomplete
 func formatDate(year: Integer, month: Integer, day: Integer) -> String {
     var monthNames = ["Jan", "Feb", "Mar", ...];  // All 12 months
@@ -1245,7 +1245,7 @@ Examples teach faster than API reference lists. This chapter is full of examples
 
 Create a `test.zia` file and try things:
 
-```rust
+```zia
 module Test;
 
 bind Zanna.Math as Math;
@@ -1284,7 +1284,7 @@ Some standard library patterns appear constantly. Learn these by heart.
 
 ### Pattern: Safe User Input
 
-```rust
+```zia
 bind Zanna.Terminal;
 bind Convert = Zanna.Core.Convert;
 bind Parse = Zanna.Core.Parse;
@@ -1305,7 +1305,7 @@ func getInt(prompt: String) -> Integer {
 
 ### Pattern: Read Config with Default
 
-```rust
+```zia
 bind Env = Zanna.System.Environment;
 
 func getConfig(key: String, defaultValue: String) -> String {
@@ -1321,7 +1321,7 @@ func getConfig(key: String, defaultValue: String) -> String {
 
 ### Pattern: Safe File Read
 
-```rust
+```zia
 bind File = Zanna.IO.File;
 bind Zanna.Terminal;
 
@@ -1341,12 +1341,12 @@ func readFileSafe(path: String) -> String {
 
 ### Pattern: Measure Performance
 
-```rust
+```zia
 bind Zanna.Time;
 bind Zanna.Terminal;
 bind Zanna.Text.Fmt as Fmt;
 
-var start = Time.Clock.Ticks();
+var start = Time.Clock.NowMs();
 
 // Code being measured goes here.
 var total = 0;
@@ -1356,13 +1356,13 @@ while i < 1000 {
     i = i + 1;
 }
 
-var elapsed = Time.Clock.Ticks() - start;
+var elapsed = Time.Clock.NowMs() - start;
 Say("Loop took " + Fmt.Int(elapsed) + " ms");
 ```
 
 ### Pattern: Build a Path
 
-```rust
+```zia
 bind Zanna.IO.Path as Path;
 bind Zanna.System.Machine as Machine;
 bind Zanna.Time;

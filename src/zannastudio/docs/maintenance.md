@@ -60,6 +60,24 @@ Do not implement command behavior inside the command catalog. Do not hide
 capability checks inside random command handlers when the command registry can
 communicate availability consistently.
 
+## Adding User Feedback
+
+Treat a popup as an interruption, not as the default place for command status.
+
+1. Put progress and routine completion in `AppShell.SetStatusLeft`.
+2. Keep background results and failures on their durable owning panel when one
+   exists; do not duplicate Build, Search, or Replace completion in a toast.
+3. Route an immediate warning/error caused by the current command through
+   `ui/notification_policy.zia`.
+4. Show external-state warnings only when they affect the active resource.
+5. Do not add routine `Info` or `Success` toasts. Recovery and application
+   activation are the only reviewed exceptions.
+6. Run `zannastudio_notification_policy` and the affected interaction probe.
+
+The notification-policy lint intentionally forbids direct warning/error toast
+calls from background-capable Build and Search controllers. Extend the policy
+boundary and its regression cases instead of adding a local exception.
+
 ## Adding A Language Feature
 
 Use this path for completion, diagnostics, hover, signature help, semantic
@@ -103,33 +121,49 @@ supported, wire it through the full document lifecycle:
 10. Add probes.
 11. Document the current behavior in [status.md](status.md).
 
-Scene files are the cautionary example. Zanna Studio recognizes `.scene` and
-`.level`, but because there is no visual scene surface yet, docs must say they
-open as text.
+Scene files are the cautionary example. `.scene`/`.level` and `.vscn` now have
+specialized 2D/3D surfaces, so changes must preserve their per-document
+selection/camera/history state and scene-specific save/reload behavior rather
+than routing them through the hidden text editor. The 2D layer-image path is
+serialized document state, while decoded atlas pixels and scaled thumbnails are
+bounded preview state; an explicit image reload must not dirty the document.
 
 ## Adding A Tool Panel
 
 Tool panels are bottom workbench views such as Problems, Output, Search,
 References, Debug Console, Variables, Call Stack, Debug, and Terminal.
+They can form simultaneous left/bottom/right groups plus one in-window floating
+group, with group-local tab order and live per-tool movement. The primary
+Explorer/Source Control/Run-and-Debug sidebar is a separate left/right dock
+owned by `ui/primary_sidebar_dock.zia`; do not conflate their typed drag
+payloads or persistence keys.
 
 When adding or replacing a panel:
 
 1. Decide whether the panel is a row list, text output, form, or specialized
    widget.
 2. Add persistent widgets to `ui/app_shell.zia` or a focused UI module.
-3. Add a stable panel kind or tab index helper instead of scattering numeric
-   indices.
+3. Add a stable panel/tab ID and route live selection by that ID; construction
+   indexes are not durable after users reorder tabs.
 4. Keep backing state structured. Display rows are presentation.
 5. Use `services/locations.zia` for clickable rows.
 6. Add copy/clear/filter/wrap/autoscroll behavior only when it makes sense.
 7. Decide how the panel participates in active-tool-panel state.
 8. Add keyboard access and command-palette entries when appropriate.
-9. Add probes for showing, hiding, selecting, and navigating rows.
+9. Add probes for showing, hiding, selecting, filtering, action enablement,
+   navigating rows, and narrow side-dock containment.
 10. Document the panel in [status.md](status.md) and [workflows.md](workflows.md).
 
 For high-volume panels, avoid ListBox-only designs. The runtime has VirtualList
 helpers, but a panel is not truly virtualized until row realization, selection,
 copy, filtering, and navigation all work against a virtual model.
+If filtering rebuilds concrete rows, retain grouping, action, and location data
+in the backing model and provide one metadata setter that also handles a
+currently filtered-out row. Never make a ListBox item the only navigation
+record.
+If Clear affects producer-owned state, route a request back to that owner and
+mutate the durable source. Clearing only realized rows creates output that
+reappears on the next producer update.
 
 ## Adding Runtime API Used By Zanna Studio
 
@@ -183,7 +217,10 @@ Keep these invariants:
 ## Changing Debugger Behavior
 
 Debug transport belongs in `build/debug_session.zia`; command behavior belongs
-in `commands/debug_commands.zia`; display state belongs in `ui/app_shell.zia`.
+in `commands/debug_commands.zia`; persistent debug tool-panel display state
+belongs in `ui/tool_panel_shell.zia`; Run and Debug activity presentation belongs
+in `ui/run_debug_view.zia`, with stable host/activity integration in
+`ui/workbench_shell.zia` and `ui/activity_bar.zia`.
 
 When adding debugger features:
 
@@ -193,11 +230,19 @@ When adding debugger features:
 4. Keep program output separate from debug control output.
 5. Update breakpoint persistence if metadata changes.
 6. Update gutter markers and session state.
-7. Add probe coverage in `debug_probe.zia`.
+7. Add transport/session coverage in `debug_probe.zia`, docked-panel coverage in
+   `debug_tool_surfaces_probe.zia`, and activity-view coverage in
+   `run_debug_view_probe.zia`.
 8. Update status and workflow docs.
 
 Do not present a debugger feature as complete until it has UI affordances,
 protocol support, session-state behavior, and tests.
+
+Keep `RunDebugView` presentation-only. Publish primitive state and copied,
+versioned breakpoint records from debug command code, and return action intent
+to that boundary. Never parse a displayed breakpoint row or use its filtered
+index as store identity. Use exact removal for destructive breakpoint actions;
+toggle semantics are only appropriate for an explicit gutter toggle.
 
 ## Changing Terminal Behavior
 
@@ -375,9 +420,10 @@ matrix and command availability checks before adding special cases in handlers.
 
 ### Scene Support Is Overclaimed
 
-Example: docs or UI imply a scene editor exists because `.scene` is detected.
-Fix by documenting the current text-only behavior until a real scene surface,
-state model, save/reload flow, and tools exist.
+Example: docs imply that recognizing an extension alone constitutes scene
+support. Fix by naming the actual v1 2D/3D surfaces and their asset, component,
+advanced tileset/animation/collision/metadata, integrated asset-library,
+shaded-material-preview/advanced-map, and gizmo limits.
 
 ## Release Notes And User Communication
 
@@ -387,11 +433,26 @@ When summarizing Zanna Studio changes, be specific:
   navigation/rename are not supported.
 - Say "integrated PTY shell" rather than "full terminal emulator".
 - Say "Git Source Control view" rather than "complete SCM support".
-- Say "scene files open as text" unless a visual scene editor is actually
-  implemented.
-- Say "debug adapter supports stepping/breakpoints/evaluate/watches/watch
-  commands" and separately list missing object expansion and dedicated watch
-  panel UX.
+- Say "direct persisted workspace docking for the primary sidebar,
+  simultaneous left/bottom/right tool groups, and one movable/resizable
+  in-window floating group." State separately that native secondary-window and
+  multi-monitor detachment are not implemented.
+- Say "built-in v1 2D/3D scene editors with a visual 2D atlas palette and real
+  layer rendering, stable multi-selection, transactional group
+  transform/duplicate/delete, focus-safe 2D pixel/tile nudging, deterministic
+  primary-axis alignment/distribution, typed 2D batch property set/remove,
+  relative 3D numeric batch transforms, cycle-safe local-preserving 3D
+  reparenting, focus-safe Duplicate/Delete, scene-aware
+  Cut/Copy/Paste/Select All with bounded same-kind cross-document transfer,
+  Move/Rotate/Scale axis tools, an integrated asset browser, clone-safe compact
+  PBR material editing, and embedded common texture maps" and separately list
+  their advanced tileset
+  animation/collision/metadata, shaded material preview, cubemap/lightmap, richer
+  mixed-value/component, local/world, hierarchy drag/sibling-order/
+  preserve-world reparenting, and plane/ring gizmo gaps.
+- Say "debug adapter supports stepping/breakpoints/evaluate/inline watches and
+  collection/class expansion" and separately list boxed struct payloads plus
+  direct-IL/BASIC layout-sidecar limits.
 
 This avoids repeating the documentation drift that made the old plan files
 misleading.

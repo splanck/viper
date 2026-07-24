@@ -2282,6 +2282,53 @@ static void test_runtime_listbox_selected_text_copies_multi_selection(void) {
     printf("test_runtime_listbox_selected_text_copies_multi_selection: PASSED\n");
 }
 
+static void test_runtime_listbox_selected_data_preserves_rows_and_bytes(void) {
+    vg_listbox_t *listbox = vg_listbox_create(NULL);
+    assert(listbox);
+    void *first = rt_listbox_add_item(listbox, rt_const_cstr("duplicate label"));
+    void *second = rt_listbox_add_item(listbox, rt_const_cstr("duplicate label"));
+    void *third = rt_listbox_add_item(listbox, rt_const_cstr("third"));
+    assert(first && second && third);
+
+    rt_string first_data = rt_string_from_bytes("alpha\none", 9);
+    rt_string third_data = rt_string_from_bytes("x\0y", 3);
+    assert(first_data && third_data);
+    rt_listbox_item_set_data(first, first_data);
+    rt_listbox_item_set_data(third, third_data);
+    rt_str_release_maybe(first_data);
+    rt_str_release_maybe(third_data);
+
+    rt_listbox_set_multi_select(listbox, 1);
+    rt_listbox_select(listbox, first);
+    rt_listbox_select(listbox, second);
+    rt_listbox_select(listbox, third);
+
+    void *selected = rt_listbox_get_selected_data(listbox);
+    assert(selected && rt_seq_len(selected) == 3);
+    rt_string value = rt_seq_get_str(selected, 0);
+    assert(value && rt_str_len(value) == 9 && memcmp(rt_string_cstr(value), "alpha\none", 9) == 0);
+    rt_str_release_maybe(value);
+    value = rt_seq_get_str(selected, 1);
+    assert(value && rt_str_len(value) == 0);
+    rt_str_release_maybe(value);
+    value = rt_seq_get_str(selected, 2);
+    assert(value && rt_str_len(value) == 3 && memcmp(rt_string_cstr(value), "x\0y", 3) == 0);
+    rt_str_release_maybe(value);
+    release_test_runtime_object(selected);
+
+    vg_listbox_set_virtual_mode(listbox, true, 3, 20.0f);
+    selected = rt_listbox_get_selected_data(listbox);
+    assert(selected && rt_seq_len(selected) == 0);
+    release_test_runtime_object(selected);
+
+    selected = rt_listbox_get_selected_data(NULL);
+    assert(selected && rt_seq_len(selected) == 0);
+    release_test_runtime_object(selected);
+
+    vg_widget_destroy(&listbox->base);
+    printf("test_runtime_listbox_selected_data_preserves_rows_and_bytes: PASSED\n");
+}
+
 static void test_runtime_listbox_item_text_color_override(void) {
     vg_listbox_t *listbox = vg_listbox_create(NULL);
     assert(listbox);
@@ -3309,6 +3356,39 @@ static void test_toast_duration_is_clamped(void) {
     rt_gui_features_cleanup(&app);
     rt_gui_activate_app(NULL);
     printf("test_toast_duration_is_clamped: PASSED\n");
+}
+
+static void test_toast_shortcuts_coalesce_exact_active_messages(void) {
+    rt_gui_app_t app;
+    reset_fake_app(&app);
+    app.scheduler_clock_ms = 100.0;
+    rt_gui_activate_app(&app);
+
+    rt_toast_warning(rt_const_cstr("workspace changed"));
+    assert(app.notification_manager);
+    assert(app.notification_manager->notification_count == 1);
+    vg_notification_t *first = app.notification_manager->notifications[0];
+    assert(first);
+    assert(first->type == VG_NOTIFICATION_WARNING);
+    assert(first->created_at == 100);
+
+    app.scheduler_clock_ms = 250.0;
+    rt_toast_warning(rt_const_cstr("workspace changed"));
+    assert(app.notification_manager->notification_count == 1);
+    assert(app.notification_manager->notifications[0] == first);
+    assert(first->created_at == 250);
+
+    rt_toast_info(rt_const_cstr("workspace changed"));
+    rt_toast_warning(rt_const_cstr("different warning"));
+    assert(app.notification_manager->notification_count == 3);
+
+    vg_notification_dismiss(app.notification_manager, first->id);
+    rt_toast_warning(rt_const_cstr("workspace changed"));
+    assert(app.notification_manager->notification_count == 4);
+
+    rt_gui_features_cleanup(&app);
+    rt_gui_activate_app(NULL);
+    printf("test_toast_shortcuts_coalesce_exact_active_messages: PASSED\n");
 }
 
 static void test_toast_dismissal_is_edge_triggered_and_survives_cleanup(void) {
@@ -5239,6 +5319,7 @@ int main(void) {
     test_listbox_selection_changed_is_edge_triggered();
     test_runtime_listbox_select_index_rejects_out_of_range_indices();
     test_runtime_listbox_selected_text_copies_multi_selection();
+    test_runtime_listbox_selected_data_preserves_rows_and_bytes();
     test_runtime_listbox_item_text_color_override();
     test_treeview_selection_changed_reports_removal_and_clear();
     test_removed_listbox_and_treeview_handles_are_inert();
@@ -5264,6 +5345,7 @@ int main(void) {
     test_messagebox_show_after_destroy_returns_minus_one();
     test_messagebox_one_shots_without_window_return_fallbacks();
     test_toast_duration_is_clamped();
+    test_toast_shortcuts_coalesce_exact_active_messages();
     test_toast_dismissal_is_edge_triggered_and_survives_cleanup();
     test_breadcrumb_set_path_uses_literal_separator();
     test_breadcrumb_clicked_data_preserves_embedded_nuls();

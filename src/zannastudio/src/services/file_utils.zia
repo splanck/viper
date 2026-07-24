@@ -1,3 +1,22 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/services/file_utils.zia
+// Purpose: Classify Studio files into language and visual document surfaces.
+// Key invariants:
+//   - Extension comparisons are case-insensitive and allocation-bounded.
+//   - Existing scene kind/name values remain compatible with saved sessions.
+//   - Unknown formats degrade to editable plain text.
+// Ownership/Lifetime: Stateless pure helpers only.
+// Links: zannastudio/src/core/document_manager.zia,
+//        zannastudio/src/ui/workbench_shell.zia
+//
+//===----------------------------------------------------------------------===//
+
 module file_utils;
 
 bind Path = Zanna.IO.Path;
@@ -5,8 +24,10 @@ bind Str = Zanna.String;
 
 final DOC_KIND_CODE: Integer = 1;
 final DOC_KIND_TEXT: Integer = 2;
-final DOC_KIND_SCENE: Integer = 3;
+final DOC_KIND_SCENE_2D: Integer = 3;
+final DOC_KIND_SCENE: Integer = 3; // Durable compatibility alias.
 final DOC_KIND_BINARY_UNSUPPORTED: Integer = 4;
+final DOC_KIND_SCENE_3D: Integer = 5;
 
 // ============================================================================
 // MODULE: file_utils
@@ -48,6 +69,7 @@ func DetectLanguage(path: String) -> String {
     if ext == ".json" { return "text"; }
     if ext == ".scene" { return "scene"; }
     if ext == ".level" { return "scene"; }
+    if ext == ".vscn" { return "scene3d"; }
     return "text";
 }
 
@@ -58,7 +80,10 @@ func DetectKind(path: String) -> Integer {
         return DOC_KIND_CODE;
     }
     if ext == ".scene" or ext == ".level" {
-        return DOC_KIND_SCENE;
+        return DOC_KIND_SCENE_2D;
+    }
+    if ext == ".vscn" {
+        return DOC_KIND_SCENE_3D;
     }
     if ext == ".json" or ext == ".md" or ext == ".txt" or ext == ".il" {
         return DOC_KIND_TEXT;
@@ -72,7 +97,8 @@ func DetectKind(path: String) -> Integer {
 func KindName(kind: Integer) -> String {
     if kind == DOC_KIND_CODE { return "code"; }
     if kind == DOC_KIND_TEXT { return "text"; }
-    if kind == DOC_KIND_SCENE { return "scene"; }
+    if kind == DOC_KIND_SCENE_2D { return "scene"; }
+    if kind == DOC_KIND_SCENE_3D { return "scene3d"; }
     if kind == DOC_KIND_BINARY_UNSUPPORTED { return "binary"; }
     return "text";
 }
@@ -80,18 +106,44 @@ func KindName(kind: Integer) -> String {
 func KindFromName(name: String) -> Integer {
     if name == "code" { return DOC_KIND_CODE; }
     if name == "text" { return DOC_KIND_TEXT; }
-    if name == "scene" { return DOC_KIND_SCENE; }
+    if name == "scene" { return DOC_KIND_SCENE_2D; }
+    if name == "scene3d" { return DOC_KIND_SCENE_3D; }
     if name == "binary" { return DOC_KIND_BINARY_UNSUPPORTED; }
     return DOC_KIND_TEXT;
 }
 
+func IsVisualKind(kind: Integer) -> Boolean {
+    return kind == DOC_KIND_SCENE_2D or kind == DOC_KIND_SCENE_3D;
+}
+
+/// @brief Return the durable default extension for a visual document kind.
+func DefaultExtensionForKind(kind: Integer) -> String {
+    if kind == DOC_KIND_SCENE_2D { return ".scene"; }
+    if kind == DOC_KIND_SCENE_3D { return ".vscn"; }
+    return "";
+}
+
+/// @brief Return the smallest canonical, loadable VSCN scene document.
+func DefaultScene3DContent() -> String {
+    return "{\n"
+        + "  \"format\": \"vscn\",\n"
+        + "  \"version\": 2,\n"
+        + "  \"textures\": [],\n"
+        + "  \"cubemaps\": [],\n"
+        + "  \"materials\": [],\n"
+        + "  \"meshes\": [],\n"
+        + "  \"nodes\": []\n"
+        + "}\n";
+}
+
 func OpenDialogFilter() -> String {
-    return "*.zia;*.bas;*.vb;*.txt;*.md;*.json;*.scene;*.level;*.il";
+    return "*.zia;*.bas;*.vb;*.txt;*.md;*.json;*.scene;*.level;*.vscn;*.il";
 }
 
 func SaveDialogFilter(kind: Integer, language: String) -> String {
-    if kind == DOC_KIND_SCENE { return "*.scene;*.level;*.json"; }
+    if kind == DOC_KIND_SCENE_2D { return "*.scene;*.level"; }
+    if kind == DOC_KIND_SCENE_3D { return "*.vscn"; }
     if language == "basic" { return "*.bas;*.vb"; }
     if language == "zia" { return "*.zia"; }
-    return "*.txt;*.md;*.json;*.scene;*.level;*.il";
+    return "*.txt;*.md;*.json;*.scene;*.level;*.vscn;*.il";
 }

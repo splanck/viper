@@ -43,7 +43,7 @@ String-based encoding and decoding utilities for Base64, Hex, and URL encoding.
 
 ### Zia Example
 
-```rust
+```zia
 module CodecDemo;
 
 bind Zanna.Terminal;
@@ -132,7 +132,7 @@ the UUIDv4 representation used here.
 
 ### Zia Example
 
-```rust
+```zia
 module UuidDemo;
 
 bind Zanna.Terminal;

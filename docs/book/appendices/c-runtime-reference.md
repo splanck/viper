@@ -23,8 +23,8 @@ For human-oriented documentation, see the [Runtime Library Index](../../zannalib
 - `Zanna.Terminal`: console input and output.
 - `Zanna.IO.File`: whole-file text and byte IO.
 - `Zanna.Text.Fmt`: integer, boolean, and numeric formatting helpers.
-- `Zanna.Text.Json`: JSON parsing, validation, object helpers, and formatting.
-- `Zanna.Text.Csv`: CSV line/table parsing and formatting.
+- `Zanna.Data.Json`: JSON parsing, validation, object helpers, and formatting.
+- `Zanna.Data.Csv`: CSV line/table parsing and formatting.
 - `Zanna.Math`: scalar math, bit helpers, random numbers, vectors, matrices, quaternions, splines, and easing.
 - `Zanna.Collections.Seq`, `Map`, `Set`, `Bytes`: runtime collection classes.
 - `Zanna.Network.Http`, `HttpReq`, `HttpRes`, `Tcp`, `Udp`, `WebSocket`: network APIs.
@@ -38,8 +38,8 @@ Some older examples mention a `Zanna.Test` module or Zia `test`/`assert` syntax.
 
 ## Checked Zia Example
 
-```rust
-bind Json = Zanna.Text.Json;
+```zia
+bind Json = Zanna.Data.Json;
 bind Fmt = Zanna.Text.Fmt;
 bind Zanna.Terminal as Terminal;
 

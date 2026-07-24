@@ -1,0 +1,87 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+// File: zannastudio/src/commands/workspace_edit_preview_commands.zia
+// Purpose: Apply or cancel reviewed multi-file rename edits.
+// Key invariants:
+//   - The complete edit set is revalidated immediately before mutation.
+//   - Rejected stale edits reopen in the preview instead of partially applying.
+//   - Successful edits refresh the visible document and live workspace index.
+// Ownership/Lifetime: Stateless command code borrows main-owned controllers.
+// Links: zannastudio/src/ui/workspace_edit_preview.zia,
+//        zannastudio/src/services/workspace_edits.zia
+//
+//===----------------------------------------------------------------------===//
+
+module workspace_edit_preview_commands;
+
+bind "../commands/edit_commands";
+bind "../core/document_manager";
+bind "../editor/editor_engine";
+bind "../editor/editor_tabs";
+bind "../editor/project_index";
+bind "../services/workspace_edits";
+bind "../ui/app_shell";
+bind "../ui/workspace_edit_preview";
+
+final RENAME_PREVIEW_OUTCOME_NONE: Integer = 0;
+final RENAME_PREVIEW_OUTCOME_APPLIED: Integer = 1;
+final RENAME_PREVIEW_OUTCOME_CANCELED: Integer = 2;
+final RENAME_PREVIEW_OUTCOME_REJECTED: Integer = 3;
+
+/// @brief Pump and apply/cancel one reviewed rename edit set.
+/// @details The preview retains its immutable edit/root payload after the Apply
+///          click. Validation therefore still happens immediately before
+///          mutation, and stale results return to the same review surface.
+/// @return One RENAME_PREVIEW_OUTCOME_* value for probes/telemetry.
+expose func PumpRenamePreview(
+    preview: workspace_edit_preview.WorkspaceEditPreview,
+    shell: app_shell.AppShell,
+    docMgr: document_manager.DocumentManager,
+    engine: editor_engine.EditorEngine,
+    tabs: editor_tabs.EditorTabs,
+    indexer: project_index.ProjectIndexer) -> Integer {
+    if preview == null { return RENAME_PREVIEW_OUTCOME_NONE; }
+    var action = preview.Pump(shell);
+    if action == workspace_edit_preview.WORKSPACE_EDIT_PREVIEW_CANCEL {
+        preview.Finish();
+        shell.SetStatusLeft("Rename canceled");
+        RestoreEditorFocus(engine);
+        return RENAME_PREVIEW_OUTCOME_CANCELED;
+    }
+    if action != workspace_edit_preview.WORKSPACE_EDIT_PREVIEW_APPLY {
+        return RENAME_PREVIEW_OUTCOME_NONE;
+    }
+
+    var requestedName = preview.ReadNewName();
+    var result = workspace_edits.ApplyRenameEdits(
+        preview.ReadEdits(), docMgr, preview.ReadAllowedRoots());
+    if result.success == false {
+        var message = result.message;
+        if message == "" { message = "Rename edits are no longer valid"; }
+        shell.SetStatusLeft("Rename not applied: " + message);
+        preview.Reject(
+            shell,
+            message + " Close this preview and run Rename again.");
+        return RENAME_PREVIEW_OUTCOME_REJECTED;
+    }
+
+    edit_commands.ApplyActiveDocumentContentToEditor(docMgr, engine, tabs);
+    if indexer != null {
+        indexer.SyncActiveNow(docMgr, engine);
+        indexer.SyncOpenDocuments(docMgr);
+    }
+    preview.Finish();
+    shell.SetStatusLeft("Renamed to " + requestedName);
+    RestoreEditorFocus(engine);
+    return RENAME_PREVIEW_OUTCOME_APPLIED;
+}
+
+/// @brief Return keyboard ownership to the active editor after review closes.
+hide func RestoreEditorFocus(engine: editor_engine.EditorEngine) {
+    if engine != null and engine.editor != null {
+        engine.editor.Focus();
+    }
+}

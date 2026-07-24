@@ -37,30 +37,30 @@ bind Zanna.Terminal as Terminal;
 
 func start() {
     var world = Game3D.World3D.New("Hello Game3D", 640, 480);
-    var env = Game3D.Environment.Outdoor(world);
-    Game3D.EnvHandle.withWater(env, -0.05);
+    var env = Game3D.Environment3D.Outdoor(world);
+    Game3D.EnvHandle.WithWater(env, -0.05);
 
     var mat = Game3D.Materials.Metal(0.2, 0.7, 0.9);
     var cube = Game3D.Prefab.Box(1.0, mat);
-    Game3D.Entity3D.setName(cube, "Cube");
-    Game3D.Entity3D.setPosition(cube, 0.0, 0.75, 0.0);
-    Game3D.World3D.spawn(world, cube);
+    Game3D.Entity3D.set_Name(cube, "Cube");
+    Game3D.Entity3D.SetPosition(cube, 0.0, 0.75, 0.0);
+    Game3D.World3D.Spawn(world, cube);
 
     Game3D.PostFX.Crisp(world);
     Game3D.Quality.Apply(world, Game3D.QualityLevel.get_Balanced());
-    Game3D.World3D.lookAt(world, new Math.Vec3(0.0, 0.0, 0.0));
-    Game3D.World3D.beginFrame(world);
-    Game3D.World3D.drawScene(world);
-    Game3D.World3D.drawEffects(world);
-    Game3D.World3D.endScene(world);
+    Game3D.World3D.LookAt(world, new Math.Vec3(0.0, 0.0, 0.0));
+    Game3D.World3D.BeginFrame(world);
+    Game3D.World3D.DrawScene(world);
+    Game3D.World3D.DrawEffects(world);
+    Game3D.World3D.EndScene(world);
 
-    var pixels = Game3D.World3D.captureFinalFrame(world);
+    var pixels = Game3D.World3D.CaptureFinalFrame(world);
     if (pixels == null || Graphics.Pixels.get_Width(pixels) != 640) {
         Terminal.Say("capture failed");
     }
 
-    Game3D.World3D.present(world);
-    Game3D.World3D.destroy(world);
+    Game3D.World3D.Present(world);
+    Game3D.World3D.Destroy(world);
 }
 ```
 
@@ -273,8 +273,8 @@ material already wired:
 ```zia
 var metal = Game3D.Materials.Metal(0.65, 0.68, 0.72);
 var crate = Game3D.Prefab.BoxXYZ(1.0, 0.8, 1.4, metal);
-Game3D.Entity3D.setPosition(crate, 0.0, 0.4, -2.0);
-Game3D.World3D.spawn(world, crate);
+Game3D.Entity3D.SetPosition(crate, 0.0, 0.4, -2.0);
+Game3D.World3D.Spawn(world, crate);
 ```
 
 Available prefab factories are `Box`, `BoxXYZ`, `Sphere`, `Cylinder`, `Plane`,
@@ -289,9 +289,9 @@ and `Ground`. `Ground` also sets the entity layer to `Game3D.Layers.World`.
 entity immediately. The returned `EnvHandle` can refine the scene:
 
 ```zia
-var env = Game3D.Environment.Outdoor(world);
+var env = Game3D.Environment3D.Outdoor(world);
 Game3D.EnvHandle.withTerrain(env, 96.0, 0.0);
-Game3D.EnvHandle.withWater(env, -0.05);
+Game3D.EnvHandle.WithWater(env, -0.05);
 Game3D.EnvHandle.withFog(env, 20.0, 160.0);
 Game3D.EnvHandle.withHeightFog(env, 0.05, 2.0, 0.25); // density, base height, falloff
 ```
@@ -372,10 +372,10 @@ which means manual loops can still do:
 if (Game3D.World3D.tick(world)) {
     // game code may adjust controller properties, spawn entities, etc.
     Game3D.World3D.stepSimulation(world, Game3D.World3D.get_dt(world));
-    Game3D.World3D.beginFrame(world);
-    Game3D.World3D.drawScene(world);
-    Game3D.World3D.endScene(world);
-    Game3D.World3D.present(world);
+    Game3D.World3D.BeginFrame(world);
+    Game3D.World3D.DrawScene(world);
+    Game3D.World3D.EndScene(world);
+    Game3D.World3D.Present(world);
 }
 ```
 
@@ -427,7 +427,7 @@ The raw `Canvas3D` finalization calls map to the Game3D frame helpers this way:
 | `Canvas3D.ScreenshotFinal()` | Finalize the frame, then read back the post-FX-plus-overlay pixels. |
 | `Canvas3D.Flip()` | Finalize the frame if needed, then present it. |
 
-`World3D.endScene()`, `captureFinalFrame()`, and `present()` are the Game3D
+`World3D.EndScene()`, `captureFinalFrame()`, and `present()` are the Game3D
 wrappers for that contract.
 
 `World3D.onResize(width, height)` updates the camera aspect and resizes the
@@ -508,7 +508,7 @@ an attached body only when the node sync mode is `SyncMode.BodyFromNode`:
 | `isSpawned()` / `isDestroyed()` | Inspect lifecycle state |
 | `isGroup()` | True when the entity wraps an imported/`FromNode` multi-node group rather than a single primitive |
 
-`World3D.spawn(entity)` attaches the entity node to the world scene and registers
+`World3D.Spawn(entity)` attaches the entity node to the world scene and registers
 the entity by name. `World3D.despawn(entity)` removes it from the registry,
 scene, and physics world, and the retained entity handle becomes stale.
 Destroying a world also marks any retained entities from that world stale. Stale
@@ -548,12 +548,12 @@ scene-node cloning:
 
 ```zia
 var crate = Game3D.Assets3D.LoadEntity("assets/crate.glb");
-Game3D.Entity3D.setPosition(crate, 0.0, 0.5, -3.0);
-Game3D.World3D.spawn(world, crate);
+Game3D.Entity3D.SetPosition(crate, 0.0, 0.5, -3.0);
+Game3D.World3D.Spawn(world, crate);
 
 var enemyTemplate = Game3D.Prefab.LoadAsset("models/enemy.glb");
 var enemy = Game3D.SceneTemplate.instantiate(enemyTemplate);
-Game3D.World3D.spawn(world, enemy);
+Game3D.World3D.Spawn(world, enemy);
 ```
 
 | Method | Purpose |
@@ -1114,7 +1114,7 @@ Game3D.Effects3D.Dust(world, Game3D.Collision3DEvent.point(evt));
 ```zia
 var ground = Game3D.Prefab.Ground(40.0, Game3D.Materials.Rubber(0.25, 0.35, 0.25));
 Game3D.Entity3D.attachBody(ground, Game3D.BodyDef.StaticPlane(40.0));
-Game3D.World3D.spawn(world, ground);
+Game3D.World3D.Spawn(world, ground);
 
 var ball = Game3D.Prefab.Sphere(0.5, 24, Game3D.Materials.Plastic(0.9, 0.2, 0.2));
 var body = Game3D.BodyDef.Sphere(0.5, 1.0);
@@ -1122,7 +1122,7 @@ Game3D.BodyDef.set_restitution(body, 0.35);
 Game3D.BodyDef.set_useCCD(body, true);
 Game3D.BodyDef.withMask(body, Game3D.LayerMask.Of(Game3D.Layers.get_World()));
 Game3D.Entity3D.attachBody(ball, body);
-Game3D.World3D.spawn(world, ball);
+Game3D.World3D.Spawn(world, ball);
 ```
 
 | API | Purpose |
@@ -1256,8 +1256,8 @@ before physics, and late-updates the camera eye to the character position.
 
 ```zia
 var player = Game3D.Entity3D.New();
-Game3D.Entity3D.setPosition(player, 0.0, 1.0, 4.0);
-Game3D.World3D.spawn(world, player);
+Game3D.Entity3D.SetPosition(player, 0.0, 1.0, 4.0);
+Game3D.World3D.Spawn(world, player);
 
 var character = Game3D.CharacterController3D.New(world, player, 0.32, 1.8, 70.0);
 var fps = Game3D.FirstPersonController.New(world);
@@ -1491,7 +1491,7 @@ Quest/objective tracking is 2D/3D-agnostic and lives at `Zanna.Game.Quests`
 | Symptom | Check |
 |---------|-------|
 | `LoadEntityAsset` or `Sound3D.loadAsset` returns `null` | Run from the project root or package the asset path in `zanna.project`; source-tree samples use `asset assets assets` or repository-relative fixture paths. |
-| Final overlay pixels look post-processed | Draw HUD after `World3D.endScene()` with `Canvas3D.BeginOverlay()` / `EndOverlay()`, then call `captureFinalFrame()` or `present()`. |
+| Final overlay pixels look post-processed | Draw HUD after `World3D.EndScene()` with `Canvas3D.BeginOverlay()` / `EndOverlay()`, then call `captureFinalFrame()` or `present()`. |
 | A callback loop traps before the callback runs | Check that the update callback is `(Float) -> Unit`, the overlay callback is `() -> Unit`, and the function reference comes from the active script module. |
 | Software backend disables a requested quality feature | Inspect `Canvas3D.get_QualityActive()` and `get_QualityFallback()`; `Quality.Apply` avoids unsupported shadow/post-FX paths. |
 | A body does not collide with another body | Verify the entity layer, `BodyDef.withLayer`, and `BodyDef.withMask`; masks must include the other body layer. |

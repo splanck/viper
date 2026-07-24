@@ -170,7 +170,7 @@ PRINT result  ' Outputs: 25
 ```
 
 **Zia:**
-```rust
+```zia
 module Main;
 bind Zanna.Terminal;
 
@@ -784,7 +784,7 @@ PRINT "Value: "; c.Value   ' Output: Value: 0
 ```
 
 **Zia:**
-```rust
+```zia
 module Main;
 bind Zanna.Terminal;
 

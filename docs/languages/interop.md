@@ -37,7 +37,7 @@ is needed.
 
 Use `expose` before `func` at module scope to mark a function as exported:
 
-```rust
+```zia
 // mathlib.zia
 expose func factorial(n: Integer) -> Integer {
     if n <= 1 {
@@ -52,7 +52,7 @@ expose func factorial(n: Integer) -> Integer {
 Use `foreign func` to declare a function defined in another module. Foreign
 function declarations have no body:
 
-```rust
+```zia
 // main.zia
 foreign func Factorial(n: Integer) -> Integer
 
@@ -245,7 +245,7 @@ entry main.zia
 
 ### `main.zia`
 
-```rust
+```zia
 bind Zanna.Terminal;
 
 foreign func Factorial(n: Integer) -> Integer

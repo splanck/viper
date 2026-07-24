@@ -25,8 +25,10 @@ bind "../core/document_manager";
 bind "../core/project_manager";
 bind "../editor/project_bind_query_job";
 bind "../editor/editor_engine";
+bind "../editor/editor_tabs";
 bind "../editor/quick_fixes";
 bind "../editor/zia_query";
+bind "../services/locations";
 bind "../services/text_utils";
 bind "../services/safe_io";
 bind "../ui/app_shell";
@@ -45,6 +47,47 @@ final ACTION_SUPPRESS_DIAGNOSTIC = 1;
 final ACTION_APPLY_FIX = 2;
 final ACTION_CREATE_MISSING_BIND = 3;
 final MAX_DIAGNOSTIC_ACTION_CHARS = 4000000;
+
+/// @brief Map a Problems-row action label to the semantic edit operation.
+/// @details Compiler-provided fix-it messages are intentionally open-ended; all
+///          actionable labels other than the two specialized workflows route to
+///          the generic fix-it resolver at the selected diagnostic location.
+/// @return One ACTION_* value, or zero for a non-actionable placeholder.
+expose func ActionKindForProblemLabel(label: String) -> Integer {
+    if label == "" or label == "-" or label == "No quick fix" { return 0; }
+    if label == "Suppress Warning" { return ACTION_SUPPRESS_DIAGNOSTIC; }
+    if label == "Create Missing Bind" { return ACTION_CREATE_MISSING_BIND; }
+    return ACTION_APPLY_FIX;
+}
+
+/// @brief Open and start the quick fix selected in the Problems toolbar.
+/// @return True when a valid asynchronous diagnostic action was started.
+expose func StartSelectedProblemAction(
+    controller: DiagnosticActionController,
+    shell: app_shell.AppShell,
+    docMgr: document_manager.DocumentManager,
+    engine: editor_engine.EditorEngine,
+    tabs: editor_tabs.EditorTabs,
+    projMgr: project_manager.ProjectManager,
+    locStore: locations.LocationStore) -> Boolean {
+    if controller == null or shell == null or locStore == null {
+        return false;
+    }
+    var action = shell.toolPanels.GetSelectedProblemAction();
+    var kind = ActionKindForProblemLabel(action);
+    if kind == 0 {
+        shell.SetStatusLeft("No quick fix is available for this problem");
+        return false;
+    }
+    var locationData = shell.toolPanels.GetSelectedProblemLocationData();
+    if locationData == ""
+       or locStore.OpenLocation(shell, docMgr, engine, tabs,
+                                locationData) == false {
+        shell.SetStatusLeft("The selected problem location is no longer available");
+        return false;
+    }
+    return controller.Start(kind, action, shell, docMgr, engine, projMgr);
+}
 
 /// @brief Non-blocking owner for compiler-backed diagnostic edit commands.
 /// @details The semantic stage uses the runtime's existing background job API.
@@ -90,8 +133,7 @@ class DiagnosticActionController {
         }
         var doc = docMgr.GetActive();
         if doc == null or doc!.language != "zia" {
-            GUI.Toast.Info(label + " is only available for Zia files");
-            shell.SetStatusLeft(label + " unavailable");
+            shell.SetStatusLeft(label + " is only available for Zia files");
             return false;
         }
 
@@ -453,7 +495,7 @@ func WorkspaceSignature(projMgr: project_manager.ProjectManager) -> String {
 // ============================================================================
 
 /// @brief Insert a Zia suppression comment for the warning at the cursor.
-/// @param shell Workbench shell used for status and toast feedback.
+/// @param shell Workbench shell used for contextual status feedback.
 /// @param docMgr Open document manager.
 /// @param engine Active editor engine.
 func handleSuppressDiagnostic(shell: app_shell.AppShell,
@@ -462,8 +504,7 @@ func handleSuppressDiagnostic(shell: app_shell.AppShell,
     if engine == null or engine.editor == null { return; }
     var doc = docMgr.GetActive();
     if doc == null or doc.language != "zia" {
-        GUI.Toast.Info("Suppress Warning is only available for Zia files");
-        shell.SetStatusLeft("Suppress Warning unavailable");
+        shell.SetStatusLeft("Suppress Warning is only available for Zia files");
         return;
     }
 
@@ -488,7 +529,7 @@ func handleSuppressDiagnostic(shell: app_shell.AppShell,
 }
 
 /// @brief Apply the compiler-provided fix-it at the cursor line.
-/// @param shell Workbench shell used for status and toast feedback.
+/// @param shell Workbench shell used for contextual status feedback.
 /// @param docMgr Open document manager.
 /// @param engine Active editor engine.
 func handleApplyDiagnosticFix(shell: app_shell.AppShell,
@@ -497,8 +538,7 @@ func handleApplyDiagnosticFix(shell: app_shell.AppShell,
     if engine == null or engine.editor == null { return; }
     var doc = docMgr.GetActive();
     if doc == null or doc.language != "zia" {
-        GUI.Toast.Info("Diagnostic fix-its are only available for Zia files");
-        shell.SetStatusLeft("Apply Fix-It unavailable");
+        shell.SetStatusLeft("Diagnostic fix-its are only available for Zia files");
         return;
     }
 
@@ -531,7 +571,7 @@ func handleApplyDiagnosticFix(shell: app_shell.AppShell,
 }
 
 /// @brief Add a runtime or project bind suggested by diagnostics at the cursor.
-/// @param shell Workbench shell used for status and toast feedback.
+/// @param shell Workbench shell used for contextual status feedback.
 /// @param docMgr Open document manager.
 /// @param engine Active editor engine.
 /// @param projMgr Project manager used to locate unique project bind targets.
@@ -542,8 +582,7 @@ func handleCreateMissingBind(shell: app_shell.AppShell,
     if engine == null or engine.editor == null { return; }
     var doc = docMgr.GetActive();
     if doc == null or doc.language != "zia" {
-        GUI.Toast.Info("Create Missing Bind is only available for Zia files");
-        shell.SetStatusLeft("Create Missing Bind unavailable");
+        shell.SetStatusLeft("Create Missing Bind is only available for Zia files");
         return;
     }
 

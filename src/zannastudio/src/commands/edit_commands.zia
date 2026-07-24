@@ -27,7 +27,6 @@ bind "../editor/editor_tabs";
 bind "../editor/project_index";
 bind "../services/locations";
 bind "../services/safe_io";
-bind "../services/workspace_edits";
 bind "../services/text_utils";
 bind "../services/workspace_file_index";
 bind "../commands/file_commands";
@@ -153,13 +152,6 @@ func handleFind(shell: app_shell.AppShell) {
     }
 }
 
-/// @brief Prompt for a line number and jump the editor there.
-func handleGoToLine(shell: app_shell.AppShell,
-                    engine: editor_engine.EditorEngine) {
-    var lineStr = GUI.MessageBox.Prompt("Go To Line", "Enter line number:");
-    handleGoToLineText(shell, engine, lineStr);
-}
-
 /// @brief Jump to a line from a non-modal command-input value.
 /// @param shell Workbench shell used for status feedback.
 /// @param engine Active editor engine.
@@ -172,13 +164,11 @@ func handleGoToLineText(shell: app_shell.AppShell,
     if clean == "" { return false; }
     if IsPositiveIntegerText(clean) == false {
         shell.SetStatusLeft("Go To Line: enter a positive line number");
-        GUI.Toast.Warning("Enter a positive line number");
         return false;
     }
     var lineNum = Convert.ToInt64(clean);
     if lineNum <= 0 {
         shell.SetStatusLeft("Go To Line: enter a positive line number");
-        GUI.Toast.Warning("Enter a positive line number");
         return false;
     }
     engine.GoToLine(lineNum);
@@ -228,16 +218,16 @@ func handleGoToDefinition(shell: app_shell.AppShell,
     if engine == null or engine.editor == null { return; }
     var doc = docMgr.GetActive();
     if doc == null {
-        GUI.Toast.Info("Go to definition is unavailable for this file");
+        shell.SetStatusLeft("Go to definition is unavailable for this file");
         return;
     }
     var activeDoc = doc!;
     if activeDoc.language == "basic" {
-        GUI.Toast.Info("BASIC go to definition is handled in the background");
+        shell.SetStatusLeft("BASIC go to definition is handled in the background");
         return;
     }
     if activeDoc.language != "zia" {
-        GUI.Toast.Info("Go to definition is unavailable for this file");
+        shell.SetStatusLeft("Go to definition is unavailable for this file");
         return;
     }
 
@@ -262,7 +252,7 @@ func handleGoToDefinition(shell: app_shell.AppShell,
         return;
     }
 
-    GUI.Toast.Info("Definition not found");
+    shell.SetStatusLeft("Definition not found");
 }
 
 func handleFindReferences(shell: app_shell.AppShell,
@@ -273,16 +263,16 @@ func handleFindReferences(shell: app_shell.AppShell,
     if engine == null or engine.editor == null { return; }
     var doc = docMgr.GetActive();
     if doc == null {
-        GUI.Toast.Info("Find references is unavailable for this file");
+        shell.SetStatusLeft("Find references is unavailable for this file");
         return;
     }
     var activeDoc = doc!;
     if activeDoc.language == "basic" {
-        GUI.Toast.Info("BASIC references are handled in the background");
+        shell.SetStatusLeft("BASIC references are handled in the background");
         return;
     }
     if activeDoc.language != "zia" {
-        GUI.Toast.Info("Find references is unavailable for this file");
+        shell.SetStatusLeft("Find references is unavailable for this file");
         return;
     }
     file_commands.SaveEditorState(docMgr, engine);
@@ -293,7 +283,7 @@ func handleFindReferences(shell: app_shell.AppShell,
     shell.toolPanels.ClearToolRows(shell.toolPanels.referencesListBox);
     if refs == null or Seq.get_Count(refs) == 0 {
         shell.toolPanels.HideReferencesPanel();
-        GUI.Toast.Info("No references found");
+        shell.SetStatusLeft("No references found");
         return;
     }
     var i = 0;
@@ -321,10 +311,10 @@ func handleFindReferences(shell: app_shell.AppShell,
                                             "ref", "zia",
                                             "" + line + ":" + col,
                                             marker, preview, "");
-        GUI.ListBox.ItemSetData(item, id);
+        shell.toolPanels.SetAddedToolRowLocationData(
+            shell.toolPanels.referencesListBox, item, id);
         i = i + 1;
     }
-    shell.toolPanels.referencesListBox.SetVisible(true);
     shell.toolPanels.ShowReferencesPanel();
     shell.SetStatusLeft("Found " + Seq.get_Count(refs) + " references");
 }
@@ -337,16 +327,16 @@ func handleIncomingCalls(shell: app_shell.AppShell,
     if engine == null or engine.editor == null { return; }
     var doc = docMgr.GetActive();
     if doc == null {
-        GUI.Toast.Info("Incoming calls is unavailable for this file");
+        shell.SetStatusLeft("Incoming calls is unavailable for this file");
         return;
     }
     var activeDoc = doc!;
     if activeDoc.language == "basic" {
-        GUI.Toast.Info("BASIC call hierarchy is handled in the background");
+        shell.SetStatusLeft("BASIC call hierarchy is handled in the background");
         return;
     }
     if activeDoc.language != "zia" {
-        GUI.Toast.Info("Incoming calls is unavailable for this file");
+        shell.SetStatusLeft("Incoming calls is unavailable for this file");
         return;
     }
     file_commands.SaveEditorState(docMgr, engine);
@@ -357,7 +347,7 @@ func handleIncomingCalls(shell: app_shell.AppShell,
     shell.toolPanels.ClearToolRows(shell.toolPanels.referencesListBox);
     if refs == null or Seq.get_Count(refs) == 0 {
         shell.toolPanels.HideReferencesPanel();
-        GUI.Toast.Info("No incoming calls found");
+        shell.SetStatusLeft("No incoming calls found");
         return;
     }
 
@@ -395,17 +385,17 @@ func handleIncomingCalls(shell: app_shell.AppShell,
                                             "call", "zia",
                                             "" + line + ":" + col,
                                             "", preview, "");
-        GUI.ListBox.ItemSetData(item, id);
+        shell.toolPanels.SetAddedToolRowLocationData(
+            shell.toolPanels.referencesListBox, item, id);
         count = count + 1;
         i = i + 1;
     }
 
     if count == 0 {
         shell.toolPanels.HideReferencesPanel();
-        GUI.Toast.Info("No incoming calls found");
+        shell.SetStatusLeft("No incoming calls found");
         return;
     }
-    shell.toolPanels.referencesListBox.SetVisible(true);
     shell.toolPanels.ShowReferencesPanel();
     shell.SetStatusLeft("Found " + count + " incoming calls");
 }
@@ -418,16 +408,16 @@ func handleOutgoingCalls(shell: app_shell.AppShell,
     if engine == null or engine.editor == null { return; }
     var doc = docMgr.GetActive();
     if doc == null {
-        GUI.Toast.Info("Outgoing calls is unavailable for this file");
+        shell.SetStatusLeft("Outgoing calls is unavailable for this file");
         return;
     }
     var activeDoc = doc!;
     if activeDoc.language == "basic" {
-        GUI.Toast.Info("BASIC call hierarchy is handled in the background");
+        shell.SetStatusLeft("BASIC call hierarchy is handled in the background");
         return;
     }
     if activeDoc.language != "zia" {
-        GUI.Toast.Info("Outgoing calls is unavailable for this file");
+        shell.SetStatusLeft("Outgoing calls is unavailable for this file");
         return;
     }
     file_commands.SaveEditorState(docMgr, engine);
@@ -439,7 +429,7 @@ func handleOutgoingCalls(shell: app_shell.AppShell,
     var startLine = EnclosingZiaFunctionStartLine(activeDoc.content, cursorLine);
     if startLine <= 0 {
         shell.toolPanels.HideReferencesPanel();
-        GUI.Toast.Info("No enclosing function found");
+        shell.SetStatusLeft("No enclosing function found");
         return;
     }
     var callerName = ZiaFunctionNameFromLine(SourceLine(activeDoc.content, startLine));
@@ -448,7 +438,7 @@ func handleOutgoingCalls(shell: app_shell.AppShell,
     shell.toolPanels.ClearToolRows(shell.toolPanels.referencesListBox);
     if tokens == null or Seq.get_Count(tokens) == 0 {
         shell.toolPanels.HideReferencesPanel();
-        GUI.Toast.Info("No outgoing calls found");
+        shell.SetStatusLeft("No outgoing calls found");
         return;
     }
 
@@ -486,7 +476,8 @@ func handleOutgoingCalls(shell: app_shell.AppShell,
                                                 "call", "zia",
                                                 "" + tokenLine + ":" + tokenCol,
                                                 "definition", preview, "");
-            GUI.ListBox.ItemSetData(item, id);
+            shell.toolPanels.SetAddedToolRowLocationData(
+                shell.toolPanels.referencesListBox, item, id);
             count = count + 1;
         }
         i = i + 1;
@@ -494,10 +485,9 @@ func handleOutgoingCalls(shell: app_shell.AppShell,
 
     if count == 0 {
         shell.toolPanels.HideReferencesPanel();
-        GUI.Toast.Info("No outgoing calls found");
+        shell.SetStatusLeft("No outgoing calls found");
         return;
     }
-    shell.toolPanels.referencesListBox.SetVisible(true);
     shell.toolPanels.ShowReferencesPanel();
     shell.SetStatusLeft("Found " + count + " outgoing calls");
 }
@@ -570,7 +560,7 @@ func handleBasicGoToDefinition(shell: app_shell.AppShell,
     var token = semantic_scan.IdentifierAt(source, engine.editor.CursorLine + 1,
                                            engine.editor.CursorCol);
     if token == "" {
-        GUI.Toast.Info("No BASIC symbol at cursor");
+        shell.SetStatusLeft("No BASIC symbol at cursor");
         return;
     }
     var decls = BasicWorkspaceDeclarations(docMgr, indexer, activeDoc);
@@ -589,7 +579,7 @@ func handleBasicGoToDefinition(shell: app_shell.AppShell,
         }
         return;
     }
-    GUI.Toast.Info("Definition not found");
+    shell.SetStatusLeft("Definition not found");
 }
 
 func handleBasicFindReferences(shell: app_shell.AppShell,
@@ -604,14 +594,14 @@ func handleBasicFindReferences(shell: app_shell.AppShell,
     var token = semantic_scan.IdentifierAt(source, engine.editor.CursorLine + 1,
                                            engine.editor.CursorCol);
     if token == "" {
-        GUI.Toast.Info("No BASIC symbol at cursor");
+        shell.SetStatusLeft("No BASIC symbol at cursor");
         return;
     }
     var decls = BasicWorkspaceDeclarations(docMgr, indexer, activeDoc);
     var def = semantic_scan.BestDefinition(decls, activeDoc.filePath,
                                            engine.editor.CursorLine + 1, token);
     if def == null or Map.GetBool(def, "found") == false {
-        GUI.Toast.Info("Definition not found");
+        shell.SetStatusLeft("Definition not found");
         return;
     }
     var refs = BasicWorkspaceReferences(docMgr, indexer, activeDoc, def);
@@ -630,14 +620,14 @@ func handleBasicIncomingCalls(shell: app_shell.AppShell,
     var token = semantic_scan.IdentifierAt(source, engine.editor.CursorLine + 1,
                                            engine.editor.CursorCol);
     if token == "" {
-        GUI.Toast.Info("No BASIC symbol at cursor");
+        shell.SetStatusLeft("No BASIC symbol at cursor");
         return;
     }
     var decls = BasicWorkspaceDeclarations(docMgr, indexer, activeDoc);
     var def = semantic_scan.BestDefinition(decls, activeDoc.filePath,
                                            engine.editor.CursorLine + 1, token);
     if def == null or Map.GetBool(def, "found") == false {
-        GUI.Toast.Info("Definition not found");
+        shell.SetStatusLeft("Definition not found");
         return;
     }
     var refs = BasicWorkspaceReferences(docMgr, indexer, activeDoc, def);
@@ -669,16 +659,16 @@ func handleBasicIncomingCalls(shell: app_shell.AppShell,
                                             "call", "basic",
                                             "" + line + ":" + col,
                                             "", preview, "");
-        GUI.ListBox.ItemSetData(item, id);
+        shell.toolPanels.SetAddedToolRowLocationData(
+            shell.toolPanels.referencesListBox, item, id);
         count = count + 1;
         i = i + 1;
     }
     if count == 0 {
         shell.toolPanels.HideReferencesPanel();
-        GUI.Toast.Info("No incoming calls found");
+        shell.SetStatusLeft("No incoming calls found");
         return;
     }
-    shell.toolPanels.referencesListBox.SetVisible(true);
     shell.toolPanels.ShowReferencesPanel();
     shell.SetStatusLeft("Found " + count + " incoming calls");
 }
@@ -696,7 +686,7 @@ func handleBasicOutgoingCalls(shell: app_shell.AppShell,
     var startLine = semantic_scan.EnclosingBasicProcedureStartLine(source, cursorLine);
     if startLine <= 0 {
         shell.toolPanels.HideReferencesPanel();
-        GUI.Toast.Info("No enclosing BASIC procedure found");
+        shell.SetStatusLeft("No enclosing BASIC procedure found");
         return;
     }
     var endLine = semantic_scan.BasicProcedureEndLine(source, startLine);
@@ -706,7 +696,7 @@ func handleBasicOutgoingCalls(shell: app_shell.AppShell,
     shell.toolPanels.ClearToolRows(shell.toolPanels.referencesListBox);
     if tokens == null or Seq.get_Count(tokens) == 0 {
         shell.toolPanels.HideReferencesPanel();
-        GUI.Toast.Info("No outgoing calls found");
+        shell.SetStatusLeft("No outgoing calls found");
         return;
     }
 
@@ -741,17 +731,17 @@ func handleBasicOutgoingCalls(shell: app_shell.AppShell,
                                                 "call", "basic",
                                                 "" + tokenLine + ":" + tokenCol,
                                                 "definition", preview, "");
-            GUI.ListBox.ItemSetData(item, id);
+            shell.toolPanels.SetAddedToolRowLocationData(
+                shell.toolPanels.referencesListBox, item, id);
             count = count + 1;
         }
         i = i + 1;
     }
     if count == 0 {
         shell.toolPanels.HideReferencesPanel();
-        GUI.Toast.Info("No outgoing calls found");
+        shell.SetStatusLeft("No outgoing calls found");
         return;
     }
-    shell.toolPanels.referencesListBox.SetVisible(true);
     shell.toolPanels.ShowReferencesPanel();
     shell.SetStatusLeft("Found " + count + " outgoing calls");
 }
@@ -764,7 +754,7 @@ func RenderBasicReferences(shell: app_shell.AppShell,
     shell.toolPanels.ClearToolRows(shell.toolPanels.referencesListBox);
     if refs == null or Seq.get_Count(refs) == 0 {
         shell.toolPanels.HideReferencesPanel();
-        GUI.Toast.Info("No " + label + " found");
+        shell.SetStatusLeft("No " + label + " found");
         return;
     }
     var i = 0;
@@ -789,10 +779,10 @@ func RenderBasicReferences(shell: app_shell.AppShell,
                                             "ref", "basic",
                                             "" + line + ":" + col,
                                             marker, preview, "");
-        GUI.ListBox.ItemSetData(item, id);
+        shell.toolPanels.SetAddedToolRowLocationData(
+            shell.toolPanels.referencesListBox, item, id);
         i = i + 1;
     }
-    shell.toolPanels.referencesListBox.SetVisible(true);
     shell.toolPanels.ShowReferencesPanel();
     shell.SetStatusLeft("Found " + Seq.get_Count(refs) + " " + label);
 }
@@ -872,164 +862,12 @@ func SkipWhitespace(line: String,
     return source_scan.SkipWhitespace(line, pos);
 }
 
-func handleRenameSymbol(shell: app_shell.AppShell,
-                        docMgr: document_manager.DocumentManager,
-                        engine: editor_engine.EditorEngine,
-                        tabs: editor_tabs.EditorTabs,
-                        indexer: project_index.ProjectIndexer) {
-    var newName = GUI.MessageBox.Prompt("Rename Symbol", "New name:");
-    handleRenameSymbolText(shell, docMgr, engine, tabs, indexer, newName);
-}
-
-/// @brief Rename the symbol at the cursor using a supplied new name.
-/// @param shell Workbench shell used for status, preview, and toast feedback.
-/// @param docMgr Open document manager containing the active file.
-/// @param engine Active editor engine containing the cursor position.
-/// @param tabs Editor tab controller refreshed after workspace edits.
-/// @param indexer Project indexer used for Zia and workspace file discovery.
-/// @param newNameText User-entered replacement identifier.
-/// @return True when rename edits were applied.
-func handleRenameSymbolText(shell: app_shell.AppShell,
-                            docMgr: document_manager.DocumentManager,
-                            engine: editor_engine.EditorEngine,
-                            tabs: editor_tabs.EditorTabs,
-                            indexer: project_index.ProjectIndexer,
-                            newNameText: String) -> Boolean {
-    if engine == null or engine.editor == null { return false; }
-    var doc = docMgr.GetActive();
-    if doc == null {
-        GUI.Toast.Info("Rename is unavailable for this file");
-        return false;
-    }
-    var activeDoc = doc!;
-    if activeDoc.language == "basic" {
-        GUI.Toast.Info("BASIC rename is handled in the background");
-        return false;
-    }
-    if activeDoc.language != "zia" {
-        GUI.Toast.Info("Rename is unavailable for this file");
-        return false;
-    }
-    var newName = Str.Trim(newNameText);
-    if newName == "" { return false; }
-    if IsValidIdentifier(newName) == false {
-        GUI.Toast.Warning("Invalid identifier");
-        return false;
-    }
-    file_commands.SaveEditorState(docMgr, engine);
-    indexer.SyncActiveNow(docMgr, engine);
-    indexer.SyncOpenDocuments(docMgr);
-    if PrepareSemanticQuery(shell, indexer, "Rename") == false { return false; }
-    var rename = indexer.RenameEdits(activeDoc.filePath, activeDoc.content,
-                                     engine.editor.CursorLine + 1,
-                                     engine.editor.CursorCol,
-                                     newName);
-    if rename == null or Map.GetBool(rename, "success") == false {
-        var reason = "";
-        if rename != null { reason = Map.GetStr(rename, "reason"); }
-        if reason == "" { reason = "not_found"; }
-        GUI.Toast.Warning("Rename failed: " + reason);
-        return false;
-    }
-    var edits = Map.Get(rename, "edits");
-    var preview = workspace_edits.PreviewRenameEdits(edits, 20);
-    if GUI.MessageBox.Confirm("Rename Preview", preview) == 0 {
-        return false;
-    }
-    var result = workspace_edits.ApplyRenameEdits(edits, docMgr,
-                                                  indexer.rootPaths);
-    if result.success == false {
-        GUI.Toast.Error(result.message);
-        return false;
-    }
-    ApplyActiveDocumentContentToEditor(docMgr, engine, tabs);
-    indexer.SyncActiveNow(docMgr, engine);
-    shell.SetStatusLeft("Renamed to " + newName);
-    GUI.Toast.Success("Rename complete");
-    return true;
-}
-
-func handleBasicRenameSymbol(shell: app_shell.AppShell,
-                             docMgr: document_manager.DocumentManager,
-                             engine: editor_engine.EditorEngine,
-                             tabs: editor_tabs.EditorTabs,
-                             indexer: project_index.ProjectIndexer,
-                             activeDoc: document.Document) {
-    var newName = GUI.MessageBox.Prompt("Rename Symbol", "New name:");
-    handleBasicRenameSymbolText(shell, docMgr, engine, tabs, indexer,
-                                activeDoc, newName);
-}
-
-/// @brief Rename a BASIC symbol using scanner-backed references and a supplied name.
-/// @param shell Workbench shell used for preview and toast feedback.
-/// @param docMgr Open document manager containing BASIC documents.
-/// @param engine Active editor engine containing the cursor position.
-/// @param tabs Editor tab controller refreshed after workspace edits.
-/// @param indexer Project indexer used only for workspace root discovery.
-/// @param activeDoc Active BASIC document.
-/// @param newNameText User-entered replacement identifier.
-/// @return True when rename edits were applied.
-func handleBasicRenameSymbolText(shell: app_shell.AppShell,
-                                 docMgr: document_manager.DocumentManager,
-                                 engine: editor_engine.EditorEngine,
-                                 tabs: editor_tabs.EditorTabs,
-                                 indexer: project_index.ProjectIndexer,
-                                 activeDoc: document.Document,
-                                 newNameText: String) -> Boolean {
-    if activeDoc.filePath == "" {
-        GUI.Toast.Info("Save the BASIC file before renaming across the workspace");
-        return false;
-    }
-    var newName = Str.Trim(newNameText);
-    if newName == "" { return false; }
-    if semantic_scan.IsValidBasicIdentifier(newName) == false {
-        GUI.Toast.Warning("Invalid BASIC identifier");
-        return false;
-    }
-    file_commands.SaveEditorState(docMgr, engine);
-    var source = engine.GetTextSnapshot();
-    activeDoc.content = source;
-    var token = semantic_scan.IdentifierAt(source, engine.editor.CursorLine + 1,
-                                           engine.editor.CursorCol);
-    if token == "" {
-        GUI.Toast.Info("No BASIC symbol at cursor");
-        return false;
-    }
-    var decls = BasicWorkspaceDeclarations(docMgr, indexer, activeDoc);
-    var def = semantic_scan.BestDefinition(decls, activeDoc.filePath,
-                                           engine.editor.CursorLine + 1, token);
-    if def == null or Map.GetBool(def, "found") == false {
-        GUI.Toast.Warning("Rename failed: symbol not found");
-        return false;
-    }
-    var refs = BasicWorkspaceReferences(docMgr, indexer, activeDoc, def);
-    if refs == null or Seq.get_Count(refs) == 0 {
-        GUI.Toast.Warning("Rename failed: no references found");
-        return false;
-    }
-    var edits = semantic_scan.RenameEditsFromReferences(refs, newName);
-    var preview = workspace_edits.PreviewRenameEdits(edits, 20);
-    if GUI.MessageBox.Confirm("Rename Preview", preview) == 0 {
-        return false;
-    }
-    var result = workspace_edits.ApplyRenameEdits(edits, docMgr,
-                                                  indexer.rootPaths);
-    if result.success == false {
-        GUI.Toast.Error(result.message);
-        return false;
-    }
-    ApplyActiveDocumentContentToEditor(docMgr, engine, tabs);
-    shell.SetStatusLeft("Renamed to " + newName);
-    GUI.Toast.Success("Rename complete");
-    return true;
-}
-
 /// @brief Pump a bounded amount of workspace indexing before a semantic query.
 /// @details Go-to-definition, references, call hierarchy, and rename require a
 ///          complete workspace index for trustworthy results. This helper keeps
 ///          those commands responsive by advancing a small batch and reporting
 ///          progress when the index is still warming.
-/// @param shell Workbench shell used for status and toast feedback.
+/// @param shell Workbench shell used for contextual status feedback.
 /// @param indexer Project index owner.
 /// @param label User-facing command name for the status message.
 /// @return True when the workspace index is complete enough for the query.
@@ -1045,7 +883,6 @@ func PrepareSemanticQuery(shell: app_shell.AppShell,
     if shell != null {
         shell.SetStatusLeft(msg);
     }
-    GUI.Toast.Info(msg);
     return false;
 }
 
@@ -1080,12 +917,12 @@ func handleAddNextOccurrence(shell: app_shell.AppShell,
                              engine: editor_engine.EditorEngine) {
     var word = engine.editor.GetWordAtCursor();
     if word == "" {
-        GUI.Toast.Info("No word at cursor");
+        shell.SetStatusLeft("No word at cursor");
         return;
     }
     var next = FindNextOccurrence(engine.GetTextSnapshot(), word, engine.GetCursorLine(), engine.GetCursorCol() + Str.get_Length(word));
     if next == "" {
-        GUI.Toast.Info("No next occurrence");
+        shell.SetStatusLeft("No next occurrence");
         return;
     }
     var parts = Str.Split(next, ":");
@@ -1285,8 +1122,7 @@ func handleToggleBlockComment(shell: app_shell.AppShell,
     if engine == null or engine.editor == null { return; }
     var doc = docMgr.GetActive();
     if doc != null and doc.language == "basic" {
-        GUI.Toast.Info("Block comments are unavailable for BASIC");
-        shell.SetStatusLeft("Block comment unavailable");
+        shell.SetStatusLeft("Block comments are unavailable for BASIC");
         return;
     }
 
@@ -1397,12 +1233,6 @@ func handleInlineLocalVariable(shell: app_shell.AppShell,
     source_transform_commands.handleInlineLocalVariable(shell, docMgr, engine);
 }
 
-func handleExtractLocalVariable(shell: app_shell.AppShell,
-                                docMgr: document_manager.DocumentManager,
-                                engine: editor_engine.EditorEngine) {
-    source_transform_commands.handleExtractLocalVariable(shell, docMgr, engine);
-}
-
 /// @brief Extract the selected expression using a supplied local-variable name.
 /// @param shell Workbench shell used for status and toast feedback.
 /// @param docMgr Open document manager containing the active document.
@@ -1415,12 +1245,6 @@ func handleExtractLocalVariableText(shell: app_shell.AppShell,
                                     nameText: String) -> Boolean {
     return source_transform_commands.handleExtractLocalVariableText(shell, docMgr,
                                                                     engine, nameText);
-}
-
-func handleExtractFunction(shell: app_shell.AppShell,
-                           docMgr: document_manager.DocumentManager,
-                           engine: editor_engine.EditorEngine) {
-    source_transform_commands.handleExtractFunction(shell, docMgr, engine);
 }
 
 /// @brief Extract selected statements using a supplied function name.
