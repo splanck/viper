@@ -942,6 +942,7 @@ compatibility aliases.
 | `SetIntensity(value)` | `void(f64)` | Brightness multiplier (default 1.0) |
 | `SetColor(r, g, b)` | `void(f64, f64, f64)` | Change light color |
 | `SetAttenuation(value)` | `void(f64)` | Set point/spot distance attenuation |
+| `SetSpotCone(innerDegrees, outerDegrees)` | `void(f64, f64)` | Atomically sanitize and replace both spot-cone angles |
 
 ### Properties
 
@@ -960,12 +961,17 @@ compatibility aliases.
 | `Radius` | Float | read/write | Sphere/volume radius |
 | `DecayType` | Integer | read/write | FBX-compatible `0=none`, `1=linear`, `2=quadratic`, `3=cubic` falloff |
 | `Range` | Float | read/write | Finite local-light range (`0` means constructor/importer default behavior) |
+| `InnerConeDegrees` | Float | read | Sanitized inner spot-cone angle in degrees; zero for non-spot lights |
+| `OuterConeDegrees` | Float | read | Sanitized outer spot-cone angle in degrees; zero for non-spot lights |
 
 Light colors are clamped to `[0, 1]`, intensities and dimensions are clamped to
 finite non-negative ranges, and point/spot attenuation uses a small non-zero
 floor when callers pass zero, negative, or non-finite values. Non-finite
 positions/directions fall back to finite defaults. Spot cone angles are clamped
-to `0..89` degrees and reordered when needed so `inner_cos >= outer_cos`.
+to `0..89` degrees and reordered with at least `0.01` degree separation.
+`SetSpotCone` sanitizes the pair together and advances the light mutation
+generation once, so inspectors can retune a cone without publishing an
+intermediate shape.
 Rectangle and sphere shadows use a center-point approximation; volume lights do
 not claim a shadow slot. Software, OpenGL, Metal, and D3D11 share the same native
 area/volume light parameter contract.
@@ -1009,6 +1015,13 @@ func start() {
 `Canvas3D.SetLight()` retains the assigned light until you replace that slot or clear it with `null`, and traps before mutation for invalid slot indices or non-`Light3D` objects.
 Spot-light inner and outer cone angles are sanitized to remain finite and strictly separated before
 their cosines are sent to the software and GPU backends, avoiding undefined falloff at equal cones.
+
+For scene-owned lighting, assign a light through the typed read/write
+`SceneNode.Light` property. The node retains the light, `null` clears it, and a
+non-`Light3D` handle is rejected without changing the current component.
+`SceneGraph.Draw` transforms a node-attached light's `Position` and `Direction`
+from light-local space through the complete node hierarchy. Direct
+`Canvas3D.SetLight` slots instead consume those fields in world space.
 
 ### Clustered forward+ lighting
 
@@ -1210,7 +1223,8 @@ Hierarchical scene graph with frustum culling and LOD support.
 
 ## SceneNode
 
-Individual node in a SceneGraph tree with transform, mesh, material, and child hierarchy.
+Individual node in a SceneGraph tree with transform, mesh, material, light,
+camera, and child hierarchy.
 
 ### Constructor
 
@@ -1233,8 +1247,9 @@ Individual node in a SceneGraph tree with transform, mesh, material, and child h
 | `Parent` | SceneNode | read | Parent node (null if root) |
 | `Visible` | Boolean | read/write | Visibility (hides node + all descendants) |
 | `Name` | String | read/write | Name for Find() lookup; native reads return an owned runtime-string reference |
-| `Mesh` | Mesh3D | write | Mesh to render |
-| `Material` | Material3D | write | Material for rendering |
+| `Mesh` | Mesh3D | read/write | Mesh to render |
+| `Material` | Material3D | read/write | Material for rendering |
+| `Light` | Light3D | read/write | Node-local light component; assign `null` to clear |
 | `Camera` | Camera3D | read/write | Camera attached to this node; imported camera animation updates this exact object |
 | `BoundsMin` | Vec3 | read | Subtree axis-aligned bounding box minimum in this node's local space |
 | `BoundsMax` | Vec3 | read | Subtree axis-aligned bounding box maximum in this node's local space |
@@ -1398,8 +1413,10 @@ v2/v3/v5 selection for scenes without gameplay metadata. A scene with node
 metadata writes VSCN v6, whose tagged values preserve
 null/Boolean/integer/float/string kinds and encode integers as decimal strings
 for exact `i64` round trips. Embedded meshes, materials, exact source texture
-containers or canonical RGBA fallbacks, cubemaps, cameras, native lights,
-animation, and node hierarchy retain round-trip precision. `SceneGraph.Load`
+containers or canonical RGBA fallbacks, cubemaps, cameras, node-attached
+native lights, animation, and node hierarchy retain round-trip precision.
+Each node retains its attached light reference, and public `SceneNode.Light`
+replacement uses the same component slot serialized by VSCN. `SceneGraph.Load`
 accepts VSCN v1-v6 and validates JSON, tagged metadata, bounds, base64 payloads,
 mesh indices, asset references, and child nodes before returning a scene;
 invalid partial assets fail the complete load instead of being skipped. See
@@ -1407,7 +1424,9 @@ invalid partial assets fail the complete load instead of being skipped. See
 contract, [ADR 0161](adr/0161-stable-scenenode-sibling-reordering.md) for
 sibling-order semantics, and
 [ADR 0162](adr/0162-exact-preserve-world-scenenode-reparenting.md) for exact
-reparent conversion and rejection.
+reparent conversion and rejection. See
+[ADR 0172](adr/0172-public-scenenode-light-authoring-and-studio-light-inspector.md)
+for node-light ownership, spot-cone authoring, and Studio transaction rules.
 
 ### Binding Sync
 
@@ -3939,7 +3958,14 @@ Backend correctness rules are shared where possible: skinning weights are normal
 | Canvas dimensions | 16384 x 16384 |
 | Texture dimensions | 8192 x 8192 |
 | Mesh vertices | 16M (32-bit index buffer) |
-| Lights per scene | 8 |
+| Authored node lights | Preserved by VSCN; draw traversal submits the first 64 enabled lights |
+| Active software lights | 16 |
+| Active clustered GPU lights | 64 |
+
+Use `Canvas3D.MaxActiveLights`, `LightCount`, and `DroppedLightCount` to report
+the live backend budget and any deterministic draw-time truncation. Authoring
+tools should not discard scene lights merely because the current preview
+backend has a smaller active budget.
 
 ## Error Handling
 

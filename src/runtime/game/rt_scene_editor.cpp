@@ -9,6 +9,7 @@
 //
 // Key invariants:
 //   - Scene edits are bounds-checked and preserved-section input is size-bounded.
+//   - Flood fill allocates its complete bounded work set before mutation.
 //   - Imported Tilemap state is optional and malformed fields fall back safely.
 //
 // Ownership/Lifetime:
@@ -18,7 +19,8 @@
 // Links: rt_scene_editor.h, rt_tiled_import.cpp,
 //   docs/adr/0144-complete-tiled-map-import.md,
 //   docs/adr/0155-scene-object-authoring-metadata-and-duplication.md,
-//   docs/adr/0164-backward-compatible-2d-scene-object-hierarchy.md
+//   docs/adr/0164-backward-compatible-2d-scene-object-hierarchy.md,
+//   docs/adr/0171-bounded-scene-flood-fill-and-studio-tile-tools.md
 //
 //===----------------------------------------------------------------------===//
 
@@ -2215,6 +2217,57 @@ void rt_game_scene_fill_tiles(
         for (int64_t xx = xStart; xx < xEnd; ++xx)
             s.layers[static_cast<size_t>(layer)].tiles[static_cast<size_t>(yy * s.width + xx)] =
                 tile;
+}
+
+int64_t rt_game_scene_flood_fill_tiles(
+    void *scene, int64_t layer, int64_t x, int64_t y, int64_t tile) {
+    SCENE_TRY {
+        SceneState &s = *requireScene(scene)->state;
+        if (!validLayer(s, layer) || !validTile(s, x, y))
+            return 0;
+
+        std::vector<int64_t> &tiles = s.layers[static_cast<size_t>(layer)].tiles;
+        const size_t rowWidth = static_cast<size_t>(s.width);
+        const size_t start = static_cast<size_t>(y) * rowWidth + static_cast<size_t>(x);
+        const int64_t sourceTile = tiles[start];
+        if (sourceTile == tile)
+            return 0;
+
+        // Allocate the complete bounded work set before the first write. The
+        // queue cannot grow after this point, so allocation failure is atomic.
+        std::vector<size_t> queue(tiles.size());
+        std::vector<uint8_t> queued(tiles.size(), 0);
+        size_t head = 0;
+        size_t tail = 0;
+        queue[tail++] = start;
+        queued[start] = 1;
+
+        auto enqueue = [&](size_t index) {
+            if (!queued[index] && tiles[index] == sourceTile) {
+                queued[index] = 1;
+                queue[tail++] = index;
+            }
+        };
+
+        int64_t changed = 0;
+        while (head < tail) {
+            const size_t current = queue[head++];
+            tiles[current] = tile;
+            ++changed;
+
+            const size_t column = current % rowWidth;
+            if (column > 0)
+                enqueue(current - 1);
+            if (column + 1 < rowWidth)
+                enqueue(current + 1);
+            if (current >= rowWidth)
+                enqueue(current - rowWidth);
+            if (current + rowWidth < tiles.size())
+                enqueue(current + rowWidth);
+        }
+        return changed;
+    }
+    SCENE_CATCH(0)
 }
 
 void rt_game_scene_set_layer_asset(void *scene, int64_t layer, rt_string asset_path){

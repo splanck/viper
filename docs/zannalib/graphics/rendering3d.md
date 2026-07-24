@@ -865,6 +865,7 @@ skips nonresident meshes and falls back to the next resident choice.
 | `SetLodResident(index, resident)` | `Void(Integer, Boolean)` | Mark an LOD mesh payload resident/nonresident |
 | `GetLodResident(index)` | `Boolean(Integer)` | Return whether an LOD mesh payload is resident |
 | `GetLodResidentBytes(index)` | `Integer(Integer)` | Return resident bytes for an LOD mesh payload |
+| `Light` | `Object` | Attached `Light3D`, or `null`; read/write and retained by the node |
 | `Camera` | `Object` | Attached `Camera3D`, or `null`; read/write and cloned with the node hierarchy |
 
 `SetAutoLOD` selects among meshes registered with `AddLOD`; `GenerateLODs`
@@ -873,6 +874,13 @@ simplification, so downloaded models get a real LOD chain in one call. A lower `
 while a higher value switches to lower-detail meshes sooner. `SetImpostor`
 retains the supplied `Pixels` object and builds a regular textured `Mesh3D`
 proxy, so it works on the same draw path as other meshes.
+
+`SceneNode.Light` is the typed component used by VSCN persistence and
+`SceneGraph.Draw`. Assigning a valid `Light3D` retains it, assigning `null`
+clears it, and a wrong-class handle is rejected without mutation. A
+node-attached light's position and direction are light-local and are transformed
+through the node hierarchy during draw; direct `Canvas3D.SetLight` slots use
+world-space values.
 
 ### Zanna.Graphics3D.Camera3D
 
@@ -1101,6 +1109,7 @@ Directional, point, ambient, spot, rectangle-area, sphere-area, or volume scene 
 | `SetIntensity(value)` | `Void(Double)` | Set light intensity multiplier |
 | `SetColor(r, g, b)` | `Void(Double, Double, Double)` | Set light color using normalized RGB components |
 | `SetAttenuation(value)` | `Void(Double)` | Set point/spot distance attenuation |
+| `SetSpotCone(innerDegrees, outerDegrees)` | `Void(Double, Double)` | Sanitize and replace both spot-cone angles as one mutation |
 
 #### Properties
 
@@ -1119,10 +1128,14 @@ Directional, point, ambient, spot, rectangle-area, sphere-area, or volume scene 
 | `Radius` | Double | Read/Write | Sphere/volume radius |
 | `DecayType` | Integer | Read/Write | FBX-compatible `0=none`, `1=linear`, `2=quadratic`, `3=cubic` falloff |
 | `Range` | Double | Read/Write | Finite-light range; zero selects constructor/importer default behavior |
+| `InnerConeDegrees` | Double | Read | Sanitized inner angle for spot lights; zero for other types |
+| `OuterConeDegrees` | Double | Read | Sanitized outer angle for spot lights; zero for other types |
 
 All backends consume the same native area/volume parameters. Constructors and
 property writes sanitize non-finite values, clamp colors and non-negative
-dimensions, normalize directions, and keep spot cones finite and ordered.
+dimensions, normalize directions, and keep spot cones finite, ordered, and at
+least `0.01` degrees apart. `SetSpotCone` validates the pair together so a
+caller never observes an intermediate cone.
 
 ---
 

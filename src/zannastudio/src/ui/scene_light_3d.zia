@@ -1,0 +1,419 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/ui/scene_light_3d.zia
+// Purpose: Complete, clone-safe Light3D drafts for Studio's 3D scene editor.
+// Key invariants:
+//   - Every accepted edit builds an independent Light3D before node assignment.
+//   - All seven runtime light kinds preserve every applicable retained field.
+//   - Draft values are bounded before reaching the runtime.
+//   - Equality follows normalized public state, never object identity.
+// Ownership/Lifetime: Returned lights are independent runtime objects owned by
+//                     the receiving SceneNode.
+// Links: zannastudio/src/ui/scene_editor_3d.zia,
+//        zannastudio/src/ui/scene_light_inspector_3d.zia,
+//        zannastudio/src/probes/scene_light_authoring_probe.zia,
+//        docs/adr/0172-public-scenenode-light-authoring-and-studio-light-inspector.md
+//
+//===----------------------------------------------------------------------===//
+
+module scene_light_3d;
+
+bind Light3D = Zanna.Graphics3D.Light3D;
+bind Vec3 = Zanna.Math.Vec3;
+bind Math = Zanna.Math;
+bind Convert = Zanna.Core.Convert;
+
+// ============================================================================
+// MODULE: scene_light_3d
+// PURPOSE: Keep complete light reconstruction and comparison outside the
+//          already-large SceneEditor3D document controller.
+//
+// WHERE-THIS-FITS: SceneLightInspector3D owns widgets. SceneEditor3D owns
+//          selection, VSCN history, and node assignment. This module owns only
+//          normalized value drafts and new Light3D construction.
+//
+// TEACHING-NOTE: Imported light objects may be shared. A Studio edit therefore
+//          replaces a node's component with a staged value instead of mutating
+//          the borrowed current object.
+// ============================================================================
+
+final LIGHT_DIRECTIONAL: Integer = 0;
+final LIGHT_POINT: Integer = 1;
+final LIGHT_AMBIENT: Integer = 2;
+final LIGHT_SPOT: Integer = 3;
+final LIGHT_AREA_RECTANGLE: Integer = 4;
+final LIGHT_AREA_SPHERE: Integer = 5;
+final LIGHT_VOLUME: Integer = 6;
+
+final DECAY_NONE: Integer = 0;
+final DECAY_LINEAR: Integer = 1;
+final DECAY_QUADRATIC: Integer = 2;
+final DECAY_CUBIC: Integer = 3;
+
+final DEFAULT_COLOR: Integer = 0xFFFFFF;
+final DEFAULT_ATTENUATION: Number = 0.1;
+final DEFAULT_RANGE: Number = 10.0;
+final DEFAULT_INNER_CONE: Number = 20.0;
+final DEFAULT_OUTER_CONE: Number = 35.0;
+final LIGHT_VALUE_EPSILON: Number = 0.000001;
+final LIGHT_POSITION_LIMIT: Number = 1000000.0;
+final LIGHT_PARAMETER_LIMIT: Number = 1000000.0;
+
+/// @brief Complete editable state for one node-attached runtime light.
+class LightState3D {
+    expose Integer kind;
+    expose Number red;
+    expose Number green;
+    expose Number blue;
+    expose Number intensity;
+    expose Boolean enabled;
+    expose Boolean castsShadows;
+    expose Number positionX;
+    expose Number positionY;
+    expose Number positionZ;
+    expose Number directionX;
+    expose Number directionY;
+    expose Number directionZ;
+    expose Number attenuation;
+    expose Integer decayType;
+    expose Number range;
+    expose Number width;
+    expose Number height;
+    expose Number radius;
+    expose Number innerConeDegrees;
+    expose Number outerConeDegrees;
+
+    expose func init() {
+        kind = LIGHT_POINT;
+        red = 1.0;
+        green = 1.0;
+        blue = 1.0;
+        intensity = 1.0;
+        enabled = true;
+        castsShadows = false;
+        positionX = 0.0;
+        positionY = 0.0;
+        positionZ = 0.0;
+        directionX = 0.0;
+        directionY = -1.0;
+        directionZ = 0.0;
+        attenuation = DEFAULT_ATTENUATION;
+        decayType = DECAY_QUADRATIC;
+        range = DEFAULT_RANGE;
+        width = 1.0;
+        height = 1.0;
+        radius = 1.0;
+        innerConeDegrees = DEFAULT_INNER_CONE;
+        outerConeDegrees = DEFAULT_OUTER_CONE;
+    }
+}
+
+/// @brief Return a stable display label for one runtime light type.
+expose func TypeName(kind: Integer) -> String {
+    if kind == LIGHT_DIRECTIONAL { return "Directional"; }
+    if kind == LIGHT_POINT { return "Point"; }
+    if kind == LIGHT_AMBIENT { return "Ambient"; }
+    if kind == LIGHT_SPOT { return "Spot"; }
+    if kind == LIGHT_AREA_RECTANGLE { return "Rectangle Area"; }
+    if kind == LIGHT_AREA_SPHERE { return "Sphere Area"; }
+    if kind == LIGHT_VOLUME { return "Volume"; }
+    return "Point";
+}
+
+/// @brief Return whether a type has a light-local position offset.
+expose func HasPosition(kind: Integer) -> Boolean {
+    return kind == LIGHT_POINT
+        or kind == LIGHT_SPOT
+        or kind == LIGHT_AREA_RECTANGLE
+        or kind == LIGHT_AREA_SPHERE
+        or kind == LIGHT_VOLUME;
+}
+
+/// @brief Return whether a type has a light-local emission direction.
+expose func HasDirection(kind: Integer) -> Boolean {
+    return kind == LIGHT_DIRECTIONAL
+        or kind == LIGHT_SPOT
+        or kind == LIGHT_AREA_RECTANGLE;
+}
+
+/// @brief Return whether a type has distance attenuation.
+expose func HasAttenuation(kind: Integer) -> Boolean {
+    return kind == LIGHT_POINT
+        or kind == LIGHT_SPOT
+        or kind == LIGHT_AREA_RECTANGLE
+        or kind == LIGHT_AREA_SPHERE;
+}
+
+/// @brief Return whether a type has an explicit finite range.
+expose func HasRange(kind: Integer) -> Boolean {
+    return kind == LIGHT_AREA_RECTANGLE
+        or kind == LIGHT_AREA_SPHERE
+        or kind == LIGHT_VOLUME;
+}
+
+/// @brief Return whether a type exposes distance-decay authoring.
+expose func HasDecay(kind: Integer) -> Boolean {
+    return HasPosition(kind);
+}
+
+/// @brief Return whether a type can claim a renderer shadow slot.
+expose func SupportsShadows(kind: Integer) -> Boolean {
+    return kind != LIGHT_AMBIENT and kind != LIGHT_VOLUME;
+}
+
+/// @brief Clamp and mutually validate a complete inspector draft in place.
+expose func Normalize(state: LightState3D) -> LightState3D {
+    if state == null { return new LightState3D(); }
+    if state.kind < LIGHT_DIRECTIONAL or state.kind > LIGHT_VOLUME {
+        state.kind = LIGHT_POINT;
+    }
+    state.red = Clamp(state.red, 0.0, 1.0);
+    state.green = Clamp(state.green, 0.0, 1.0);
+    state.blue = Clamp(state.blue, 0.0, 1.0);
+    state.intensity = Clamp(
+        state.intensity, 0.0, LIGHT_PARAMETER_LIMIT);
+    state.positionX = Clamp(
+        state.positionX, 0.0 - LIGHT_POSITION_LIMIT, LIGHT_POSITION_LIMIT);
+    state.positionY = Clamp(
+        state.positionY, 0.0 - LIGHT_POSITION_LIMIT, LIGHT_POSITION_LIMIT);
+    state.positionZ = Clamp(
+        state.positionZ, 0.0 - LIGHT_POSITION_LIMIT, LIGHT_POSITION_LIMIT);
+    state.directionX = Clamp(
+        state.directionX, 0.0 - LIGHT_POSITION_LIMIT, LIGHT_POSITION_LIMIT);
+    state.directionY = Clamp(
+        state.directionY, 0.0 - LIGHT_POSITION_LIMIT, LIGHT_POSITION_LIMIT);
+    state.directionZ = Clamp(
+        state.directionZ, 0.0 - LIGHT_POSITION_LIMIT, LIGHT_POSITION_LIMIT);
+    if Near(state.directionX, 0.0)
+       and Near(state.directionY, 0.0)
+       and Near(state.directionZ, 0.0) {
+        state.directionX = 0.0;
+        state.directionY = -1.0;
+        state.directionZ = 0.0;
+    }
+    state.attenuation = Clamp(
+        state.attenuation, 0.001, LIGHT_PARAMETER_LIMIT);
+    if state.decayType < DECAY_NONE or state.decayType > DECAY_CUBIC {
+        state.decayType = DECAY_QUADRATIC;
+    }
+    state.range = ClampPositive(state.range);
+    state.width = ClampPositive(state.width);
+    state.height = ClampPositive(state.height);
+    state.radius = ClampPositive(state.radius);
+    state.innerConeDegrees = Clamp(state.innerConeDegrees, 0.0, 89.0);
+    state.outerConeDegrees = Clamp(state.outerConeDegrees, 0.0, 89.0);
+    if state.outerConeDegrees <= state.innerConeDegrees + 0.01 {
+        if state.innerConeDegrees > 88.99 {
+            state.innerConeDegrees = 88.99;
+        }
+        state.outerConeDegrees = state.innerConeDegrees + 0.01;
+    }
+    if SupportsShadows(state.kind) == false {
+        state.castsShadows = false;
+    }
+    return state;
+}
+
+/// @brief Snapshot every applicable public field from one runtime light.
+expose func FromLight(light: Light3D) -> LightState3D {
+    var state = new LightState3D();
+    if light == null { return state; }
+    state.kind = light.Type;
+    var color = light.Color;
+    if color != null {
+        state.red = color.X;
+        state.green = color.Y;
+        state.blue = color.Z;
+    }
+    state.intensity = light.Intensity;
+    state.enabled = light.IsEnabled;
+    state.castsShadows = light.CastsShadows;
+    state.decayType = light.DecayType;
+    if HasPosition(state.kind) {
+        var position = light.Position;
+        if position != null {
+            state.positionX = position.X;
+            state.positionY = position.Y;
+            state.positionZ = position.Z;
+        }
+    }
+    if HasDirection(state.kind) {
+        var direction = light.Direction;
+        if direction != null {
+            state.directionX = direction.X;
+            state.directionY = direction.Y;
+            state.directionZ = direction.Z;
+        }
+    }
+    if HasAttenuation(state.kind) {
+        state.attenuation = light.Attenuation;
+    }
+    if HasRange(state.kind) { state.range = light.Range; }
+    if state.kind == LIGHT_AREA_RECTANGLE {
+        state.width = light.Width;
+        state.height = light.Height;
+    }
+    if state.kind == LIGHT_AREA_SPHERE or state.kind == LIGHT_VOLUME {
+        state.radius = light.Radius;
+    }
+    if state.kind == LIGHT_SPOT {
+        state.innerConeDegrees = light.InnerConeDegrees;
+        state.outerConeDegrees = light.OuterConeDegrees;
+    }
+    return Normalize(state);
+}
+
+/// @brief Construct one independent runtime light from normalized state.
+expose func BuildLight(draft: LightState3D) -> Light3D {
+    var state = Normalize(draft);
+    var position = Vec3.New(
+        state.positionX, state.positionY, state.positionZ);
+    var direction = Vec3.New(
+        state.directionX, state.directionY, state.directionZ);
+    var light: Light3D = null;
+    if state.kind == LIGHT_DIRECTIONAL {
+        light = Light3D.Directional(
+            direction, state.red, state.green, state.blue) as Light3D;
+    } else if state.kind == LIGHT_POINT {
+        light = Light3D.Point(
+            position,
+            state.red, state.green, state.blue,
+            state.attenuation) as Light3D;
+    } else if state.kind == LIGHT_AMBIENT {
+        light = Light3D.Ambient(
+            state.red, state.green, state.blue) as Light3D;
+    } else if state.kind == LIGHT_SPOT {
+        light = Light3D.Spot(
+            position, direction,
+            state.red, state.green, state.blue,
+            state.attenuation,
+            state.innerConeDegrees,
+            state.outerConeDegrees) as Light3D;
+    } else if state.kind == LIGHT_AREA_RECTANGLE {
+        light = Light3D.AreaRectangle(
+            position, direction,
+            state.width, state.height,
+            state.red, state.green, state.blue,
+            state.attenuation, state.range) as Light3D;
+    } else if state.kind == LIGHT_AREA_SPHERE {
+        light = Light3D.AreaSphere(
+            position, state.radius,
+            state.red, state.green, state.blue,
+            state.range) as Light3D;
+    } else if state.kind == LIGHT_VOLUME {
+        light = Light3D.Volume(
+            position, state.radius,
+            state.red, state.green, state.blue,
+            state.range) as Light3D;
+    }
+    if light == null { return null; }
+    light.SetIntensity(state.intensity);
+    light.IsEnabled = state.enabled;
+    light.CastsShadows = state.castsShadows;
+    light.DecayType = state.decayType;
+    if HasAttenuation(state.kind) {
+        light.SetAttenuation(state.attenuation);
+    }
+    return light;
+}
+
+/// @brief Compare two lights through their complete normalized public state.
+expose func Equivalent(left: Light3D, right: Light3D) -> Boolean {
+    if left == null or right == null { return left == right; }
+    var a = FromLight(left);
+    var b = FromLight(right);
+    if a.kind != b.kind
+       or Near(a.red, b.red) == false
+       or Near(a.green, b.green) == false
+       or Near(a.blue, b.blue) == false
+       or Near(a.intensity, b.intensity) == false
+       or a.enabled != b.enabled
+       or a.castsShadows != b.castsShadows
+       or a.decayType != b.decayType {
+        return false;
+    }
+    if HasPosition(a.kind)
+       and (Near(a.positionX, b.positionX) == false
+            or Near(a.positionY, b.positionY) == false
+            or Near(a.positionZ, b.positionZ) == false) {
+        return false;
+    }
+    if HasDirection(a.kind)
+       and (Near(a.directionX, b.directionX) == false
+            or Near(a.directionY, b.directionY) == false
+            or Near(a.directionZ, b.directionZ) == false) {
+        return false;
+    }
+    if HasAttenuation(a.kind)
+       and Near(a.attenuation, b.attenuation) == false {
+        return false;
+    }
+    if HasRange(a.kind) and Near(a.range, b.range) == false {
+        return false;
+    }
+    if a.kind == LIGHT_AREA_RECTANGLE
+       and (Near(a.width, b.width) == false
+            or Near(a.height, b.height) == false) {
+        return false;
+    }
+    if (a.kind == LIGHT_AREA_SPHERE or a.kind == LIGHT_VOLUME)
+       and Near(a.radius, b.radius) == false {
+        return false;
+    }
+    if a.kind == LIGHT_SPOT
+       and (Near(a.innerConeDegrees, b.innerConeDegrees) == false
+            or Near(a.outerConeDegrees, b.outerConeDegrees) == false) {
+        return false;
+    }
+    return true;
+}
+
+/// @brief Return a ColorPicker/Pixels-compatible packed RGB value.
+expose func PackedRgb(light: Light3D) -> Integer {
+    if light == null or light.Color == null { return 0xFFFFFF; }
+    var color = light.Color;
+    var red = ByteFromUnit(color.X);
+    var green = ByteFromUnit(color.Y);
+    var blue = ByteFromUnit(color.Z);
+    return red * 65536 + green * 256 + blue;
+}
+
+/// @brief Convert one picker byte to a normalized color component.
+expose func UnitFromByte(value: Integer) -> Number {
+    var channel = value;
+    if channel < 0 { channel = 0; }
+    if channel > 255 { channel = 255; }
+    return channel / 255.0;
+}
+
+/// @brief Compare public light scalars with the editor tolerance.
+expose func ValuesEqual(left: Number, right: Number) -> Boolean {
+    return Near(left, right);
+}
+
+hide func ByteFromUnit(value: Number) -> Integer {
+    return Convert.NumToInt(Math.Round(Clamp(value, 0.0, 1.0) * 255.0));
+}
+
+hide func ClampPositive(value: Number) -> Number {
+    return Clamp(value, 0.001, LIGHT_PARAMETER_LIMIT);
+}
+
+hide func Clamp(value: Number,
+                minimum: Number,
+                maximum: Number) -> Number {
+    if value < minimum { return minimum; }
+    if value > maximum { return maximum; }
+    return value;
+}
+
+hide func Near(left: Number, right: Number) -> Boolean {
+    var difference = left - right;
+    if difference < 0.0 { difference = 0.0 - difference; }
+    return difference <= LIGHT_VALUE_EPSILON;
+}

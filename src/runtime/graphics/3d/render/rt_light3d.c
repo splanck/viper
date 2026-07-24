@@ -23,7 +23,8 @@
 // Ownership/Lifetime:
 //   - Light3D is GC-managed; no finalizer needed (no owned heap allocations).
 //
-// Links: rt_canvas3d.h, rt_canvas3d_internal.h
+// Links: rt_canvas3d.h, rt_canvas3d_internal.h,
+//   docs/adr/0172-public-scenenode-light-authoring-and-studio-light-inspector.md
 //
 //===----------------------------------------------------------------------===//
 
@@ -164,6 +165,41 @@ static void sanitize_spot_angles(double *inner_angle, double *outer_angle) {
     }
     if (inner < 0.0)
         inner = 0.0;
+    if (inner_angle)
+        *inner_angle = inner;
+    if (outer_angle)
+        *outer_angle = outer;
+}
+
+/// @brief Decode one retained spot cone into the public, sanitized degree pair.
+/// @details Retained and imported lights store cone cosines. Decode through a
+///   clamped domain, then reuse the constructor sanitizer so corrupt legacy
+///   payloads cannot surface non-finite or inverted authoring values.
+static void light3d_get_spot_angles(const rt_light3d *light,
+                                    double *inner_angle,
+                                    double *outer_angle) {
+    double inner = 0.0;
+    double outer = 0.0;
+    if (light && light->type == 3) {
+        const double radians_to_degrees = 57.2957795130823208768;
+        double inner_cos = light->inner_cos;
+        double outer_cos = light->outer_cos;
+        if (!isfinite(inner_cos))
+            inner_cos = 1.0;
+        if (!isfinite(outer_cos))
+            outer_cos = 0.7071067811865475244;
+        if (inner_cos < 0.0)
+            inner_cos = 0.0;
+        if (inner_cos > 1.0)
+            inner_cos = 1.0;
+        if (outer_cos < 0.0)
+            outer_cos = 0.0;
+        if (outer_cos > 1.0)
+            outer_cos = 1.0;
+        inner = acos(inner_cos) * radians_to_degrees;
+        outer = acos(outer_cos) * radians_to_degrees;
+        sanitize_spot_angles(&inner, &outer);
+    }
     if (inner_angle)
         *inner_angle = inner;
     if (outer_angle)
@@ -747,6 +783,39 @@ void rt_light3d_set_range(void *obj, double range) {
     if (!light || light->type < 4 || light->type > 6)
         return;
     light->range = sanitize_positive_light_param(range);
+    light3d_note_mutation();
+}
+
+/// @brief Return the sanitized inner spot-cone angle in degrees.
+/// @return Zero for null, invalid, or non-spot lights.
+double rt_light3d_get_inner_cone_degrees(void *obj) {
+    rt_light3d *light = light3d_checked(obj);
+    double inner = 0.0;
+    light3d_get_spot_angles(light, &inner, NULL);
+    return inner;
+}
+
+/// @brief Return the sanitized outer spot-cone angle in degrees.
+/// @return Zero for null, invalid, or non-spot lights.
+double rt_light3d_get_outer_cone_degrees(void *obj) {
+    rt_light3d *light = light3d_checked(obj);
+    double outer = 0.0;
+    light3d_get_spot_angles(light, NULL, &outer);
+    return outer;
+}
+
+/// @brief Atomically replace both spot-cone angles using constructor semantics.
+/// @details Non-spot lights are left unchanged. One mutation generation covers
+///   the complete paired update so renderer snapshots cannot observe a
+///   half-updated cone.
+void rt_light3d_set_spot_cone(void *obj, double inner_angle, double outer_angle) {
+    rt_light3d *light = light3d_checked(obj);
+    if (!light || light->type != 3)
+        return;
+    const double degrees_to_radians = 0.01745329251994329577;
+    sanitize_spot_angles(&inner_angle, &outer_angle);
+    light->inner_cos = cos(inner_angle * degrees_to_radians);
+    light->outer_cos = cos(outer_angle * degrees_to_radians);
     light3d_note_mutation();
 }
 

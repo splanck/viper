@@ -53,8 +53,9 @@ Zanna BASIC. It includes:
 
 The app includes built-in visual authoring surfaces for `.scene`/`.level` and
 `.vscn` documents. The 2D editor covers layers, real atlas rendering, a tile
-palette, paint/erase, placed objects, scene-wide and per-object typed
-properties, point and inclusive cell-marquee selection with
+palette, captured cancelable freehand paint/erase, inclusive rectangle paint,
+four-connected bucket fill, active-layer tile picking, placed objects,
+scene-wide and per-object typed properties, point and inclusive cell-marquee selection with
 replace/Shift-add/Ctrl-or-Command-toggle behavior, stable multi-object
 selection, focus-safe pixel/tile nudging, primary-axis alignment,
 deterministic distribution, a true expandable multi-selection object
@@ -80,7 +81,9 @@ expandable multi-selection TreeView with
 transactional before/into/after drag reparenting and sibling ordering,
 mixed-state batch visibility, truthful mixed-value batch PBR materials,
 batch embedded texture maps,
-typed per-node gameplay metadata, and history. Node roles, IDs, trigger/spawn settings, and
+single-node authoring for all seven runtime light types with hierarchy and
+viewport markers, typed per-node gameplay metadata, and history. Node roles,
+IDs, trigger/spawn settings, and
 component parameters can be authored as null, Boolean, integer, float, or
 string values without encoding them in display names; metadata selection stays
 with its scene tab and session.
@@ -108,11 +111,12 @@ typed, bounded clipboard envelope
 supports same-kind cross-document object or subtree transfer with one-step
 history and exact rollback. These are practical v1 scene editors, not yet
 replacements for automatic scene-data/schema migration, generalized runtime
-components, or the advanced animation, collision, tileset-metadata, lighting,
-lightmap, and asset-library tooling of a mature game engine. The 3D viewport
-does render the live SceneGraph's authored meshes and PBR materials through a
-windowless runtime Canvas3D, with a per-scene triangle-wireframe mode and
-editor grid, hierarchy, selection, and transform overlays. Viewport clicks
+components, batch light editing, or the advanced animation, collision,
+tileset-metadata, lightmap, and asset-library tooling of a mature game engine.
+The 3D viewport renders the live SceneGraph's authored meshes, PBR materials,
+and node-attached lights through a windowless runtime Canvas3D, with a
+per-scene triangle-wireframe mode and editor grid, hierarchy, selection,
+transform, and light overlays. Viewport clicks
 select the nearest visible mesh bounds before falling back to node-origin
 markers; Shift adds, Ctrl/Command toggles, and an unmodified blank click clears
 the selection. Shift plus middle- or right-drag pans in the camera plane, while

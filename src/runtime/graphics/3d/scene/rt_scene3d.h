@@ -23,7 +23,8 @@
 //   docs/adr/0159-typed-scenenode-metadata-and-vscn-v6.md,
 //   docs/adr/0161-stable-scenenode-sibling-reordering.md,
 //   docs/adr/0162-exact-preserve-world-scenenode-reparenting.md,
-//   docs/adr/0166-exact-scenenode-world-matrix-assignment.md
+//   docs/adr/0166-exact-scenenode-world-matrix-assignment.md,
+//   docs/adr/0172-public-scenenode-light-authoring-and-studio-light-inspector.md
 //
 //===----------------------------------------------------------------------===//
 #pragma once
@@ -183,6 +184,10 @@ void *rt_scene_node3d_get_mesh(void *node);
 void rt_scene_node3d_set_material(void *node, void *material);
 /// @brief Get the bound Material3D (NULL if none).
 void *rt_scene_node3d_get_material(void *node);
+/// @brief Bind a Light3D transformed and submitted with this node; NULL clears.
+void rt_scene_node3d_set_light(void *node, void *light);
+/// @brief Get the node-attached Light3D, or NULL.
+void *rt_scene_node3d_get_light(void *node);
 /// @brief Bind a Camera3D whose view pose follows this node during SyncBindings.
 void rt_scene_node3d_set_camera(void *node, void *camera);
 /// @brief Get the node-attached Camera3D, or NULL.

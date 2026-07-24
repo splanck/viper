@@ -500,12 +500,26 @@ The status says when matching is limited to the editor's bounded represented
 hierarchy. Searching and jumping do not change canonical scene bytes, revision,
 undo/redo, dirty state, 2D coordinates, or the 3D camera.
 
-The 2D toolbar switches among Select, Paint, Erase, and Object modes. Paint and
-erase interpolate missed cells during a fast pointer stroke. In Select mode, a
-plain click on an unselected object replaces the selection; pressing an
-already-selected object preserves the complete selection so it can be dragged
-as a group. Shift-click adds an object, while Ctrl/Command-click toggles it
-without beginning a move.
+The 2D toolbar switches among Select, Paint, Erase, Rectangle, Fill, Pick, and
+Object modes. Paint and Erase interpolate missed cells during a fast pointer
+stroke and capture the pointer until release. Escape restores the pre-stroke
+scene exactly and adds no history; a changed release commits the entire stroke
+once.
+
+Rectangle draws a non-destructive inclusive cell outline while captured, then
+fills the forward or reverse drag once on release. Escape discards the preview
+without changing the scene. Fill replaces the clicked cell's exact
+four-connected active-layer region, so diagonal-only neighbors remain separate.
+Pick samples the clicked active-layer tile into the numeric tile field and
+returns to Paint without changing canonical scene data. Tile ID `0` is empty,
+so Rectangle and Fill can also clear regions. Each changed Rectangle or Fill is
+one undo entry, and exact no-ops add none. Tool and selected-tile choices follow
+the owning scene tab and bounded session state.
+
+In Select mode, a plain click on an unselected object replaces the selection;
+pressing an already-selected object preserves the complete selection so it can
+be dragged as a group. Shift-click adds an object, while Ctrl/Command-click
+toggles it without beginning a move.
 
 Press and drag from a blank canvas cell to draw an inclusive authored-cell
 selection box. A plain box replaces the selection, Shift unions its objects
@@ -808,6 +822,41 @@ dimensions. The preview is derived from the live material's decoded pixels, not
 the picker path, so it follows VSCN load, undo/redo, import, clone, and
 cross-document scene operations. Switching slots reuses the thumbnail while the
 material and decoded source identity are unchanged.
+
+### 3D Light Authoring
+
+Use **+ Light** to create a named point-light node, or select one node and use
+the Light component to add, inspect, convert, or remove its attached light.
+The type picker covers Directional, Point, Ambient, Spot, Rectangle Area,
+Sphere Area, and Volume. Common controls author normalized color, intensity,
+enabled state, and supported shadow state. Type-specific groups expose the
+light-local position and direction, attenuation, decay mode, finite range,
+rectangle width/height, sphere or volume radius, and spot inner/outer cone
+angles. The node transform remains the coarse placement and orientation;
+`SceneGraph.Draw` composes those local light values through the hierarchy.
+
+Studio reconstructs a complete independent light for each accepted edit instead
+of mutating the attached runtime object. This preserves imported components
+that share identity. A normalized replacement equal to the current light is a
+no-op. Add, apply or type conversion, and remove each serialize once and create
+one VSCN history entry; save failure reloads the preceding canonical scene.
+Undo, redo, reopen, duplicate, and cross-document subtree operations therefore
+use the same persisted light component rather than editor-only metadata.
+
+Hierarchy rows carry a `[light]` badge, and a meshless light uses the `✦`
+identity marker. The viewport draws the authored color and enabled state,
+connects a light-local offset to the node origin, shows applicable direction,
+and frames a bounded finite range. Light-only nodes remain pickable at their
+actual transformed light position. The viewport status and accessibility text
+report the authored light count.
+
+Light editing is deliberately single-node. With zero or multiple nodes
+selected, apply/remove controls are disabled and the inspector explains the
+scope instead of treating one primary light as a batch value. VSCN may preserve
+more lights than the preview backend can activate: the runtime submits up to 16
+on software and 64 on clustered GPU backends and exposes dropped-light
+telemetry. Studio does not delete or impose an obsolete eight-light authoring
+cap.
 
 Both editors retain invalid source bytes unchanged and explain the parse/load
 failure instead of replacing the document. Current authoring limits include no

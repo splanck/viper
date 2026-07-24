@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 //
 // File: zannastudio/src/ui/scene_editor_3d.zia
-// Purpose: Visual hierarchy, transform/material/gameplay-data inspector,
+// Purpose: Visual hierarchy, transform/light/material/gameplay-data inspector,
 //          additive importer, and shaded/wireframe VSCN viewport.
 // Key invariants:
 //   - The live SceneGraph is serialized back to Document.content after every
@@ -30,6 +30,8 @@
 //     complete selection through one rollback-safe canonical transaction.
 //   - Material groups expose truthful mixed values; resolved sparse fields and
 //     maps stage clone-safe assignments before one canonical transaction.
+//   - Light components are reconstructed independently across all seven
+//     runtime kinds and assigned through one rollback-safe VSCN transaction.
 //   - Typed node metadata commits through canonical VSCN history and retains
 //     exact scalar kinds, including explicit null and integral-looking floats.
 //   - Project components add only missing typed node metadata across a
@@ -59,6 +61,8 @@
 //        zannastudio/src/ui/scene_component_schema.zia,
 //        zannastudio/src/ui/scene_hierarchy_search.zia,
 //        zannastudio/src/ui/scene_hierarchy_3d.zia,
+//        zannastudio/src/ui/scene_light_3d.zia,
+//        zannastudio/src/ui/scene_light_inspector_3d.zia,
 //        zannastudio/src/ui/scene_material_3d.zia,
 //        zannastudio/src/ui/scene_material_inspector_3d.zia,
 //        zannastudio/src/ui/scene_metadata_inspector_3d.zia,
@@ -79,7 +83,8 @@
 //        docs/adr/0166-exact-scenenode-world-matrix-assignment.md,
 //        docs/adr/0167-spinner-mixed-value-state.md,
 //        docs/adr/0168-windowless-canvas3d-rendering.md,
-//        docs/adr/0169-super-modifier-keys-and-studio-viewport-picking.md
+//        docs/adr/0169-super-modifier-keys-and-studio-viewport-picking.md,
+//        docs/adr/0172-public-scenenode-light-authoring-and-studio-light-inspector.md
 //
 //===----------------------------------------------------------------------===//
 
@@ -111,6 +116,8 @@ bind "scene_component_schema";
 bind "scene_hierarchy_search";
 bind "scene_hierarchy_3d";
 bind "scene_selection";
+bind "scene_light_inspector_3d";
+bind "scene_light_3d";
 bind "scene_material_inspector_3d";
 bind "scene_material_3d";
 bind "scene_metadata_inspector_3d";
@@ -122,6 +129,7 @@ bind SceneNode = Zanna.Graphics3D.SceneNode;
 bind SceneAsset = Zanna.Graphics3D.SceneAsset;
 bind Mesh3D = Zanna.Graphics3D.Mesh3D;
 bind Material3D = Zanna.Graphics3D.Material3D;
+bind Light3D = Zanna.Graphics3D.Light3D;
 bind Canvas3D = Zanna.Graphics3D.Canvas3D;
 bind RenderTarget3D = Zanna.Graphics3D.RenderTarget3D;
 bind Camera3D = Zanna.Graphics3D.Camera3D;
@@ -527,6 +535,7 @@ class SceneEditor3D {
     expose GUI.Button addBoxButton;
     expose GUI.Button addSphereButton;
     expose GUI.Button addPlaneButton;
+    expose GUI.Button addLightButton;
     expose GUI.Button duplicateNodeButton;
     expose GUI.Button deleteNodeButton;
     expose GUI.Button orbitLeftButton;
@@ -573,6 +582,7 @@ class SceneEditor3D {
     expose GUI.Spinner scaleZ;
     expose GUI.Button applyTransformButton;
     expose scene_asset_browser.SceneAssetBrowser importAssetBrowser;
+    expose scene_light_inspector_3d.SceneLightInspector3D lightInspector;
     expose scene_material_inspector_3d.SceneMaterialInspector3D materialInspector;
     expose scene_metadata_inspector_3d.SceneMetadataInspector3D metadataInspector;
     expose scene_component_palette.SceneComponentPalette componentPalette;
@@ -676,6 +686,7 @@ class SceneEditor3D {
         addBoxButton = null;
         addSphereButton = null;
         addPlaneButton = null;
+        addLightButton = null;
         duplicateNodeButton = null;
         deleteNodeButton = null;
         orbitLeftButton = null;
@@ -722,6 +733,8 @@ class SceneEditor3D {
         scaleZ = null;
         applyTransformButton = null;
         importAssetBrowser = new scene_asset_browser.SceneAssetBrowser();
+        lightInspector =
+            new scene_light_inspector_3d.SceneLightInspector3D();
         materialInspector = new
             scene_material_inspector_3d.SceneMaterialInspector3D();
         metadataInspector = new
@@ -846,6 +859,9 @@ class SceneEditor3D {
         addBoxButton = GUI.Button.New(toolbar, "+ Box");
         addSphereButton = GUI.Button.New(toolbar, "+ Sphere");
         addPlaneButton = GUI.Button.New(toolbar, "+ Plane");
+        addLightButton = GUI.Button.New(toolbar, "+ Light");
+        addLightButton.SetTooltip(
+            "Create a top-level Point light node in one undoable edit");
         duplicateNodeButton = GUI.Button.New(toolbar, "Duplicate");
         duplicateNodeButton.SetTooltip(
             "Duplicate selected hierarchy roots with their complete subtrees");
@@ -1048,6 +1064,7 @@ class SceneEditor3D {
             inspector,
             "Project components",
             "3D node component template");
+        lightInspector.Setup(inspector);
         materialInspector.Setup(inspector);
 
         selectionInfo = GUI.Label.New(inspector, "No node selected");
@@ -1203,6 +1220,10 @@ class SceneEditor3D {
         if addPlaneButton.WasClicked() {
             changed = AddPrimitive(PRIMITIVE_PLANE, false) or changed;
         }
+        if addLightButton.WasClicked() {
+            changed = AddLightNode(
+                "Point Light " + scene.NodeCount, -1) >= 0 or changed;
+        }
         if duplicateNodeButton.WasClicked() {
             changed = DuplicateSelectedNodes() > 0 or changed;
         }
@@ -1284,6 +1305,17 @@ class SceneEditor3D {
         }
         if nameInput.WasSubmitted() and selectedIndices.count() == 1 {
             changed = ApplySelectedNode() or changed;
+        }
+        if lightInspector.typeDropdown.WasChanged() {
+            lightInspector.UpdateTypeControls();
+        }
+        if lightInspector.applyButton.WasClicked()
+           and selectedIndices.count() == 1 {
+            changed = ApplySelectedLightFromControls() or changed;
+        }
+        if lightInspector.removeButton.WasClicked()
+           and selectedIndices.count() == 1 {
+            changed = RemoveNodeLight(selectedIndex) or changed;
         }
         materialInspector.PumpDraftIntent();
         if materialInspector.applyButton.WasClicked()
@@ -1877,6 +1909,49 @@ class SceneEditor3D {
         }
         if CommitScene("Added " + nodeName) == false { return -1; }
         RefreshHierarchy(node);
+        return selectedIndex;
+    }
+
+    /// @brief Create one named point-light node through canonical VSCN history.
+    /// @details The light is staged before hierarchy mutation. A valid parent
+    ///          index creates a light child; -1 creates a top-level node.
+    expose func AddLightNode(name: String,
+                             parentIndex: Integer) -> Integer {
+        if scene == null { return -1; }
+        var state = new scene_light_3d.LightState3D();
+        var light = scene_light_3d.BuildLight(state);
+        if light == null {
+            toolbarStatus.SetText("Light creation failed");
+            detailLabel.SetText(
+                "Studio could not allocate the Point light component.");
+            GUI.Toast.Error("3D light creation failed");
+            return -1;
+        }
+        var parent: SceneNode = null;
+        if parentIndex >= 0 and parentIndex < flatNodes.count() {
+            parent = flatNodes.get(parentIndex);
+        }
+        var node = SceneNode.New();
+        if node == null {
+            toolbarStatus.SetText("Light creation failed");
+            detailLabel.SetText("Studio could not allocate a scene node.");
+            GUI.Toast.Error("3D light creation failed");
+            return -1;
+        }
+        var nodeName = Str.Trim(name);
+        if nodeName == "" { nodeName = "Point Light " + scene.NodeCount; }
+        node.Name = nodeName;
+        node.Light = light;
+        if parent != null {
+            parent.AddChild(node);
+        } else {
+            scene.Add(node);
+        }
+        if CommitScene("Added " + nodeName) == false { return -1; }
+        RefreshHierarchy(node);
+        detailLabel.SetText(
+            "Created a Point light. Use the Light component inspector "
+            + "to change its type and local emission fields.");
         return selectedIndex;
     }
 
@@ -3037,6 +3112,79 @@ class SceneEditor3D {
         RefreshSelectedFields();
         SetEditorControlsEnabled(true);
         renderDirty = true;
+        return true;
+    }
+
+    /// @brief Replace one node light with an independent all-field value.
+    /// @details No live light mutates before staging completes. Imported or
+    ///          shared component aliases therefore cannot observe this edit.
+    expose func ApplyNodeLight(
+        nodeIndex: Integer,
+        state: scene_light_3d.LightState3D) -> Boolean {
+        if scene == null or state == null
+           or nodeIndex < 0 or nodeIndex >= flatNodes.count() {
+            return false;
+        }
+        var node = flatNodes.get(nodeIndex);
+        var next = scene_light_3d.BuildLight(state);
+        if next == null {
+            toolbarStatus.SetText("Light edit failed");
+            detailLabel.SetText(
+                "Studio could not construct an independent light value.");
+            GUI.Toast.Error("3D light edit failed");
+            return false;
+        }
+        if scene_light_3d.Equivalent(node.Light, next) {
+            detailLabel.SetText("The node light is already up to date.");
+            return false;
+        }
+        node.Light = next;
+        selectedIndex = nodeIndex;
+        selectedIndices = scene_selection.Single(
+            nodeIndex, flatNodes.count());
+        var typeName = scene_light_3d.TypeName(next.Type);
+        if CommitScene(
+               "Updated " + typeName + " light on "
+               + NodeDisplayName(node)) == false {
+            return false;
+        }
+        RefreshHierarchy(node);
+        detailLabel.SetText(
+            typeName
+            + " light updated as one independent, undoable component.");
+        return true;
+    }
+
+    /// @brief Apply the current light inspector draft to its one selected node.
+    expose func ApplySelectedLightFromControls() -> Boolean {
+        if lightInspector == null or selectedIndices.count() != 1 {
+            return false;
+        }
+        return ApplyNodeLight(
+            selectedIndex, lightInspector.BuildState());
+    }
+
+    /// @brief Remove one node light as a canonical history transaction.
+    expose func RemoveNodeLight(nodeIndex: Integer) -> Boolean {
+        if scene == null or nodeIndex < 0 or nodeIndex >= flatNodes.count() {
+            return false;
+        }
+        var node = flatNodes.get(nodeIndex);
+        if node.Light == null {
+            detailLabel.SetText("The selected node has no light component.");
+            return false;
+        }
+        node.Light = null;
+        selectedIndex = nodeIndex;
+        selectedIndices = scene_selection.Single(
+            nodeIndex, flatNodes.count());
+        if CommitScene(
+               "Removed light from " + NodeDisplayName(node)) == false {
+            return false;
+        }
+        RefreshHierarchy(node);
+        detailLabel.SetText(
+            "Removed the light component; the scene node was preserved.");
         return true;
     }
 
@@ -4508,6 +4656,7 @@ class SceneEditor3D {
         addBoxButton.SetEnabled(enabled);
         addSphereButton.SetEnabled(enabled);
         addPlaneButton.SetEnabled(enabled);
+        addLightButton.SetEnabled(enabled);
         duplicateNodeButton.SetEnabled(hasSelection);
         moveToolButton.SetEnabled(hasSelection);
         rotateToolButton.SetEnabled(hasSelection);
@@ -4554,6 +4703,7 @@ class SceneEditor3D {
         UpdateParentControlAvailability();
         UpdateSiblingControlAvailability();
         metadataInspector.SetEnabled(hasSingle);
+        UpdateLightControls(enabled);
         UpdateMaterialControls(enabled);
     }
 
@@ -4569,6 +4719,24 @@ class SceneEditor3D {
         metadataInspector.Refresh(
             node, enabled, selectedNodeMetadata);
         selectedNodeMetadata = metadataInspector.selectedProperty;
+    }
+
+    /// @brief Refresh complete node-light controls without changing history.
+    hide func RefreshLightFields(node: SceneNode) {
+        if lightInspector == null { return; }
+        lightInspector.Refresh(
+            node,
+            selectedIndices.count(),
+            scene != null);
+    }
+
+    /// @brief Keep light actions truthful for single-node authoring.
+    hide func UpdateLightControls(editorEnabled: Boolean) {
+        if lightInspector == null { return; }
+        var node = SelectedNode();
+        var hasLight = node != null and node.Light != null;
+        lightInspector.UpdateControls(
+            editorEnabled, hasLight, selectedIndices.count());
     }
 
     /// @brief Summarize selected-node coverage for the active component.
@@ -4684,6 +4852,17 @@ class SceneEditor3D {
         var index = 0;
         while index < flatNodes.count() {
             if flatNodes.get(index).Material == material { count = count + 1; }
+            index = index + 1;
+        }
+        return count;
+    }
+
+    /// @brief Count node-attached lights represented by the bounded editor tree.
+    hide func AuthoredLightCount() -> Integer {
+        var count = 0;
+        var index = 0;
+        while index < flatNodes.count() {
+            if flatNodes.get(index).Light != null { count = count + 1; }
             index = index + 1;
         }
         return count;
@@ -5339,6 +5518,7 @@ class SceneEditor3D {
             scaleZ.SetValue(1.0);
             selectionInfo.SetText("No node selected");
             RefreshMetadataFields(null);
+            RefreshLightFields(null);
             RefreshMaterialFields(null);
             return;
         }
@@ -5384,6 +5564,7 @@ class SceneEditor3D {
                 + "  |  inspector adds position/rotation and multiplies "
                 + "scale for the group");
             RefreshMetadataFields(node);
+            RefreshLightFields(node);
             RefreshMaterialFields(null);
             return;
         }
@@ -5409,10 +5590,17 @@ class SceneEditor3D {
         if node.Mesh != null { kind = "mesh"; }
         var materialState = "no material";
         if node.Material != null { materialState = "material"; }
+        var lightState = "no light";
+        if node.Light != null {
+            lightState =
+                scene_light_3d.TypeName(node.Light.Type) + " light";
+        }
         selectionInfo.SetText(
             kind + " node  |  children " + node.ChildCount
+            + "  |  " + lightState
             + "  |  " + materialState + "  |  local transform");
         RefreshMetadataFields(node);
+        RefreshLightFields(node);
         RefreshMaterialFields(node);
     }
 
@@ -5576,6 +5764,9 @@ class SceneEditor3D {
         if node.Material != null {
             componentMarker = componentMarker + " [mat]";
         }
+        if node.Light != null {
+            componentMarker = componentMarker + " [light]";
+        }
         var name = node.Name;
         if name == "" { name = "(unnamed)"; }
         var treeNode = hierarchyTree.AddNode(
@@ -5589,6 +5780,7 @@ class SceneEditor3D {
         GUI.TreeView.Node.SetStableId(treeNode, path);
         var icon = "◇";
         if node.Mesh != null { icon = "◆"; }
+        else if node.Light != null { icon = "✦"; }
         GUI.TreeView.Node.SetIcon(treeNode, icon);
         flatNodes.add(node);
         flatDepths.add(depth);
@@ -7190,8 +7382,15 @@ class SceneEditor3D {
                 var node = flatNodes.get(i);
                 var world = node.WorldPosition;
                 var point = Project(world.X, world.Y, world.Z);
-                projectedX.add(point.x);
-                projectedY.add(point.y);
+                var pickPoint = point;
+                if node.Light != null and node.Mesh == null {
+                    var lightWorld =
+                        LightWorldPosition(node, node.Light);
+                    pickPoint = Project(
+                        lightWorld.X, lightWorld.Y, lightWorld.Z);
+                }
+                projectedX.add(pickPoint.x);
+                projectedY.add(pickPoint.y);
 
                 var parent = node.Parent;
                 var parentIndex = FindFlatIndex(parent);
@@ -7207,6 +7406,8 @@ class SceneEditor3D {
                 var markerColor = Color.RGB(150, 165, 188);
                 if node.Mesh != null {
                     markerColor = Color.RGB(91, 180, 235);
+                } else if node.Light != null {
+                    markerColor = Color.RGB(255, 190, 74);
                 }
                 if node.Visible == false {
                     markerColor = Color.RGB(92, 98, 108);
@@ -7297,6 +7498,10 @@ class SceneEditor3D {
                 } else {
                     viewportPixels.DrawDisc(point.x, point.y, 4, markerColor);
                 }
+                if node.Light != null {
+                    DrawLightOverlay(
+                        node, node.Light, i == selectedIndex);
+                }
                 i = i + 1;
             }
         }
@@ -7311,6 +7516,7 @@ class SceneEditor3D {
         if hierarchyClipped { clipped = "  |  hierarchy preview clipped"; }
         var count = 0;
         if scene != null { count = scene.NodeCount - 1; }
+        var lightCount = AuthoredLightCount();
         var interaction = "";
         if gizmoDragAxis != GIZMO_AXIS_NONE {
             interaction = "  |  "
@@ -7331,12 +7537,14 @@ class SceneEditor3D {
         viewStatusLabel.SetText(
             count + " nodes  |  view " + viewYawDegrees
             + "/" + viewPitchDegrees + "  |  " + viewScale + " px/u"
+            + "  |  " + lightCount + " light(s)"
             + "  |  " + renderStatus
             + "  |  " + scene_transform_3d.ModeLabel(gizmoMode)
             + snapStatus
             + clipped + interaction);
         viewportImage.SetAccessibleDescription(
-            count + " scene nodes in " + renderStatus
+            count + " scene nodes and " + lightCount
+            + " authored lights in " + renderStatus
             + " mode at " + viewScale + " pixels per world unit. "
             + "Click visible meshes to select; Shift adds and Control or "
             + "Command toggles. Middle or right drag orbits; add Shift to pan.");
@@ -7351,6 +7559,101 @@ class SceneEditor3D {
             return;
         }
         viewportPixels.DrawDisc(point.x, point.y, 3, color);
+    }
+
+    /// @brief Resolve the authored light-local offset through node world space.
+    hide func LightWorldPosition(node: SceneNode,
+                                 light: Light3D) -> Vec3 {
+        if node == null { return Vec3.New(0.0, 0.0, 0.0); }
+        if light == null
+           or scene_light_3d.HasPosition(light.Type) == false {
+            return node.WorldPosition;
+        }
+        return Mat4.TransformPoint(node.WorldMatrix, light.Position) as Vec3;
+    }
+
+    /// @brief Resolve and normalize one light-local direction in world space.
+    hide func LightWorldDirection(node: SceneNode,
+                                  light: Light3D) -> Vec3 {
+        if node == null or light == null {
+            return Vec3.New(0.0, -1.0, 0.0);
+        }
+        var transformed = Mat4.TransformVector(
+            node.WorldMatrix, light.Direction) as Vec3;
+        if transformed == null {
+            return Vec3.New(0.0, -1.0, 0.0);
+        }
+        var length = Math.Sqrt(
+            transformed.X * transformed.X
+            + transformed.Y * transformed.Y
+            + transformed.Z * transformed.Z);
+        if length <= 0.000001 {
+            return Vec3.New(0.0, -1.0, 0.0);
+        }
+        return Vec3.New(
+            transformed.X / length,
+            transformed.Y / length,
+            transformed.Z / length);
+    }
+
+    /// @brief Draw a pickable light glyph plus applicable direction and range.
+    /// @details The retained overlay makes meshless lighting nodes visible
+    ///          without replacing the live SceneGraph shading underneath it.
+    hide func DrawLightOverlay(node: SceneNode,
+                               light: Light3D,
+                               selected: Boolean) {
+        if node == null or light == null or viewportPixels == null { return; }
+        var world = LightWorldPosition(node, light);
+        var center = Project(world.X, world.Y, world.Z);
+        var nodeWorld = node.WorldPosition;
+        var nodePoint = Project(
+            nodeWorld.X, nodeWorld.Y, nodeWorld.Z);
+        var color = scene_light_3d.PackedRgb(light);
+        if color == 0 { color = Color.RGB(118, 100, 54); }
+        if light.IsEnabled == false {
+            color = Color.RGB(106, 108, 114);
+        }
+        if center.x != nodePoint.x or center.y != nodePoint.y {
+            viewportPixels.DrawLine(
+                nodePoint.x, nodePoint.y,
+                center.x, center.y,
+                Color.RGB(132, 112, 66));
+        }
+        viewportPixels.DrawLine(
+            center.x - 7, center.y,
+            center.x + 7, center.y, color);
+        viewportPixels.DrawLine(
+            center.x, center.y - 7,
+            center.x, center.y + 7, color);
+        viewportPixels.DrawDisc(center.x, center.y, 4, color);
+        var outline = Color.RGB(255, 220, 136);
+        if selected { outline = Color.RGB(255, 195, 78); }
+        viewportPixels.DrawFrame(
+            center.x - 6, center.y - 6, 13, 13, outline);
+
+        if scene_light_3d.HasDirection(light.Type) {
+            var direction = LightWorldDirection(node, light);
+            var endpoint = Project(
+                world.X + direction.X * 1.5,
+                world.Y + direction.Y * 1.5,
+                world.Z + direction.Z * 1.5);
+            viewportPixels.DrawLine(
+                center.x, center.y,
+                endpoint.x, endpoint.y, color);
+            viewportPixels.DrawDisc(
+                endpoint.x, endpoint.y, 2, color);
+        }
+        if selected and scene_light_3d.HasRange(light.Type) {
+            var rangePixels = Convert.NumToInt(light.Range * viewScale);
+            if rangePixels < 8 { rangePixels = 8; }
+            if rangePixels > 90 { rangePixels = 90; }
+            viewportPixels.DrawFrame(
+                center.x - rangePixels,
+                center.y - rangePixels,
+                rangePixels * 2 + 1,
+                rangePixels * 2 + 1,
+                Color.RGB(156, 128, 62));
+        }
     }
 
     /// @brief Interpolate one corner of a projected plane handle.

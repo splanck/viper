@@ -13,7 +13,8 @@
 // Ownership/Lifetime:
 //   - Declarative registry data is consumed by rtgen and X-macro tests.
 //   - Generated string storage has process lifetime.
-// Links: src/il/runtime/runtime.def, src/tools/rtgen/rtgen.cpp
+// Links: src/il/runtime/runtime.def, src/tools/rtgen/rtgen.cpp,
+//        docs/adr/0171-bounded-scene-flood-fill-and-studio-tile-tools.md
 //
 //===----------------------------------------------------------------------===//
 
@@ -513,6 +514,7 @@ RT_FUNC(GameSceneRemoveLayer,      rt_game_scene_remove_layer,     "Zanna.Game2D
 RT_FUNC(GameSceneGetTile,          rt_game_scene_get_tile,         "Zanna.Game2D.SceneDocument.GetTile", "i64(obj,i64,i64,i64)")
 RT_FUNC(GameSceneSetTile,          rt_game_scene_set_tile,         "Zanna.Game2D.SceneDocument.SetTile", "void(obj,i64,i64,i64,i64)")
 RT_FUNC(GameSceneFillTiles,        rt_game_scene_fill_tiles,       "Zanna.Game2D.SceneDocument.FillTiles", "void(obj,i64,i64,i64,i64,i64,i64)")
+RT_FUNC(GameSceneFloodFillTiles,   rt_game_scene_flood_fill_tiles, "Zanna.Game2D.SceneDocument.FloodFill", "i64(obj,i64,i64,i64,i64)")
 RT_FUNC(GameSceneSetLayerAsset,    rt_game_scene_set_layer_asset,  "Zanna.Game2D.SceneDocument.SetLayerAsset", "void(obj,i64,str)")
 RT_FUNC(GameSceneLayerAsset,       rt_game_scene_layer_asset,      "Zanna.Game2D.SceneDocument.LayerAsset", "str(obj,i64)")
 RT_FUNC(GameSceneAddObject,        rt_game_scene_add_object,       "Zanna.Game2D.SceneDocument.AddObject", "i64(obj,str,str,i64,i64)")

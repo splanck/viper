@@ -13,7 +13,8 @@
 // Ownership/Lifetime:
 //   - Declarative registry data is consumed by rtgen and X-macro tests.
 //   - Generated string storage has process lifetime.
-// Links: src/il/runtime/runtime.def, src/tools/rtgen/rtgen.cpp
+// Links: src/il/runtime/runtime.def, src/tools/rtgen/rtgen.cpp,
+//        docs/adr/0171-bounded-scene-flood-fill-and-studio-tile-tools.md
 //
 //===----------------------------------------------------------------------===//
 
@@ -129,6 +130,7 @@ RT_CLASS_BEGIN("Zanna.Game2D.SceneDocument", GameScene, "obj", GameSceneNew)
     RT_METHOD("GetTile", "i64(i64,i64,i64)", GameSceneGetTile)
     RT_METHOD("SetTile", "void(i64,i64,i64,i64)", GameSceneSetTile)
     RT_METHOD("FillTiles", "void(i64,i64,i64,i64,i64,i64)", GameSceneFillTiles)
+    RT_METHOD("FloodFill", "i64(i64,i64,i64,i64)", GameSceneFloodFillTiles)
     RT_METHOD("SetLayerAsset", "void(i64,str)", GameSceneSetLayerAsset)
     RT_METHOD("LayerAsset", "str(i64)", GameSceneLayerAsset)
     RT_METHOD("AddObject", "i64(str,str,i64,i64)", GameSceneAddObject)

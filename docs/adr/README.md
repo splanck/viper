@@ -146,6 +146,8 @@ from [0000-template.md](0000-template.md) and take the next unused number.
 - [ADR 0166](0166-exact-scenenode-world-matrix-assignment.md) — Add Exact SceneNode World-Matrix Assignment
 - [ADR 0168](0168-windowless-canvas3d-rendering.md) — Add Windowless Canvas3D Rendering
 - [ADR 0170](0170-studio-2d-canvas-marquee-selection.md) — Add Modifier and Marquee Selection to the Studio 2D Canvas
+- [ADR 0171](0171-bounded-scene-flood-fill-and-studio-tile-tools.md) — Add Bounded Scene Flood Fill and Studio Tile Tools
+- [ADR 0172](0172-public-scenenode-light-authoring-and-studio-light-inspector.md) — Expose SceneNode Lights and Add Studio Light Authoring
 - [ADR 0004](0004-graphics3d-runtime-surface-expansion.md) — Graphics3D Runtime Surface Expansion Uses Registry-Only Semantics
 - [ADR 0046](0046-game3d-prefab-loading-api.md) — Game3D Prefab Loading API
 - [ADR 0059](0059-graphics3d-lookup-option-apis.md) — Graphics3D Lookup Option APIs

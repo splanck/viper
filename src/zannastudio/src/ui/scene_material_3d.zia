@@ -257,7 +257,7 @@ func LoadTexturePath(path: String) -> Any {
 
 /// @brief Return a ColorPicker-compatible 0x00RRGGBB value.
 func PackedRgb(material: Material3D) -> Integer {
-    if material == null or material.Color == null { return DEFAULT_COLOR; }
+    if material == null or material.Color == null { return 0xFFFFFF; }
     var color = material.Color;
     var red = ByteFromUnit(color.X);
     var green = ByteFromUnit(color.Y);

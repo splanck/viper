@@ -1,0 +1,308 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/probes/scene_tile_tools_probe.zia
+// Purpose: Verify production rectangle, fill, pick, and cancelable tile tools.
+// Key invariants:
+//   - Forward and reverse rectangles are inclusive one-history transactions.
+//   - Flood fill is four-connected and reports one exact changed-cell count.
+//   - Pick changes only workspace state and returns directly to Paint.
+//   - Real rectangle and freehand gestures capture, release, and Escape safely.
+// Ownership/Lifetime:
+//   - The probe owns one hidden AppShell, document, editor, and input harness.
+// Links: zannastudio/src/ui/scene_editor_2d.zia,
+//        docs/adr/0171-bounded-scene-flood-fill-and-studio-tile-tools.md
+//
+//===----------------------------------------------------------------------===//
+
+module scene_tile_tools_probe;
+
+// ============================================================================
+// MODULE: scene_tile_tools_probe
+// PURPOSE: Pin Studio's production 2D tile-tool transaction contract.
+//
+// WHERE-THIS-FITS: The broad scene probe covers general tile persistence. This
+//          focused display probe owns rectangle/fill/pick input and rollback.
+//
+// TEACHING-NOTE: Rectangle preview is checked before release while canonical
+//          cells are still unchanged, proving that feedback is non-destructive.
+// ============================================================================
+
+bind "../core/document_manager";
+bind "../services/file_utils";
+bind "../ui/app_shell";
+bind "../ui/scene_editor_2d";
+
+bind Convert = Zanna.Core.Convert;
+bind GUI = Zanna.GUI;
+bind Input = Zanna.Input;
+bind Terminal = Zanna.Terminal;
+
+func HarnessCoordinate(shell: app_shell.AppShell,
+                       logical: Number) -> Integer {
+    var scale = shell.app.GetEffectiveScale();
+    if scale <= 0.0 { scale = 1.0; }
+    return Convert.NumToInt(logical * scale + 0.999999);
+}
+
+func CanvasCoordinate(shell: app_shell.AppShell,
+                      editor: scene_editor_2d.SceneEditor2D,
+                      cell: Integer,
+                      horizontal: Boolean) -> Integer {
+    var origin = editor.canvasImage.GetScreenY();
+    if horizontal { origin = editor.canvasImage.GetScreenX(); }
+    return HarnessCoordinate(
+        shell, origin + cell * editor.displayCellSize
+            + editor.displayCellSize / 2.0);
+}
+
+func Fail(shell: app_shell.AppShell,
+          harness: GUI.TestHarness,
+          reason: String) {
+    if harness != null { harness.UnbindApp(); }
+    if shell != null { shell.Destroy(); }
+    Terminal.Say("RESULT: fail " + reason);
+}
+
+func main() {
+    var shell = new app_shell.AppShell();
+    shell.Build("Zanna Studio Tile Tools Probe", 1120, 760);
+
+    var editor = new scene_editor_2d.SceneEditor2D();
+    editor.Setup(shell.workbench.scene2DHost, shell.app);
+    var documents = new document_manager.DocumentManager();
+    var sceneDoc = documents.NewScene2DDocument();
+    shell.SelectSurface(file_utils.DOC_KIND_SCENE_2D);
+    editor.Activate(sceneDoc);
+    editor.Pump(sceneDoc);
+    shell.Poll();
+    shell.Render();
+    editor.Pump(sceneDoc);
+    shell.Render();
+
+    if editor.ReplaceScene(8, 6, 16) == false {
+        Fail(shell, null, "scene fixture");
+        return;
+    }
+
+    var rectangleRevision = editor.GetRevision();
+    var rectangleUndo = editor.undoStack.count();
+    if editor.ApplyTileRectangle(0, 4, 3, 1, 1, 7) == false
+       or editor.GetRevision() != rectangleRevision + 1
+       or editor.undoStack.count() != rectangleUndo + 1 {
+        Fail(shell, null, "reverse inclusive rectangle transaction");
+        return;
+    }
+    var y = 0;
+    while y < editor.scene.Height {
+        var x = 0;
+        while x < editor.scene.Width {
+            var expected = 0;
+            if x >= 1 and x <= 4 and y >= 1 and y <= 3 {
+                expected = 7;
+            }
+            if editor.scene.GetTile(0, x, y) != expected {
+                Fail(shell, null, "rectangle membership");
+                return;
+            }
+            x = x + 1;
+        }
+        y = y + 1;
+    }
+    var rectangleContent = sceneDoc.content;
+    if editor.ApplyTileRectangle(0, 1, 1, 4, 3, 7)
+       or sceneDoc.content != rectangleContent
+       or editor.GetRevision() != rectangleRevision + 1
+       or editor.Undo() == false
+       or editor.scene.GetTile(0, 2, 2) != 0
+       or editor.Redo() == false
+       or sceneDoc.content != rectangleContent {
+        Fail(shell, null, "rectangle no-op or exact undo/redo");
+        return;
+    }
+
+    if editor.ApplyTileRectangle(0, 0, 0, 7, 5, 1) == false
+       or editor.ApplyTileRectangle(0, 3, 0, 3, 5, 2) == false {
+        Fail(shell, null, "flood fixture");
+        return;
+    }
+    var fillBaseline = sceneDoc.content;
+    var fillRevision = editor.GetRevision();
+    var fillUndo = editor.undoStack.count();
+    var fillCount = editor.FloodFillSceneTile(0, 0, 0, 9);
+    if fillCount != 18
+       or editor.scene.GetTile(0, 2, 5) != 9
+       or editor.scene.GetTile(0, 3, 5) != 2
+       or editor.scene.GetTile(0, 4, 5) != 1
+       or editor.GetRevision() != fillRevision + 1
+       or editor.undoStack.count() != fillUndo + 1
+       or editor.FloodFillSceneTile(0, 0, 0, 9) != 0
+       or editor.GetRevision() != fillRevision + 1
+       or editor.Undo() == false
+       or sceneDoc.content != fillBaseline {
+        Fail(shell, null, "four-connected fill count, no-op, or undo");
+        return;
+    }
+
+    if editor.ApplyTileRectangle(0, 2, 2, 2, 2, 11) == false {
+        Fail(shell, null, "picker fixture");
+        return;
+    }
+    var pickContent = sceneDoc.content;
+    var pickRevision = editor.GetRevision();
+    var pickUndo = editor.undoStack.count();
+    var pickDirty = sceneDoc.isModified;
+    editor.mode = scene_editor_2d.MODE_PICKER;
+    if editor.PickSceneTile(0, 2, 2) != 11
+       or Convert.NumToInt(editor.tileSpinner.Value) != 11
+       or editor.mode != scene_editor_2d.MODE_PAINT
+       or sceneDoc.content != pickContent
+       or editor.GetRevision() != pickRevision
+       or editor.undoStack.count() != pickUndo
+       or sceneDoc.isModified != pickDirty {
+        Fail(shell, null, "picker workspace isolation");
+        return;
+    }
+
+    editor.Pump(sceneDoc);
+    shell.Render();
+    var harness = GUI.TestHarness.New();
+    if harness.BindApp(shell.app) == false {
+        Fail(shell, harness, "automation app binding");
+        return;
+    }
+
+    editor.mode = scene_editor_2d.MODE_RECTANGLE;
+    editor.tileSpinner.SetValue(13);
+    var startX = CanvasCoordinate(shell, editor, 1, true);
+    var startY = CanvasCoordinate(shell, editor, 1, false);
+    var endX = CanvasCoordinate(shell, editor, 3, true);
+    var endY = CanvasCoordinate(shell, editor, 2, false);
+    var gestureContent = sceneDoc.content;
+    var gestureRevision = editor.GetRevision();
+    var gestureUndo = editor.undoStack.count();
+
+    harness.SendMouse("move", startX, startY, 0);
+    harness.SendMouse("down", startX, startY, 0);
+    harness.DispatchPending();
+    editor.Pump(sceneDoc);
+    harness.SendMouse("move", endX, endY, 0);
+    harness.DispatchPending();
+    editor.Pump(sceneDoc);
+    shell.Render();
+    var overlay = editor.framePixels.GetColor(
+        editor.tileRectangleStartX * editor.displayCellSize,
+        editor.tileRectangleStartY * editor.displayCellSize);
+    if editor.tileRectangleActive == false
+       or Input.Mouse.IsCaptured() == false
+       or editor.tileRectangleStartX != 1
+       or editor.tileRectangleStartY != 1
+       or editor.tileRectangleCurrentX != 3
+       or editor.tileRectangleCurrentY != 2
+       or editor.scene.GetTile(0, 1, 1) == 13
+       or overlay % 16777216
+          != scene_editor_2d.TILE_RECTANGLE_COLOR {
+        Fail(shell, harness, "captured non-destructive rectangle preview");
+        return;
+    }
+
+    harness.SendMouse("up", endX, endY, 0);
+    harness.DispatchPending();
+    if editor.Pump(sceneDoc) == false
+       or editor.tileRectangleActive
+       or Input.Mouse.IsCaptured()
+       or sceneDoc.content == gestureContent
+       or editor.GetRevision() != gestureRevision + 1
+       or editor.undoStack.count() != gestureUndo + 1 {
+        Fail(shell, harness, "rectangle release transaction");
+        return;
+    }
+    y = 1;
+    while y <= 2 {
+        var x = 1;
+        while x <= 3 {
+            if editor.scene.GetTile(0, x, y) != 13 {
+                Fail(shell, harness, "rectangle release membership");
+                return;
+            }
+            x = x + 1;
+        }
+        y = y + 1;
+    }
+    editor.Pump(sceneDoc);
+    if editor.GetRevision() != gestureRevision + 1 {
+        Fail(shell, harness, "rectangle release applied more than once");
+        return;
+    }
+
+    var cancelContent = sceneDoc.content;
+    var cancelRevision = editor.GetRevision();
+    var cancelUndo = editor.undoStack.count();
+    harness.SendMouse("move", startX, startY, 0);
+    harness.SendMouse("down", startX, startY, 0);
+    harness.DispatchPending();
+    editor.Pump(sceneDoc);
+    harness.SendMouse("move", endX, endY, 0);
+    harness.DispatchPending();
+    editor.Pump(sceneDoc);
+    harness.SendKey("escape", 0);
+    harness.DispatchPending();
+    editor.Pump(sceneDoc);
+    if editor.tileRectangleActive
+       or Input.Mouse.IsCaptured()
+       or sceneDoc.content != cancelContent
+       or editor.GetRevision() != cancelRevision
+       or editor.undoStack.count() != cancelUndo {
+        Fail(shell, harness, "rectangle Escape cancellation");
+        return;
+    }
+    harness.SendMouse("up", endX, endY, 0);
+    harness.DispatchPending();
+    editor.Pump(sceneDoc);
+
+    editor.mode = scene_editor_2d.MODE_PAINT;
+    editor.tileSpinner.SetValue(17);
+    var paintStartX = CanvasCoordinate(shell, editor, 5, true);
+    var paintStartY = CanvasCoordinate(shell, editor, 1, false);
+    var paintEndX = CanvasCoordinate(shell, editor, 6, true);
+    var paintEndY = CanvasCoordinate(shell, editor, 1, false);
+    var paintContent = sceneDoc.content;
+    var paintRevision = editor.GetRevision();
+    var paintUndo = editor.undoStack.count();
+    harness.SendMouse("move", paintStartX, paintStartY, 0);
+    harness.SendMouse("down", paintStartX, paintStartY, 0);
+    harness.DispatchPending();
+    editor.Pump(sceneDoc);
+    harness.SendMouse("move", paintEndX, paintEndY, 0);
+    harness.DispatchPending();
+    editor.Pump(sceneDoc);
+    if Input.Mouse.IsCaptured() == false
+       or editor.scene.GetTile(0, 5, 1) != 17
+       or editor.scene.GetTile(0, 6, 1) != 17 {
+        Fail(shell, harness, "freehand capture fixture");
+        return;
+    }
+    harness.SendKey("escape", 0);
+    harness.DispatchPending();
+    editor.Pump(sceneDoc);
+    if Input.Mouse.IsCaptured()
+       or sceneDoc.content != paintContent
+       or editor.GetRevision() != paintRevision
+       or editor.undoStack.count() != paintUndo
+       or editor.scene.GetTile(0, 5, 1) == 17
+       or editor.scene.GetTile(0, 6, 1) == 17 {
+        Fail(shell, harness, "freehand Escape rollback");
+        return;
+    }
+    harness.SendMouse("up", paintEndX, paintEndY, 0);
+    harness.DispatchPending();
+    editor.Pump(sceneDoc);
+
+    harness.UnbindApp();
+    shell.Destroy();
+    Terminal.Say("RESULT: ok");
+}

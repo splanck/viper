@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-07-23
+last-verified: 2026-07-24
 ---
 
 # Editable Scene Documents
@@ -154,6 +154,7 @@ load/save/schema error is also retained.
 | `MoveLayer(from, to)` / `RemoveLayer(layer)` | Reorder or remove layers. The final layer is kept. |
 | `GetTile(layer, x, y)` / `SetTile(layer, x, y, tile)` | Read or mutate tile IDs. Out-of-range reads return `0`; writes no-op. |
 | `FillTiles(layer, x, y, width, height, tile)` | Fill a clamped rectangular region. |
+| `FloodFill(layer, x, y, tile)` | Replace the exact four-connected region containing the cell and return the changed-cell count. Invalid cells and already-equal replacements return `0`. |
 | `SetLayerAsset(layer, path)` / `LayerAsset(layer)` | Store a layer tileset/source asset path. |
 
 Tile ID `0` means empty/not drawn. Tile ID `N > 0` maps to tileset frame
@@ -164,6 +165,12 @@ scene-relative path when possible. External image metadata changes refresh the
 canvas and palette without changing scene JSON or undo history; Reload Image
 forces a reread when the filesystem's timestamp/size metadata is too coarse to
 identify a rewrite.
+
+`FloodFill` uses four-way adjacency: diagonal contact alone does not join two
+regions. It is bounded by the existing 1,048,576-cell layer limit and allocates
+its complete queue and visited set before changing the first tile, so an
+allocation failure cannot leave a partial fill. See
+[ADR 0171](../../adr/0171-bounded-scene-flood-fill-and-studio-tile-tools.md).
 
 ## Objects And Properties
 

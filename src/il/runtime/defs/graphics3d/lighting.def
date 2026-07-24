@@ -17,7 +17,8 @@
 //   docs/adr/0159-typed-scenenode-metadata-and-vscn-v6.md,
 //   docs/adr/0161-stable-scenenode-sibling-reordering.md,
 //   docs/adr/0162-exact-preserve-world-scenenode-reparenting.md,
-//   docs/adr/0166-exact-scenenode-world-matrix-assignment.md
+//   docs/adr/0166-exact-scenenode-world-matrix-assignment.md,
+//   docs/adr/0172-public-scenenode-light-authoring-and-studio-light-inspector.md
 //
 //===----------------------------------------------------------------------===//
 
@@ -56,12 +57,16 @@ RT_FUNC(Light3DGetDecayType,    rt_light3d_get_decay_type,  "Zanna.Graphics3D.Li
 RT_FUNC(Light3DSetDecayType,    rt_light3d_set_decay_type,  "Zanna.Graphics3D.Light3D.set_DecayType",   "void(obj,i64)")
 RT_FUNC(Light3DGetRange,        rt_light3d_get_range,       "Zanna.Graphics3D.Light3D.get_Range",       "f64(obj)")
 RT_FUNC(Light3DSetRange,        rt_light3d_set_range,       "Zanna.Graphics3D.Light3D.set_Range",       "void(obj,f64)")
+RT_FUNC(Light3DGetInnerConeDegrees, rt_light3d_get_inner_cone_degrees, "Zanna.Graphics3D.Light3D.get_InnerConeDegrees", "f64(obj)")
+RT_FUNC(Light3DGetOuterConeDegrees, rt_light3d_get_outer_cone_degrees, "Zanna.Graphics3D.Light3D.get_OuterConeDegrees", "f64(obj)")
+RT_FUNC(Light3DSetSpotCone,     rt_light3d_set_spot_cone,   "Zanna.Graphics3D.Light3D.SetSpotCone",    "void(obj,f64,f64)")
 
 /// @summary Provides Light 3D functionality for 3D rendering and scene applications.
 /// @details
 /// `Zanna.Graphics3D.Light3D` exposes a registry-backed runtime surface without requiring callers
 /// to construct the class directly. Its public surface exposes properties such as `Type`,
-/// `Color`, `Intensity` and operations including `Directional`, `Point`, `Ambient`, `Spot`.
+/// `Color`, `Intensity`, `InnerConeDegrees`, and `OuterConeDegrees`, plus all seven light
+/// constructors and atomic `SetSpotCone` authoring.
 RT_CLASS_BEGIN("Zanna.Graphics3D.Light3D", Light3D, "obj", none)
     RT_PROP("Type", "i64", Light3DGetType, none)
     RT_PROP("Color", "obj<Zanna.Math.Vec3>", Light3DGetColor, none)
@@ -75,6 +80,8 @@ RT_CLASS_BEGIN("Zanna.Graphics3D.Light3D", Light3D, "obj", none)
     RT_PROP("Radius", "f64", Light3DGetRadius, Light3DSetRadius)
     RT_PROP("DecayType", "i64", Light3DGetDecayType, Light3DSetDecayType)
     RT_PROP("Range", "f64", Light3DGetRange, Light3DSetRange)
+    RT_PROP("InnerConeDegrees", "f64", Light3DGetInnerConeDegrees, none)
+    RT_PROP("OuterConeDegrees", "f64", Light3DGetOuterConeDegrees, none)
     RT_METHOD("Directional", "obj(obj,f64,f64,f64)", Light3DDirectional)
     RT_METHOD("Point", "obj(obj,f64,f64,f64,f64)", Light3DPoint)
     RT_METHOD("Ambient", "obj(f64,f64,f64)", Light3DAmbient)
@@ -88,6 +95,7 @@ RT_CLASS_BEGIN("Zanna.Graphics3D.Light3D", Light3D, "obj", none)
     RT_METHOD("SetAttenuation", "void(f64)", Light3DSetAttenuation)
     RT_PROP("Attenuation", "f64", Light3DGetAttenuation, none)
     RT_METHOD("SetColor", "void(f64,f64,f64)", Light3DSetColor)
+    RT_METHOD("SetSpotCone", "void(f64,f64)", Light3DSetSpotCone)
 RT_CLASS_END()
 
 // SceneGraph
@@ -172,6 +180,8 @@ RT_FUNC(SceneNode3DSetMesh,        rt_scene_node3d_set_mesh,       "Zanna.Graphi
 RT_FUNC(SceneNode3DGetMesh,        rt_scene_node3d_get_mesh,       "Zanna.Graphics3D.SceneNode.get_Mesh",       "obj<Zanna.Graphics3D.Mesh3D>(obj)")
 RT_FUNC(SceneNode3DSetMaterial,    rt_scene_node3d_set_material,   "Zanna.Graphics3D.SceneNode.set_Material",   "void(obj,obj<Zanna.Graphics3D.Material3D>)")
 RT_FUNC(SceneNode3DGetMaterial,    rt_scene_node3d_get_material,   "Zanna.Graphics3D.SceneNode.get_Material",   "obj<Zanna.Graphics3D.Material3D>(obj)")
+RT_FUNC(SceneNode3DSetLight,       rt_scene_node3d_set_light,      "Zanna.Graphics3D.SceneNode.set_Light",      "void(obj,obj<Zanna.Graphics3D.Light3D>)")
+RT_FUNC(SceneNode3DGetLight,       rt_scene_node3d_get_light,      "Zanna.Graphics3D.SceneNode.get_Light",      "obj<Zanna.Graphics3D.Light3D>(obj)")
 RT_FUNC(SceneNode3DSetCamera,      rt_scene_node3d_set_camera,     "Zanna.Graphics3D.SceneNode.set_Camera",     "void(obj,obj<Zanna.Graphics3D.Camera3D>)")
 RT_FUNC(SceneNode3DGetCamera,      rt_scene_node3d_get_camera,     "Zanna.Graphics3D.SceneNode.get_Camera",     "obj<Zanna.Graphics3D.Camera3D>(obj)")
 RT_FUNC(SceneNode3DAddChild,       rt_scene_node3d_add_child,      "Zanna.Graphics3D.SceneNode.AddChild",       "void(obj,obj)")
@@ -234,7 +244,8 @@ RT_FUNC(SceneNode3DGetLODResidentBytes, rt_scene_node3d_get_lod_resident_bytes,"
 /// @details
 /// Create `Zanna.Graphics3D.SceneNode` values through its registered constructor and use the
 /// returned object with the instance members below. Its public surface exposes properties such as
-/// `Position`, `Rotation`, `Scale` and operations including `SetPosition`, `SetScale`,
+/// `Position`, `Rotation`, `Scale`, `Mesh`, `Material`, `Light`, and `Camera`, plus operations
+/// including `SetPosition`, `SetScale`,
 /// `SetTransform`, exact world-matrix assignment, `AddChild`, exact preserve-world reparenting,
 /// stable sibling reordering, and bounded typed gameplay metadata accessors.
 RT_CLASS_BEGIN("Zanna.Graphics3D.SceneNode", SceneNode3D, "obj", SceneNode3DNew)
@@ -251,6 +262,7 @@ RT_CLASS_BEGIN("Zanna.Graphics3D.SceneNode", SceneNode3D, "obj", SceneNode3DNew)
     RT_PROP("Name", "str", SceneNode3DGetName, SceneNode3DSetName)
     RT_PROP("Mesh", "obj<Zanna.Graphics3D.Mesh3D>", SceneNode3DGetMesh, SceneNode3DSetMesh)
     RT_PROP("Material", "obj<Zanna.Graphics3D.Material3D>", SceneNode3DGetMaterial, SceneNode3DSetMaterial)
+    RT_PROP("Light", "obj<Zanna.Graphics3D.Light3D>", SceneNode3DGetLight, SceneNode3DSetLight)
     RT_PROP("Camera", "obj<Zanna.Graphics3D.Camera3D>", SceneNode3DGetCamera, SceneNode3DSetCamera)
     RT_PROP("BoundsMin", "obj<Zanna.Math.Vec3>", SceneNode3DGetBoundsMin, none)
     RT_PROP("BoundsMax", "obj<Zanna.Math.Vec3>", SceneNode3DGetBoundsMax, none)

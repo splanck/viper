@@ -254,6 +254,13 @@ metadata. These mirror the object-property authoring surface so Studio can
 render and edit typed level configuration without parsing canonical JSON or
 coercing null/Boolean/numeric values through strings.
 
+ADR 0171 adds `FloodFill(layer, x, y, tile)` for Studio's contiguous tile tool.
+The runtime owns the potentially million-cell four-connected traversal,
+allocates its complete bounded queue and visited storage before mutation, and
+returns the exact changed-cell count. Invalid, already-equal, and allocation
+failure paths return zero without a partial edit. Rectangle paint continues to
+use `FillTiles`; Studio owns preview, history, cancellation, and picker state.
+
 ADR 0164 adds `ObjectParent(index)` and
 `TrySetObjectParent(index, parent)` as the formal 2D organizational hierarchy.
 The runtime rejects invalid links and cycles, keeps parent indices correct
@@ -352,6 +359,25 @@ target back only when scene or camera state is dirty, then draws the editor
 grid, hierarchy links, node markers, selection, and gizmos on that copy. A
 target/readback allocation failure retains a deterministic marker fallback and
 never changes VSCN content.
+
+ADR 0172 exposes the light component already retained and serialized by the
+native scene graph as a typed read/write `SceneNode.Light` property. The setter
+retains valid `Light3D` values, accepts `null` to clear, and rejects a wrong
+runtime class before mutation. `Light3D.InnerConeDegrees`,
+`OuterConeDegrees`, and `SetSpotCone(inner, outer)` close the spot-light
+round-trip gap between degree-based constructors and cosine-based renderer
+storage; the paired setter sanitizes both values and advances mutation state
+once.
+
+Studio treats that public surface as the only canonical light boundary.
+`scene_light_3d` reconstructs a complete independent object for all seven
+types, and `SceneEditor3D` assigns it only after normalized no-op comparison.
+This is required because imported scene templates may share mutable components.
+Add/apply/remove then reuse the existing single VSCN serialization, rollback,
+dirty-state, and history path. Hierarchy labels and viewport light markers read
+the live attached component and remain workspace presentation. Multi-selection
+is disabled until a future sparse batch-light contract can preserve each
+unresolved type-specific field.
 
 ADR 0169 adds canonical `Zanna.Input.Key.LeftSuper` and `RightSuper` constants
 for Command/Windows-key state without exposing backend-private key codes.

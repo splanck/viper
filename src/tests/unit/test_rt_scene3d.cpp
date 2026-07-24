@@ -21,7 +21,8 @@
 // Links: src/runtime/graphics/3d/scene/rt_scene3d.h, rt_scene3d_internal.h,
 //   docs/adr/0159-typed-scenenode-metadata-and-vscn-v6.md,
 //   docs/adr/0161-stable-scenenode-sibling-reordering.md,
-//   docs/adr/0166-exact-scenenode-world-matrix-assignment.md
+//   docs/adr/0166-exact-scenenode-world-matrix-assignment.md,
+//   docs/adr/0172-public-scenenode-light-authoring-and-studio-light-inspector.md
 //
 //===----------------------------------------------------------------------===//
 
@@ -3953,6 +3954,23 @@ static void test_scene_node_attached_camera_tracks_world_transform() {
                 "SceneNode camera binding can be cleared");
 }
 
+static void test_scene_node_light_property_retains_rejects_and_clears() {
+    void *node = rt_scene_node3d_new();
+    void *position = rt_vec3_new(1.0, 2.0, 3.0);
+    void *light = rt_light3d_new_point(position, 1.0, 0.5, 0.25, 0.1);
+    void *wrong_class = rt_material3d_new_color(1.0, 0.0, 0.0);
+
+    rt_scene_node3d_set_light(node, light);
+    EXPECT_TRUE(rt_scene_node3d_get_light(node) == light,
+                "SceneNode exposes an attached Light3D");
+    rt_scene_node3d_set_light(node, wrong_class);
+    EXPECT_TRUE(rt_scene_node3d_get_light(node) == light,
+                "SceneNode rejects wrong-class light replacements without mutation");
+    rt_scene_node3d_set_light(node, nullptr);
+    EXPECT_TRUE(rt_scene_node3d_get_light(node) == nullptr,
+                "SceneNode light property accepts null to clear");
+}
+
 static void test_scene_roundtrip_preserves_node_lights() {
     const char *path = "/tmp/zanna_scene_node_light_roundtrip.vscn";
     void *scene = rt_scene3d_new();
@@ -4562,6 +4580,7 @@ int main() {
     test_node_animation_step_accepts_duplicate_key_times();
     test_node_animation_rejects_pathological_channel_sizes();
     test_scene_draw_includes_node_attached_lights();
+    test_scene_node_light_property_retains_rejects_and_clears();
     test_scene_node_attached_camera_tracks_world_transform();
     test_scene_roundtrip_preserves_node_lights();
     test_scene_save_rejects_wrong_handle();

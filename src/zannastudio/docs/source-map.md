@@ -819,8 +819,10 @@ button/scroll sizing. It has no build-system or debug-session dependency.
 
 Document-backed 2D layer/tile/object authoring surface. It owns responsive
 canvas coordination, layer selection and asset assignment, gap-free
-paint/erase strokes, modifier-aware point selection and inclusive authored-cell
-marquees with pointer capture/Escape cancelation, a bounded retained object
+captured paint/erase strokes with exact Escape rollback, inclusive rectangle
+painting with a non-destructive preview, runtime-backed four-connected fill,
+active-layer tile picking, modifier-aware point selection and inclusive
+authored-cell marquees with pointer capture/Escape cancelation, a bounded retained object
 hierarchy with preserved expansion, stable multi-object selection,
 non-destructive bounded hierarchy Find, transactional before/into/after
 subtree drops, one-step root/child creation, bounded cycle-safe explicit parent
@@ -988,6 +990,21 @@ common/mixed widgets, sparse-patch intent, selected-slot coverage summaries, a
 cached 128-pixel canonical map thumbnail, and truthful group-action enablement,
 while `SceneEditor3D` retains selection, mutation, rollback, and history
 ownership.
+
+### `ui/scene_light_3d.zia`
+
+Document-independent normalized authoring state for all seven `Light3D` types.
+It converts live components to bounded field values, constructs complete
+independent replacement lights, compares observable state for no-op detection,
+and centralizes type applicability without owning GUI or scene state.
+
+### `ui/scene_light_inspector_3d.zia`
+
+Presentation-only single-node light inspector. It owns type selection,
+accessible common/type-specific controls, conditional visibility and
+enablement, and normalized draft intent. `SceneEditor3D` retains typed
+`SceneNode.Light` mutation, canonical serialization, rollback, history, and
+hierarchy/viewport marker presentation.
 
 ### `ui/explorer_actions.zia`
 
@@ -1157,6 +1174,14 @@ Important probe groups:
   replace/union/toggle/empty behavior, real captured blank-space dragging,
   visible overlay, exactly-once release, Escape cancelation, and canonical
   content/history isolation.
+- `scene_tile_tools_probe.zia`: forward/reverse inclusive rectangles,
+  four-connected exact-count fill, active-layer picker isolation, real captured
+  rectangle preview and release, Escape cancelation, and freehand snapshot
+  rollback.
+- `scene_light_authoring_probe.zia`: every runtime light constructor,
+  normalized public cone readback, independent replacement, exact no-op
+  suppression, add/apply/remove history, VSCN round trips, hierarchy and
+  viewport markers, and truthful multi-selection gating.
 - `scene_rotation_ring_probe.zia`: conditioned X/Y/Z projected-ring picking,
   seam-safe angular math, real hover/down/move/up input, stable viewport
   geometry during status changes, one-step snapped rotation history, and exact
@@ -1235,6 +1260,8 @@ Use this practical decision table:
 | 3D transform mode/space and gizmo math | `ui/scene_transform_3d.zia` |
 | 3D material sparse-patch/copy-on-edit rules | `ui/scene_material_3d.zia` |
 | 3D material common/mixed inspector presentation | `ui/scene_material_inspector_3d.zia` |
+| 3D normalized light reconstruction/no-op rules | `ui/scene_light_3d.zia` |
+| 3D single-node light inspector presentation | `ui/scene_light_inspector_3d.zia` |
 | Terminal PTY wrapper | `terminal/terminal_session.zia` |
 | Terminal UI behavior | `terminal/terminal_controller.zia` |
 | Git command execution | `scm/scm_git.zia` |

@@ -9,6 +9,7 @@
 //
 // Key invariants:
 //   - Canonical SceneDocument editing and compatibility loads remain stable.
+//   - Bounded flood fill is four-connected, exact-counted, and no-op safe.
 //   - Tiled imports preserve chunks, projections, GID transforms, mixed
 //     tilesets, objects, properties, collision, animation, and render state.
 //
@@ -21,7 +22,8 @@
 //   docs/adr/0144-complete-tiled-map-import.md,
 //   docs/adr/0155-scene-object-authoring-metadata-and-duplication.md,
 //   docs/adr/0158-scene-level-property-authoring.md,
-//   docs/adr/0164-backward-compatible-2d-scene-object-hierarchy.md
+//   docs/adr/0164-backward-compatible-2d-scene-object-hierarchy.md,
+//   docs/adr/0171-bounded-scene-flood-fill-and-studio-tile-tools.md
 //
 //===----------------------------------------------------------------------===//
 
@@ -250,6 +252,33 @@ int main() {
     assert(rt_game_scene_get_tile(scene, fg, 2, 1) == 7);
     rt_game_scene_set_layer_visible(scene, fg, 0);
     assert(rt_game_scene_layer_visible(scene, fg) == 0);
+
+    // ADR 0171: Flood fill replaces only the four-connected source region,
+    // reports the exact count, and leaves invalid or equal requests untouched.
+    {
+        void *fill_scene = rt_game_scene_new(5, 4, 16, 16);
+        rt_game_scene_fill_tiles(fill_scene, 0, 0, 0, 5, 4, 1);
+        rt_game_scene_fill_tiles(fill_scene, 0, 2, 0, 1, 4, 2);
+        rt_game_scene_set_tile(fill_scene, 0, 3, 2, 2);
+        assert(rt_game_scene_flood_fill_tiles(fill_scene, 0, 0, 0, 9) == 8);
+        assert(rt_game_scene_get_tile(fill_scene, 0, 1, 3) == 9);
+        assert(rt_game_scene_get_tile(fill_scene, 0, 2, 3) == 2);
+        assert(rt_game_scene_get_tile(fill_scene, 0, 3, 3) == 1);
+        assert(rt_game_scene_flood_fill_tiles(fill_scene, 0, 0, 0, 9) == 0);
+        assert(rt_game_scene_flood_fill_tiles(fill_scene, -1, 0, 0, 3) == 0);
+        assert(rt_game_scene_flood_fill_tiles(fill_scene, 0, -1, 0, 3) == 0);
+
+        void *diagonal = rt_game_scene_new(3, 3, 16, 16);
+        rt_game_scene_set_tile(diagonal, 0, 0, 0, 4);
+        rt_game_scene_set_tile(diagonal, 0, 1, 1, 4);
+        assert(rt_game_scene_flood_fill_tiles(diagonal, 0, 0, 0, 6) == 1);
+        assert(rt_game_scene_get_tile(diagonal, 0, 0, 0) == 6);
+        assert(rt_game_scene_get_tile(diagonal, 0, 1, 1) == 4);
+
+        void *large = rt_game_scene_new(1024, 1024, 16, 16);
+        assert(rt_game_scene_flood_fill_tiles(large, 0, 0, 0, 5) == 1024 * 1024);
+        assert(rt_game_scene_get_tile(large, 0, 1023, 1023) == 5);
+    }
 
     int64_t obj =
         rt_game_scene_add_object(scene, rt_const_cstr("Player"), rt_const_cstr("player"), 10, 20);

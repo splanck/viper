@@ -56,6 +56,7 @@ Constructor: `Zanna.Game2D.SceneDocument.New`
 | <a id="zanna-game2d-scenedocument-gettile"></a>`GetTile` | `i64(i64,i64,i64)` | `Zanna.Game2D.SceneDocument.GetTile` |
 | <a id="zanna-game2d-scenedocument-settile"></a>`SetTile` | `void(i64,i64,i64,i64)` | `Zanna.Game2D.SceneDocument.SetTile` |
 | <a id="zanna-game2d-scenedocument-filltiles"></a>`FillTiles` | `void(i64,i64,i64,i64,i64,i64)` | `Zanna.Game2D.SceneDocument.FillTiles` |
+| <a id="zanna-game2d-scenedocument-floodfill"></a>`FloodFill` | `i64(i64,i64,i64,i64)` | `Zanna.Game2D.SceneDocument.FloodFill` |
 | <a id="zanna-game2d-scenedocument-setlayerasset"></a>`SetLayerAsset` | `void(i64,str)` | `Zanna.Game2D.SceneDocument.SetLayerAsset` |
 | <a id="zanna-game2d-scenedocument-layerasset"></a>`LayerAsset` | `str(i64)` | `Zanna.Game2D.SceneDocument.LayerAsset` |
 | <a id="zanna-game2d-scenedocument-addobject"></a>`AddObject` | `i64(str,str,i64,i64)` | `Zanna.Game2D.SceneDocument.AddObject` |
@@ -155,6 +156,7 @@ Constructor: `Zanna.Game2D.SceneDocument.New`
 | `Zanna.Game2D.SceneDocument.GetTile` | `i64(obj,i64,i64,i64)` | `rt_game_scene_get_tile` |
 | `Zanna.Game2D.SceneDocument.SetTile` | `void(obj,i64,i64,i64,i64)` | `rt_game_scene_set_tile` |
 | `Zanna.Game2D.SceneDocument.FillTiles` | `void(obj,i64,i64,i64,i64,i64,i64)` | `rt_game_scene_fill_tiles` |
+| `Zanna.Game2D.SceneDocument.FloodFill` | `i64(obj,i64,i64,i64,i64)` | `rt_game_scene_flood_fill_tiles` |
 | `Zanna.Game2D.SceneDocument.SetLayerAsset` | `void(obj,i64,str)` | `rt_game_scene_set_layer_asset` |
 | `Zanna.Game2D.SceneDocument.LayerAsset` | `str(obj,i64)` | `rt_game_scene_layer_asset` |
 | `Zanna.Game2D.SceneDocument.AddObject` | `i64(obj,str,str,i64,i64)` | `rt_game_scene_add_object` |

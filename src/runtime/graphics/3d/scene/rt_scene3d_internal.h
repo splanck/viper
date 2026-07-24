@@ -20,7 +20,8 @@
 //   rt_scene3d_helpers.inc,
 //   docs/adr/0159-typed-scenenode-metadata-and-vscn-v6.md,
 //   docs/adr/0162-exact-preserve-world-scenenode-reparenting.md,
-//   docs/adr/0166-exact-scenenode-world-matrix-assignment.md
+//   docs/adr/0166-exact-scenenode-world-matrix-assignment.md,
+//   docs/adr/0172-public-scenenode-light-authoring-and-studio-light-inspector.md
 //===----------------------------------------------------------------------===//
 #pragma once
 
@@ -442,10 +443,6 @@ void rt_node_animation3d_set_channel_target_node_index(void *obj,
 void *rt_node_animator3d_new_from_clips(void **clips, int64_t clip_count);
 /// @brief Enable/disable Scene3D.SyncBindings auto-update for the skeletal controller binding.
 void rt_scene_node3d_set_animator_scene_update(void *obj, int8_t enabled);
-/// @brief Attach a Light3D to a scene node.
-void rt_scene_node3d_set_light(void *obj, void *light);
-/// @brief Get the Light3D attached to a scene node (NULL if none).
-void *rt_scene_node3d_get_light(void *obj);
 /// @brief Importer hook: install a variant-indexed material table on a node.
 /// @details Replaces any existing table. Retains each non-NULL entry; @p materials may
 ///          contain NULL slots (variant leaves the node's material untouched). Passing

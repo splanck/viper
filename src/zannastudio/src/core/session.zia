@@ -24,7 +24,8 @@
 // Links: zannastudio/src/core/document_manager.zia,
 //        zannastudio/src/core/settings.zia,
 //        docs/adr/0166-exact-scenenode-world-matrix-assignment.md,
-//        docs/adr/0168-windowless-canvas3d-rendering.md
+//        docs/adr/0168-windowless-canvas3d-rendering.md,
+//        docs/adr/0171-bounded-scene-flood-fill-and-studio-tile-tools.md
 //
 //===----------------------------------------------------------------------===//
 
@@ -900,7 +901,7 @@ class SessionManager {
             Ini.Set(ini, section, "scene2dVersion",
                     "" + SCENE_WORKSPACE_STATE_VERSION);
             Ini.Set(ini, section, "scene2dMode",
-                    "" + ClampSessionInt(state2D.mode, 0, 3));
+                    "" + ClampSessionInt(state2D.mode, 0, 6));
             Ini.Set(ini, section, "scene2dZoom",
                     "" + ClampSessionInt(state2D.zoomPercent, 25, 1600));
             Ini.Set(ini, section, "scene2dLayer",
@@ -1002,7 +1003,7 @@ class SessionManager {
             var state2D = doc.scene2DWorkspace;
             state2D.initialized = true;
             state2D.mode = ReadSessionInt(
-                ini, section, "scene2dMode", 0, 0, 3);
+                ini, section, "scene2dMode", 0, 0, 6);
             state2D.zoomPercent = ReadSessionInt(
                 ini, section, "scene2dZoom", 100, 25, 1600);
             state2D.activeLayer = ReadSessionInt(

@@ -263,8 +263,9 @@ transaction back into `Document.content`. DocumentManager therefore remains
 the sole owner of dirty state, save paths, session tabs, and recovery.
 
 Scene workspace state lives on `core/document.zia` records. Camera/canvas
-position, the process-local selection set, inspector layout, 3D transform mode,
-Local/World space, and snap preference follow their scene tab;
+position, the 2D tile tool and selected tile, the process-local selection set,
+inspector layout, 3D transform mode, Local/World space, and snap preference
+follow their scene tab;
 `core/session.zia` persists only bounded scalar view state, including the
 primary selected row. Undo/redo
 snapshots remain process-local and are valid only while their recorded
@@ -300,6 +301,16 @@ and marquee rendering cannot enter `SceneDocument`, `Document.content`,
 revision, history, or dirty state; only a later accepted object move uses the
 selected identities in a canonical transaction. The current hit model is the
 authored object point cell rather than visual sprite or collider bounds.
+
+The same controller owns active-layer tile gestures. Paint and Erase mutate a
+captured pre-stroke model but do not serialize until release; Escape restores
+the captured canonical snapshot. Rectangle retains only an inclusive transient
+outline until release, then delegates its one rectangular write to
+`SceneDocument.FillTiles`. Fill delegates four-connected traversal to the
+bounded runtime `SceneDocument.FloodFill` primitive. Pick changes only the
+document's workspace tile selection and returns to Paint. Changed gestures
+serialize once; preview, sampling, cancelation, and exact no-ops never enter
+canonical history.
 
 `ui/scene_layout_2d.zia` is the stateless precision-layout boundary. It defines
 the supported align/distribute operations, minimum selection sizes, stable
@@ -479,6 +490,24 @@ Sparse scalar apply, material removal, and map replace/clear operate across the
 complete selection, preallocate before mutation, preserve selection, and each
 produce at most one history transaction. Material-only refreshes avoid
 rebuilding hierarchy identity.
+
+`ui/scene_light_3d.zia` is the document-independent light-state boundary from
+ADR 0172. It normalizes all fields shared by the seven runtime light types,
+reconstructs complete independent `Light3D` objects, converts live components
+back into inspector state, and compares normalized observable values for exact
+no-op detection. It has no widget, `Document`, or `SceneGraph` ownership.
+
+`ui/scene_light_inspector_3d.zia` owns only the single-node light widgets,
+type-specific visibility and enablement, accessible labels, and normalized
+draft intent. It explicitly disables mutation for zero or multiple selected
+nodes rather than inventing an incomplete mixed-state patch.
+`SceneEditor3D` owns the typed `SceneNode.Light` assignment, canonical VSCN
+serialization, rollback, selection, and history. It stages a replacement
+before touching the live node so imported shared lights cannot leak mutations
+to another instance. Add, apply/type conversion, and remove each produce at
+most one history transaction. Hierarchy badges and light-only viewport
+position, direction, offset, color, enabled-state, and finite-range overlays
+are presentation derived from the live component and never enter VSCN.
 
 ### Build, Run, And Debug
 

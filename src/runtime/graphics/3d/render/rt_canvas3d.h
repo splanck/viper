@@ -23,7 +23,8 @@
 //     releases them from its GC finalizer.
 //
 // Links: plans/3d/01-software-renderer.md, src/runtime/graphics/common/rt_graphics.h,
-//        docs/adr/0168-windowless-canvas3d-rendering.md
+//        docs/adr/0168-windowless-canvas3d-rendering.md,
+//        docs/adr/0172-public-scenenode-light-authoring-and-studio-light-inspector.md
 //
 //===----------------------------------------------------------------------===//
 #pragma once
@@ -831,6 +832,12 @@ void rt_light3d_set_decay_type(void *obj, int64_t decay_type);
 /// @brief Get/set finite local-light range.
 double rt_light3d_get_range(void *obj);
 void rt_light3d_set_range(void *obj, double range);
+/// @brief Get the sanitized inner spot-cone angle in degrees (zero for non-spot lights).
+double rt_light3d_get_inner_cone_degrees(void *obj);
+/// @brief Get the sanitized outer spot-cone angle in degrees (zero for non-spot lights).
+double rt_light3d_get_outer_cone_degrees(void *obj);
+/// @brief Atomically set both spot-cone angles in degrees (no-op for non-spot lights).
+void rt_light3d_set_spot_cone(void *obj, double inner_angle, double outer_angle);
 
 /// @brief Register a temporary buffer to be freed at the end of the current frame.
 /// @return 1 when ownership transfers to the canvas, 0 when the caller still owns `buffer`.

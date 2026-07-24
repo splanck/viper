@@ -1,6 +1,6 @@
 # Zanna Studio Current Status
 
-Last reviewed against source: 2026-07-23.
+Last reviewed against source: 2026-07-24.
 
 This file is the current-state reference for Zanna Studio. It intentionally avoids
 future-phase language and records limitations in the same place as shipped
@@ -180,7 +180,7 @@ scene authoring, and panel virtualization for very large result sets.
 | Zia IntelliSense | Implemented with limits | Completion, diagnostics, hover, signature help, symbols, definition, references, rename, workspace symbols. |
 | BASIC IntelliSense | Implemented with limits | Completion, diagnostics, hover, document symbols, scanner-backed definition, references, rename, workspace symbols, call hierarchy, and signature help. |
 | Plain text | Implemented | Opens unknown/text-like files as text without semantic features. |
-| Scene files | Implemented with limits | `.scene`/`.level` mount the 2D editor and `.vscn` mounts the 3D editor. Both retain per-document workspace/history state and provide real expandable multi-select hierarchies, transactional before/into/after row drops, group edits, typed gameplay data, searchable project assets, hierarchy-preserving clipboard transfer, undo/redo, and safe save/import flows. The 2D surface includes a runtime-backed organizational hierarchy with absolute positions, one-step root/child creation, explicit cycle-safe multi-root reparenting, stable subtree/sibling ordering, real bounded atlas rendering/palettes, modifier-aware point and inclusive authored-cell marquee selection, object dragging, scene/object properties, nudging, alignment, and distribution. The 3D surface includes a runtime-backed shaded/triangle-wireframe viewport with exact editor-overlay alignment, exact preserve-world chooser/direct reparenting with preserve-local opt-out, stable sibling ordering, mixed-state batch visibility, switchable Local/World Move/Rotate/Scale with snapping and atomic exact-or-reject world conversion, filled Move-plane and crossed Scale-plane XY/XZ/YZ handles, projected X/Y/Z rotation rings with wrap-safe angular dragging, truthful mixed-value batch PBR materials, and batch embedded texture maps. Both load compatible definitions from bounded root-local `scene-components.json`; Add Missing preserves same-kind values, rejects any type conflict before mutation, and commits the complete selection once. A shared structured form maintains the complete cross-target schema through parser-validated atomic writes, external-conflict detection, and separate bounded file undo/redo. Automatic schema/scene-data migration, enums, asset-reference fields, generalized runtime components, advanced tileset metadata/animation/collision, material-library/thumbnail workflows, and cubemap/lightmap authoring are not yet present. |
+| Scene files | Implemented with limits | `.scene`/`.level` mount the 2D editor and `.vscn` mounts the 3D editor. Both retain per-document workspace/history state and provide real expandable multi-select hierarchies, transactional before/into/after row drops, group edits, typed gameplay data, searchable project assets, hierarchy-preserving clipboard transfer, undo/redo, and safe save/import flows. The 2D surface includes a runtime-backed organizational hierarchy with absolute positions, one-step root/child creation, explicit cycle-safe multi-root reparenting, stable subtree/sibling ordering, real bounded atlas rendering/palettes, captured gap-free paint/erase with exact cancellation, inclusive rectangle paint, four-connected fill, active-layer tile picking, modifier-aware point and inclusive authored-cell marquee selection, object dragging, scene/object properties, nudging, alignment, and distribution. The 3D surface includes a runtime-backed shaded/triangle-wireframe viewport with exact editor-overlay alignment, exact preserve-world chooser/direct reparenting with preserve-local opt-out, stable sibling ordering, mixed-state batch visibility, switchable Local/World Move/Rotate/Scale with snapping and atomic exact-or-reject world conversion, filled Move-plane and crossed Scale-plane XY/XZ/YZ handles, projected X/Y/Z rotation rings with wrap-safe angular dragging, truthful mixed-value batch PBR materials, batch embedded texture maps, and single-node authoring for every runtime light type with hierarchy/viewport feedback. Both load compatible definitions from bounded root-local `scene-components.json`; Add Missing preserves same-kind values, rejects any type conflict before mutation, and commits the complete selection once. A shared structured form maintains the complete cross-target schema through parser-validated atomic writes, external-conflict detection, and separate bounded file undo/redo. Automatic schema/scene-data migration, enums, asset-reference fields, generalized runtime components, batch light editing, advanced tileset metadata/animation/collision, material-library/thumbnail workflows, and cubemap/lightmap authoring are not yet present. |
 | 3D node gameplay metadata | Implemented with limits | One selected `SceneNode` exposes deterministically ordered null, Boolean, integer, float, and string values for roles, IDs, spawn/trigger data, and component parameters. Create, rename, update, and remove validate bounds/no-ops before one canonical VSCN history transaction; values round-trip through VSCN v6 and row selection stays with its tab/session. Project schemas can batch-add missing metadata to multiple nodes, while arbitrary raw metadata editing remains single-node. |
 | Scene clipboard | Implemented with limits | Standard Cut/Copy/Paste/Select All commands follow the active visual editor. A versioned, typed text envelope supports same-kind cross-tab transfer of up to 1,024 selected identities and 64 MB total, preserving typed 2D properties and internal parent links or serializable 3D subtrees. Cut and paste are one-step history transactions with exact rollback. Mixed 2D/3D paste and interchange with other editors are intentionally rejected. |
 | Project explorer | Implemented with limits | Demand-loaded, scrollable tree; multi-root support; Quick Open cache; file actions; ignores. Rename/move preserve live editor buffers and undo state, while delete releases any removed split-pane owner. |
@@ -287,6 +287,13 @@ The visual editors provide hierarchy/layer navigation, viewport selection and
 camera controls, property editing, object creation/deletion/duplication,
 history, and import/export-oriented file workflows. A 2D object drag and a 3D
 transform drag each become one undo entry.
+
+The 2D tile toolbox has captured gap-free Paint and Erase strokes, inclusive
+forward/reverse Rectangle painting with a non-destructive preview,
+four-connected Fill, and active-layer Pick. Escape rolls back a freehand stroke
+or discards a rectangle preview, completed mutations serialize once, and exact
+no-ops do not add history. Tile ID zero clears. Tool mode and selected tile
+follow the owning tab and bounded session state.
 
 The 2D canvas provides the same replace, Shift-add, and
 Control-or-Command-toggle selection vocabulary as the hierarchy. Pressing an
@@ -439,13 +446,25 @@ VSCN. The selected assigned slot shows a bounded thumbnail from the canonical
 live material, so load, history, import, clone, and round trips cannot leave a
 stale picker-path preview behind. Scalar apply/remove and map replace/clear
 operate across the complete selection, retain it, and each create one history
-transaction that round-trips through VSCN. They are
-intentionally v1: a full tagged asset library/import-settings workflow,
+transaction that round-trips through VSCN.
+
+The Light component is a truthful single-node editor for directional, point,
+ambient, spot, rectangle-area, sphere-area, and volume lights. It authors every
+applicable retained field, including light-local position/direction, falloff,
+dimensions, radius, range, and spot cone. Studio constructs an independent
+replacement before assignment so a shared imported light is never edited in
+place. Add/apply/remove are exact no-op-aware one-step VSCN transactions.
+Hierarchy badges and viewport color, direction, offset, and range markers keep
+meshless emitters visible and pickable. Multi-node light editing remains
+explicitly disabled rather than presenting false mixed-state behavior.
+
+The scene editors are intentionally v1: a full tagged asset
+library/import-settings workflow,
 automatic component-schema/scene-data migration, generalized runtime component
 composition, advanced Tiled atlas
 metadata/image-collection editing, tile
-animation/collision/metadata editing, and cubemap/lightmap authoring still need
-depth.
+animation/collision/metadata editing, batch light editing, and
+cubemap/lightmap authoring still need depth.
 
 ## Workbench Status
 

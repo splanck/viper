@@ -19,7 +19,8 @@
 //        docs/adr/0161-stable-scenenode-sibling-reordering.md,
 //        docs/adr/0162-exact-preserve-world-scenenode-reparenting.md,
 //        docs/adr/0166-exact-scenenode-world-matrix-assignment.md,
-//        docs/adr/0168-windowless-canvas3d-rendering.md
+//        docs/adr/0168-windowless-canvas3d-rendering.md,
+//        docs/adr/0172-public-scenenode-light-authoring-and-studio-light-inspector.md
 //
 //===----------------------------------------------------------------------===//
 
@@ -33,10 +34,10 @@
 
 namespace {
 
-constexpr std::size_t kExpectedFunctionCount = 2027;
+constexpr std::size_t kExpectedFunctionCount = 2032;
 constexpr std::size_t kExpectedClassCount = 125;
-constexpr std::size_t kExpectedPropertyCount = 676;
-constexpr std::size_t kExpectedMethodCount = 1128;
+constexpr std::size_t kExpectedPropertyCount = 679;
+constexpr std::size_t kExpectedMethodCount = 1129;
 
 bool is3DName(std::string_view name) {
     return name.starts_with("Zanna.Graphics3D.") || name.starts_with("Zanna.Game3D.");
@@ -203,7 +204,7 @@ int main() {
 
     // Filled from the canonical registry after deliberate ABI review. This one value
     // covers every function name/signature/C symbol and every class member binding.
-    constexpr std::uint64_t kExpectedManifestHash = UINT64_C(0x0eabbefacc0ef8e4);
+    constexpr std::uint64_t kExpectedManifestHash = UINT64_C(0x6b5cdb1b344214bc);
     if (hash.value() != kExpectedManifestHash) {
         std::cerr << "FAIL: 3D ABI manifest changed; reviewed hash is 0x" << std::hex
                   << hash.value() << '\n';

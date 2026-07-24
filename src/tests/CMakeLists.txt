@@ -1335,6 +1335,14 @@ set_tests_properties(zia_zannastudio_scene_canvas_selection PROPERTIES
         LABELS "zia;zannastudio;scene;requires_display"
         TIMEOUT 60)
 
+add_test(NAME zia_zannastudio_scene_tile_tools
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes/scene_tile_tools_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes")
+set_tests_properties(zia_zannastudio_scene_tile_tools PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;zannastudio;scene;requires_display"
+        TIMEOUT 60)
+
 add_test(NAME zia_zannastudio_scene_editor_3d
         COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes/scene_editor_3d_probe.zia"
         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes")
@@ -1351,6 +1359,14 @@ if (WIN32)
     # unrelated compiler probes saturate the host, so reserve the runner.
     set_property(TEST zia_zannastudio_scene_editor_3d PROPERTY RUN_SERIAL TRUE)
 endif ()
+
+add_test(NAME zia_zannastudio_scene_light_authoring
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes/scene_light_authoring_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes")
+set_tests_properties(zia_zannastudio_scene_light_authoring PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;zannastudio;scene;requires_display"
+        TIMEOUT 150)
 
 add_test(NAME zia_zannastudio_scene_rotation_ring
         COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes/scene_rotation_ring_probe.zia"
@@ -2421,6 +2437,7 @@ set(ZANNA_DISPLAY_TESTS
         zia_zannastudio_tool_panel_toolbar
         zia_zannastudio_scene_editor_2d
         zia_zannastudio_scene_canvas_selection
+        zia_zannastudio_scene_tile_tools
         zia_zannastudio_scene_editor_3d
         zia_zannastudio_scene_rotation_ring
         zia_zannastudio_scene_scale_plane

@@ -20,7 +20,8 @@
 // Links: zannastudio/src/core/session.zia,
 //        zannastudio/src/core/document.zia,
 //        docs/adr/0166-exact-scenenode-world-matrix-assignment.md,
-//        docs/adr/0168-windowless-canvas3d-rendering.md
+//        docs/adr/0168-windowless-canvas3d-rendering.md,
+//        docs/adr/0171-bounded-scene-flood-fill-and-studio-tile-tools.md
 //
 //===----------------------------------------------------------------------===//
 
@@ -82,7 +83,7 @@ func main() {
     var sourceDocs = new document_manager.DocumentManager();
     var source2D = sourceDocs.OpenFile(scene2DPath);
     source2D.scene2DWorkspace.initialized = true;
-    source2D.scene2DWorkspace.mode = 2;
+    source2D.scene2DWorkspace.mode = 6;
     source2D.scene2DWorkspace.zoomPercent = 375;
     source2D.scene2DWorkspace.activeLayer = 7;
     source2D.scene2DWorkspace.selectedObject = 12;
@@ -126,6 +127,7 @@ func main() {
     }
     var savedIni = Ini.Parse(File.ReadAllText(settingsPath));
     if Ini.Get(savedIni, "session.file.0", "scene2dVersion") != "1"
+       or Ini.Get(savedIni, "session.file.0", "scene2dMode") != "6"
        or Ini.Get(savedIni, "session.file.0", "scene2dSplit") != "6250"
        or Ini.Get(savedIni, "session.file.0", "scene2dInspectorVisible") != "0"
        or Ini.Get(savedIni, "session.file.0", "scene2dCompactInspector") != "1"
@@ -163,7 +165,7 @@ func main() {
     var restored3D = restoredDocs.documents.get(restored3DIndex);
     if restored2D.kind != file_utils.DOC_KIND_SCENE_2D
        or restored2D.scene2DWorkspace.initialized == false
-       or restored2D.scene2DWorkspace.mode != 2
+       or restored2D.scene2DWorkspace.mode != 6
        or restored2D.scene2DWorkspace.zoomPercent != 375
        or restored2D.scene2DWorkspace.tileId != 44
        or restored2D.scene2DWorkspace.selectedSceneProperty != 4

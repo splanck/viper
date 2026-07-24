@@ -1,0 +1,266 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/probes/scene_light_authoring_probe.zia
+// Purpose: Verify public SceneNode lights and transactional Studio authoring.
+// Key invariants:
+//   - Draft construction covers every runtime light kind and retained field.
+//   - Node edits replace rather than mutate a borrowed light object.
+//   - Add, apply, remove, undo, redo, and reopen use canonical VSCN bytes.
+//   - Exact no-ops create no history and hierarchy rows identify lights.
+//   - Type-specific controls are visible and enabled only when applicable.
+//   - Ambiguous multi-selection never presents light edits as actionable.
+// Ownership/Lifetime: The probe owns one hidden AppShell, editor, and documents.
+// Links: zannastudio/src/ui/scene_editor_3d.zia,
+//        zannastudio/src/ui/scene_light_3d.zia,
+//        zannastudio/src/ui/scene_light_inspector_3d.zia,
+//        docs/adr/0172-public-scenenode-light-authoring-and-studio-light-inspector.md
+//
+//===----------------------------------------------------------------------===//
+
+module scene_light_authoring_probe;
+
+bind "../core/document_manager";
+bind "../services/file_utils";
+bind "../ui/app_shell";
+bind "../ui/scene_editor_3d";
+bind "../ui/scene_light_3d";
+
+bind GUI = Zanna.GUI;
+bind Light3D = Zanna.Graphics3D.Light3D;
+bind Str = Zanna.String;
+bind Terminal = Zanna.Terminal;
+
+// ============================================================================
+// MODULE: scene_light_authoring_probe
+// PURPOSE: Keep all-type light and VSCN transaction coverage focused and fast.
+//
+// WHERE-THIS-FITS: The broad 3D editor probe owns general hierarchy and
+//          materials. This probe owns the public light-authoring boundary.
+//
+// TEACHING-NOTE: A live renderer result alone is insufficient. The canonical
+//          document, exact history, reopened runtime object, and retained
+//          hierarchy presentation must all agree.
+// ============================================================================
+
+func near(actual: Number, expected: Number) -> Boolean {
+    var difference = actual - expected;
+    if difference < 0.0 { difference = 0.0 - difference; }
+    return difference < 0.0001;
+}
+
+func fail(shell: app_shell.AppShell,
+          reason: String) {
+    shell.Destroy();
+    Terminal.Say("RESULT: fail " + reason);
+}
+
+func main() {
+    var shell = new app_shell.AppShell();
+    shell.Build("Zanna Studio Light Authoring Probe", 1120, 760);
+
+    var kind = scene_light_3d.LIGHT_DIRECTIONAL;
+    while kind <= scene_light_3d.LIGHT_VOLUME {
+        var draft = new scene_light_3d.LightState3D();
+        draft.kind = kind;
+        draft.red = 0.2 + kind * 0.05;
+        draft.green = 0.4;
+        draft.blue = 0.8;
+        draft.intensity = 1.5 + kind;
+        draft.enabled = kind != scene_light_3d.LIGHT_AMBIENT;
+        draft.castsShadows = true;
+        draft.positionX = 1.0;
+        draft.positionY = 2.0;
+        draft.positionZ = 3.0;
+        draft.directionX = 0.0;
+        draft.directionY = -2.0;
+        draft.directionZ = -1.0;
+        draft.attenuation = 0.25;
+        draft.decayType = scene_light_3d.DECAY_CUBIC;
+        draft.range = 14.0;
+        draft.width = 4.0;
+        draft.height = 2.0;
+        draft.radius = 3.0;
+        draft.innerConeDegrees = 18.0;
+        draft.outerConeDegrees = 36.0;
+        var built = scene_light_3d.BuildLight(draft);
+        var rebuilt =
+            scene_light_3d.BuildLight(scene_light_3d.FromLight(built));
+        if built == null
+           or rebuilt == null
+           or built.Type != kind
+           or scene_light_3d.Equivalent(built, rebuilt) == false {
+            fail(shell, "all-type light reconstruction failed at " + kind);
+            return;
+        }
+        if kind == scene_light_3d.LIGHT_SPOT
+           and (near(built.InnerConeDegrees, 18.0) == false
+                or near(built.OuterConeDegrees, 36.0) == false) {
+            fail(shell, "spot cone degrees were not publicly inspectable");
+            return;
+        }
+        if (kind == scene_light_3d.LIGHT_AMBIENT
+            or kind == scene_light_3d.LIGHT_VOLUME)
+           and built.CastsShadows {
+            fail(shell, "unsupported light kind retained shadow eligibility");
+            return;
+        }
+        kind = kind + 1;
+    }
+
+    var editor = new scene_editor_3d.SceneEditor3D();
+    editor.Setup(shell.workbench.scene3DHost, shell.app);
+    var documents = new document_manager.DocumentManager();
+    var sceneDoc = documents.NewScene3DDocument();
+    shell.SelectSurface(file_utils.DOC_KIND_SCENE_3D);
+    editor.Activate(sceneDoc);
+    editor.Pump(sceneDoc);
+    shell.Poll();
+    shell.Render();
+
+    var addBaseline = sceneDoc.content;
+    var addRevision = editor.GetRevision();
+    var lightIndex = editor.AddLightNode("Probe Light", -1);
+    if lightIndex != 0
+       or editor.GetRevision() != addRevision + 1
+       or editor.flatNodes.get(lightIndex).Light == null
+       or editor.flatNodes.get(lightIndex).Light.Type
+            != scene_light_3d.LIGHT_POINT
+       or sceneDoc.content == addBaseline
+       or Str.Contains(sceneDoc.content, "\"light\"") == false {
+        fail(shell, "Point light node was not one canonical VSCN edit");
+        return;
+    }
+    var rowText = GUI.TreeView.Node.GetText(
+        editor.hierarchyTreeNodes.get(lightIndex));
+    if Str.Contains(rowText, "[light]") == false
+       or GUI.TreeView.Node.GetIcon(
+              editor.hierarchyTreeNodes.get(lightIndex)) != "✦" {
+        fail(shell, "hierarchy did not identify the meshless light node");
+        return;
+    }
+
+    var original = editor.flatNodes.get(lightIndex).Light;
+    var spotDraft = scene_light_3d.FromLight(original);
+    spotDraft.kind = scene_light_3d.LIGHT_SPOT;
+    spotDraft.red = 1.0;
+    spotDraft.green = 0.55;
+    spotDraft.blue = 0.2;
+    spotDraft.intensity = 3.25;
+    spotDraft.positionX = 2.0;
+    spotDraft.positionY = 1.0;
+    spotDraft.positionZ = -3.0;
+    spotDraft.directionX = 0.25;
+    spotDraft.directionY = -1.0;
+    spotDraft.directionZ = -0.5;
+    spotDraft.attenuation = 0.2;
+    spotDraft.innerConeDegrees = 22.0;
+    spotDraft.outerConeDegrees = 41.0;
+    spotDraft.castsShadows = true;
+    var applyRevision = editor.GetRevision();
+    if editor.ApplyNodeLight(lightIndex, spotDraft) == false
+       or editor.GetRevision() != applyRevision + 1
+       or editor.flatNodes.get(lightIndex).Light == original
+       or original.Type != scene_light_3d.LIGHT_POINT
+       or near(original.Intensity, 1.0) == false {
+        fail(shell, "light edit mutated an alias or missed one transaction");
+        return;
+    }
+    var spot = editor.flatNodes.get(lightIndex).Light;
+    if spot.Type != scene_light_3d.LIGHT_SPOT
+       or near(spot.Intensity, 3.25) == false
+       or near(spot.InnerConeDegrees, 22.0) == false
+       or near(spot.OuterConeDegrees, 41.0) == false
+       or spot.CastsShadows == false {
+        fail(shell, "Spot light fields did not reach the live node");
+        return;
+    }
+    var spotContent = sceneDoc.content;
+    if editor.ApplyNodeLight(
+           lightIndex, scene_light_3d.FromLight(spot))
+       or editor.GetRevision() != applyRevision + 1
+       or sceneDoc.content != spotContent {
+        fail(shell, "equivalent light replacement created history");
+        return;
+    }
+
+    editor.lightInspector.typeDropdown.SetSelected(
+        scene_light_3d.LIGHT_AMBIENT);
+    editor.lightInspector.UpdateTypeControls();
+    if editor.lightInspector.positionGroup.IsVisible()
+       or editor.lightInspector.directionGroup.IsVisible()
+       or editor.lightInspector.falloffGroup.IsVisible()
+       or editor.lightInspector.shapeGroup.IsVisible()
+       or editor.lightInspector.castsShadowsCheck.IsEnabled() {
+        fail(shell, "Ambient inspector exposed inapplicable spatial fields");
+        return;
+    }
+    editor.lightInspector.typeDropdown.SetSelected(
+        scene_light_3d.LIGHT_SPOT);
+    editor.lightInspector.UpdateTypeControls();
+    if editor.lightInspector.positionGroup.IsVisible() == false
+       or editor.lightInspector.directionGroup.IsVisible() == false
+       or editor.lightInspector.falloffGroup.IsVisible() == false
+       or editor.lightInspector.shapeGroup.IsVisible() == false
+       or editor.lightInspector.innerCone.IsEnabled() == false
+       or editor.lightInspector.outerCone.IsEnabled() == false {
+        fail(shell, "Spot inspector omitted applicable authoring fields");
+        return;
+    }
+
+    var removeRevision = editor.GetRevision();
+    if editor.RemoveNodeLight(lightIndex) == false
+       or editor.GetRevision() != removeRevision + 1
+       or editor.flatNodes.get(lightIndex).Light != null
+       or editor.RemoveNodeLight(lightIndex)
+       or editor.GetRevision() != removeRevision + 1
+       or editor.Undo() == false
+       or sceneDoc.content != spotContent
+       or editor.flatNodes.get(lightIndex).Light == null
+       or editor.flatNodes.get(lightIndex).Light.Type
+            != scene_light_3d.LIGHT_SPOT
+       or editor.Redo() == false
+       or editor.flatNodes.get(lightIndex).Light != null
+       or editor.Undo() == false
+       or sceneDoc.content != spotContent {
+        fail(shell, "light removal lost no-op, exact undo, or redo behavior");
+        return;
+    }
+
+    var emptyIndex = editor.AddEmptyNode("Second Node", -1);
+    var selection: List[Integer] = [];
+    selection.add(lightIndex);
+    selection.add(emptyIndex);
+    editor.SelectSceneNodes(selection, lightIndex);
+    if editor.lightInspector.applyButton.IsEnabled()
+       or editor.lightInspector.removeButton.IsEnabled() {
+        fail(shell, "multi-selection exposed ambiguous light actions");
+        return;
+    }
+
+    var reopened = documents.NewScene3DDocument();
+    reopened.content = spotContent;
+    reopened.isModified = false;
+    editor.Activate(reopened);
+    editor.Pump(reopened);
+    shell.Poll();
+    shell.Render();
+    if editor.flatNodes.count() != 1
+       or editor.flatNodes.get(0).Light == null
+       or editor.flatNodes.get(0).Light.Type
+            != scene_light_3d.LIGHT_SPOT
+       or near(editor.flatNodes.get(0).Light.InnerConeDegrees, 22.0) == false
+       or near(editor.flatNodes.get(0).Light.OuterConeDegrees, 41.0) == false
+       or editor.projectedX.count() != 1
+       or editor.projectedY.count() != 1 {
+        fail(shell, "reopened VSCN lost light state or viewport marker");
+        return;
+    }
+
+    shell.Destroy();
+    Terminal.Say("RESULT: ok");
+}

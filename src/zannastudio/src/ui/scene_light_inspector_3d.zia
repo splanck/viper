@@ -1,0 +1,413 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/ui/scene_light_inspector_3d.zia
+// Purpose: Accessible all-type Light3D controls for Studio's 3D inspector.
+// Key invariants:
+//   - This presentation object never mutates a SceneNode or canonical VSCN.
+//   - Controls are enabled only for one unambiguous selected node.
+//   - Type-specific rows describe local light fields and hide inapplicable data.
+//   - Apply and Remove return intent to the transactional scene controller.
+// Ownership/Lifetime: SceneEditor3D owns one inspector; GUI owns its widgets.
+// Links: zannastudio/src/ui/scene_editor_3d.zia,
+//        zannastudio/src/ui/scene_light_3d.zia,
+//        zannastudio/src/probes/scene_light_authoring_probe.zia,
+//        docs/adr/0172-public-scenenode-light-authoring-and-studio-light-inspector.md
+//
+//===----------------------------------------------------------------------===//
+
+module scene_light_inspector_3d;
+
+bind "scene_light_3d";
+
+bind GUI = Zanna.GUI;
+bind SceneNode = Zanna.Graphics3D.SceneNode;
+bind Light3D = Zanna.Graphics3D.Light3D;
+
+// ============================================================================
+// MODULE: scene_light_inspector_3d
+// PURPOSE: Keep responsive light presentation outside the VSCN controller.
+//
+// WHERE-THIS-FITS: SceneEditor3D refreshes this object from the selected
+//          runtime node and consumes its buttons as transaction requests.
+//
+// TEACHING-NOTE: Widgets are a draft. BuildState returns values only; the
+//          controller constructs an independent light and owns history.
+// ============================================================================
+
+/// @brief Presentation-only node-light component inspector.
+class SceneLightInspector3D {
+    expose GUI.GroupBox group;
+    expose GUI.Label summary;
+    expose GUI.Dropdown typeDropdown;
+    expose GUI.ColorPicker colorPicker;
+    expose GUI.Spinner intensity;
+    expose GUI.Checkbox enabledCheck;
+    expose GUI.Checkbox castsShadowsCheck;
+    expose GUI.GroupBox positionGroup;
+    expose GUI.Spinner positionX;
+    expose GUI.Spinner positionY;
+    expose GUI.Spinner positionZ;
+    expose GUI.GroupBox directionGroup;
+    expose GUI.Spinner directionX;
+    expose GUI.Spinner directionY;
+    expose GUI.Spinner directionZ;
+    expose GUI.GroupBox falloffGroup;
+    expose GUI.Spinner attenuation;
+    expose GUI.Dropdown decayType;
+    expose GUI.Spinner range;
+    expose GUI.GroupBox shapeGroup;
+    expose GUI.Spinner width;
+    expose GUI.Spinner height;
+    expose GUI.Spinner radius;
+    expose GUI.Spinner innerCone;
+    expose GUI.Spinner outerCone;
+    expose GUI.Button applyButton;
+    expose GUI.Button removeButton;
+
+    expose func init() {
+        group = null;
+        summary = null;
+        typeDropdown = null;
+        colorPicker = null;
+        intensity = null;
+        enabledCheck = null;
+        castsShadowsCheck = null;
+        positionGroup = null;
+        positionX = null;
+        positionY = null;
+        positionZ = null;
+        directionGroup = null;
+        directionX = null;
+        directionY = null;
+        directionZ = null;
+        falloffGroup = null;
+        attenuation = null;
+        decayType = null;
+        range = null;
+        shapeGroup = null;
+        width = null;
+        height = null;
+        radius = null;
+        innerCone = null;
+        outerCone = null;
+        applyButton = null;
+        removeButton = null;
+    }
+
+    /// @brief Build the complete node-light component surface.
+    expose func Setup(parent: GUI.VBox) {
+        group = GUI.GroupBox.New(parent, "Light component");
+        summary = GUI.Label.New(
+            group,
+            "No light component. Create a Point light or choose another type.");
+        summary.SetWordWrap(true);
+
+        typeDropdown = GUI.Dropdown.New(group);
+        typeDropdown.SetAccessibleName("Node light type");
+        typeDropdown.AddItem("Directional");
+        typeDropdown.AddItem("Point");
+        typeDropdown.AddItem("Ambient");
+        typeDropdown.AddItem("Spot");
+        typeDropdown.AddItem("Rectangle Area");
+        typeDropdown.AddItem("Sphere Area");
+        typeDropdown.AddItem("Volume");
+        typeDropdown.SetSelected(scene_light_3d.LIGHT_POINT);
+
+        var appearance = GUI.HBox.New();
+        appearance.SetSpacing(4.0);
+        group.AddChild(appearance);
+        GUI.Label.New(appearance, "Color");
+        colorPicker = GUI.ColorPicker.New(appearance);
+        colorPicker.SetFlex(1.0);
+        colorPicker.SetAccessibleName("Node light color");
+        colorPicker.SetAlphaEnabled(false);
+        colorPicker.SetColor(scene_light_3d.DEFAULT_COLOR);
+        intensity = AddSpinner(
+            appearance, "Intensity", 0.0, 1000000.0, 0.1, 2, 1.0);
+
+        enabledCheck = GUI.Checkbox.New(group, "Enabled");
+        enabledCheck.SetTooltip(
+            "Keep this light in the scene while temporarily disabling its contribution");
+        enabledCheck.SetChecked(true);
+        castsShadowsCheck =
+            GUI.Checkbox.New(group, "Eligible to cast shadows");
+        castsShadowsCheck.SetTooltip(
+            "Request renderer shadow slots; availability remains backend dependent");
+        castsShadowsCheck.SetChecked(false);
+
+        positionGroup = GUI.GroupBox.New(group, "Local light offset");
+        var positionRow = GUI.HBox.New();
+        positionRow.SetSpacing(4.0);
+        positionGroup.AddChild(positionRow);
+        positionX = AddSignedSpinner(positionRow, "X", 0.0);
+        positionY = AddSignedSpinner(positionRow, "Y", 0.0);
+        positionZ = AddSignedSpinner(positionRow, "Z", 0.0);
+
+        directionGroup = GUI.GroupBox.New(group, "Local light direction");
+        var directionRow = GUI.HBox.New();
+        directionRow.SetSpacing(4.0);
+        directionGroup.AddChild(directionRow);
+        directionX = AddSignedSpinner(directionRow, "X", 0.0);
+        directionY = AddSignedSpinner(directionRow, "Y", -1.0);
+        directionZ = AddSignedSpinner(directionRow, "Z", 0.0);
+
+        falloffGroup = GUI.GroupBox.New(group, "Falloff");
+        var falloffRow = GUI.HBox.New();
+        falloffRow.SetSpacing(4.0);
+        falloffGroup.AddChild(falloffRow);
+        attenuation = AddSpinner(
+            falloffRow, "Atten", 0.001, 1000000.0, 0.01, 3,
+            scene_light_3d.DEFAULT_ATTENUATION);
+        range = AddSpinner(
+            falloffRow, "Range", 0.001, 1000000.0, 0.25, 2,
+            scene_light_3d.DEFAULT_RANGE);
+        decayType = GUI.Dropdown.New(falloffGroup);
+        decayType.SetAccessibleName("Node light distance decay");
+        decayType.AddItem("No decay");
+        decayType.AddItem("Linear");
+        decayType.AddItem("Quadratic");
+        decayType.AddItem("Cubic");
+        decayType.SetSelected(scene_light_3d.DECAY_QUADRATIC);
+
+        shapeGroup = GUI.GroupBox.New(group, "Emitter shape");
+        var dimensionRow = GUI.HBox.New();
+        dimensionRow.SetSpacing(4.0);
+        shapeGroup.AddChild(dimensionRow);
+        width = AddSpinner(
+            dimensionRow, "Width", 0.001, 1000000.0, 0.1, 2, 1.0);
+        height = AddSpinner(
+            dimensionRow, "Height", 0.001, 1000000.0, 0.1, 2, 1.0);
+        radius = AddSpinner(
+            dimensionRow, "Radius", 0.001, 1000000.0, 0.1, 2, 1.0);
+        var coneRow = GUI.HBox.New();
+        coneRow.SetSpacing(4.0);
+        shapeGroup.AddChild(coneRow);
+        innerCone = AddSpinner(
+            coneRow, "Inner °", 0.0, 89.0, 0.5, 2,
+            scene_light_3d.DEFAULT_INNER_CONE);
+        outerCone = AddSpinner(
+            coneRow, "Outer °", 0.01, 89.0, 0.5, 2,
+            scene_light_3d.DEFAULT_OUTER_CONE);
+
+        var buttons = GUI.HBox.New();
+        buttons.SetSpacing(4.0);
+        group.AddChild(buttons);
+        applyButton = GUI.Button.New(buttons, "Create Light");
+        applyButton.SetTooltip(
+            "Build an independent light and commit one undoable VSCN edit");
+        removeButton = GUI.Button.New(buttons, "Remove");
+        removeButton.SetTooltip(
+            "Remove the light while keeping the node and its other components");
+
+        UpdateTypeControls();
+        UpdateControls(false, false, 0);
+    }
+
+    /// @brief Refresh controls from one selected node without mutating it.
+    expose func Refresh(node: SceneNode,
+                        selectionCount: Integer,
+                        editorEnabled: Boolean) {
+        var light: Light3D = null;
+        if node != null { light = node.Light; }
+        var state = scene_light_3d.FromLight(light);
+        typeDropdown.SetSelected(state.kind);
+        colorPicker.SetColor(scene_light_3d.PackedRgb(light));
+        intensity.SetValue(state.intensity);
+        enabledCheck.SetChecked(state.enabled);
+        castsShadowsCheck.SetChecked(state.castsShadows);
+        positionX.SetValue(state.positionX);
+        positionY.SetValue(state.positionY);
+        positionZ.SetValue(state.positionZ);
+        directionX.SetValue(state.directionX);
+        directionY.SetValue(state.directionY);
+        directionZ.SetValue(state.directionZ);
+        attenuation.SetValue(state.attenuation);
+        decayType.SetSelected(state.decayType);
+        range.SetValue(state.range);
+        width.SetValue(state.width);
+        height.SetValue(state.height);
+        radius.SetValue(state.radius);
+        innerCone.SetValue(state.innerConeDegrees);
+        outerCone.SetValue(state.outerConeDegrees);
+
+        if selectionCount == 0 {
+            summary.SetText("Select one node to author a light component.");
+        } else if selectionCount > 1 {
+            summary.SetText(
+                selectionCount
+                + " nodes selected. Light editing requires one unambiguous node.");
+        } else if light == null {
+            summary.SetText(
+                "No light component. Create a Point light or choose another type.");
+        } else {
+            var stateText = "enabled";
+            if light.IsEnabled == false { stateText = "disabled"; }
+            summary.SetText(
+                scene_light_3d.TypeName(light.Type)
+                + " light • " + stateText
+                + " • light-local fields follow the node world transform.");
+        }
+        UpdateTypeControls();
+        UpdateControls(
+            editorEnabled, light != null, selectionCount);
+    }
+
+    /// @brief Build one complete normalized draft from visible controls.
+    expose func BuildState() -> scene_light_3d.LightState3D {
+        var state = new scene_light_3d.LightState3D();
+        state.kind = typeDropdown.Selected;
+        state.red =
+            scene_light_3d.UnitFromByte(colorPicker.GetRed());
+        state.green =
+            scene_light_3d.UnitFromByte(colorPicker.GetGreen());
+        state.blue =
+            scene_light_3d.UnitFromByte(colorPicker.GetBlue());
+        state.intensity = intensity.Value;
+        state.enabled = enabledCheck.IsChecked();
+        state.castsShadows = castsShadowsCheck.IsChecked();
+        state.positionX = positionX.Value;
+        state.positionY = positionY.Value;
+        state.positionZ = positionZ.Value;
+        state.directionX = directionX.Value;
+        state.directionY = directionY.Value;
+        state.directionZ = directionZ.Value;
+        state.attenuation = attenuation.Value;
+        state.decayType = decayType.Selected;
+        state.range = range.Value;
+        state.width = width.Value;
+        state.height = height.Value;
+        state.radius = radius.Value;
+        state.innerConeDegrees = innerCone.Value;
+        state.outerConeDegrees = outerCone.Value;
+        return scene_light_3d.Normalize(state);
+    }
+
+    /// @brief Show and enable only fields meaningful for the selected type.
+    expose func UpdateTypeControls() {
+        if typeDropdown == null { return; }
+        var kind = typeDropdown.Selected;
+        if kind < scene_light_3d.LIGHT_DIRECTIONAL
+           or kind > scene_light_3d.LIGHT_VOLUME {
+            kind = scene_light_3d.LIGHT_POINT;
+            typeDropdown.SetSelected(kind);
+        }
+        positionGroup.SetVisible(scene_light_3d.HasPosition(kind));
+        directionGroup.SetVisible(scene_light_3d.HasDirection(kind));
+        falloffGroup.SetVisible(scene_light_3d.HasDecay(kind));
+        shapeGroup.SetVisible(kind >= scene_light_3d.LIGHT_SPOT);
+        attenuation.SetEnabled(scene_light_3d.HasAttenuation(kind));
+        range.SetEnabled(scene_light_3d.HasRange(kind));
+        width.SetEnabled(kind == scene_light_3d.LIGHT_AREA_RECTANGLE);
+        height.SetEnabled(kind == scene_light_3d.LIGHT_AREA_RECTANGLE);
+        radius.SetEnabled(
+            kind == scene_light_3d.LIGHT_AREA_SPHERE
+            or kind == scene_light_3d.LIGHT_VOLUME);
+        innerCone.SetEnabled(kind == scene_light_3d.LIGHT_SPOT);
+        outerCone.SetEnabled(kind == scene_light_3d.LIGHT_SPOT);
+        castsShadowsCheck.SetEnabled(
+            scene_light_3d.SupportsShadows(kind));
+        if scene_light_3d.SupportsShadows(kind) == false {
+            castsShadowsCheck.SetChecked(false);
+        }
+    }
+
+    /// @brief Keep actions truthful for selection and component state.
+    expose func UpdateControls(editorEnabled: Boolean,
+                               hasLight: Boolean,
+                               selectionCount: Integer) {
+        if typeDropdown == null { return; }
+        var hasSingle = editorEnabled and selectionCount == 1;
+        group.SetEnabled(editorEnabled);
+        typeDropdown.SetEnabled(hasSingle);
+        colorPicker.SetEnabled(hasSingle);
+        intensity.SetEnabled(hasSingle);
+        enabledCheck.SetEnabled(hasSingle);
+        applyButton.SetEnabled(hasSingle);
+        removeButton.SetEnabled(hasSingle and hasLight);
+        if hasSingle == false {
+            applyButton.SetText("Apply Light");
+            applyButton.SetTooltip(
+                "Select exactly one node before editing its light");
+        } else if hasLight {
+            applyButton.SetText("Apply Light");
+            applyButton.SetTooltip(
+                "Replace this component with an independent light in one edit");
+        } else {
+            applyButton.SetText("Create Light");
+            applyButton.SetTooltip(
+                "Create this light component in one undoable VSCN edit");
+        }
+        UpdateTypeControls();
+        // Type visibility is independent from selection. Reapply the single
+        // selection gate after type-specific enabling.
+        castsShadowsCheck.SetEnabled(
+            hasSingle
+            and scene_light_3d.SupportsShadows(typeDropdown.Selected));
+        positionX.SetEnabled(hasSingle);
+        positionY.SetEnabled(hasSingle);
+        positionZ.SetEnabled(hasSingle);
+        directionX.SetEnabled(hasSingle);
+        directionY.SetEnabled(hasSingle);
+        directionZ.SetEnabled(hasSingle);
+        attenuation.SetEnabled(
+            hasSingle
+            and scene_light_3d.HasAttenuation(typeDropdown.Selected));
+        decayType.SetEnabled(
+            hasSingle and scene_light_3d.HasDecay(typeDropdown.Selected));
+        range.SetEnabled(
+            hasSingle and scene_light_3d.HasRange(typeDropdown.Selected));
+        width.SetEnabled(
+            hasSingle
+            and typeDropdown.Selected
+                == scene_light_3d.LIGHT_AREA_RECTANGLE);
+        height.SetEnabled(
+            hasSingle
+            and typeDropdown.Selected
+                == scene_light_3d.LIGHT_AREA_RECTANGLE);
+        radius.SetEnabled(
+            hasSingle
+            and (typeDropdown.Selected
+                    == scene_light_3d.LIGHT_AREA_SPHERE
+                 or typeDropdown.Selected
+                    == scene_light_3d.LIGHT_VOLUME));
+        innerCone.SetEnabled(
+            hasSingle
+            and typeDropdown.Selected == scene_light_3d.LIGHT_SPOT);
+        outerCone.SetEnabled(
+            hasSingle
+            and typeDropdown.Selected == scene_light_3d.LIGHT_SPOT);
+    }
+
+    hide func AddSignedSpinner(parent: GUI.HBox,
+                               label: String,
+                               value: Number) -> GUI.Spinner {
+        return AddSpinner(
+            parent, label,
+            0.0 - scene_light_3d.LIGHT_POSITION_LIMIT,
+            scene_light_3d.LIGHT_POSITION_LIMIT,
+            0.1, 3, value);
+    }
+
+    hide func AddSpinner(parent: GUI.HBox,
+                         label: String,
+                         minimum: Number,
+                         maximum: Number,
+                         step: Number,
+                         decimals: Integer,
+                         value: Number) -> GUI.Spinner {
+        GUI.Label.New(parent, label);
+        var spinner = GUI.Spinner.New(parent);
+        spinner.SetRange(minimum, maximum);
+        spinner.SetStep(step);
+        spinner.SetDecimals(decimals);
+        spinner.SetValue(value);
+        spinner.SetPreferredSize(72.0, 0.0);
+        spinner.SetAccessibleName(label + " light value");
+        return spinner;
+    }
+}

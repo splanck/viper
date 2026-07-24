@@ -32,6 +32,9 @@
 //   - Canvas point and marquee selection share conventional Shift-add and
 //     Control/Command-toggle semantics, remain workspace-only, and always
 //     release pointer capture on completion or cancellation.
+//   - Paint/erase, rectangle, flood-fill, and tile-pick tools are active-layer
+//     scoped; mutations commit once while previews, picks, and canceled
+//     captured gestures never enter canonical scene history.
 //   - Hierarchy Find keeps all bounded rows visible, wraps deterministically,
 //     reveals nested matches, and never changes canonical scene history.
 // Ownership/Lifetime:
@@ -56,7 +59,8 @@
 //        docs/adr/0163-stable-multiselect-and-row-aware-treeview-editing.md,
 //        docs/adr/0164-backward-compatible-2d-scene-object-hierarchy.md,
 //        docs/adr/0165-scrollview-descendant-reveal.md,
-//        docs/adr/0170-studio-2d-canvas-marquee-selection.md
+//        docs/adr/0170-studio-2d-canvas-marquee-selection.md,
+//        docs/adr/0171-bounded-scene-flood-fill-and-studio-tile-tools.md
 //
 //===----------------------------------------------------------------------===//
 
@@ -105,6 +109,9 @@ final MODE_SELECT: Integer = 0;
 final MODE_PAINT: Integer = 1;
 final MODE_ERASE: Integer = 2;
 final MODE_OBJECT: Integer = 3;
+final MODE_RECTANGLE: Integer = 4;
+final MODE_FILL: Integer = 5;
+final MODE_PICKER: Integer = 6;
 
 final DEFAULT_SCENE_WIDTH: Integer = 32;
 final DEFAULT_SCENE_HEIGHT: Integer = 18;
@@ -121,6 +128,7 @@ final MAX_OBJECT_HIERARCHY_DEPTH: Integer = 256;
 final OBJECT_PARENT_TARGET_MIXED: Integer = -2;
 final COMPACT_SCENE_2D_WIDTH: Number = 640.0;
 final CANVAS_MARQUEE_COLOR: Integer = 0x70BEFF;
+final TILE_RECTANGLE_COLOR: Integer = 0xFFC86B;
 
 final PROPERTY_TYPE_STRING: Integer = 0;
 final PROPERTY_TYPE_INT: Integer = 1;
@@ -199,6 +207,9 @@ class SceneEditor2D {
     expose GUI.Button selectButton;
     expose GUI.Button paintButton;
     expose GUI.Button eraseButton;
+    expose GUI.Button rectangleButton;
+    expose GUI.Button fillButton;
+    expose GUI.Button pickerButton;
     expose GUI.Button objectButton;
     expose GUI.Spinner tileSpinner;
     expose GUI.Button zoomOutButton;
@@ -283,6 +294,11 @@ class SceneEditor2D {
     expose Integer canvasMarqueeStartY;
     expose Integer canvasMarqueeCurrentX;
     expose Integer canvasMarqueeCurrentY;
+    expose Boolean tileRectangleActive;
+    expose Integer tileRectangleStartX;
+    expose Integer tileRectangleStartY;
+    expose Integer tileRectangleCurrentX;
+    expose Integer tileRectangleCurrentY;
     expose Integer displayCellSize;
     expose Integer renderedColumns;
     expose Integer renderedRows;
@@ -309,6 +325,7 @@ class SceneEditor2D {
     hide Boolean paintStrokeActive;
     hide Boolean paintStrokeChanged;
     hide String paintStrokeSnapshot;
+    hide Integer tileRectangleTile;
     hide Boolean objectDragActive;
     hide Boolean objectDragChanged;
     hide String objectDragSnapshot;
@@ -344,6 +361,9 @@ class SceneEditor2D {
         selectButton = null;
         paintButton = null;
         eraseButton = null;
+        rectangleButton = null;
+        fillButton = null;
+        pickerButton = null;
         objectButton = null;
         tileSpinner = null;
         zoomOutButton = null;
@@ -428,6 +448,11 @@ class SceneEditor2D {
         canvasMarqueeStartY = -1;
         canvasMarqueeCurrentX = -1;
         canvasMarqueeCurrentY = -1;
+        tileRectangleActive = false;
+        tileRectangleStartX = -1;
+        tileRectangleStartY = -1;
+        tileRectangleCurrentX = -1;
+        tileRectangleCurrentY = -1;
         displayCellSize = BASE_DISPLAY_CELL;
         renderedColumns = 0;
         renderedRows = 0;
@@ -462,6 +487,7 @@ class SceneEditor2D {
         paintStrokeActive = false;
         paintStrokeChanged = false;
         paintStrokeSnapshot = "";
+        tileRectangleTile = 0;
         objectDragActive = false;
         objectDragChanged = false;
         objectDragSnapshot = "";
@@ -510,9 +536,26 @@ class SceneEditor2D {
             "Select and drag objects; Arrow keys nudge one pixel and "
             + "Shift+Arrow nudges one tile");
         paintButton = GUI.Button.New(toolbar, "Paint");
+        paintButton.SetTooltip(
+            "Freehand paint the selected tile; Escape cancels a captured stroke");
         eraseButton = GUI.Button.New(toolbar, "Erase");
+        eraseButton.SetTooltip(
+            "Freehand clear tiles; Escape cancels a captured stroke");
+        rectangleButton = GUI.Button.New(toolbar, "Rectangle");
+        rectangleButton.SetTooltip(
+            "Drag an inclusive rectangle using the selected tile; tile 0 clears");
+        fillButton = GUI.Button.New(toolbar, "Fill");
+        fillButton.SetTooltip(
+            "Replace the clicked four-connected active-layer region");
+        pickerButton = GUI.Button.New(toolbar, "Pick");
+        pickerButton.SetTooltip(
+            "Sample one active-layer tile and return to Paint");
         objectButton = GUI.Button.New(toolbar, "Object");
         toolbarStatus = GUI.Label.New(toolbar, "Open or create a 2D scene");
+        toolbarStatus.SetMinSize(0.0, 0.0);
+        toolbarStatus.SetPreferredSize(96.0, 0.0);
+        toolbarStatus.SetEllipsis(true);
+        toolbarStatus.SetMaxLines(1);
         toolbarStatus.SetFlex(1.0);
 
         viewToolbar = GUI.Flex.New();
@@ -542,6 +585,10 @@ class SceneEditor2D {
         inspectorButton.SetTooltip(
             "Hide the scene inspector and give the canvas the full width");
         viewStatusLabel = GUI.Label.New(viewToolbar, "");
+        viewStatusLabel.SetMinSize(0.0, 0.0);
+        viewStatusLabel.SetPreferredSize(96.0, 0.0);
+        viewStatusLabel.SetEllipsis(true);
+        viewStatusLabel.SetMaxLines(1);
         viewStatusLabel.SetFlex(1.0);
         UpdateModeButtons();
 
@@ -563,9 +610,10 @@ class SceneEditor2D {
         canvasImage.SetName("scene-2d-canvas");
         canvasImage.SetAccessibleName("2D scene canvas");
         canvasImage.SetTooltip(
-            "Paint/erase tiles; in Select mode click or drag a box, Shift adds, "
-            + "Control/Command toggles, and object drags move the selection. "
-            + "Wheel zooms, middle-drag pans, and Arrow keys nudge.");
+            "Paint or erase freehand, drag Rectangle, click Fill or Pick; "
+            + "Escape cancels captured tile gestures. In Select mode click or "
+            + "drag a box, Shift adds, Control/Command toggles, and object "
+            + "drags move the selection. Wheel zooms and middle-drag pans.");
 
         inspectorScroll = GUI.ScrollView.New(bodySplit.Second);
         inspectorScroll.SetFlex(1.0);
@@ -883,6 +931,9 @@ class SceneEditor2D {
         if selectButton.WasClicked() { SetMode(MODE_SELECT); }
         if paintButton.WasClicked() { SetMode(MODE_PAINT); }
         if eraseButton.WasClicked() { SetMode(MODE_ERASE); }
+        if rectangleButton.WasClicked() { SetMode(MODE_RECTANGLE); }
+        if fillButton.WasClicked() { SetMode(MODE_FILL); }
+        if pickerButton.WasClicked() { SetMode(MODE_PICKER); }
         if objectButton.WasClicked() { SetMode(MODE_OBJECT); }
         if zoomOutButton.WasClicked() {
             zoomPercent = ClampInt(zoomPercent - 25,
@@ -968,6 +1019,9 @@ class SceneEditor2D {
     /// @brief Parse and display one document with optional history retention.
     hide func LoadDocumentModel(doc: document.Document,
                                 preserveHistory: Boolean) {
+        if paintStrokeActive { CancelPaintStroke(); }
+        if tileRectangleActive { CancelTileRectangle(); }
+        if canvasMarqueeActive { CancelCanvasMarquee(); }
         var switchingDocument = currentDoc != doc;
         if currentDoc != null { CaptureWorkspaceState(); }
         if preserveHistory == false {
@@ -992,6 +1046,7 @@ class SceneEditor2D {
         loadError = "";
         RestoreWorkspaceState(doc);
         ResetCanvasMarquee(true);
+        ResetTileRectangle(true);
         lastPaintX = -1;
         lastPaintY = -1;
         paintStrokeActive = false;
@@ -1028,7 +1083,7 @@ class SceneEditor2D {
         if currentDoc == null or currentDoc.scene2DWorkspace == null { return; }
         var state = currentDoc.scene2DWorkspace;
         state.initialized = true;
-        state.mode = ClampInt(mode, MODE_SELECT, MODE_OBJECT);
+        state.mode = ClampInt(mode, MODE_SELECT, MODE_PICKER);
         state.zoomPercent = ClampInt(
             zoomPercent, MIN_ZOOM_PERCENT, MAX_ZOOM_PERCENT);
         state.activeLayer = activeLayer;
@@ -1092,7 +1147,7 @@ class SceneEditor2D {
             return;
         }
 
-        mode = ClampInt(state.mode, MODE_SELECT, MODE_OBJECT);
+        mode = ClampInt(state.mode, MODE_SELECT, MODE_PICKER);
         zoomPercent = ClampInt(
             state.zoomPercent, MIN_ZOOM_PERCENT, MAX_ZOOM_PERCENT);
         activeLayer = ClampInt(state.activeLayer, 0, 1023);
@@ -1297,6 +1352,136 @@ class SceneEditor2D {
         RestoreSceneSnapshot(snapshot);
         detailLabel.SetText("The tile stroke could not be committed.");
         return false;
+    }
+
+    /// @brief Fill one inclusive forward or reverse cell rectangle atomically.
+    /// @return True only when at least one canonical tile changed and committed.
+    expose func ApplyTileRectangle(layer: Integer,
+                                   startX: Integer,
+                                   startY: Integer,
+                                   endX: Integer,
+                                   endY: Integer,
+                                   tile: Integer) -> Boolean {
+        if scene == null or layer < 0 or layer >= scene.LayerCount()
+           or startX < 0 or startY < 0 or endX < 0 or endY < 0
+           or startX >= scene.Width or endX >= scene.Width
+           or startY >= scene.Height or endY >= scene.Height {
+            return false;
+        }
+        var minimumX = startX;
+        var maximumX = endX;
+        if maximumX < minimumX {
+            minimumX = endX;
+            maximumX = startX;
+        }
+        var minimumY = startY;
+        var maximumY = endY;
+        if maximumY < minimumY {
+            minimumY = endY;
+            maximumY = startY;
+        }
+        var nextTile = tile;
+        if nextTile < 0 { nextTile = 0; }
+
+        var changedCells = 0;
+        var y = minimumY;
+        while y <= maximumY {
+            var x = minimumX;
+            while x <= maximumX {
+                if scene.GetTile(layer, x, y) != nextTile {
+                    changedCells = changedCells + 1;
+                }
+                x = x + 1;
+            }
+            y = y + 1;
+        }
+        activeLayer = layer;
+        selectedCellX = endX;
+        selectedCellY = endY;
+        renderDirty = true;
+        if changedCells == 0 {
+            toolbarStatus.SetText("Rectangle already matches the selected tile");
+            return false;
+        }
+
+        var snapshot = currentSerialized;
+        scene.FillTiles(
+            layer,
+            minimumX,
+            minimumY,
+            maximumX - minimumX + 1,
+            maximumY - minimumY + 1,
+            nextTile);
+        if CommitScene(
+               "Filled " + changedCells + " rectangle tile(s)") {
+            detailLabel.SetText("");
+            return true;
+        }
+        RestoreSceneSnapshot(snapshot);
+        detailLabel.SetText("The tile rectangle could not be committed.");
+        return false;
+    }
+
+    /// @brief Replace one four-connected active-layer tile region atomically.
+    /// @return Exact changed-cell count, or zero for invalid/no-op/failure.
+    expose func FloodFillSceneTile(layer: Integer,
+                                   x: Integer,
+                                   y: Integer,
+                                   tile: Integer) -> Integer {
+        if scene == null or layer < 0 or layer >= scene.LayerCount()
+           or x < 0 or y < 0 or x >= scene.Width or y >= scene.Height {
+            return 0;
+        }
+        var nextTile = tile;
+        if nextTile < 0 { nextTile = 0; }
+        activeLayer = layer;
+        selectedCellX = x;
+        selectedCellY = y;
+        renderDirty = true;
+        if scene.GetTile(layer, x, y) == nextTile {
+            toolbarStatus.SetText("Fill region already matches the selected tile");
+            return 0;
+        }
+
+        var snapshot = currentSerialized;
+        var changedCells = scene.FloodFill(layer, x, y, nextTile);
+        if changedCells <= 0 {
+            RestoreSceneSnapshot(snapshot);
+            detailLabel.SetText("The contiguous tile fill was rejected.");
+            return 0;
+        }
+        if CommitScene(
+               "Filled " + changedCells + " connected tile(s)") {
+            detailLabel.SetText("");
+            return changedCells;
+        }
+        RestoreSceneSnapshot(snapshot);
+        detailLabel.SetText("The contiguous tile fill could not be committed.");
+        return 0;
+    }
+
+    /// @brief Sample one active-layer cell into the tile field and enter Paint.
+    /// @return Authored tile ID, or -1 for invalid input.
+    expose func PickSceneTile(layer: Integer,
+                              x: Integer,
+                              y: Integer) -> Integer {
+        if scene == null or tileSpinner == null
+           or layer < 0 or layer >= scene.LayerCount()
+           or x < 0 or y < 0 or x >= scene.Width or y >= scene.Height {
+            return -1;
+        }
+        var tile = scene.GetTile(layer, x, y);
+        activeLayer = layer;
+        selectedCellX = x;
+        selectedCellY = y;
+        tileSpinner.SetValue(ClampInt(tile, 0, 1000000));
+        SetMode(MODE_PAINT);
+        RefreshTilesetPalette();
+        renderDirty = true;
+        toolbarStatus.SetText(
+            "Picked tile " + tile + " from " + x + ", " + y);
+        detailLabel.SetText("");
+        return tile;
     }
 
     /// @brief Add one scene object and commit its canonical JSON immediately.
@@ -3648,10 +3833,20 @@ class SceneEditor2D {
     }
 
     hide func SetMode(nextMode: Integer) {
-        if canvasMarqueeActive and nextMode != MODE_SELECT {
+        var normalizedMode = nextMode;
+        if nextMode < MODE_SELECT or nextMode > MODE_PICKER {
+            normalizedMode = MODE_SELECT;
+        }
+        if paintStrokeActive and normalizedMode != mode {
+            CancelPaintStroke();
+        }
+        if tileRectangleActive and normalizedMode != MODE_RECTANGLE {
+            CancelTileRectangle();
+        }
+        if canvasMarqueeActive and normalizedMode != MODE_SELECT {
             CancelCanvasMarquee();
         }
-        mode = nextMode;
+        mode = normalizedMode;
         lastPaintX = -1;
         lastPaintY = -1;
         UpdateModeButtons();
@@ -3662,15 +3857,27 @@ class SceneEditor2D {
         selectButton.SetEnabled(editorControlsEnabled);
         paintButton.SetEnabled(editorControlsEnabled);
         eraseButton.SetEnabled(editorControlsEnabled);
+        rectangleButton.SetEnabled(editorControlsEnabled);
+        fillButton.SetEnabled(editorControlsEnabled);
+        pickerButton.SetEnabled(editorControlsEnabled);
         objectButton.SetEnabled(editorControlsEnabled);
         selectButton.SetStyle(0);
         paintButton.SetStyle(0);
         eraseButton.SetStyle(0);
+        rectangleButton.SetStyle(0);
+        fillButton.SetStyle(0);
+        pickerButton.SetStyle(0);
         objectButton.SetStyle(0);
         if mode == MODE_PAINT {
             paintButton.SetStyle(1);
         } else if mode == MODE_ERASE {
             eraseButton.SetStyle(1);
+        } else if mode == MODE_RECTANGLE {
+            rectangleButton.SetStyle(1);
+        } else if mode == MODE_FILL {
+            fillButton.SetStyle(1);
+        } else if mode == MODE_PICKER {
+            pickerButton.SetStyle(1);
         } else if mode == MODE_OBJECT {
             objectButton.SetStyle(1);
         } else {
@@ -5064,6 +5271,115 @@ class SceneEditor2D {
         }
     }
 
+    /// @brief Begin a non-destructive inclusive tile-rectangle preview.
+    hide func BeginTileRectangle(cellX: Integer,
+                                 cellY: Integer) {
+        tileRectangleActive = true;
+        tileRectangleStartX = cellX;
+        tileRectangleStartY = cellY;
+        tileRectangleCurrentX = cellX;
+        tileRectangleCurrentY = cellY;
+        tileRectangleTile =
+            ClampInt(Convert.NumToInt(tileSpinner.Value), 0, 1000000);
+        if Input.Mouse.IsCaptured() == false {
+            Input.Mouse.Capture();
+        }
+        renderDirty = true;
+        toolbarStatus.SetText(
+            "Drag a tile rectangle; release applies and Escape cancels");
+    }
+
+    /// @brief Clear transient rectangle state and optionally release capture.
+    hide func ResetTileRectangle(releaseCapture: Boolean) {
+        var wasActive = tileRectangleActive;
+        tileRectangleActive = false;
+        tileRectangleStartX = -1;
+        tileRectangleStartY = -1;
+        tileRectangleCurrentX = -1;
+        tileRectangleCurrentY = -1;
+        tileRectangleTile = 0;
+        if releaseCapture and wasActive and Input.Mouse.IsCaptured() {
+            Input.Mouse.Release();
+        }
+        if wasActive { renderDirty = true; }
+    }
+
+    /// @brief Clamp a captured rectangle pointer to the rendered scene edge.
+    hide func UpdateTileRectanglePointer() {
+        if tileRectangleActive == false or canvasImage == null
+           or displayCellSize <= 0
+           or renderedColumns <= 0 or renderedRows <= 0 {
+            return;
+        }
+        var relativeX = PhysicalPointerToUi(Input.Mouse.X())
+            - canvasImage.GetScreenX();
+        var relativeY = PhysicalPointerToUi(Input.Mouse.Y())
+            - canvasImage.GetScreenY();
+        var cellX = 0;
+        var cellY = 0;
+        if relativeX > 0.0 {
+            cellX = Convert.NumToInt(relativeX) / displayCellSize;
+        }
+        if relativeY > 0.0 {
+            cellY = Convert.NumToInt(relativeY) / displayCellSize;
+        }
+        cellX = ClampInt(cellX, 0, renderedColumns - 1);
+        cellY = ClampInt(cellY, 0, renderedRows - 1);
+        if tileRectangleCurrentX != cellX
+           or tileRectangleCurrentY != cellY {
+            tileRectangleCurrentX = cellX;
+            tileRectangleCurrentY = cellY;
+            selectedCellX = cellX;
+            selectedCellY = cellY;
+            renderDirty = true;
+        }
+    }
+
+    /// @brief Cancel an active tile rectangle without canonical mutation.
+    hide func CancelTileRectangle() {
+        if tileRectangleActive == false { return; }
+        ResetTileRectangle(true);
+        toolbarStatus.SetText("Tile rectangle canceled");
+    }
+
+    /// @brief Apply one captured tile rectangle exactly once on release.
+    hide func FinishTileRectangle() -> Boolean {
+        if tileRectangleActive == false { return false; }
+        var startX = tileRectangleStartX;
+        var startY = tileRectangleStartY;
+        var endX = tileRectangleCurrentX;
+        var endY = tileRectangleCurrentY;
+        var tile = tileRectangleTile;
+        ResetTileRectangle(true);
+        return ApplyTileRectangle(
+            activeLayer, startX, startY, endX, endY, tile);
+    }
+
+    /// @brief Reset one freehand stroke and optionally release its capture.
+    hide func ResetPaintStroke(releaseCapture: Boolean) {
+        var wasActive = paintStrokeActive;
+        paintStrokeActive = false;
+        paintStrokeChanged = false;
+        paintStrokeSnapshot = "";
+        lastPaintX = -1;
+        lastPaintY = -1;
+        if releaseCapture and wasActive and Input.Mouse.IsCaptured() {
+            Input.Mouse.Release();
+        }
+    }
+
+    /// @brief Restore the pre-stroke snapshot and create no history.
+    hide func CancelPaintStroke() {
+        if paintStrokeActive == false { return; }
+        var snapshot = paintStrokeSnapshot;
+        var changed = paintStrokeChanged;
+        ResetPaintStroke(true);
+        if changed and snapshot != "" {
+            RestoreSceneSnapshot(snapshot);
+        }
+        toolbarStatus.SetText("Tile stroke canceled");
+    }
+
     /// @brief Apply the current mouse tool to one bounded scene cell.
     hide func PumpCanvas() -> Boolean {
         if canvasMarqueeActive {
@@ -5076,9 +5392,25 @@ class SceneEditor2D {
                 return false;
             }
         }
-        if paintStrokeActive
-           and !Input.Mouse.IsDown(Input.Mouse.ButtonLeft) {
-            return FinishPaintStroke();
+        if tileRectangleActive {
+            if Input.Keyboard.WasPressed(Input.Key.Escape) {
+                CancelTileRectangle();
+                return false;
+            }
+            UpdateTileRectanglePointer();
+            if !Input.Mouse.IsDown(Input.Mouse.ButtonLeft) {
+                return FinishTileRectangle();
+            }
+            return false;
+        }
+        if paintStrokeActive {
+            if Input.Keyboard.WasPressed(Input.Key.Escape) {
+                CancelPaintStroke();
+                return false;
+            }
+            if !Input.Mouse.IsDown(Input.Mouse.ButtonLeft) {
+                return FinishPaintStroke();
+            }
         }
         if objectDragActive
            and !Input.Mouse.IsDown(Input.Mouse.ButtonLeft) {
@@ -5153,6 +5485,9 @@ class SceneEditor2D {
                 paintStrokeSnapshot = currentSerialized;
                 lastPaintX = cellX;
                 lastPaintY = cellY;
+                if Input.Mouse.IsCaptured() == false {
+                    Input.Mouse.Capture();
+                }
                 paintStrokeChanged =
                     ApplyStrokeCell(cellX, cellY) or paintStrokeChanged;
             }
@@ -5161,6 +5496,30 @@ class SceneEditor2D {
                and (cellX != lastPaintX or cellY != lastPaintY) {
                 paintStrokeChanged =
                     ApplyStrokeLine(cellX, cellY) or paintStrokeChanged;
+            }
+            return false;
+        }
+
+        if mode == MODE_RECTANGLE {
+            if Input.Mouse.WasPressed(Input.Mouse.ButtonLeft) {
+                BeginTileRectangle(cellX, cellY);
+            }
+            return false;
+        }
+
+        if mode == MODE_FILL {
+            if Input.Mouse.WasPressed(Input.Mouse.ButtonLeft) {
+                var fillTile = ClampInt(
+                    Convert.NumToInt(tileSpinner.Value), 0, 1000000);
+                return FloodFillSceneTile(
+                    activeLayer, cellX, cellY, fillTile) > 0;
+            }
+            return false;
+        }
+
+        if mode == MODE_PICKER {
+            if Input.Mouse.WasPressed(Input.Mouse.ButtonLeft) {
+                PickSceneTile(activeLayer, cellX, cellY);
             }
             return false;
         }
@@ -5312,6 +5671,12 @@ class SceneEditor2D {
             paintButton.Focus();
         } else if mode == MODE_ERASE {
             eraseButton.Focus();
+        } else if mode == MODE_RECTANGLE {
+            rectangleButton.Focus();
+        } else if mode == MODE_FILL {
+            fillButton.Focus();
+        } else if mode == MODE_PICKER {
+            pickerButton.Focus();
         } else if mode == MODE_OBJECT {
             objectButton.Focus();
         } else {
@@ -5401,11 +5766,7 @@ class SceneEditor2D {
     hide func FinishPaintStroke() -> Boolean {
         var changed = paintStrokeChanged;
         var snapshot = paintStrokeSnapshot;
-        paintStrokeActive = false;
-        paintStrokeChanged = false;
-        paintStrokeSnapshot = "";
-        lastPaintX = -1;
-        lastPaintY = -1;
+        ResetPaintStroke(true);
         if changed == false { return false; }
 
         var message = "Painted tile stroke";
@@ -5659,6 +6020,33 @@ class SceneEditor2D {
                                   Color.RGB(255, 255, 255));
         }
 
+        if tileRectangleActive
+           and tileRectangleStartX >= 0
+           and tileRectangleStartY >= 0
+           and tileRectangleCurrentX >= 0
+           and tileRectangleCurrentY >= 0 {
+            var minimumTileX = tileRectangleStartX;
+            var maximumTileX = tileRectangleCurrentX;
+            if maximumTileX < minimumTileX {
+                minimumTileX = tileRectangleCurrentX;
+                maximumTileX = tileRectangleStartX;
+            }
+            var minimumTileY = tileRectangleStartY;
+            var maximumTileY = tileRectangleCurrentY;
+            if maximumTileY < minimumTileY {
+                minimumTileY = tileRectangleCurrentY;
+                maximumTileY = tileRectangleStartY;
+            }
+            framePixels.DrawFrame(
+                minimumTileX * displayCellSize,
+                minimumTileY * displayCellSize,
+                (maximumTileX - minimumTileX + 1)
+                    * displayCellSize + 1,
+                (maximumTileY - minimumTileY + 1)
+                    * displayCellSize + 1,
+                TILE_RECTANGLE_COLOR);
+        }
+
         if canvasMarqueeActive
            and canvasMarqueeStartX >= 0
            and canvasMarqueeStartY >= 0
@@ -5719,14 +6107,25 @@ class SceneEditor2D {
                 + (AbsInt2D(
                     canvasMarqueeCurrentY - canvasMarqueeStartY) + 1);
         }
+        var rectangleStatus = "";
+        if tileRectangleActive {
+            rectangleStatus = "  |  rectangle "
+                + (AbsInt2D(
+                    tileRectangleCurrentX - tileRectangleStartX) + 1)
+                + "x"
+                + (AbsInt2D(
+                    tileRectangleCurrentY - tileRectangleStartY) + 1);
+        }
         viewStatusLabel.SetText(
             "Layer " + (activeLayer + 1) + "/" + scene.LayerCount()
             + "  |  zoom " + zoomPercent + "%"
-            + cellStatus + marqueeStatus + suffix);
+            + cellStatus + marqueeStatus + rectangleStatus + suffix);
         canvasImage.SetAccessibleDescription(
             scene.ObjectCount() + " authored objects on a "
             + renderedColumns + " by " + renderedRows
-            + " cell preview. In Select mode, click objects or drag blank "
-            + "space to box-select; Shift adds and Control or Command toggles.");
+            + " cell preview. Tile tools support freehand Paint and Erase, "
+            + "captured Rectangle, connected Fill, and active-layer Pick. "
+            + "In Select mode, click objects or drag blank space to box-select; "
+            + "Shift adds and Control or Command toggles.");
     }
 }

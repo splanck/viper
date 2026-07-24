@@ -19,7 +19,8 @@
 // Ownership/Lifetime:
 //   - Test-scoped runtime objects are retained only for the duration of each case.
 // Links: src/runtime/graphics/3d/render/rt_mesh3d.c,
-//        docs/adr/0168-windowless-canvas3d-rendering.md
+//        docs/adr/0168-windowless-canvas3d-rendering.md,
+//        docs/adr/0172-public-scenenode-light-authoring-and-studio-light-inspector.md
 //
 //===----------------------------------------------------------------------===//
 
@@ -4894,7 +4895,10 @@ static void test_light_null_safety() {
     rt_light3d_set_intensity(NULL, 1.0);
     rt_light3d_set_color(NULL, 0, 0, 0);
     rt_light3d_set_casts_shadows(NULL, 1);
+    rt_light3d_set_spot_cone(NULL, 10.0, 20.0);
     EXPECT_EQ(rt_light3d_get_casts_shadows(NULL), 0);
+    EXPECT_NEAR(rt_light3d_get_inner_cone_degrees(NULL), 0.0, 0.001);
+    EXPECT_NEAR(rt_light3d_get_outer_cone_degrees(NULL), 0.0, 0.001);
     PASS();
 }
 
@@ -4913,6 +4917,39 @@ static void test_light_spot_intensity() {
     void *dir = rt_vec3_new(0, -1, 0);
     void *light = rt_light3d_new_spot(pos, dir, 1.0, 1.0, 1.0, 0.1, 30.0, 45.0);
     rt_light3d_set_intensity(light, 2.5);
+    PASS();
+}
+
+static void test_light_spot_cone_authoring() {
+    TEST("Light3D spot cone — exposes sanitized degrees and paired mutation");
+    void *position = rt_vec3_new(0.0, 5.0, 0.0);
+    void *direction = rt_vec3_new(0.0, -1.0, 0.0);
+    void *spot =
+        rt_light3d_new_spot(position, direction, 1.0, 0.8, 0.6, 0.1, 20.0, 35.0);
+    void *point = rt_light3d_new_point(position, 1.0, 1.0, 1.0, 0.1);
+    assert(spot && point);
+
+    EXPECT_NEAR(rt_light3d_get_inner_cone_degrees(spot), 20.0, 0.0001);
+    EXPECT_NEAR(rt_light3d_get_outer_cone_degrees(spot), 35.0, 0.0001);
+    EXPECT_NEAR(rt_light3d_get_inner_cone_degrees(point), 0.0, 0.0001);
+    EXPECT_NEAR(rt_light3d_get_outer_cone_degrees(point), 0.0, 0.0001);
+
+    uint64_t revision = rt_light3d_mutation_revision();
+    rt_light3d_set_spot_cone(spot, 60.0, 10.0);
+    EXPECT_EQ(rt_light3d_mutation_revision(), revision + 1);
+    double inner = rt_light3d_get_inner_cone_degrees(spot);
+    double outer = rt_light3d_get_outer_cone_degrees(spot);
+    EXPECT_NEAR(inner, 60.0, 0.0001);
+    EXPECT_NEAR(outer, 60.01, 0.0001);
+    EXPECT_TRUE(outer > inner, "Paired spot-cone setter preserves strict separation");
+
+    rt_light3d_set_spot_cone(spot, NAN, INFINITY);
+    EXPECT_NEAR(rt_light3d_get_inner_cone_degrees(spot), 0.0, 0.0001);
+    EXPECT_NEAR(rt_light3d_get_outer_cone_degrees(spot), 0.01, 0.0001);
+
+    revision = rt_light3d_mutation_revision();
+    rt_light3d_set_spot_cone(point, 15.0, 30.0);
+    EXPECT_EQ(rt_light3d_mutation_revision(), revision);
     PASS();
 }
 
@@ -10764,6 +10801,7 @@ int main() {
     test_light_null_safety();
     test_light_spot();
     test_light_spot_intensity();
+    test_light_spot_cone_authoring();
     test_light_native_area_and_volume_types();
     test_light_validation_and_clamping();
     test_light_sanitizes_nonfinite_inputs();

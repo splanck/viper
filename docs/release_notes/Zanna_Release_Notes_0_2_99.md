@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-07-23
+last-verified: 2026-07-24
 ---
 
 # Zanna Compiler Platform — Release Notes
@@ -18,7 +18,7 @@ Viper is now **Zanna**. The rename reaches everything you type: the CLI is `zann
 
 Past the rename, most of the effort went into making Zanna nicer to build on. The runtime's public API now uses one set of naming rules and one way of reporting failure, so a method behaves the way you'd guess and tells you when something goes wrong instead of handing back a mystery value. The 3D side outgrew being a plain renderer: it ships first- and third-person game runtimes, and its importer reads whole scenes — Tiled maps, and FBX with its cameras, lights, and animation — rather than bare geometry.
 
-Zanna Studio and the GUI toolkit were both rebuilt underneath. Packaging picked up real installers on Windows, macOS, and Linux. Four correctness audits, one each for the runtime, the IL layer, Windows, and Linux, went looking for the places the stack breaks under bad input, heavy load, or many threads.
+Zanna Studio and the GUI toolkit were both rebuilt underneath, and Studio grew visual 2D and 3D scene editors, so building a level is now something you do by dragging objects around rather than by hand-editing a scene file. Packaging picked up real installers on Windows, macOS, and Linux. Four correctness audits, one each for the runtime, the IL layer, Windows, and Linux, went looking for the places the stack breaks under bad input, heavy load, or many threads.
 
 - **Runtime names follow one convention.** Collection sizes read as `Count`, string lengths as `Length`, and cramped abbreviations are spelled out (`LeadZ` became `CountLeadingZeros`). The name you'd guess is usually the right one, and the old names stay as aliases so nothing you've written stops compiling.
 - **Recoverable failures return a value, not a crash.** A read past end-of-input, a decrypt that won't authenticate, a lookup that finds nothing: each hands back an `Option` or `Result` you can check, instead of a null or a `-1` you have to remember to test for.
@@ -33,6 +33,7 @@ Zanna Studio and the GUI toolkit were both rebuilt underneath. Packaging picked 
 - **The docs and the runtime agree.** Every recorded gap between the documentation and the code — 283 of them — was fixed on whichever side was wrong.
 - **Zanna Studio handles multiple roots.** Split panes, crash recovery, a full VT terminal, git that runs in the background with a commit-history view, a debugger that opens objects into named fields, and a command overlay for Go To Line, rename, and workspace-symbol search.
 - **Zanna Studio wears the Zanna brand.** Contrast-checked dark and light themes, vector icons that stay sharp at any size, ligature-capable text, project-wide replace with side-by-side diffs, a new-project wizard, rebindable shortcuts, and Windows screen-reader support.
+- **Zanna Studio edits scenes (new).** Visual 2D and 3D scene editors with a parent/child object hierarchy, drag-to-reparent, multi-select, and one-step undo. The 3D viewport renders your actual scene shaded or in wireframe; you click objects in it to select them and drag Move/Rotate/Scale handles to place them. Objects carry real typed gameplay data now — no more packing a spawn count into an object's name.
 - **The GUI toolkit was rebuilt underneath.** Scalable per-app themes, Unicode grapheme editing with IME on all three platforms, native screen-reader adapters, and virtual list and tree models for big data sets. The public API didn't change, so your GUI code keeps working.
 - **Zia gains list combinators.** `map`, `filter`, `reduce`, `firstWhere`, `any`, `all`, and `sum` read their lambda types from the element type and compile down to plain loops — no closures, no allocation.
 - **Real installers everywhere.** A native Windows toolchain installer with rollback and repair, and standalone apps that ship as AppImage, RPM, DMG, and Windows installers. Every artifact is checked, checksummed, and manifested before it goes out.
@@ -40,20 +41,22 @@ Zanna Studio and the GUI toolkit were both rebuilt underneath. Packaging picked 
 - **`.zpak` archives are checksummed.** ZPAK v2 adds a per-entry CRC-32, so a corrupt asset archive is caught when it loads rather than used silently. Old v1 archives still read.
 - **The IL layer is harder to break.** The IL parser enforces resource limits and rejects malformed text cleanly, float folding matches IEEE-754 exactly, and the analyses handle much larger functions.
 - **Native Wayland on Linux (new).** Linux runs on Wayland directly, chosen automatically with an X11 fallback. Keyboard, pointer, touch, clipboard, drag-and-drop, IME, window decorations, and GPU presentation are all there, with no external dependencies.
+- **Non-ASCII paths work on Windows.** A project under `C:\Users\Ольга\Проекты` compiles, packages, installs, and runs. Unicode carries through the compiler, the asset and package tools, the installer, and the runtime's own file, save-data, process, and temp-file handling.
+- **The Windows and Linux platform reviews are finished.** Windows closes with 104 fixes across the D3D11 backend, audio, networking, child processes, and the installer. Linux closes out entropy, sockets, watchers, PTYs, audio, Wayland, portals, and AT-SPI, and machine queries now report a container's real CPU and memory limits instead of the host's.
 - **Windows builds use PowerShell.** Every Windows build and test entry point is a PowerShell script now (`build_zanna_win.ps1` and the rest), in place of the old batch files.
 
 ### By the Numbers
 
 | Metric | v0.2.7 | v0.2.99 | Delta |
 |---|---|---|---|
-| Commits | — | 156 | +156 |
-| Source files | 3,402 | 3,636 | +234 |
-| Production SLOC | 659K | 823K | +164K |
-| Test SLOC | 254K | 302K | +48K |
-| Zanna Studio SLOC | 26K | 75K | +49K |
+| Commits | — | 162 | +162 |
+| Source files | 3,402 | 3,651 | +249 |
+| Production SLOC | 659K | 828K | +169K |
+| Test SLOC | 254K | 304K | +50K |
+| Zanna Studio SLOC | 26K | 88K | +62K |
 | Demo SLOC | 144K | 209K | +65K |
 
-Counts via `scripts/count_sloc.sh`, which excludes blank lines and comments — line and block (production 823,201 / test 301,941 / demo 209,457 / zannastudio 74,682 / source files 3,636); the v0.2.7 column is restated on the same basis so the deltas reflect real growth. Commits since the `v0.2.7-dev` tag (2026-06-30). Much of the raw diff is checked-in text-glTF character and model assets, which these SLOC figures leave out.
+Counts via `scripts/count_sloc.sh`, which excludes blank lines and comments — line and block (production 827,691 / test 304,179 / demo 209,459 / zannastudio 87,822 / source files 3,651); the v0.2.7 column is restated on the same basis so the deltas reflect real growth. Commits since the `v0.2.7-dev` tag (2026-06-30). Much of the raw diff is checked-in text-glTF character and model assets, which these SLOC figures leave out.
 
 ---
 
@@ -72,6 +75,7 @@ Counts via `scripts/count_sloc.sh`, which excludes blank lines and comments — 
 - Frame pacing steadied over long sessions. GPU backends sync to the display instead of a redundant CPU limiter, on-screen text reuses its rasterized glyphs rather than re-uploading them each frame, and Metal no longer stalls the CPU while streaming textures in, so the periodic hitching is gone.
 - On Windows, the D3D11 backend clamps every shader constant buffer before upload and supports the full BC compressed-texture family, which closes a batch of driver-specific glitches.
 - New things you can query: why a backend fell back, how many draws were dropped, mesh memory budgets. `TrySet…` setters and accurate `BackendSupports` probes let you ask whether a capability exists instead of trapping when it doesn't.
+- `Canvas3D` renders without a window, into a `RenderTarget3D` you own and read back. That makes offscreen 3D — asset thumbnails, editor viewports embedded in a GUI, headless image generation — something you can write directly, and it's what Studio's own 3D viewport is built on.
 
 ### 3D assets, animation, and the asset pipeline
 
@@ -123,6 +127,21 @@ Counts via `scripts/count_sloc.sh`, which excludes blank lines and comments — 
 - Editing goes deeper: project-wide replace with a per-match preview, a side-by-side diff for working-tree changes, drag-to-reorder tabs, and breadcrumb symbol navigation. The shell is yours to set up, with rebindable shortcuts, searchable settings, and a new-project wizard that scaffolds a runnable project from templates.
 - On Windows, a native UI Automation provider exposes the workbench to assistive technology, file dialogs use the modern native pickers, and the pointer shows a full, context-appropriate cursor set.
 
+### Scene editing in Zanna Studio
+
+Studio gained 2D and 3D scene editors this release, and then grew them from a first pass into something you can build a real level in. Opening a `.scene` or `.level` file mounts the 2D editor; a `.vscn` file mounts the 3D one. Each document keeps its own selection, view, and undo history.
+
+- Objects nest. Both editors show an expandable hierarchy instead of a flat list: create a child in one step, drag a subtree before, into, or after another node, and reorder siblings without the list shuffling under you. Duplicate and paste bring the whole subtree, and Find locates an object by ID or type without disturbing your selection. A parent can't be dropped into its own descendant.
+- Scenes and objects carry typed data. Scene-wide properties and per-object metadata hold a Boolean, integer, float, string, or an explicit null, and keep that exact kind through a save and reload — so gameplay data like a role, a trigger, or a spawn count lives in a field instead of being smuggled into a name. Scene files advance to VSCN v6 to store it; scenes you saved with an older Studio still open.
+- Component schemas keep objects consistent. A `scene-components.json` at your project root describes the property sets an object should have. Studio flags objects missing a set and applies it across a whole selection in one action, and schema editing is conflict-safe with its own undo history.
+- Selecting and moving things feels direct. In 2D, click with a modifier to add or remove from the selection, or drag a marquee over the canvas and everything it touches highlights as you go — Escape cancels without touching the scene or your undo stack. Dragging a group keeps the objects' relative positions, and arrow-key nudging works in pixels or tiles.
+- The 2D tile tools cover real map work. Paint and Erase capture gap-free strokes with Escape rollback, Rectangle previews and applies an inclusive area once, Fill replaces one four-connected region, and Pick samples the active layer straight back into Paint. Every completed change is one undo step, while previews, picks, cancellations, and no-ops stay out of history.
+- The 3D viewport shows the real scene. It renders the live scene graph through an offscreen 3D canvas, shaded or as triangle wireframe, with overlays that stay aligned to it. Clicking picks the nearest visible object by its actual transformed mesh bounds, with a marker fallback for objects that have no mesh. Panning moves along the camera plane, and it's workspace state, so it never dirties the scene.
+- Move, Rotate, and Scale are per-scene tools with Local and World modes and snapping. Rotation rings project correctly and don't flip when you drag past the wrap point, plane handles appear when the view makes them usable, and a group transform converts parents before children. Escape or a failure rolls the whole gesture back — you never get a half-applied move.
+- Reparenting preserves what you see. Moving an object to a new parent keeps its world position exactly, or you can opt out and keep its local transform. A transform that can't be represented exactly — singular, sheared, or lossy — is rejected outright rather than silently rounded.
+- Material editing works across a selection. Mixed values show as mixed instead of showing whichever object happened to be first, editing writes only the fields you actually changed, a shared material is copied before it's edited so you don't disturb other objects using it, and embedded texture maps can be assigned or cleared for a whole batch. Visibility handles mixed selections the same honest way.
+- Lights are editable scene content instead of import-only data. Add a light node or inspect any existing directional, point, ambient, spot, rectangle-area, sphere-area, or volume light, including its local offset/direction, falloff, range, emitter shape, shadows, and spot cone. Studio stages an independent replacement before applying it, suppresses exact no-ops, and keeps add/apply/remove to one undo step. Hierarchy badges and viewport color, direction, offset, and range markers keep meshless emitters visible and pickable.
+
 ### GUI toolkit
 
 - A large rework sits behind the same public surface, so your GUI code keeps working while the toolkit under it gets better.
@@ -131,6 +150,7 @@ Counts via `scripts/count_sloc.sh`, which excludes blank lines and comments — 
 - A shared semantic tree feeds each platform's native accessibility layer, so screen readers see real widget semantics.
 - Virtual list and tree models render only what's on screen, which keeps large data sets responsive. Interactive data grids and full flex/grid/dock layout round out the widgets.
 - A built-in vector icon library lets toolbars, trees, tabs, and status bars ask for an icon by name and get crisp strokes at any scale, with no bitmaps to ship.
+- The widgets picked up what tool-style apps need: multi-selection and row-aware drop targets in `TreeView`, scrolling a nested descendant into view, an indeterminate `Spinner` for a mixed-value field, and public `LeftSuper`/`RightSuper` key constants so Command and Windows keys are bindable.
 
 ### Languages
 
@@ -148,18 +168,24 @@ Counts via `scripts/count_sloc.sh`, which excludes blank lines and comments — 
 
 - Every Windows build, test, and demo entry point is a PowerShell script now — `build_zanna_win.ps1`, `build_demos_win.ps1`, and the rest — working on both PowerShell 5.1 and 7, in place of the old batch files.
 - A Windows adapter audit made the failure paths deterministic across sockets, entropy, locale, TLS, process launch, timed waits, and file watching, and the D3D11 backend builds cleanly under MSVC.
+- Windows handles non-ASCII paths end to end. Your project can live under a path with any characters in it — a Cyrillic username, a Japanese folder name, an emoji — and compiling, importing, packaging, installing, and running all work. That covers source loading and imports, editor services, code generation and linking, the asset compiler and `.zpak` packages, toolchain manifests, the installer, and the runtime's own file, save-data, temp-file, and child-process handling. macOS and Linux keep their existing native path behavior.
+- A closing pass of 104 fixes finished the Windows reliability audit. In practice: the D3D11 backend checks that the GPU is still healthy before it publishes a texture, frame, or cached resource, and releases a partial allocation instead of leaving half of one live; WASAPI audio negotiates formats, pauses, resets, and resumes without dropping into a stuck state; HTTP downloads and save-data writes replace files atomically or not at all; and child processes only inherit the handles you meant them to.
+- The Windows installer checks what it's installing. It validates the complete structure of every payload executable — architecture, headers, sections, extents — before accepting it, and every signing, backup, and publish step verifies its destination before writing. The installer CLI rejects duplicate and empty arguments instead of guessing, and a cancelled install unwinds cleanly.
 - The matching Linux audit hardened the X11/GLX, ALSA, inotify, and PTY paths and added a dependency-free headless graphics backend, so graphics code runs with no display server attached.
 - Linux also gains a complete, dependency-free Wayland backend: `AUTO` prefers Wayland and falls back to X11, covering xdg-shell window management, fractional scaling, client-side decorations, full input with relative-pointer and IME protocols, EGL-accelerated `Canvas3D` presentation, and AT-SPI screen-reader export.
+- The Linux platform review is complete too, closing out entropy, sockets, file watchers, PTYs, ALSA audio, Wayland, desktop portals, AT-SPI, and packaging. Backend selection under `AUTO` publishes atomically, so a failed Wayland probe can't leave you halfway between backends; clipboard transfers are bounded; and the Linux build wrapper works through symlinks and paths containing spaces.
+- Machine queries are container-aware on Linux. CPU and memory readings resolve the active cgroup v1 or v2 controller, so a program running in a container or under a systemd slice sees its real limits — including fractional CPU quotas — instead of the host's hardware. AArch64 Linux is now documented as a supported target alongside x86-64.
 - Native builds are stable on both: static archives no longer pull in unresolved libgcc/libstdc++ helpers, and the generated codegen tables are checked in for clean from-source builds.
 
 ### Tests
 
-Test code grew by about 53K SLOC alongside the work above:
+Test code grew by about 50K SLOC alongside the work above:
 
 - Each third-person subsystem ships a VM-versus-native probe, and the codegen work adds jump-table, narrow-arithmetic, and range-demotion coverage.
 - Contract-fingerprint and name-uniqueness guards lock the runtime API and registry so the surface can't drift quietly. The asset pipeline adds end-to-end bake-fidelity checks for whole scenes, exact source textures, and decoded-only textures.
 - The reliability audits land regression and stress coverage across GC, collections, archives, networking, IL parsing, and optimizer scalability.
-- The Studio work adds terminal-semantics, theme-contrast, vector-icon, font-shaping, and Windows-accessibility coverage, plus a probe per workbench feature.
+- The platform reviews add Unicode-path coverage on Windows — runtime, source loading, processes, assets, packages, and manifests — along with a full installer lifecycle contract, and focused Linux coverage for entropy, sockets, watchers, cgroups, and AT-SPI.
+- The Studio work adds terminal-semantics, theme-contrast, vector-icon, font-shaping, and Windows-accessibility coverage, plus a probe per workbench feature. The scene editors add their own probes for component schemas, material batches, rotation and scale handles, shaded viewport rendering, viewport picking, and canvas selection.
 
 ---
 

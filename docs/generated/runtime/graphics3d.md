@@ -470,7 +470,8 @@ Provides Light 3D functionality for 3D rendering and scene applications.
 
 `Zanna.Graphics3D.Light3D` exposes a registry-backed runtime surface without requiring callers
 to construct the class directly. Its public surface exposes properties such as `Type`,
-`Color`, `Intensity` and operations including `Directional`, `Point`, `Ambient`, `Spot`.
+`Color`, `Intensity`, `InnerConeDegrees`, and `OuterConeDegrees`, plus all seven light
+constructors and atomic `SetSpotCone` authoring.
 
 #### Properties
 
@@ -488,6 +489,8 @@ to construct the class directly. Its public surface exposes properties such as `
 | <a id="zanna-graphics3d-light3d-radius"></a>`Radius` | `f64` | read/write |
 | <a id="zanna-graphics3d-light3d-decaytype"></a>`DecayType` | `i64` | read/write |
 | <a id="zanna-graphics3d-light3d-range"></a>`Range` | `f64` | read/write |
+| <a id="zanna-graphics3d-light3d-innerconedegrees"></a>`InnerConeDegrees` | `f64` | read-only |
+| <a id="zanna-graphics3d-light3d-outerconedegrees"></a>`OuterConeDegrees` | `f64` | read-only |
 | <a id="zanna-graphics3d-light3d-attenuation"></a>`Attenuation` | `f64` | read-only |
 
 #### Methods
@@ -504,6 +507,7 @@ to construct the class directly. Its public surface exposes properties such as `
 | <a id="zanna-graphics3d-light3d-setintensity"></a>`SetIntensity` | `void(f64)` | `Zanna.Graphics3D.Light3D.SetIntensity` |
 | <a id="zanna-graphics3d-light3d-setattenuation"></a>`SetAttenuation` | `void(f64)` | `Zanna.Graphics3D.Light3D.SetAttenuation` |
 | <a id="zanna-graphics3d-light3d-setcolor"></a>`SetColor` | `void(f64,f64,f64)` | `Zanna.Graphics3D.Light3D.SetColor` |
+| <a id="zanna-graphics3d-light3d-setspotcone"></a>`SetSpotCone` | `void(f64,f64)` | `Zanna.Graphics3D.Light3D.SetSpotCone` |
 
 <a id="zanna-graphics3d-scenegraph"></a>
 ### `Zanna.Graphics3D.SceneGraph`
@@ -559,7 +563,8 @@ Provides Scene Node functionality for 3D rendering and scene applications.
 
 Create `Zanna.Graphics3D.SceneNode` values through its registered constructor and use the
 returned object with the instance members below. Its public surface exposes properties such as
-`Position`, `Rotation`, `Scale` and operations including `SetPosition`, `SetScale`,
+`Position`, `Rotation`, `Scale`, `Mesh`, `Material`, `Light`, and `Camera`, plus operations
+including `SetPosition`, `SetScale`,
 `SetTransform`, exact world-matrix assignment, `AddChild`, exact preserve-world reparenting,
 stable sibling reordering, and bounded typed gameplay metadata accessors.
 
@@ -582,6 +587,7 @@ Constructor: `Zanna.Graphics3D.SceneNode.New`
 | <a id="zanna-graphics3d-scenenode-name"></a>`Name` | `str` | read/write |
 | <a id="zanna-graphics3d-scenenode-mesh"></a>`Mesh` | `obj<Zanna.Graphics3D.Mesh3D>` | read/write |
 | <a id="zanna-graphics3d-scenenode-material"></a>`Material` | `obj<Zanna.Graphics3D.Material3D>` | read/write |
+| <a id="zanna-graphics3d-scenenode-light"></a>`Light` | `obj<Zanna.Graphics3D.Light3D>` | read/write |
 | <a id="zanna-graphics3d-scenenode-camera"></a>`Camera` | `obj<Zanna.Graphics3D.Camera3D>` | read/write |
 | <a id="zanna-graphics3d-scenenode-boundsmin"></a>`BoundsMin` | `obj<Zanna.Math.Vec3>` | read-only |
 | <a id="zanna-graphics3d-scenenode-boundsmax"></a>`BoundsMax` | `obj<Zanna.Math.Vec3>` | read-only |
@@ -2718,6 +2724,9 @@ Constructor: `Zanna.Graphics3D.TextureAtlas3D.New`
 | <a id="zanna-graphics3d-light3d-set-decaytype"></a>`Zanna.Graphics3D.Light3D.set_DecayType` | `void(obj,i64)` | `rt_light3d_set_decay_type` |
 | <a id="zanna-graphics3d-light3d-get-range"></a>`Zanna.Graphics3D.Light3D.get_Range` | `f64(obj)` | `rt_light3d_get_range` |
 | <a id="zanna-graphics3d-light3d-set-range"></a>`Zanna.Graphics3D.Light3D.set_Range` | `void(obj,f64)` | `rt_light3d_set_range` |
+| <a id="zanna-graphics3d-light3d-get-innerconedegrees"></a>`Zanna.Graphics3D.Light3D.get_InnerConeDegrees` | `f64(obj)` | `rt_light3d_get_inner_cone_degrees` |
+| <a id="zanna-graphics3d-light3d-get-outerconedegrees"></a>`Zanna.Graphics3D.Light3D.get_OuterConeDegrees` | `f64(obj)` | `rt_light3d_get_outer_cone_degrees` |
+| `Zanna.Graphics3D.Light3D.SetSpotCone` | `void(obj,f64,f64)` | `rt_light3d_set_spot_cone` |
 | `Zanna.Graphics3D.SceneGraph.New` | `obj()` | `rt_scene3d_new` |
 | <a id="zanna-graphics3d-scenegraph-get-root"></a>`Zanna.Graphics3D.SceneGraph.get_Root` | `obj<Zanna.Graphics3D.SceneNode>(obj)` | `rt_scene3d_get_root` |
 | `Zanna.Graphics3D.SceneGraph.Add` | `void(obj,obj)` | `rt_scene3d_add` |
@@ -2762,6 +2771,8 @@ Constructor: `Zanna.Graphics3D.TextureAtlas3D.New`
 | <a id="zanna-graphics3d-scenenode-get-mesh"></a>`Zanna.Graphics3D.SceneNode.get_Mesh` | `obj<Zanna.Graphics3D.Mesh3D>(obj)` | `rt_scene_node3d_get_mesh` |
 | <a id="zanna-graphics3d-scenenode-set-material"></a>`Zanna.Graphics3D.SceneNode.set_Material` | `void(obj,obj<Zanna.Graphics3D.Material3D>)` | `rt_scene_node3d_set_material` |
 | <a id="zanna-graphics3d-scenenode-get-material"></a>`Zanna.Graphics3D.SceneNode.get_Material` | `obj<Zanna.Graphics3D.Material3D>(obj)` | `rt_scene_node3d_get_material` |
+| <a id="zanna-graphics3d-scenenode-set-light"></a>`Zanna.Graphics3D.SceneNode.set_Light` | `void(obj,obj<Zanna.Graphics3D.Light3D>)` | `rt_scene_node3d_set_light` |
+| <a id="zanna-graphics3d-scenenode-get-light"></a>`Zanna.Graphics3D.SceneNode.get_Light` | `obj<Zanna.Graphics3D.Light3D>(obj)` | `rt_scene_node3d_get_light` |
 | <a id="zanna-graphics3d-scenenode-set-camera"></a>`Zanna.Graphics3D.SceneNode.set_Camera` | `void(obj,obj<Zanna.Graphics3D.Camera3D>)` | `rt_scene_node3d_set_camera` |
 | <a id="zanna-graphics3d-scenenode-get-camera"></a>`Zanna.Graphics3D.SceneNode.get_Camera` | `obj<Zanna.Graphics3D.Camera3D>(obj)` | `rt_scene_node3d_get_camera` |
 | `Zanna.Graphics3D.SceneNode.AddChild` | `void(obj,obj)` | `rt_scene_node3d_add_child` |
