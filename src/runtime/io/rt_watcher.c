@@ -95,6 +95,27 @@ static int watcher_timeout_to_int(int64_t ms) {
     return (int)ms;
 }
 
+/// @brief Build a saturating monotonic deadline for a positive millisecond wait.
+/// @param timeout_ms Positive timeout already clamped to int.
+/// @return Absolute microsecond deadline, saturated at INT64_MAX.
+static int64_t watcher_deadline_from_timeout(int timeout_ms) {
+    int64_t now_us = rt_clock_ticks_us();
+    if (now_us < 0)
+        return 0;
+    int64_t duration_us = (int64_t)timeout_ms * INT64_C(1000);
+    if (now_us > INT64_MAX - duration_us)
+        return INT64_MAX;
+    return now_us + duration_us;
+}
+
+/// @brief Return microseconds remaining before a saturated watcher deadline.
+static int64_t watcher_deadline_remaining_us(int64_t deadline_us) {
+    int64_t now_us = rt_clock_ticks_us();
+    if (now_us < 0 || now_us >= deadline_us)
+        return 0;
+    return deadline_us - now_us;
+}
+
 #define WATCHER_EVENT_QUEUE_SIZE 64
 
 /// Sentinel `dropped_count` for a NATIVE (kernel) queue overflow, where the OS
@@ -416,6 +437,23 @@ static rt_string watcher_event_path_from_owned_relative(rt_watcher_impl *w,
 /// marker in that newest slot; older queued events remain available.
 /// Takes ownership of the passed-in `path` string.
 static void watcher_queue_event_owned(rt_watcher_impl *w, int64_t type, rt_string path) {
+    if (type == RT_WATCH_EVENT_MODIFIED && path && w->event_count > 0) {
+        int64_t newest_slot =
+            (w->event_tail + WATCHER_EVENT_QUEUE_SIZE - 1) % WATCHER_EVENT_QUEUE_SIZE;
+        watcher_event *newest = &w->events[newest_slot];
+        if (newest->type == RT_WATCH_EVENT_MODIFIED && newest->path) {
+            int64_t newest_len = rt_str_len((rt_string)newest->path);
+            int64_t incoming_len = rt_str_len(path);
+            const char *newest_bytes = rt_string_cstr((rt_string)newest->path);
+            const char *incoming_bytes = rt_string_cstr(path);
+            if (newest_len >= 0 && newest_len == incoming_len && newest_bytes && incoming_bytes &&
+                memcmp(newest_bytes, incoming_bytes, (size_t)newest_len) == 0) {
+                rt_string_unref(path);
+                return;
+            }
+        }
+    }
+
     if (w->event_count >= WATCHER_EVENT_QUEUE_SIZE) {
         int64_t overflow_slot =
             (w->event_tail + WATCHER_EVENT_QUEUE_SIZE - 1) % WATCHER_EVENT_QUEUE_SIZE;
@@ -517,7 +555,8 @@ static void watcher_close_inotify(rt_watcher_impl *w) {
 static void watcher_read_inotify_events(rt_watcher_impl *w) {
     char buf[4096] __attribute__((aligned(__alignof__(struct inotify_event))));
     int terminal = 0;
-    for (;;) {
+    int read_batches = 0;
+    while (read_batches < 64) {
         ssize_t len = read(w->inotify_fd, buf, sizeof(buf));
         if (len < 0) {
             if (errno == EINTR)
@@ -533,6 +572,7 @@ static void watcher_read_inotify_events(rt_watcher_impl *w) {
             terminal = 1;
             break;
         }
+        read_batches++;
 
         char *ptr = buf;
         char *end = buf + len;
@@ -583,6 +623,8 @@ static void watcher_read_inotify_events(rt_watcher_impl *w) {
                 if (path)
                     watcher_queue_event_owned(w, type, path);
             }
+            if (event->mask & (IN_DELETE_SELF | IN_MOVE_SELF))
+                terminal = 1;
 
             ptr += stride;
         }
@@ -624,7 +666,7 @@ static void watcher_close_kqueue(rt_watcher_impl *w) {
 /// 0 is a non-blocking poll.
 static void watcher_read_kqueue_events(rt_watcher_impl *w, int timeout_ms) {
     struct kevent event;
-    int64_t deadline_us = timeout_ms > 0 ? rt_clock_ticks_us() + (int64_t)timeout_ms * 1000 : 0;
+    int64_t deadline_us = timeout_ms > 0 ? watcher_deadline_from_timeout(timeout_ms) : 0;
     int current_timeout = timeout_ms;
     int n;
     for (;;) {
@@ -637,7 +679,7 @@ static void watcher_read_kqueue_events(rt_watcher_impl *w, int timeout_ms) {
         if (n >= 0 || errno != EINTR)
             break;
         if (timeout_ms > 0) {
-            int64_t remaining_us = deadline_us - rt_clock_ticks_us();
+            int64_t remaining_us = watcher_deadline_remaining_us(deadline_us);
             if (remaining_us <= 0) {
                 n = 0;
                 break;
@@ -1042,12 +1084,16 @@ void rt_watcher_start(void *obj) {
     }
 #if defined(FD_CLOEXEC) && !defined(IN_CLOEXEC)
     int inotify_flags = fcntl(w->inotify_fd, F_GETFD);
-    if (inotify_flags >= 0)
-        (void)fcntl(w->inotify_fd, F_SETFD, inotify_flags | FD_CLOEXEC);
+    if (inotify_flags < 0 ||
+        fcntl(w->inotify_fd, F_SETFD, inotify_flags | FD_CLOEXEC) < 0) {
+        (void)close(w->inotify_fd);
+        w->inotify_fd = -1;
+        return;
+    }
 #endif
 
     uint32_t mask = IN_CREATE | IN_DELETE | IN_MODIFY | IN_CLOSE_WRITE | IN_ATTRIB | IN_MOVED_FROM |
-                    IN_MOVED_TO;
+                    IN_MOVED_TO | IN_ONLYDIR;
     const char *watch_target =
         rt_string_cstr(w->is_directory ? (rt_string)w->watch_path : (rt_string)w->watch_dir_path);
     if (w->is_directory)
@@ -1220,13 +1266,13 @@ int64_t rt_watcher_poll_for(void *obj, int64_t ms) {
     // wait each time — otherwise repeated signals could block far longer than
     // the documented "up to `ms`" (VDOC-191). A negative timeout (wait forever)
     // and a zero timeout (poll once) keep their original semantics.
-    int64_t deadline_us = timeout > 0 ? rt_clock_ticks_us() + (int64_t)timeout * 1000 : 0;
+    int64_t deadline_us = timeout > 0 ? watcher_deadline_from_timeout(timeout) : 0;
     for (;;) {
         poll_rc = poll(&pfd, 1, timeout);
         if (poll_rc >= 0 || errno != EINTR)
             break;
         if (timeout > 0) {
-            int64_t remaining_us = deadline_us - rt_clock_ticks_us();
+            int64_t remaining_us = watcher_deadline_remaining_us(deadline_us);
             if (remaining_us <= 0) {
                 poll_rc = 0; // deadline reached during interruption: time out
                 break;

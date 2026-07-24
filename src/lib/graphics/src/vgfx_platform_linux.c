@@ -154,6 +154,7 @@ typedef struct {
     size_t ximage_buf_size; ///< Size of ximage_buf in bytes
     int width;              ///< Cached window width
     int height;             ///< Cached window height
+    unsigned long resize_request_serial; ///< X request serial of the latest client resize
     int hidden;             ///< 1 if creation intentionally skipped mapping
     int close_requested;    ///< 1 if WM_DELETE_WINDOW received, 0 otherwise
     // XDND (drag-and-drop) atoms
@@ -2290,6 +2291,15 @@ int vgfx_platform_process_events(struct vgfx_window *win) {
             }
 
             case ConfigureNotify: {
+                /* Ignore configure notifications generated before the most
+                 * recent client resize request. Without this ordering guard,
+                 * a queued creation-time configure can overwrite the backing
+                 * store dimensions synchronously published by SetWindowSize. */
+                if (x11->resize_request_serial != 0 &&
+                    event.xconfigure.serial < x11->resize_request_serial) {
+                    break;
+                }
+                x11->resize_request_serial = 0;
                 if (event.xconfigure.width > 0 && event.xconfigure.height > 0 &&
                     (event.xconfigure.width != x11->width ||
                      event.xconfigure.height != x11->height)) {
@@ -2967,7 +2977,9 @@ void vgfx_platform_set_window_size(struct vgfx_window *win, int32_t w, int32_t h
     int32_t physical_h = x11_logical_to_physical(win, h);
     if (physical_w <= 0 || physical_h <= 0)
         return;
-    (void)x11_resize_backing_store(win, physical_w, physical_h, vgfx_platform_now_ms(), 1);
+    if (!x11_resize_backing_store(win, physical_w, physical_h, vgfx_platform_now_ms(), 1))
+        return;
+    x11->resize_request_serial = NextRequest(x11->display);
     XResizeWindow(x11->display, x11->window, (unsigned int)physical_w, (unsigned int)physical_h);
     XFlush(x11->display);
 }

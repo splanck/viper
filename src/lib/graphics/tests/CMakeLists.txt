@@ -71,7 +71,7 @@ if (NOT WIN32)
     add_vgfx_test(test_input test_input.c)
 endif ()
 
-if (UNIX AND NOT APPLE)
+if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
     add_executable(test_wayland_loader
             test_wayland_loader.c
             ../src/vgfx_wayland_activation.c
@@ -115,7 +115,7 @@ endif ()
 
 if (ZANNAGFX_BACKEND STREQUAL "LinuxAuto")
     add_executable(test_linux_auto_backend test_linux_auto_backend.c)
-    target_link_libraries(test_linux_auto_backend PRIVATE zannagfx)
+    target_link_libraries(test_linux_auto_backend PRIVATE zannagfx Threads::Threads)
     target_include_directories(test_linux_auto_backend PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
     target_compile_features(test_linux_auto_backend PRIVATE c_std_11)
     add_test(NAME test_linux_auto_wayland COMMAND test_linux_auto_backend wayland)
@@ -129,6 +129,12 @@ if (ZANNAGFX_BACKEND STREQUAL "LinuxAuto")
             ENVIRONMENT "ZANNA_WAYLAND_FORCE_CSD=1"
             RESOURCE_LOCK zanna_display
             LABELS "integration;gui;wayland;requires_linux;requires_display")
+    add_test(NAME test_linux_auto_no_display COMMAND test_linux_auto_backend none)
+    set_tests_properties(test_linux_auto_no_display PROPERTIES
+            TIMEOUT 10
+            ENVIRONMENT "WAYLAND_DISPLAY=;DISPLAY="
+            RESOURCE_LOCK zanna_display
+            LABELS "unit;gui;requires_linux")
     if (VGFX_AUTO_HAS_X11)
         add_test(NAME test_linux_auto_x11_fallback COMMAND test_linux_auto_backend x11)
         set_tests_properties(test_linux_auto_x11_fallback PROPERTIES

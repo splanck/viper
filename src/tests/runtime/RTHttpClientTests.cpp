@@ -43,7 +43,7 @@
 #include <thread>
 #include <vector>
 
-#if defined(_WIN32)
+#if RT_PLATFORM_WINDOWS
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #pragma comment(lib, "ws2_32.lib")
@@ -104,7 +104,7 @@ static bool socket_is_readable(header_socket_t socket_value, int timeout_ms) {
     timeval timeout{};
     timeout.tv_sec = timeout_ms / 1000;
     timeout.tv_usec = (timeout_ms % 1000) * 1000;
-#if defined(_WIN32)
+#if RT_PLATFORM_WINDOWS
     return select(0, &read_set, nullptr, nullptr, &timeout) > 0;
 #else
     return select(socket_value + 1, &read_set, nullptr, nullptr, &timeout) > 0;
@@ -125,7 +125,7 @@ static header_socket_t open_header_listener(int *out_port) {
         return HEADER_SOCKET_INVALID;
 
     int reuse = 1;
-#if defined(_WIN32)
+#if RT_PLATFORM_WINDOWS
     (void)setsockopt(
         listener, SOL_SOCKET, SO_REUSEADDR, reinterpret_cast<const char *>(&reuse), sizeof(reuse));
 #else
@@ -142,7 +142,7 @@ static header_socket_t open_header_listener(int *out_port) {
         return HEADER_SOCKET_INVALID;
     }
 
-#if defined(_WIN32)
+#if RT_PLATFORM_WINDOWS
     int address_size = sizeof(address);
 #else
     socklen_t address_size = sizeof(address);
@@ -164,7 +164,7 @@ static bool send_all(header_socket_t socket_value, const char *bytes) {
     size_t offset = 0;
     const size_t length = std::strlen(bytes);
     while (offset < length) {
-#if defined(_WIN32)
+#if RT_PLATFORM_WINDOWS
         int sent = send(socket_value, bytes + offset, static_cast<int>(length - offset), 0);
 #else
         ssize_t sent = send(socket_value, bytes + offset, length - offset, 0);
@@ -212,7 +212,7 @@ static void capture_header_requests(header_socket_t listener,
                 failed->store(true);
                 break;
             }
-#if defined(_WIN32)
+#if RT_PLATFORM_WINDOWS
             int received = recv(client, buffer, static_cast<int>(sizeof(buffer)), 0);
 #else
             ssize_t received = recv(client, buffer, sizeof(buffer), 0);
@@ -691,7 +691,7 @@ static void test_concurrent_cookie_and_pool_state() {
 /// @brief Run the focused HttpClient correctness suite.
 /// @return Zero when every assertion passes.
 int main() {
-#if defined(_WIN32)
+#if RT_PLATFORM_WINDOWS
     WSADATA winsock_data{};
     assert(WSAStartup(MAKEWORD(2, 2), &winsock_data) == 0);
 #endif
@@ -702,7 +702,7 @@ int main() {
     test_transactional_and_concurrent_headers();
     test_concurrent_cookie_and_pool_state();
 
-#if defined(_WIN32)
+#if RT_PLATFORM_WINDOWS
     WSACleanup();
 #endif
     std::printf("\nAll HttpClient tests passed.\n");

@@ -409,7 +409,10 @@ func main() {
              "compact 3D viewport did not claim the available width: root="
              + editor.root.GetScreenWidth() + " body=" + compactBodyWidth
              + " viewport=" + editor.viewportScroll.GetScreenWidth()
-             + " side=" + editor.bodySplit.GetCollapsedSide());
+             + " side=" + editor.bodySplit.GetCollapsedSide()
+             + " compactInspector=" + editor.compactInspectorShown
+             + " app=" + shell.app.GetWidth()
+             + " scale=" + shell.app.GetEffectiveScale());
         return;
     }
     var toolbarRight =
@@ -463,7 +466,11 @@ func main() {
        or editor.compactInspectorShown == false
        or editor.inspectorScroll.GetScreenWidth() < compactBodyWidth - 8.0 {
         fail(shell, tempPath,
-             "compact 3D inspector did not replace the viewport at full width");
+             "compact 3D inspector did not replace the viewport at full width"
+             + ": side=" + editor.bodySplit.GetCollapsedSide()
+             + " shown=" + editor.compactInspectorShown
+             + " inspector=" + editor.inspectorScroll.GetScreenWidth()
+             + " body=" + compactBodyWidth);
         return;
     }
 
@@ -481,7 +488,14 @@ func main() {
        or editor.viewportScroll.GetScreenWidth() < 240.0
        or editor.inspectorScroll.GetScreenWidth() < 240.0 {
         fail(shell, tempPath,
-             "wide 3D viewport/inspector split did not restore after resize");
+             "wide 3D viewport/inspector split did not restore after resize"
+             + ": compact=" + editor.compactLayout
+             + " side=" + editor.bodySplit.GetCollapsedSide()
+             + " root=" + editor.root.GetScreenWidth()
+             + " viewport=" + editor.viewportScroll.GetScreenWidth()
+             + " inspector=" + editor.inspectorScroll.GetScreenWidth()
+             + " app=" + shell.app.GetWidth()
+             + " scale=" + shell.app.GetEffectiveScale());
         return;
     }
 

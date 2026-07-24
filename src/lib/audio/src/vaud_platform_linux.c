@@ -5,26 +5,21 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// ZannaAUD Linux Platform Backend
+// File: src/lib/audio/src/vaud_platform_linux.c
+// Purpose: Implement the Linux ALSA playback backend.
 //
-// Implements audio output using ALSA (Advanced Linux Sound Architecture).
-// ALSA is the standard low-level audio API on Linux, available on all
-// distributions as part of the kernel.
+// Key invariants:
+//   - One dedicated thread mixes and writes complete interleaved periods.
+//   - PCM operations are serialized and every recovery result is checked.
+//   - Pause waits terminate the backend on unexpected synchronization errors.
 //
-// Key concepts:
-// - snd_pcm_t: PCM device handle for audio output
-// - snd_pcm_writei: Interleaved write to PCM device
-// - Dedicated thread: Continuously fills audio buffer in a loop
+// Ownership/Lifetime:
+//   - Platform state owns the ALSA handle, mix buffer, thread, mutexes, and
+//     condition variable until vaud_platform_shutdown().
 //
-// Thread model:
-// - We create a dedicated audio thread that loops, mixing and writing
-// - The mixer is thread-safe, called from the audio thread
-// - ALSA's snd_pcm_writei blocks until buffer space is available
+// Links: src/lib/audio/src/vaud_internal.h
 //
 //===----------------------------------------------------------------------===//
-
-/// @file
-/// @brief Linux ALSA audio backend for ZannaAUD.
 
 #ifndef _POSIX_C_SOURCE
 #define _POSIX_C_SOURCE 200809L
@@ -71,6 +66,26 @@ static void alsa_pcm_lock(vaud_linux_data *plat) {
 static void alsa_pcm_unlock(vaud_linux_data *plat) {
     if (plat)
         pthread_mutex_unlock(&plat->pcm_mutex);
+}
+
+static int alsa_prepare_checked(vaud_context_t ctx, vaud_linux_data *plat) {
+    int result = snd_pcm_prepare(plat->pcm);
+    if (result < 0) {
+        vaud_stats_add(&ctx->stats.backend_write_failures, 1);
+        vaud_set_error(VAUD_ERR_PLATFORM, "ALSA failed to prepare the playback device");
+        return 0;
+    }
+    return 1;
+}
+
+static int alsa_drop_checked(vaud_context_t ctx, vaud_linux_data *plat) {
+    int result = snd_pcm_drop(plat->pcm);
+    if (result < 0) {
+        vaud_stats_add(&ctx->stats.backend_write_failures, 1);
+        vaud_set_error(VAUD_ERR_PLATFORM, "ALSA failed to drop the playback stream");
+        return 0;
+    }
+    return 1;
 }
 
 /// @brief Apply explicit ALSA hardware and software parameters for ZannaAUD output.
@@ -232,7 +247,13 @@ static void *audio_thread_func(void *arg) {
         pthread_mutex_lock(&plat->pause_mutex);
         while (__atomic_load_n(&plat->paused, __ATOMIC_ACQUIRE) &&
                __atomic_load_n(&plat->running, __ATOMIC_ACQUIRE)) {
-            pthread_cond_wait(&plat->pause_cond, &plat->pause_mutex);
+            int wait_result = pthread_cond_wait(&plat->pause_cond, &plat->pause_mutex);
+            if (wait_result != 0) {
+                vaud_stats_add(&ctx->stats.backend_write_failures, 1);
+                vaud_set_error(VAUD_ERR_PLATFORM, "ALSA pause condition wait failed");
+                __atomic_store_n(&plat->running, 0, __ATOMIC_RELEASE);
+                break;
+            }
         }
         pthread_mutex_unlock(&plat->pause_mutex);
 
@@ -247,8 +268,12 @@ static void *audio_thread_func(void *arg) {
             if (!__atomic_load_n(&plat->running, __ATOMIC_ACQUIRE))
                 break;
             alsa_pcm_lock(plat);
-            (void)snd_pcm_prepare(plat->pcm);
+            int prepared = alsa_prepare_checked(ctx, plat);
             alsa_pcm_unlock(plat);
+            if (!prepared) {
+                __atomic_store_n(&plat->running, 0, __ATOMIC_RELEASE);
+                break;
+            }
             struct timespec ts;
             ts.tv_sec = 0;
             ts.tv_nsec = 1000000L;
@@ -390,7 +415,7 @@ void vaud_platform_shutdown(vaud_context_t ctx) {
 
     /* Abort any blocking snd_pcm_writei() so shutdown cannot hang behind ALSA. */
     alsa_pcm_lock(plat);
-    snd_pcm_drop(plat->pcm);
+    (void)alsa_drop_checked(ctx, plat);
     alsa_pcm_unlock(plat);
 
     /* Wait for thread to finish */
@@ -427,12 +452,12 @@ void vaud_platform_pause(vaud_context_t ctx) {
     int rc = snd_pcm_pause(plat->pcm, 1);
     if (rc < 0) {
         if (rc == -ENOSYS) {
-            snd_pcm_drop(plat->pcm);
-            snd_pcm_prepare(plat->pcm);
+            (void)alsa_drop_checked(ctx, plat);
+            (void)alsa_prepare_checked(ctx, plat);
         } else if (snd_pcm_recover(plat->pcm, rc, 0) < 0) {
             vaud_stats_add(&ctx->stats.backend_write_failures, 1);
-            snd_pcm_drop(plat->pcm);
-            snd_pcm_prepare(plat->pcm);
+            (void)alsa_drop_checked(ctx, plat);
+            (void)alsa_prepare_checked(ctx, plat);
         }
     }
     alsa_pcm_unlock(plat);
@@ -449,10 +474,10 @@ void vaud_platform_resume(vaud_context_t ctx) {
     int rc = snd_pcm_pause(plat->pcm, 0);
     if (rc < 0) {
         if (rc == -ENOSYS) {
-            snd_pcm_prepare(plat->pcm);
+            (void)alsa_prepare_checked(ctx, plat);
         } else if (snd_pcm_recover(plat->pcm, rc, 0) < 0) {
             vaud_stats_add(&ctx->stats.backend_write_failures, 1);
-            snd_pcm_prepare(plat->pcm);
+            (void)alsa_prepare_checked(ctx, plat);
         }
     }
     alsa_pcm_unlock(plat);

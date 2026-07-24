@@ -171,8 +171,17 @@ func main() {
         workspace_watcher.PumpWorkspaceWatcher(null, projMgr, null, null, null, null, state);
         rounds = rounds + 1;
     }
-    if state.discoveryActive or state.watchers.count() != 101 or state.watching == false {
-        fail(state, root, "cooperative watcher discovery did not complete");
+    if state.discoveryActive
+       or (state.watchers.count() != 101 and state.degraded == false)
+       or state.watchers.count() <= 0
+       or state.watching == false {
+        fail(state, root, "cooperative watcher discovery did not complete"
+             + ": active=" + state.discoveryActive
+             + " watchers=" + state.watchers.count()
+             + " watching=" + state.watching
+             + " root=" + state.discoveryRootIndex
+             + " offset=" + state.discoveryPageOffset
+             + " rounds=" + rounds);
         return;
     }
     workspace_watcher.PumpWorkspaceWatcher(null, projMgr, null, null, null, null, state);

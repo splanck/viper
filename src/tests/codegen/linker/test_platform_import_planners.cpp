@@ -11,6 +11,7 @@
 //   - Every accepted platform import maps to the DLL/framework that exports it.
 //   - Platform-exclusive symbols are rejected for foreign targets.
 //   - Planner failure never leaves a partial import plan.
+//   - Diagnostics are stable when multiple unordered imports are invalid.
 // Ownership/Lifetime:
 //   - Test-owned plans and object files live for one test case.
 // Links: src/codegen/common/linker/PlatformImportPlanner.hpp,
@@ -101,6 +102,15 @@ TEST(PlatformImportPlanners, LinuxPlannerRejectsUnknownImportsWithoutPartialPlan
     EXPECT_TRUE(plan.neededLibs.empty());
     EXPECT_NE(err.str().find("unrecognized Linux dynamic import 'zanna_missing_linux_symbol'"),
               std::string::npos);
+}
+
+TEST(PlatformImportPlanners, LinuxPlannerReportsUnknownImportsDeterministically) {
+    LinuxImportPlan plan;
+    std::ostringstream err;
+    EXPECT_FALSE(planLinuxImports(
+        {"zanna_unknown_zeta", "malloc", "zanna_unknown_alpha"}, plan, err));
+    EXPECT_TRUE(plan.neededLibs.empty());
+    EXPECT_EQ("error: unrecognized Linux dynamic import 'zanna_unknown_alpha'\n", err.str());
 }
 
 TEST(PlatformImportPlanners, MacPlannerMapsFrameworkAndFlatLookupSymbols) {

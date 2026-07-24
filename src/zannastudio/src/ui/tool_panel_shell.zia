@@ -622,22 +622,22 @@ class ToolPanelShell {
                                    workspace_dock.TOOL_PANEL_DRAG_DATA);
 
         dockLeftButton = GUI.Button.New(dockHeader, "Left");
-        dockLeftButton.SetSize(48, 24);
+        dockLeftButton.SetPreferredSize(48.0, 24.0);
         dockLeftButton.SetTooltip("Move the selected tool to the left group");
         dockBottomButton = GUI.Button.New(dockHeader, "Bottom");
-        dockBottomButton.SetSize(58, 24);
+        dockBottomButton.SetPreferredSize(58.0, 24.0);
         dockBottomButton.SetTooltip(
             "Move the selected tool below the editor");
         dockRightButton = GUI.Button.New(dockHeader, "Right");
-        dockRightButton.SetSize(52, 24);
+        dockRightButton.SetPreferredSize(52.0, 24.0);
         dockRightButton.SetTooltip(
             "Move the selected tool to the right group");
         dockFloatButton = GUI.Button.New(dockHeader, "Float");
-        dockFloatButton.SetSize(48, 24);
+        dockFloatButton.SetPreferredSize(48.0, 24.0);
         dockFloatButton.SetTooltip(
             "Move the selected tool into a movable floating window");
         dockHideButton = GUI.Button.New(dockHeader, "Hide");
-        dockHideButton.SetSize(46, 24);
+        dockHideButton.SetPreferredSize(46.0, 24.0);
         dockHideButton.SetTooltip("Hide the panel area");
 
         toolTabBar = GUI.TabBar.New(panelRoot);
@@ -955,7 +955,10 @@ class ToolPanelShell {
         watchToolbar.SetGap(4.0);
         variablesPanel.AddChild(watchToolbar);
         watchExpressionInput = GUI.TextInput.New(watchToolbar);
-        watchExpressionInput.SetFlex(1.0);
+        // Keep the authored basis stable so action buttons are not pushed onto
+        // an unmeasured overflow row. The wrapping toolbar itself handles
+        // genuinely narrow docks.
+        watchExpressionInput.SetFlex(0.0);
         watchExpressionInput.SetPreferredSize(180.0, 0.0);
         watchExpressionInput.SetPlaceholder("Watch expression");
         watchExpressionInput.SetAccessibleName("Debugger watch expression");
@@ -2253,17 +2256,34 @@ class ToolPanelShell {
         dockHeaderLocation = dockLocation;
         dockDragHandle.SetText(DefaultDockHeaderText());
         if compactDockHeader {
+            dockHeader.SetSpacing(0.0);
+            dockHeader.SetPadding(2.0);
             dockLeftButton.SetText("←");
             dockBottomButton.SetText("↓");
             dockRightButton.SetText("→");
             dockFloatButton.SetText("◇");
             dockHideButton.SetText("");
             dockHideButton.SetIconName("close");
-            dockLeftButton.SetSize(24, 24);
-            dockBottomButton.SetSize(24, 24);
-            dockRightButton.SetSize(24, 24);
-            dockFloatButton.SetSize(24, 24);
-            dockHideButton.SetSize(24, 24);
+            dockLeftButton.SetPreferredSize(16.0, 24.0);
+            dockLeftButton.SetMinSize(16.0, 24.0);
+            dockBottomButton.SetPreferredSize(16.0, 24.0);
+            dockBottomButton.SetMinSize(16.0, 24.0);
+            dockRightButton.SetPreferredSize(16.0, 24.0);
+            dockRightButton.SetMinSize(16.0, 24.0);
+            dockFloatButton.SetPreferredSize(16.0, 24.0);
+            dockFloatButton.SetMinSize(16.0, 24.0);
+            dockHideButton.SetPreferredSize(16.0, 24.0);
+            dockHideButton.SetMinSize(16.0, 24.0);
+            if dockLocation == workspace_dock.DOCK_LEFT {
+                dockLeftButton.SetPreferredSize(0.0, 24.0);
+                dockLeftButton.SetMinSize(0.0, 24.0);
+            } else if dockLocation == workspace_dock.DOCK_BOTTOM {
+                dockBottomButton.SetPreferredSize(0.0, 24.0);
+                dockBottomButton.SetMinSize(0.0, 24.0);
+            } else if dockLocation == workspace_dock.DOCK_RIGHT {
+                dockRightButton.SetPreferredSize(0.0, 24.0);
+                dockRightButton.SetMinSize(0.0, 24.0);
+            }
             dockLeftButton.SetVisible(
                 dockLocation != workspace_dock.DOCK_LEFT);
             dockBottomButton.SetVisible(
@@ -2272,6 +2292,8 @@ class ToolPanelShell {
                 dockLocation != workspace_dock.DOCK_RIGHT);
             dockFloatButton.SetVisible(true);
         } else {
+            dockHeader.SetSpacing(4.0);
+            dockHeader.SetPadding(4.0);
             dockLeftButton.SetText("Left");
             dockBottomButton.SetText("Bottom");
             dockRightButton.SetText("Right");
@@ -2282,11 +2304,16 @@ class ToolPanelShell {
             dockBottomButton.SetVisible(true);
             dockRightButton.SetVisible(true);
             dockFloatButton.SetVisible(true);
-            dockLeftButton.SetSize(48, 24);
-            dockBottomButton.SetSize(58, 24);
-            dockRightButton.SetSize(52, 24);
-            dockFloatButton.SetSize(48, 24);
-            dockHideButton.SetSize(46, 24);
+            dockLeftButton.SetPreferredSize(48.0, 24.0);
+            dockLeftButton.SetMinSize(0.0, 24.0);
+            dockBottomButton.SetPreferredSize(58.0, 24.0);
+            dockBottomButton.SetMinSize(0.0, 24.0);
+            dockRightButton.SetPreferredSize(52.0, 24.0);
+            dockRightButton.SetMinSize(0.0, 24.0);
+            dockFloatButton.SetPreferredSize(48.0, 24.0);
+            dockFloatButton.SetMinSize(0.0, 24.0);
+            dockHideButton.SetPreferredSize(46.0, 24.0);
+            dockHideButton.SetMinSize(0.0, 24.0);
         }
     }
 
@@ -2601,30 +2628,49 @@ class ToolPanelShell {
         if width <= 0.0 and panelRoot != null {
             width = panelRoot.GetLogicalWidth();
         }
+        if app != null {
+            var uiScale = app.GetUiScale();
+            if uiScale > 0.0 { width = width / uiScale; }
+        }
         if width <= 0.0 { return; }
 
         var compact = WatchToolbarUsesCompactActions(width);
         if compact == compactWatchToolbar { return; }
         compactWatchToolbar = compact;
         if compactWatchToolbar {
+            watchToolbar.SetPreferredSize(0.0, 60.0);
             watchExpressionInput.SetMinSize(60.0, 0.0);
             watchExpressionInput.SetPreferredSize(72.0, 0.0);
+            watchAddButton.SetText("+");
+            watchRemoveButton.SetText("−");
+            watchRefreshButton.SetText("↻");
+            watchClearButton.SetText("×");
+            watchAddButton.SetPreferredSize(36.0, 0.0);
+            watchRemoveButton.SetPreferredSize(36.0, 0.0);
+            watchRefreshButton.SetPreferredSize(36.0, 0.0);
+            watchClearButton.SetPreferredSize(36.0, 0.0);
+        } else {
+            // Flex wrap resolves its cross-axis extent before the parent width
+            // is final. Reserve a second row so late fractional layout cannot
+            // place the final action over the Variables list.
+            watchToolbar.SetPreferredSize(0.0, 60.0);
+            watchExpressionInput.SetMinSize(120.0, 0.0);
+            watchExpressionInput.SetPreferredSize(160.0, 0.0);
+            watchAddButton.SetText("Add");
+            watchRemoveButton.SetText("Remove");
+            watchRefreshButton.SetText("Refresh");
+            watchClearButton.SetText("Clear");
             watchAddButton.SetPreferredSize(48.0, 0.0);
             watchRemoveButton.SetPreferredSize(64.0, 0.0);
             watchRefreshButton.SetPreferredSize(64.0, 0.0);
             watchClearButton.SetPreferredSize(52.0, 0.0);
-        } else {
-            watchExpressionInput.SetMinSize(120.0, 0.0);
-            watchExpressionInput.SetPreferredSize(180.0, 0.0);
-            watchAddButton.SetPreferredSize(0.0, 0.0);
-            watchRemoveButton.SetPreferredSize(0.0, 0.0);
-            watchRefreshButton.SetPreferredSize(0.0, 0.0);
-            watchClearButton.SetPreferredSize(0.0, 0.0);
         }
-        watchAddButton.SetMinSize(48.0, 0.0);
-        watchRemoveButton.SetMinSize(64.0, 0.0);
-        watchRefreshButton.SetMinSize(64.0, 0.0);
-        watchClearButton.SetMinSize(52.0, 0.0);
+        var actionMin = 36.0;
+        if compactWatchToolbar == false { actionMin = 48.0; }
+        watchAddButton.SetMinSize(actionMin, 0.0);
+        watchRemoveButton.SetMinSize(actionMin, 0.0);
+        watchRefreshButton.SetMinSize(actionMin, 0.0);
+        watchClearButton.SetMinSize(actionMin, 0.0);
     }
 
     /// @brief Inject the concrete widgets that make up the bottom tool area.

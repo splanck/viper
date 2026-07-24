@@ -1182,6 +1182,7 @@ class SceneEditor3D {
         if scene == null {
             if renderDirty { RenderViewport(); }
             ApplyPendingWorkspaceScroll();
+            ApplyInspectorLayout();
             CaptureWorkspaceState();
             return changed;
         }
@@ -1353,6 +1354,11 @@ class SceneEditor3D {
         changed = PumpViewportNavigation() or changed;
         if renderDirty { RenderViewport(); }
         ApplyPendingWorkspaceScroll();
+        // Document activation and undo can restore the persisted divider
+        // fraction during this pump. Reassert the responsive one-pane policy
+        // before capturing state so compact mode cannot silently reopen both
+        // panes for one or more frames.
+        ApplyInspectorLayout();
         CaptureWorkspaceState();
         return changed;
     }
@@ -1568,6 +1574,15 @@ class SceneEditor3D {
     expose func RefreshResponsiveLayout() {
         if root == null or bodySplit == null { return; }
         var width = root.GetLogicalWidth();
+        if guiApp != null {
+            var scale = guiApp.GetEffectiveScale();
+            if scale <= 0.0 { scale = 1.0; }
+            var viewportWidth = guiApp.GetWidth() / scale;
+            if viewportWidth > 0.0
+               and (width <= 0.0 or viewportWidth < width) {
+                width = viewportWidth;
+            }
+        }
         if width <= 0.0 { return; }
         var nextCompact = UsesCompactLayout(width);
         if nextCompact != compactLayout {
@@ -1633,10 +1648,15 @@ class SceneEditor3D {
             desiredSide = 2;
         }
 
-        if bodySplit.GetCollapsedSide() != desiredSide {
-            if desiredSide == 1 { bodySplit.CollapseFirst(); }
-            else if desiredSide == 2 { bodySplit.CollapseSecond(); }
-            else { bodySplit.Restore(); }
+        var currentSide = bodySplit.GetCollapsedSide();
+        if desiredSide == 1 {
+            bodySplit.CollapseFirst();
+        } else if desiredSide == 2 {
+            bodySplit.CollapseSecond();
+        } else {
+            bodySplit.Restore();
+        }
+        if currentSide != desiredSide {
             renderDirty = true;
         }
         UpdateInspectorButton();

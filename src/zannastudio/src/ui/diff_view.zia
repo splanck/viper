@@ -305,6 +305,9 @@ class DiffView {
         if panelW < 1 { panelW = 1; }
         if panelH < 1 { panelH = 1; }
         panel.SetSize(panelW, panelH);
-        panel.CenterInParent();
+        // The retained app root can still carry its preceding dimensions
+        // during the resize frame. Center against the authoritative viewport
+        // used for clamping instead of the parent's stale arranged bounds.
+        panel.SetPosition((rootW - panelW) / 2, (rootH - panelH) / 2);
     }
 }

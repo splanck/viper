@@ -13,6 +13,7 @@
 //   - Repeated EINTR cannot restart a finite readiness timeout.
 //   - An orderly peer shutdown is readable so callers can observe recv() EOF.
 //   - Pending connect errors are queried without narrowing native handles.
+//   - Repeated nonblocking-mode requests are idempotent.
 //   - Bidirectional shutdown interrupts I/O without consuming descriptor ownership.
 //
 // Ownership/Lifetime:
@@ -150,6 +151,27 @@ static void test_socket_pending_error_query() {
     assert(close(sockets[1]) == 0);
 }
 
+/// @brief Verify repeated blocking-mode transitions preserve descriptor flags.
+static void test_socket_nonblocking_idempotence() {
+    int sockets[2] = {INVALID_SOCK, INVALID_SOCK};
+    assert(socketpair(AF_UNIX, SOCK_STREAM, 0, sockets) == 0);
+
+    assert(rt_socket_set_nonblocking(sockets[0], false));
+    assert(rt_socket_set_nonblocking(sockets[0], false));
+    int flags = fcntl(sockets[0], F_GETFL, 0);
+    assert(flags >= 0);
+    assert((flags & O_NONBLOCK) == 0);
+
+    assert(rt_socket_set_nonblocking(sockets[0], true));
+    assert(rt_socket_set_nonblocking(sockets[0], true));
+    flags = fcntl(sockets[0], F_GETFL, 0);
+    assert(flags >= 0);
+    assert((flags & O_NONBLOCK) != 0);
+
+    assert(close(sockets[0]) == 0);
+    assert(close(sockets[1]) == 0);
+}
+
 /// @brief Verify bidirectional shutdown preserves descriptor ownership.
 /// @details The adapter must make the peer observe EOF and disable subsequent
 ///          I/O while leaving the local descriptor valid for its unique owner
@@ -177,6 +199,7 @@ int main() {
     test_socket_wait_eintr_deadline();
     test_socket_wait_orderly_eof();
     test_socket_pending_error_query();
+    test_socket_nonblocking_idempotence();
     test_socket_shutdown_preserves_ownership();
     std::puts("RTPosixSocketPlatformTests passed");
     return 0;

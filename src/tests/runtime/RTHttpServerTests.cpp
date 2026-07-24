@@ -39,7 +39,7 @@
 #include <thread>
 #include <vector>
 
-#if defined(_WIN32)
+#if RT_PLATFORM_WINDOWS
 #include <winsock2.h>
 #pragma comment(lib, "ws2_32.lib")
 #endif
@@ -566,7 +566,7 @@ static void test_concurrent_lifecycle_publication() {
 /// @brief Run the focused HttpServer correctness and concurrency suite.
 /// @return Zero after every assertion succeeds.
 int main() {
-#if defined(_WIN32)
+#if RT_PLATFORM_WINDOWS
     WSADATA winsock_data{};
     assert(WSAStartup(MAKEWORD(2, 2), &winsock_data) == 0);
 #endif
@@ -579,7 +579,7 @@ int main() {
     test_reentrant_binding_cleanup();
     test_concurrent_lifecycle_publication();
 
-#if defined(_WIN32)
+#if RT_PLATFORM_WINDOWS
     WSACleanup();
 #endif
     std::printf("\nAll HttpServer tests passed.\n");

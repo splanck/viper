@@ -50,7 +50,7 @@
 #include <utility>
 #include <vector>
 
-#if defined(_WIN32)
+#if RT_PLATFORM_WINDOWS
 #include <winsock2.h>
 #pragma comment(lib, "ws2_32.lib")
 #endif
@@ -503,7 +503,7 @@ static void test_concurrent_lifecycle_publication(const temporary_tls_files &fix
 /// @brief Run the focused HttpsServer correctness and concurrency suite.
 /// @return Zero after every assertion succeeds, or zero with a fixture skip.
 int main() {
-#if defined(_WIN32)
+#if RT_PLATFORM_WINDOWS
     WSADATA winsock_data{};
     assert(WSAStartup(MAKEWORD(2, 2), &winsock_data) == 0);
 #endif
@@ -511,7 +511,7 @@ int main() {
     temporary_tls_files fixture;
     if (!fixture.valid()) {
         std::printf("SKIP: unable to create temporary TLS fixture files\n");
-#if defined(_WIN32)
+#if RT_PLATFORM_WINDOWS
         WSACleanup();
 #endif
         return 0;
@@ -522,7 +522,7 @@ int main() {
     test_managed_tls_callback_snapshots(fixture);
     test_concurrent_lifecycle_publication(fixture);
 
-#if defined(_WIN32)
+#if RT_PLATFORM_WINDOWS
     WSACleanup();
 #endif
     std::printf("\nAll HttpsServer tests passed.\n");

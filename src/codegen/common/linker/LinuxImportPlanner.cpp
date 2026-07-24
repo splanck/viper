@@ -12,6 +12,8 @@
 //          deduplicated DT_NEEDED list for the ELF executable writer.
 // Key invariants:
 //   - The lookup table is fully baked-in; no filesystem access.
+//   - Symbol validation is lexicographically ordered so diagnostics never
+//     depend on unordered-container iteration.
 //   - DT_NEEDED order follows a stable ABI-conventional sequence: libc.so.6 is
 //     always first (when present) so unresolved C runtime symbols satisfy.
 //   - Returning false clears @p plan, so callers never observe a stale or
@@ -25,8 +27,10 @@
 #include "codegen/common/linker/DynamicSymbolPolicy.hpp"
 #include "codegen/common/linker/PlatformImportPlanner.hpp"
 
+#include <algorithm>
 #include <cstdint>
 #include <unordered_set>
+#include <vector>
 
 namespace zanna::codegen::linker {
 namespace {
@@ -178,8 +182,11 @@ bool planLinuxImports(const std::unordered_set<std::string> &dynamicSyms,
                       std::ostream &err) {
     plan.neededLibs.clear();
 
+    std::vector<std::string> orderedSymbols(dynamicSyms.begin(), dynamicSyms.end());
+    std::sort(orderedSymbols.begin(), orderedSymbols.end());
+
     std::unordered_set<LinuxNeededLib> libs = {LinuxNeededLib::LibC};
-    for (const auto &sym : dynamicSyms) {
+    for (const auto &sym : orderedSymbols) {
         if (!isKnownDynamicSymbol(sym, LinkPlatform::Linux)) {
             err << "error: unrecognized Linux dynamic import '" << sym << "'\n";
             plan.neededLibs.clear();

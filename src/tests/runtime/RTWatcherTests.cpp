@@ -601,6 +601,61 @@ static void test_attribute_change_is_modified() {
     remove_file(file_path);
     rmdir_p(base);
 }
+
+static void test_close_write_is_coalesced() {
+    printf("Testing close-write event coalescing...\n");
+    const char *base = get_test_base();
+    mkdir_p(base);
+    char file_path[512];
+    snprintf(file_path, sizeof(file_path), "%s/coalesced.txt", base);
+    create_file(file_path);
+
+    void *w = rt_watcher_new(rt_string_from_bytes(file_path, strlen(file_path)));
+    rt_watcher_start(w);
+    modify_file(file_path);
+
+    int modified_count = 0;
+    for (int i = 0; i < 20; ++i) {
+        int64_t event = rt_watcher_poll_for(w, i == 0 ? 100 : 0);
+        if (event == RT_WATCH_EVENT_MODIFIED)
+            modified_count++;
+        if (event == RT_WATCH_EVENT_NONE)
+            break;
+    }
+    test_result("modify and close-write coalesce", modified_count == 1);
+    rt_watcher_stop(w);
+    remove_file(file_path);
+    rmdir_p(base);
+}
+
+static void test_moved_watch_becomes_inactive() {
+    printf("Testing moved watch terminal state...\n");
+    const char *base = get_test_base();
+    mkdir_p(base);
+    char watched_dir[512];
+    char moved_dir[512];
+    snprintf(watched_dir, sizeof(watched_dir), "%s/move-source", base);
+    snprintf(moved_dir, sizeof(moved_dir), "%s/move-target", base);
+    mkdir_p(watched_dir);
+
+    void *w = rt_watcher_new(rt_string_from_bytes(watched_dir, strlen(watched_dir)));
+    rt_watcher_start(w);
+    assert(rename(watched_dir, moved_dir) == 0);
+
+    int saw_renamed = 0;
+    for (int i = 0; i < 20; ++i) {
+        int64_t event = rt_watcher_poll_for(w, 100);
+        if (event == RT_WATCH_EVENT_RENAMED)
+            saw_renamed = 1;
+        if (!rt_watcher_get_is_watching(w))
+            break;
+    }
+    test_result("moved watch reports rename", saw_renamed != 0);
+    test_result("moved watch becomes inactive", rt_watcher_get_is_watching(w) == 0);
+    rt_watcher_stop(w);
+    rmdir_p(moved_dir);
+    rmdir_p(base);
+}
 #endif
 
 #if RT_PLATFORM_MACOS
@@ -646,6 +701,8 @@ int main() {
     test_file_recreate_is_detected();
     test_internal_overflow_reports_positive_count();
     test_attribute_change_is_modified();
+    test_close_write_is_coalesced();
+    test_moved_watch_becomes_inactive();
 #endif
 #if RT_PLATFORM_LINUX || RT_PLATFORM_MACOS
     test_deleted_watch_becomes_inactive();

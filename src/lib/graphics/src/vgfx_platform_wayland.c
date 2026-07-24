@@ -55,6 +55,8 @@ typedef struct vgfx_wayland_platform {
     int32_t reported_height;
     int32_t reported_logical_width;
     int32_t reported_logical_height;
+    int32_t requested_logical_width;
+    int32_t requested_logical_height;
     float reported_scale;
     int32_t reported_close;
     int32_t reported_focus;
@@ -171,6 +173,14 @@ static int vgfx_wayland_sync_state(struct vgfx_window *win) {
         platform->shell.width > 0 ? platform->shell.width : platform->reported_logical_width;
     int32_t logical_height =
         platform->shell.height > 0 ? platform->shell.height : platform->reported_logical_height;
+    if (platform->shell.maximized || platform->shell.fullscreen || platform->shell.resizing) {
+        platform->requested_logical_width = 0;
+        platform->requested_logical_height = 0;
+    } else if (platform->requested_logical_width > 0 &&
+               platform->requested_logical_height > 0) {
+        logical_width = platform->requested_logical_width;
+        logical_height = platform->requested_logical_height;
+    }
     if (logical_width <= 0)
         logical_width = (int32_t)((float)win->width / (scale > 0.0f ? scale : 1.0f));
     if (logical_height <= 0)
@@ -546,6 +556,8 @@ void vgfx_platform_set_window_size(struct vgfx_window *win, int32_t w, int32_t h
      * buffer is prepared. The next compositor configure remains authoritative. */
     platform->shell.width = w;
     platform->shell.height = h;
+    platform->requested_logical_width = w;
+    platform->requested_logical_height = h;
     platform->reported_logical_width = w;
     platform->reported_logical_height = h;
     (void)vgfx_wayland_sync_state(win);

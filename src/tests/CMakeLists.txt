@@ -2484,6 +2484,14 @@ set_tests_properties(${ZANNA_BASEBALL_DATA_TESTS} PROPERTIES
         RESOURCE_LOCK zanna_baseball_data)
 
 if (ZANNA_BASH_EXECUTABLE)
+    add_test(NAME platform_policy_lint_strict
+            COMMAND ${ZANNA_BASH_COMMAND} "scripts/lint_platform_policy.sh" --strict)
+    set_tests_properties(platform_policy_lint_strict PROPERTIES
+            PASS_REGULAR_EXPRESSION "Platform policy lint: clean"
+            LABELS "tools;smoke;requires_posix_shell"
+            WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+            TIMEOUT 30)
+
     add_test(NAME platform_policy_lint_empty_candidates
             COMMAND ${ZANNA_BASH_COMMAND} "src/tests/e2e/test_platform_policy_lint_empty_candidates.sh"
             "${CMAKE_SOURCE_DIR}")
@@ -2492,6 +2500,28 @@ if (ZANNA_BASH_EXECUTABLE)
             LABELS "tools;smoke;requires_posix_shell"
             WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
             TIMEOUT 30)
+
+    if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        add_test(NAME linux_ctest_label_policy
+                COMMAND "${CMAKE_COMMAND}"
+                "-DZANNA_CTEST_COMMAND=${CMAKE_CTEST_COMMAND}"
+                "-DZANNA_BUILD_DIR=${CMAKE_BINARY_DIR}"
+                -P "${CMAKE_SOURCE_DIR}/src/tests/cmake/CheckLinuxCTestLabels.cmake")
+        set_tests_properties(linux_ctest_label_policy PROPERTIES
+                PASS_REGULAR_EXPRESSION "Linux CTest label policy: clean"
+                LABELS "tools;unit;requires_linux"
+                TIMEOUT 30)
+
+        add_test(NAME linux_build_wrapper_symlink
+                COMMAND ${ZANNA_BASH_COMMAND}
+                "src/tests/e2e/test_linux_build_wrapper_symlink.sh"
+                "${CMAKE_SOURCE_DIR}")
+        set_tests_properties(linux_build_wrapper_symlink PROPERTIES
+                PASS_REGULAR_EXPRESSION "PASS"
+                LABELS "tools;unit;requires_linux;requires_posix_shell"
+                WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+                TIMEOUT 30)
+    endif ()
 endif ()
 
 set(VEC3_MUTATORS_PROBE "${CMAKE_SOURCE_DIR}/src/tests/e2e/vec3_mutators_probe.zia")
