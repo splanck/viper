@@ -32,6 +32,8 @@
 #include "codegen/common/linker/ArchiveReader.hpp"
 #include "codegen/common/linker/NameMangling.hpp"
 #include "codegen/common/linker/ObjFileReader.hpp"
+#include "common/Environment.hpp"
+#include "common/Filesystem.hpp"
 #include "common/PlatformCapabilities.hpp"
 #include "common/RunProcess.hpp"
 
@@ -84,8 +86,8 @@ bool dirHasArchiveProbe(const std::filesystem::path &dir) {
 /// @return The normalized installed library directory, or std::nullopt when the
 ///         environment variable is absent or does not identify a Zanna install.
 std::optional<std::filesystem::path> configuredInstalledLibDir() {
-    if (const char *env = std::getenv("ZANNA_LIB_PATH")) {
-        std::filesystem::path candidate(env);
+    if (const auto env = zanna::environment::getUtf8("ZANNA_LIB_PATH")) {
+        std::filesystem::path candidate = zanna::filesystem::pathFromUtf8(*env);
         std::error_code dirEc;
         if (fileExists(candidate) && !std::filesystem::is_directory(candidate, dirEc))
             candidate = candidate.parent_path();
@@ -156,8 +158,8 @@ std::filesystem::path fallbackSupportLibraryPath(std::string_view libBaseName) {
             configs.push_back(std::move(config));
     };
 
-    if (const char *env = std::getenv("ZANNA_BUILD_TYPE"))
-        append(env);
+    if (const auto env = zanna::environment::getUtf8("ZANNA_BUILD_TYPE"))
+        append(*env);
 
     if constexpr (zanna::platform::kCompilerMSVC) {
 #if defined(NDEBUG)
@@ -260,8 +262,8 @@ static std::optional<std::filesystem::path> windowsMsvcToolsetFromInstance(
 }
 
 static std::optional<std::filesystem::path> windowsMsvcToolsetFromEnv(std::string_view arch) {
-    if (const char *env = std::getenv("VCToolsInstallDir")) {
-        const std::filesystem::path root(env);
+    if (const auto env = zanna::environment::getUtf8("VCToolsInstallDir")) {
+        const std::filesystem::path root = zanna::filesystem::pathFromUtf8(*env);
         std::error_code ec;
         if (std::filesystem::is_directory(root / "lib" / std::filesystem::path(std::string(arch)),
                                           ec))
@@ -273,10 +275,12 @@ static std::optional<std::filesystem::path> windowsMsvcToolsetFromEnv(std::strin
 static std::optional<std::filesystem::path> windowsMsvcToolsetFromCMakeCache(
     const std::filesystem::path &buildDir, std::string_view arch) {
     const std::string instance = cmakeCacheValue(buildDir, "CMAKE_GENERATOR_INSTANCE");
-    if (auto toolset = windowsMsvcToolsetFromInstance(instance, arch))
+    if (auto toolset =
+            windowsMsvcToolsetFromInstance(zanna::filesystem::pathFromUtf8(instance), arch))
         return toolset;
 
-    const std::filesystem::path ar = cmakeCacheValue(buildDir, "CMAKE_AR");
+    const std::filesystem::path ar =
+        zanna::filesystem::pathFromUtf8(cmakeCacheValue(buildDir, "CMAKE_AR"));
     if (ar.empty())
         return std::nullopt;
 
@@ -526,8 +530,8 @@ std::string linkEnvironmentCacheKey() {
     auto appendEnv = [&](const char *name) {
         key += name;
         key.push_back('=');
-        if (const char *value = std::getenv(name))
-            key += value;
+        if (const auto value = zanna::environment::getUtf8(name))
+            key += *value;
         key.push_back('\n');
     };
     appendEnv("ZANNA_LIB_PATH");
@@ -562,8 +566,7 @@ std::string linkContextCacheKey(const std::filesystem::path &buildDir,
 // =========================================================================
 
 std::string pathToUtf8(const std::filesystem::path &path) {
-    const std::u8string encoded = path.u8string();
-    return std::string(reinterpret_cast<const char *>(encoded.data()), encoded.size());
+    return zanna::filesystem::pathToUtf8(path);
 }
 
 bool fileExists(const std::filesystem::path &path) {
@@ -646,8 +649,8 @@ bool windowsArchivePathsUseDebugRuntime(const std::vector<std::string> &archiveP
 }
 
 std::optional<std::filesystem::path> findBuildDir() {
-    if (const char *env = std::getenv("ZANNA_BUILD_DIR")) {
-        std::filesystem::path candidate(env);
+    if (const auto env = zanna::environment::getUtf8("ZANNA_BUILD_DIR")) {
+        std::filesystem::path candidate = zanna::filesystem::pathFromUtf8(*env);
         if (fileExists(candidate / "CMakeCache.txt"))
             return candidate;
     }
@@ -1034,7 +1037,7 @@ int prepareLinkContext(const std::string &asmPath,
                        std::ostream &out,
                        std::ostream &err) {
     std::string asmText;
-    if (!readFileToString(asmPath, asmText)) {
+    if (!readFileToString(zanna::filesystem::pathFromUtf8(asmPath), asmText)) {
         err << "error: unable to read '" << asmPath << "' for runtime library selection\n";
         return 1;
     }
@@ -1086,15 +1089,17 @@ int runExecutable(const std::string &exePath, std::ostream &out, std::ostream &e
     auto commandPath = [](const std::string &path) -> std::string {
         if constexpr (zanna::platform::kHostWindows)
             return path;
-        const std::filesystem::path fsPath(path);
+        const std::filesystem::path fsPath = zanna::filesystem::pathFromUtf8(path);
         if (fsPath.is_absolute() || fsPath.has_parent_path())
             return path;
-        return (std::filesystem::path(".") / fsPath).string();
+        return zanna::filesystem::pathToUtf8(std::filesystem::path(".") / fsPath);
     };
 
     const RunResult rr = run_process({commandPath(exePath)});
     if (rr.exit_code == -1) {
         err << "error: failed to execute '" << exePath << "'\n";
+        if (!rr.err.empty())
+            err << rr.err << '\n';
         return -1;
     }
     if (!rr.out.empty())

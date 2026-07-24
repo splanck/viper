@@ -560,16 +560,11 @@ std::vector<uint8_t> pngEncode(const PkgImage &img) {
 /// @brief Encode img as PNG via pngEncode and write the result to a file.
 /// Throws PNGError if the file cannot be created or the write fails.
 void pngWrite(const std::string &path, const PkgImage &img) {
-    auto data = pngEncode(img);
-
-    std::ofstream out(path, std::ios::binary);
-    if (!out)
-        throw PNGError("PNG: cannot create " + path);
-
-    out.write(reinterpret_cast<const char *>(data.data()),
-              static_cast<std::streamsize>(data.size()));
-    if (!out)
-        throw PNGError("PNG: failed to write " + path);
+    try {
+        writeFileAtomic(path, pngEncode(img));
+    } catch (const std::exception &error) {
+        throw PNGError(std::string("PNG: ") + error.what());
+    }
 }
 
 //=============================================================================

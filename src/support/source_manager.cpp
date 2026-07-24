@@ -30,6 +30,7 @@
 
 #include "source_manager.hpp"
 
+#include "common/Filesystem.hpp"
 #include "common/PlatformCapabilities.hpp"
 
 #include <algorithm>
@@ -81,8 +82,8 @@ std::string normalizePath(std::string path) {
     if (path.empty())
         return "<unknown>";
 
-    std::filesystem::path p(std::move(path));
-    std::string normalized = p.lexically_normal().generic_string();
+    std::filesystem::path p = zanna::filesystem::pathFromUtf8(path);
+    std::string normalized = zanna::filesystem::genericPathToUtf8(p.lexically_normal());
 
     return normalized;
 }
@@ -100,7 +101,7 @@ std::filesystem::path makeDiskPath(const std::string &path) {
     if (isVirtualSourcePath(path))
         return {};
 
-    std::filesystem::path p(path);
+    std::filesystem::path p = zanna::filesystem::pathFromUtf8(path);
     if (p.empty())
         return p;
 
@@ -128,7 +129,7 @@ std::filesystem::path makeDiskPath(const std::string &path) {
 std::string makePathLookupKey(const std::filesystem::path &diskPath, std::string_view displayPath) {
     std::string key;
     if (!diskPath.empty())
-        key = diskPath.lexically_normal().generic_string();
+        key = zanna::filesystem::genericPathToUtf8(diskPath.lexically_normal());
     else
         key = std::string(displayPath);
     if (key.empty())

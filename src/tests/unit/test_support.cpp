@@ -13,6 +13,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "common/Filesystem.hpp"
 #include "support/alignment.hpp"
 #include "support/arena.hpp"
 #include "support/diag_capture.hpp"
@@ -408,6 +409,28 @@ int main() {
     }
 
 #ifdef _WIN32
+    {
+        const std::filesystem::path unicodeRoot =
+            std::filesystem::temp_directory_path() /
+            std::filesystem::path(L"zanna-source-\u6771\u4eac-\u03b1");
+        const std::filesystem::path unicodeFile =
+            unicodeRoot / std::filesystem::path(L"\u5165\u529b-\u732b.zia");
+        std::filesystem::remove_all(unicodeRoot);
+        std::filesystem::create_directories(unicodeRoot);
+        {
+            std::ofstream out(unicodeFile, std::ios::binary);
+            out << "unicode source\n";
+        }
+        il::support::SourceManager unicodeSm;
+        const std::string unicodeUtf8 = zanna::filesystem::pathToUtf8(unicodeFile);
+        const uint32_t unicodeId = unicodeSm.addFile(unicodeUtf8);
+        assert(unicodeId != 0);
+        assert(unicodeSm.getLine(unicodeId, 1) == "unicode source");
+        assert(unicodeSm.getPath(unicodeId).find("\xE6\x9D\xB1\xE4\xBA\xAC") !=
+               std::string_view::npos);
+        std::filesystem::remove_all(unicodeRoot);
+    }
+
     // Windows path normalization should ignore ASCII casing to align with
     // case-insensitive filesystem semantics.
     il::support::SourceManager caseInsensitiveSm;

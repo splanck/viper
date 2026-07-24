@@ -29,6 +29,8 @@
 
 #include "common/RunProcess.hpp"
 
+#include "common/Filesystem.hpp"
+
 #include <algorithm>
 #include <cerrno>
 #include <climits>
@@ -55,6 +57,7 @@
 extern char **environ;
 #else
 #include <direct.h>
+#include <process.h>
 #include <wchar.h>
 #include <windows.h>
 #endif
@@ -75,12 +78,8 @@ std::optional<std::wstring> utf8_to_wide(std::string_view text, std::string &err
     if (text.empty()) {
         return std::wstring{};
     }
-    const int needed = MultiByteToWideChar(CP_UTF8,
-                                           MB_ERR_INVALID_CHARS,
-                                           text.data(),
-                                           static_cast<int>(text.size()),
-                                           nullptr,
-                                           0);
+    const int needed = MultiByteToWideChar(
+        CP_UTF8, MB_ERR_INVALID_CHARS, text.data(), static_cast<int>(text.size()), nullptr, 0);
     if (needed <= 0) {
         err = "failed to convert UTF-8 text for Windows process launch: " +
               format_windows_error(GetLastError());
@@ -128,8 +127,8 @@ bool needs_quoting(const std::wstring &arg) {
     }
 
     for (const wchar_t ch : arg) {
-        if (ch == L' ' || ch == L'\t' || ch == L'"' || ch == L'&' || ch == L'|' ||
-            ch == L'<' || ch == L'>' || ch == L'^' || ch == L'(' || ch == L')') {
+        if (ch == L' ' || ch == L'\t' || ch == L'"' || ch == L'&' || ch == L'|' || ch == L'<' ||
+            ch == L'>' || ch == L'^' || ch == L'(' || ch == L')') {
             return true;
         }
     }
@@ -386,12 +385,14 @@ HANDLE open_inheritable_nul_input_handle() noexcept {
 ///          the exact pipe/stdin handles needed by the child.
 /// @param startup Startup information receiving the attribute list pointer.
 /// @param storage Backing storage that must outlive the CreateProcessW call.
-/// @param handles Handles allowed to cross into the child process.
+/// @param handles Handles allowed to cross into the child process. Its backing
+///        array must outlive the CreateProcessW call because the attribute list
+///        retains this address instead of copying the values.
 /// @param err Receives a diagnostic when attribute-list setup fails.
 /// @return True when the handle list is ready for CreateProcessW.
 bool initialize_handle_inheritance_list(STARTUPINFOEXW &startup,
                                         std::vector<char> &storage,
-                                        const std::vector<HANDLE> &handles,
+                                        std::vector<HANDLE> &handles,
                                         std::string &err) {
     SIZE_T bytes = 0;
     InitializeProcThreadAttributeList(nullptr, 1, 0, &bytes);
@@ -410,12 +411,11 @@ bool initialize_handle_inheritance_list(STARTUPINFOEXW &startup,
         return false;
     }
 
-    std::vector<HANDLE> mutable_handles = handles;
     if (!UpdateProcThreadAttribute(startup.lpAttributeList,
                                    0,
                                    PROC_THREAD_ATTRIBUTE_HANDLE_LIST,
-                                   mutable_handles.data(),
-                                   mutable_handles.size() * sizeof(HANDLE),
+                                   handles.data(),
+                                   handles.size() * sizeof(HANDLE),
                                    nullptr,
                                    nullptr)) {
         err = "failed to update process handle inheritance list: " +
@@ -449,19 +449,28 @@ int normalize_windows_exit_code(DWORD exit_code) noexcept {
 struct CaptureThreadContext {
     HANDLE handle = INVALID_HANDLE_VALUE;
     std::string *buffer = nullptr;
+    DWORD error = ERROR_SUCCESS;
 };
 
 /// @brief Read one redirected Win32 pipe until EOF on a background thread.
 /// @param param Pointer to a @ref CaptureThreadContext owned by the caller.
-/// @return Always zero; errors terminate capture and leave existing bytes intact.
-DWORD WINAPI capture_handle_thread_proc(LPVOID param) {
+/// @return Always zero; unexpected read errors are retained in the context.
+unsigned __stdcall capture_handle_thread_proc(void *param) {
     auto *ctx = static_cast<CaptureThreadContext *>(param);
     char chunk[4096];
-    DWORD read = 0;
-    while (ReadFile(ctx->handle, chunk, sizeof(chunk), &read, nullptr) && read != 0) {
-        ctx->buffer->append(chunk, chunk + read);
+    for (;;) {
+        DWORD read = 0;
+        if (ReadFile(ctx->handle, chunk, sizeof(chunk), &read, nullptr)) {
+            if (read == 0)
+                return 0;
+            ctx->buffer->append(chunk, chunk + read);
+            continue;
+        }
+        const DWORD error = GetLastError();
+        if (error != ERROR_BROKEN_PIPE)
+            ctx->error = error;
+        return 0;
     }
-    return 0;
 }
 #endif
 
@@ -559,7 +568,7 @@ bool validate_working_directory(const std::optional<std::string> &cwd, std::stri
     }
 
     std::error_code ec;
-    const std::filesystem::path path(*cwd);
+    const std::filesystem::path path = zanna::filesystem::pathFromUtf8(*cwd);
     if (!std::filesystem::exists(path, ec) || ec) {
         err = "failed to change working directory to '" + *cwd + "'";
         return false;
@@ -848,11 +857,8 @@ void destroy_spawn_file_actions(posix_spawn_file_actions_t &actions, bool initia
 /// @param err Receives stderr bytes.
 /// @param capture_error Receives diagnostics for pipe-level failures.
 /// @return True when capture reached EOF cleanly.
-bool capture_posix_pipes(int stdout_fd,
-                         int stderr_fd,
-                         std::string &out,
-                         std::string &err,
-                         std::string &capture_error) {
+bool capture_posix_pipes(
+    int stdout_fd, int stderr_fd, std::string &out, std::string &err, std::string &capture_error) {
     bool stdout_open = stdout_fd >= 0;
     bool stderr_open = stderr_fd >= 0;
     char buffer[4096];
@@ -886,7 +892,8 @@ bool capture_posix_pipes(int stdout_fd,
             if (errno == EINTR) {
                 continue;
             }
-            capture_error = "failed to poll child output pipes: " + std::string(std::strerror(errno));
+            capture_error =
+                "failed to poll child output pipes: " + std::string(std::strerror(errno));
             ok = false;
             if (stdout_open) {
                 close_tracked(stdout_fd, stdout_open);
@@ -1072,21 +1079,33 @@ RunResult run_process(const std::vector<std::string> &argv,
         close_handle_if_valid(stdout_write);
         close_handle_if_valid(stderr_read);
         close_handle_if_valid(stderr_write);
-        return fail_launch("failed to open child stdin handle: " + format_windows_error(GetLastError()));
+        return fail_launch("failed to open child stdin handle: " +
+                           format_windows_error(GetLastError()));
     }
 
-    STARTUPINFOW startup = {};
-    startup.cb = sizeof(startup);
-    startup.dwFlags = STARTF_USESTDHANDLES;
-    startup.hStdInput = stdin_for_child;
-    startup.hStdOutput = stdout_write;
-    startup.hStdError = stderr_write;
+    STARTUPINFOEXW startup = {};
+    startup.StartupInfo.cb = sizeof(startup);
+    startup.StartupInfo.dwFlags = STARTF_USESTDHANDLES;
+    startup.StartupInfo.hStdInput = stdin_for_child;
+    startup.StartupInfo.hStdOutput = stdout_write;
+    startup.StartupInfo.hStdError = stderr_write;
+    std::vector<char> startup_attribute_storage;
+    std::vector<HANDLE> inherited_handles = {stdin_for_child, stdout_write, stderr_write};
+    if (!initialize_handle_inheritance_list(
+            startup, startup_attribute_storage, inherited_handles, rr.err)) {
+        close_handle_if_valid(stdin_for_child);
+        close_handle_if_valid(stdout_read);
+        close_handle_if_valid(stdout_write);
+        close_handle_if_valid(stderr_read);
+        close_handle_if_valid(stderr_write);
+        return fail_launch(rr.err);
+    }
 
     PROCESS_INFORMATION process = {};
     std::vector<wchar_t> mutable_cmdline(cmdline->begin(), cmdline->end());
     mutable_cmdline.push_back(L'\0');
 
-    DWORD creation_flags = 0;
+    DWORD creation_flags = EXTENDED_STARTUPINFO_PRESENT;
     LPVOID environment_ptr = nullptr;
     if (!environment_block.empty()) {
         creation_flags |= CREATE_UNICODE_ENVIRONMENT;
@@ -1101,32 +1120,40 @@ RunResult run_process(const std::vector<std::string> &argv,
                                         creation_flags,
                                         environment_ptr,
                                         wide_cwd ? wide_cwd->c_str() : nullptr,
-                                        &startup,
+                                        &startup.StartupInfo,
                                         &process);
     const DWORD create_error = GetLastError();
+    delete_handle_inheritance_list(startup);
 
     close_handle_if_valid(stdin_for_child);
     close_handle_if_valid(stdout_write);
     close_handle_if_valid(stderr_write);
 
     if (!created) {
-        const std::string message = "failed to launch process: " + format_windows_error(create_error);
+        const std::string message =
+            "failed to launch process: " + format_windows_error(create_error);
         close_handle_if_valid(stdout_read);
         close_handle_if_valid(stderr_read);
         return fail_launch(message);
     }
     rr.launched = true;
 
-    CaptureThreadContext stdout_ctx{stdout_read, &rr.out};
-    CaptureThreadContext stderr_ctx{stderr_read, &rr.err};
-    HANDLE stdout_thread =
-        CreateThread(nullptr, 0, capture_handle_thread_proc, &stdout_ctx, 0, nullptr);
-    HANDLE stderr_thread =
-        CreateThread(nullptr, 0, capture_handle_thread_proc, &stderr_ctx, 0, nullptr);
+    CaptureThreadContext stdout_ctx{stdout_read, &rr.out, ERROR_SUCCESS};
+    CaptureThreadContext stderr_ctx{stderr_read, &rr.err, ERROR_SUCCESS};
+    const uintptr_t stdout_thread_value =
+        _beginthreadex(nullptr, 0, capture_handle_thread_proc, &stdout_ctx, 0, nullptr);
+    const int stdout_thread_error = errno;
+    const uintptr_t stderr_thread_value =
+        _beginthreadex(nullptr, 0, capture_handle_thread_proc, &stderr_ctx, 0, nullptr);
+    const int stderr_thread_error = errno;
+    HANDLE stdout_thread = reinterpret_cast<HANDLE>(stdout_thread_value);
+    HANDLE stderr_thread = reinterpret_cast<HANDLE>(stderr_thread_value);
 
     if (stdout_thread == nullptr || stderr_thread == nullptr) {
+        const int thread_error =
+            stdout_thread == nullptr ? stdout_thread_error : stderr_thread_error;
         const std::string message =
-            "failed to create process capture thread: " + format_windows_error(GetLastError());
+            "failed to create process capture thread: " + std::string(std::strerror(thread_error));
         TerminateProcess(process.hProcess, 127);
         WaitForSingleObject(process.hProcess, INFINITE);
         if (stdout_thread != nullptr) {
@@ -1144,14 +1171,34 @@ RunResult run_process(const std::vector<std::string> &argv,
         return fail_launch(message);
     }
 
-    WaitForSingleObject(process.hProcess, INFINITE);
+    const DWORD process_wait = WaitForSingleObject(process.hProcess, INFINITE);
+    if (process_wait != WAIT_OBJECT_0) {
+        const DWORD wait_error = process_wait == WAIT_FAILED ? GetLastError() : ERROR_TIMEOUT;
+        TerminateProcess(process.hProcess, 127);
+        WaitForSingleObject(process.hProcess, INFINITE);
+        rr.err += (rr.err.empty() ? "" : "\n");
+        rr.err += "failed while waiting for child process: " + format_windows_error(wait_error);
+    }
     WaitForSingleObject(stdout_thread, INFINITE);
     CloseHandle(stdout_thread);
     WaitForSingleObject(stderr_thread, INFINITE);
     CloseHandle(stderr_thread);
+    if (stdout_ctx.error != ERROR_SUCCESS) {
+        rr.err += (rr.err.empty() ? "" : "\n");
+        rr.err += "failed while capturing child stdout: " + format_windows_error(stdout_ctx.error);
+    }
+    if (stderr_ctx.error != ERROR_SUCCESS) {
+        rr.err += (rr.err.empty() ? "" : "\n");
+        rr.err += "failed while capturing child stderr: " + format_windows_error(stderr_ctx.error);
+    }
 
     DWORD exit_code = 0;
-    GetExitCodeProcess(process.hProcess, &exit_code);
+    if (!GetExitCodeProcess(process.hProcess, &exit_code)) {
+        const DWORD exit_error = GetLastError();
+        rr.err += (rr.err.empty() ? "" : "\n");
+        rr.err += "failed to query child exit code: " + format_windows_error(exit_error);
+        exit_code = static_cast<DWORD>(INT_MAX);
+    }
     rr.native_exit_code = static_cast<std::uint32_t>(exit_code);
     rr.exit_code = normalize_windows_exit_code(exit_code);
 

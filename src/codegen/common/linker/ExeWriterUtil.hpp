@@ -24,6 +24,7 @@
 #pragma once
 
 #include "codegen/common/linker/LinkTypes.hpp"
+#include "common/Filesystem.hpp"
 #include "common/PlatformCapabilities.hpp"
 
 #include <atomic>
@@ -201,24 +202,25 @@ inline bool writeBinaryFileAtomically(const std::string &path,
     ///          instead of silently returning a non-executable binary.
     auto writeDirect = [&](const fs::path &target) -> bool {
         if (data.size() > static_cast<size_t>(std::numeric_limits<std::streamsize>::max())) {
-            err << "error: output file '" << target.string()
+            err << "error: output file '" << zanna::filesystem::pathToUtf8(target)
                 << "' exceeds stream write size limit\n";
             return false;
         }
         std::ofstream out(target, std::ios::binary | std::ios::trunc);
         if (!out) {
-            err << "error: cannot open '" << target.string() << "' for writing\n";
+            err << "error: cannot open '" << zanna::filesystem::pathToUtf8(target)
+                << "' for writing\n";
             return false;
         }
         out.write(reinterpret_cast<const char *>(data.data()),
                   static_cast<std::streamsize>(data.size()));
         if (!out) {
-            err << "error: write failed to '" << target.string() << "'\n";
+            err << "error: write failed to '" << zanna::filesystem::pathToUtf8(target) << "'\n";
             return false;
         }
         out.close();
         if (!out) {
-            err << "error: write failed to '" << target.string() << "'\n";
+            err << "error: write failed to '" << zanna::filesystem::pathToUtf8(target) << "'\n";
             return false;
         }
 
@@ -232,8 +234,8 @@ inline bool writeBinaryFileAtomically(const std::string &path,
                                 fs::perms::others_read | fs::perms::others_exec,
                             permEc);
             if (permEc) {
-                err << "error: cannot set executable permissions on '" << target.string()
-                    << "': " << permEc.message() << "\n";
+                err << "error: cannot set executable permissions on '"
+                    << zanna::filesystem::pathToUtf8(target) << "': " << permEc.message() << "\n";
                 return false;
             }
         } else {
@@ -259,7 +261,8 @@ inline bool writeBinaryFileAtomically(const std::string &path,
             return false;
         }
 
-        const fs::path backupPath = tempPath.string() + ".old";
+        fs::path backupPath = tempPath;
+        backupPath += ".old";
         std::error_code cleanupEc;
         fs::remove(backupPath, cleanupEc);
 
@@ -287,7 +290,7 @@ inline bool writeBinaryFileAtomically(const std::string &path,
         return false;
     };
 
-    const fs::path finalPath(path);
+    const fs::path finalPath = zanna::filesystem::pathFromUtf8(path);
     fs::path dir = finalPath.parent_path();
     if (dir.empty())
         dir = ".";
@@ -297,16 +300,18 @@ inline bool writeBinaryFileAtomically(const std::string &path,
         const uint64_t seed =
             static_cast<uint64_t>(std::chrono::steady_clock::now().time_since_epoch().count()) ^
             nonce.fetch_add(1, std::memory_order_relaxed);
-        const fs::path tempDir =
-            dir / (finalPath.filename().string() + ".tmpdir." + std::to_string(seed + attempt));
+        fs::path tempName = finalPath.filename();
+        tempName += ".tmpdir.";
+        tempName += std::to_string(seed + attempt);
+        const fs::path tempDir = dir / tempName;
         const fs::path tempPath = tempDir / finalPath.filename();
 
         std::error_code mkdirEc;
         if (!fs::create_directory(tempDir, mkdirEc)) {
             if (!mkdirEc)
                 continue;
-            err << "error: cannot create temporary output directory '" << tempDir.string()
-                << "': " << mkdirEc.message() << "\n";
+            err << "error: cannot create temporary output directory '"
+                << zanna::filesystem::pathToUtf8(tempDir) << "': " << mkdirEc.message() << "\n";
             return false;
         }
 
@@ -322,8 +327,8 @@ inline bool writeBinaryFileAtomically(const std::string &path,
                             fs::perm_options::replace,
                             permEc);
             if (permEc) {
-                err << "error: cannot protect temporary output directory '" << tempDir.string()
-                    << "': " << permEc.message() << "\n";
+                err << "error: cannot protect temporary output directory '"
+                    << zanna::filesystem::pathToUtf8(tempDir) << "': " << permEc.message() << "\n";
                 cleanupTempDir();
                 return false;
             }

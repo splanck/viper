@@ -147,10 +147,16 @@ $outputFull = Resolve-FullPath $OutputPath
 $parent = Split-Path -Parent $outputFull
 if ([string]::IsNullOrWhiteSpace($parent)) {
     $parent = (Get-Location).Path
-} else {
-    New-Item -ItemType Directory -Force -Path $parent | Out-Null
 }
 $metadataPath = "$outputFull.sha256.txt"
+# Validate every existing ancestor before creating a missing output directory;
+# otherwise Directory.CreateDirectory could traverse attacker-controlled
+# indirection before the policy check gets a chance to reject it.
+Assert-FileDestination -Path $outputFull -Description "Signed installer output"
+Assert-FileDestination -Path $metadataPath -Description "Signed installer metadata"
+[IO.Directory]::CreateDirectory($parent) | Out-Null
+# Revalidate after creation to close the ordinary create/check gap and reject a
+# parent swapped to a reparse point by a concurrent actor.
 Assert-FileDestination -Path $outputFull -Description "Signed installer output"
 Assert-FileDestination -Path $metadataPath -Description "Signed installer metadata"
 if ((Test-PathsEqual -Left $outputFull -Right $metadataPath) -or
@@ -170,6 +176,10 @@ $temporaryArtifact = Join-Path $parent ".zsig-$token.tmp"
 $temporaryMetadata = Join-Path $parent ".zmeta-$token.tmp"
 $outputBackup = Join-Path $parent ".zout-$token.bak"
 $metadataBackup = Join-Path $parent ".zmetabak-$token.bak"
+Assert-FileDestination -Path $temporaryArtifact -Description "Signing artifact staging path"
+Assert-FileDestination -Path $temporaryMetadata -Description "Signing metadata staging path"
+Assert-FileDestination -Path $outputBackup -Description "Signed installer backup path"
+Assert-FileDestination -Path $metadataBackup -Description "Signed metadata backup path"
 $publicationSucceeded = $false
 $hadOutput = Test-Path -LiteralPath $outputFull -PathType Leaf
 $hadMetadata = Test-Path -LiteralPath $metadataPath -PathType Leaf
@@ -231,6 +241,12 @@ try {
         $temporaryMetadata, $metadataLines, [Text.UTF8Encoding]::new($false))
 
     try {
+        Assert-FileDestination -Path $outputFull -Description "Signed installer output"
+        Assert-FileDestination -Path $metadataPath -Description "Signed installer metadata"
+        Assert-NoPathIndirection -Path $temporaryArtifact `
+            -Description "Staged signed installer" -IncludeLeaf
+        Assert-NoPathIndirection -Path $temporaryMetadata `
+            -Description "Staged signed metadata" -IncludeLeaf
         if ($hadOutput) {
             Move-Item -LiteralPath $outputFull -Destination $outputBackup
             $backedUpOutput = $true

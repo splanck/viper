@@ -56,6 +56,14 @@
 #define WM_DPICHANGED 0x02E0
 #endif
 
+#ifndef WM_UNICHAR
+#define WM_UNICHAR 0x0109
+#endif
+
+#ifndef UNICODE_NOCHAR
+#define UNICODE_NOCHAR 0xFFFF
+#endif
+
 #ifndef CREATE_WAITABLE_TIMER_HIGH_RESOLUTION
 #define CREATE_WAITABLE_TIMER_HIGH_RESOLUTION 0x00000002
 #endif
@@ -91,6 +99,7 @@ typedef struct {
     RECT saved_rect;              ///< Windowed bounds saved for fullscreen restore
     int is_fullscreen;            ///< 1 if this window is currently fullscreen
     int cursor_type;              ///< Current cursor type for WM_SETCURSOR
+    int mouse_captured;           ///< 1 while this window owns drag-button capture
 } vgfx_win32_data;
 
 //===----------------------------------------------------------------------===//
@@ -467,7 +476,16 @@ static BOOL CALLBACK win32_register_window_class_once(PINIT_ONCE init_once,
 
     if (RegisterClassExW(&wc))
         return TRUE;
-    return GetLastError() == ERROR_CLASS_ALREADY_EXISTS ? TRUE : FALSE;
+    if (GetLastError() == ERROR_CLASS_ALREADY_EXISTS) {
+        WNDCLASSEXW existing = {0};
+        existing.cbSize = sizeof(existing);
+        if (GetClassInfoExW(hInstance, wc.lpszClassName, &existing) &&
+            existing.lpfnWndProc == wc.lpfnWndProc && existing.hInstance == hInstance &&
+            (existing.style & CS_OWNDC) != 0) {
+            return TRUE;
+        }
+    }
+    return FALSE;
 }
 
 static int win32_recreate_dib(struct vgfx_window *win) {
@@ -759,7 +777,8 @@ static void win32_ime_selection(
     size_t target_start = unit_count;
     size_t target_end = unit_count;
     LONG attribute_bytes = ImmGetCompositionStringW(context, GCS_COMPATTR, NULL, 0);
-    if (attribute_bytes > 0) {
+    if (attribute_bytes > 0 && (size_t)attribute_bytes <= unit_count &&
+        (size_t)attribute_bytes <= (size_t)VGFX_COMPOSITION_TEXT_CAPACITY) {
         BYTE *attributes = (BYTE *)malloc((size_t)attribute_bytes);
         if (attributes &&
             ImmGetCompositionStringW(context, GCS_COMPATTR, attributes, (DWORD)attribute_bytes) ==
@@ -819,8 +838,10 @@ static int win32_enqueue_ime_string(struct vgfx_window *win,
     if (byte_count < 0 || ((size_t)byte_count % sizeof(WCHAR)) != 0)
         return 0;
     size_t unit_count = (size_t)byte_count / sizeof(WCHAR);
-    if (unit_count > (size_t)INT_MAX)
+    if (unit_count > (size_t)INT_MAX || unit_count > (size_t)VGFX_COMPOSITION_TEXT_CAPACITY) {
+        vgfx_internal_note_event_overflow(win);
         return 0;
+    }
 
     WCHAR *wide = (WCHAR *)calloc(unit_count + 1u, sizeof(WCHAR));
     if (!wide) {
@@ -893,6 +914,48 @@ static void win32_enqueue_ime_boundary(struct vgfx_window *win,
             &event, type, timestamp, "", 0, 0, 0, -1, -1, win32_modifiers())) {
         vgfx_internal_enqueue_event(win, &event);
     }
+}
+
+/// @brief Enqueue one validated Unicode scalar as ordinary text input.
+static void win32_enqueue_text_codepoint(struct vgfx_window *win,
+                                         uint32_t codepoint,
+                                         int64_t timestamp) {
+    int modifiers = win32_modifiers();
+    if (!vgfx_internal_should_emit_text_input(codepoint, modifiers))
+        return;
+    vgfx_event_t event = {.type = VGFX_EVENT_TEXT_INPUT,
+                          .time_ms = timestamp,
+                          .data.text = {.codepoint = codepoint, .modifiers = modifiers}};
+    vgfx_internal_enqueue_event(win, &event);
+}
+
+/// @brief Capture the pointer for a button drag and remember only proven ownership.
+static void win32_begin_mouse_capture(vgfx_win32_data *w32) {
+    if (!w32 || !w32->hwnd)
+        return;
+    if (GetCapture() != w32->hwnd)
+        (void)SetCapture(w32->hwnd);
+    w32->mouse_captured = GetCapture() == w32->hwnd ? 1 : 0;
+}
+
+/// @brief Release pointer capture after the final supported mouse button is up.
+static void win32_end_mouse_capture_if_idle(vgfx_win32_data *w32, WPARAM button_state) {
+    if (!w32 || !w32->mouse_captured)
+        return;
+    if ((button_state & (MK_LBUTTON | MK_RBUTTON | MK_MBUTTON)) != 0)
+        return;
+    if (GetCapture() == w32->hwnd)
+        (void)ReleaseCapture();
+    w32->mouse_captured = 0;
+}
+
+/// @brief Clear supported mouse-button state after native capture is cancelled.
+static void win32_clear_mouse_buttons(struct vgfx_window *win) {
+    if (!win)
+        return;
+    vgfx_internal_set_mouse_button_state(win, VGFX_MOUSE_LEFT, 0);
+    vgfx_internal_set_mouse_button_state(win, VGFX_MOUSE_RIGHT, 0);
+    vgfx_internal_set_mouse_button_state(win, VGFX_MOUSE_MIDDLE, 0);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1042,6 +1105,10 @@ static LRESULT CALLBACK vgfx_win32_wndproc(HWND hwnd, UINT msg, WPARAM wparam, L
             /* Window lost focus */
             vgfx_internal_set_focus_state(win, 0);
             if (w32) {
+                if (w32->mouse_captured && GetCapture() == hwnd)
+                    (void)ReleaseCapture();
+                w32->mouse_captured = 0;
+                win32_clear_mouse_buttons(win);
                 w32->pending_high_surrogate = 0;
                 if (w32->ime_active)
                     win32_enqueue_ime_boundary(win, VGFX_EVENT_COMPOSITION_CANCEL, timestamp);
@@ -1138,10 +1205,13 @@ static LRESULT CALLBACK vgfx_win32_wndproc(HWND hwnd, UINT msg, WPARAM wparam, L
             }
             return 0;
 
-        case WM_KEYDOWN: {
+        case WM_KEYDOWN:
+        case WM_SYSKEYDOWN: {
             /* Key pressed */
-            if (w32)
+            if (w32 && w32->pending_high_surrogate) {
+                win32_enqueue_text_codepoint(win, 0xFFFD, timestamp);
                 w32->pending_high_surrogate = 0;
+            }
             vgfx_key_t key = translate_vk(wparam);
             if (key != VGFX_KEY_UNKNOWN && key < 512) {
                 /* Detect repeat: bit 30 of lparam indicates previous key state */
@@ -1155,10 +1225,11 @@ static LRESULT CALLBACK vgfx_win32_wndproc(HWND hwnd, UINT msg, WPARAM wparam, L
                                                    .modifiers = win32_modifiers()}};
                 vgfx_internal_enqueue_event(win, &event);
             }
-            return 0;
+            return msg == WM_SYSKEYDOWN ? DefWindowProcW(hwnd, msg, wparam, lparam) : 0;
         }
 
-        case WM_KEYUP: {
+        case WM_KEYUP:
+        case WM_SYSKEYUP: {
             /* Key released */
             vgfx_key_t key = translate_vk(wparam);
             if (key != VGFX_KEY_UNKNOWN && key < 512) {
@@ -1170,13 +1241,15 @@ static LRESULT CALLBACK vgfx_win32_wndproc(HWND hwnd, UINT msg, WPARAM wparam, L
                     .data.key = {.key = key, .is_repeat = 0, .modifiers = win32_modifiers()}};
                 vgfx_internal_enqueue_event(win, &event);
             }
-            return 0;
+            return msg == WM_SYSKEYUP ? DefWindowProcW(hwnd, msg, wparam, lparam) : 0;
         }
 
         case WM_CHAR: {
             uint32_t codepoint = 0;
             WCHAR ch = (WCHAR)wparam;
             if (w32 && ch >= 0xD800 && ch <= 0xDBFF) {
+                if (w32->pending_high_surrogate)
+                    win32_enqueue_text_codepoint(win, 0xFFFD, timestamp);
                 w32->pending_high_surrogate = ch;
                 return 0;
             }
@@ -1185,24 +1258,33 @@ static LRESULT CALLBACK vgfx_win32_wndproc(HWND hwnd, UINT msg, WPARAM wparam, L
                                        ((uint32_t)ch - 0xDC00));
                 w32->pending_high_surrogate = 0;
             } else {
+                if (w32 && w32->pending_high_surrogate)
+                    win32_enqueue_text_codepoint(win, 0xFFFD, timestamp);
                 if (w32)
                     w32->pending_high_surrogate = 0;
                 if (ch >= 0xDC00 && ch <= 0xDFFF)
                     codepoint = 0xFFFD;
-                else if (ch >= 0xD800 && ch <= 0xDBFF)
-                    codepoint = 0xFFFD;
                 else
                     codepoint = (uint32_t)ch;
             }
+            win32_enqueue_text_codepoint(win, codepoint, timestamp);
+            return 0;
+        }
 
-            int modifiers = win32_modifiers();
-            if (vgfx_internal_should_emit_text_input(codepoint, modifiers)) {
-                vgfx_event_t event = {
-                    .type = VGFX_EVENT_TEXT_INPUT,
-                    .time_ms = timestamp,
-                    .data.text = {.codepoint = codepoint, .modifiers = modifiers}};
-                vgfx_internal_enqueue_event(win, &event);
+        case WM_UNICHAR: {
+            if (wparam == UNICODE_NOCHAR)
+                return TRUE;
+            if (w32 && w32->pending_high_surrogate) {
+                win32_enqueue_text_codepoint(win, 0xFFFD, timestamp);
+                w32->pending_high_surrogate = 0;
             }
+            uint64_t native_codepoint = (uint64_t)wparam;
+            uint32_t codepoint =
+                native_codepoint <= UINT32_MAX ? (uint32_t)native_codepoint : 0xFFFD;
+            if (native_codepoint > 0x10FFFF || (codepoint >= 0xD800 && codepoint <= 0xDFFF)) {
+                codepoint = 0xFFFD;
+            }
+            win32_enqueue_text_codepoint(win, codepoint, timestamp);
             return 0;
         }
 
@@ -1223,6 +1305,7 @@ static LRESULT CALLBACK vgfx_win32_wndproc(HWND hwnd, UINT msg, WPARAM wparam, L
         }
 
         case WM_LBUTTONDOWN: {
+            win32_begin_mouse_capture(w32);
             int32_t x = 0;
             int32_t y = 0;
             win32_client_to_physical_mouse(
@@ -1255,10 +1338,12 @@ static LRESULT CALLBACK vgfx_win32_wndproc(HWND hwnd, UINT msg, WPARAM wparam, L
                 .data.mouse_button = {
                     .x = x, .y = y, .button = VGFX_MOUSE_LEFT, .modifiers = win32_modifiers()}};
             vgfx_internal_enqueue_event(win, &event);
+            win32_end_mouse_capture_if_idle(w32, wparam);
             return 0;
         }
 
         case WM_RBUTTONDOWN: {
+            win32_begin_mouse_capture(w32);
             int32_t x = 0;
             int32_t y = 0;
             win32_client_to_physical_mouse(
@@ -1291,10 +1376,12 @@ static LRESULT CALLBACK vgfx_win32_wndproc(HWND hwnd, UINT msg, WPARAM wparam, L
                 .data.mouse_button = {
                     .x = x, .y = y, .button = VGFX_MOUSE_RIGHT, .modifiers = win32_modifiers()}};
             vgfx_internal_enqueue_event(win, &event);
+            win32_end_mouse_capture_if_idle(w32, wparam);
             return 0;
         }
 
         case WM_MBUTTONDOWN: {
+            win32_begin_mouse_capture(w32);
             int32_t x = 0;
             int32_t y = 0;
             win32_client_to_physical_mouse(
@@ -1327,8 +1414,25 @@ static LRESULT CALLBACK vgfx_win32_wndproc(HWND hwnd, UINT msg, WPARAM wparam, L
                 .data.mouse_button = {
                     .x = x, .y = y, .button = VGFX_MOUSE_MIDDLE, .modifiers = win32_modifiers()}};
             vgfx_internal_enqueue_event(win, &event);
+            win32_end_mouse_capture_if_idle(w32, wparam);
             return 0;
         }
+
+        case WM_CAPTURECHANGED:
+            if (w32 && (HWND)lparam != hwnd) {
+                w32->mouse_captured = 0;
+                win32_clear_mouse_buttons(win);
+            }
+            return 0;
+
+        case WM_CANCELMODE:
+            if (w32) {
+                if (w32->mouse_captured && GetCapture() == hwnd)
+                    (void)ReleaseCapture();
+                w32->mouse_captured = 0;
+                win32_clear_mouse_buttons(win);
+            }
+            return DefWindowProcW(hwnd, msg, wparam, lparam);
 
         case WM_MOUSEWHEEL:
         case WM_MOUSEHWHEEL: {
@@ -1367,9 +1471,12 @@ static LRESULT CALLBACK vgfx_win32_wndproc(HWND hwnd, UINT msg, WPARAM wparam, L
         case WM_PAINT: {
             /* Window needs redraw - validate to prevent endless loop */
             PAINTSTRUCT ps;
-            BeginPaint(hwnd, &ps);
-            EndPaint(hwnd, &ps);
-            return 0;
+            HDC paint_dc = BeginPaint(hwnd, &ps);
+            if (paint_dc) {
+                (void)EndPaint(hwnd, &ps);
+                return 0;
+            }
+            break;
         }
 
         case WM_ERASEBKGND:
@@ -1380,12 +1487,17 @@ static LRESULT CALLBACK vgfx_win32_wndproc(HWND hwnd, UINT msg, WPARAM wparam, L
         case WM_DROPFILES: {
             HDROP hDrop = (HDROP)wparam;
             UINT count = DragQueryFileW(hDrop, 0xFFFFFFFF, NULL, 0);
+            if (count > (UINT)VGFX_EVENT_QUEUE_SIZE) {
+                vgfx_internal_note_event_overflow(win);
+                count = (UINT)VGFX_EVENT_QUEUE_SIZE;
+            }
             for (UINT i = 0; i < count; i++) {
                 vgfx_event_t event = {0};
                 event.type = VGFX_EVENT_FILE_DROP;
                 event.time_ms = timestamp;
                 UINT wlen = DragQueryFileW(hDrop, i, NULL, 0);
-                if ((size_t)wlen > (SIZE_MAX / sizeof(WCHAR)) - 1u) {
+                if (wlen == 0 || wlen >= (UINT)sizeof(event.data.file_drop.path) ||
+                    (size_t)wlen > (SIZE_MAX / sizeof(WCHAR)) - 1u) {
                     vgfx_internal_note_event_overflow(win);
                     continue;
                 }
@@ -1511,6 +1623,12 @@ int vgfx_platform_init_window(struct vgfx_window *win, const vgfx_window_params_
 
     /* Get application instance */
     w32->hInstance = GetModuleHandleW(NULL);
+    if (!w32->hInstance) {
+        free(w32);
+        win->platform_data = NULL;
+        vgfx_internal_set_error(VGFX_ERR_PLATFORM, "Failed to query application instance");
+        return 0;
+    }
 
     if (!InitOnceExecuteOnce(&g_vgfx_win32_window_class_once,
                              win32_register_window_class_once,
@@ -1542,9 +1660,25 @@ int vgfx_platform_init_window(struct vgfx_window *win, const vgfx_window_params_
      * are logical Canvas units. win->width/height already include the current
      * display scale and therefore match the backing framebuffer. */
     RECT rect = {0, 0, win->width, win->height};
-    win32_adjust_window_rect_for_scale(win, &rect, style, FALSE, 0);
-    int win_width = rect.right - rect.left;
-    int win_height = rect.bottom - rect.top;
+    if (!win32_adjust_window_rect_for_scale(win, &rect, style, FALSE, 0)) {
+        free(wtitle);
+        free(w32);
+        win->platform_data = NULL;
+        vgfx_internal_set_error(VGFX_ERR_PLATFORM, "Failed to calculate Win32 window bounds");
+        return 0;
+    }
+    int64_t adjusted_width = (int64_t)rect.right - (int64_t)rect.left;
+    int64_t adjusted_height = (int64_t)rect.bottom - (int64_t)rect.top;
+    if (adjusted_width <= 0 || adjusted_width > INT_MAX || adjusted_height <= 0 ||
+        adjusted_height > INT_MAX) {
+        free(wtitle);
+        free(w32);
+        win->platform_data = NULL;
+        vgfx_internal_set_error(VGFX_ERR_INVALID_PARAM, "Win32 window bounds are out of range");
+        return 0;
+    }
+    int win_width = (int)adjusted_width;
+    int win_height = (int)adjusted_height;
 
     /* Create window */
     w32->hwnd = CreateWindowExW(0,                /* Extended style */
@@ -1638,6 +1772,12 @@ void vgfx_platform_destroy_window(struct vgfx_window *win) {
         return;
 
     vgfx_win32_data *w32 = (vgfx_win32_data *)win->platform_data;
+
+    if (w32->mouse_captured) {
+        if (GetCapture() == w32->hwnd)
+            (void)ReleaseCapture();
+        w32->mouse_captured = 0;
+    }
 
     if (win->relative_mouse_enabled || win->relative_mouse_native) {
         if (win->relative_mouse_native) {

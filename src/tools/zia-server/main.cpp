@@ -23,6 +23,7 @@
 ///          ServerMain.hpp; this file supplies Zia-specific metadata and bridge
 ///          construction.
 
+#include "common/Utf8CommandLine.hpp"
 #include "tools/lsp-common/ServerMain.hpp"
 #include "tools/zia-server/CompilerBridge.hpp"
 #include "zanna/version.hpp"
@@ -46,5 +47,8 @@ static const ServerConfig kZiaConfig{
 /// @param argv Argument vector from the C runtime.
 /// @return Process exit status.
 int main(int argc, char **argv) {
+    zanna::tools::Utf8CommandLine commandLine(argc, argv);
+    if (!commandLine.applyOrReport(argc, argv))
+        return 1;
     return runLanguageServerMain<CompilerBridge>(argc, argv, "zia-server", kZiaConfig);
 }

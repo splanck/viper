@@ -37,7 +37,7 @@
 #include "rt_string.h"
 #include "rt_string_builder.h"
 
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
 #ifndef _CRT_RAND_S
 #define _CRT_RAND_S
 #endif
@@ -51,7 +51,7 @@
 #include <string.h>
 #include <time.h>
 
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
 #include <direct.h>
 #include <fcntl.h>
 #include <io.h>
@@ -379,7 +379,7 @@ static void free_all_entries(rt_savedata_impl *sd) {
 static int savedata_path_is_abs(const char *path) {
     if (!path || path[0] == '\0')
         return 0;
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
     if ((path[0] == '\\' && path[1] == '\\') || (path[0] == '/' && path[1] == '/'))
         return 1;
     return ((path[0] >= 'A' && path[0] <= 'Z') || (path[0] >= 'a' && path[0] <= 'z')) &&
@@ -392,7 +392,7 @@ static int savedata_path_is_abs(const char *path) {
 static char *savedata_absolute_dup(const char *path) {
     if (!path || path[0] == '\0')
         return NULL;
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
     wchar_t *wide = rt_file_path_utf8_to_wide(path);
     if (!wide)
         return NULL;
@@ -475,6 +475,84 @@ static char *savedata_absolute_dup(const char *path) {
 #endif
 }
 
+#if RT_PLATFORM_WINDOWS
+/// @brief Snapshot a Windows environment variable and return strict UTF-8.
+/// @details `getenv` exposes process-ACP bytes and a borrowed buffer that can be
+///          invalidated by concurrent environment changes. This helper retries
+///          the native UTF-16 sizing race and always returns owned storage.
+static char *savedata_windows_env_utf8(const wchar_t *name) {
+    if (!name)
+        return NULL;
+    DWORD capacity = GetEnvironmentVariableW(name, NULL, 0);
+    if (capacity == 0)
+        return NULL;
+
+    for (int attempt = 0; attempt < 8; ++attempt) {
+        if ((size_t)capacity > SIZE_MAX / sizeof(wchar_t) || capacity > (DWORD)INT_MAX)
+            return NULL;
+        wchar_t *wide = (wchar_t *)malloc((size_t)capacity * sizeof(wchar_t));
+        if (!wide)
+            return NULL;
+        DWORD length = GetEnvironmentVariableW(name, wide, capacity);
+        if (length == 0) {
+            free(wide);
+            return NULL;
+        }
+        if (length >= capacity) {
+            free(wide);
+            if (length == MAXDWORD)
+                return NULL;
+            capacity = length + (length == capacity ? 1u : 0u);
+            continue;
+        }
+
+        int required =
+            WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, wide, -1, NULL, 0, NULL, NULL);
+        if (required <= 1) {
+            free(wide);
+            return NULL;
+        }
+        char *utf8 = (char *)malloc((size_t)required);
+        if (!utf8) {
+            free(wide);
+            return NULL;
+        }
+        int written = WideCharToMultiByte(
+            CP_UTF8, WC_ERR_INVALID_CHARS, wide, -1, utf8, required, NULL, NULL);
+        free(wide);
+        if (written != required) {
+            free(utf8);
+            return NULL;
+        }
+        return utf8;
+    }
+    return NULL;
+}
+#endif
+
+/// @brief Concatenate four optional path fragments with checked size arithmetic.
+static char *savedata_concat4(const char *a, const char *b, const char *c, const char *d) {
+    const char *parts[4] = {a ? a : "", b ? b : "", c ? c : "", d ? d : ""};
+    size_t lengths[4] = {0};
+    size_t total = 0;
+    for (size_t i = 0; i < 4; ++i) {
+        lengths[i] = strlen(parts[i]);
+        if (lengths[i] > SIZE_MAX - total - 1u)
+            return NULL;
+        total += lengths[i];
+    }
+    char *result = (char *)malloc(total + 1u);
+    if (!result)
+        return NULL;
+    size_t offset = 0;
+    for (size_t i = 0; i < 4; ++i) {
+        memcpy(result + offset, parts[i], lengths[i]);
+        offset += lengths[i];
+    }
+    result[offset] = '\0';
+    return result;
+}
+
 /// @brief Resolve the user's home directory as a fresh heap-allocated C string.
 ///
 /// Windows tries `USERPROFILE` first, falls back to concatenating
@@ -482,20 +560,27 @@ static char *savedata_absolute_dup(const char *path) {
 /// falls back to `getpwuid(getuid())`, then `"."`. Always returns
 /// an owned string so the caller can `free` unconditionally.
 static char *get_home_dir(void) {
-#ifdef _WIN32
-    const char *home = getenv("USERPROFILE");
-    if (home && *home)
-        return savedata_absolute_dup(home);
-    const char *drive = getenv("HOMEDRIVE");
-    const char *path = getenv("HOMEPATH");
+#if RT_PLATFORM_WINDOWS
+    char *home = savedata_windows_env_utf8(L"USERPROFILE");
+    if (home) {
+        char *absolute = savedata_absolute_dup(home);
+        free(home);
+        if (absolute)
+            return absolute;
+    }
+    char *drive = savedata_windows_env_utf8(L"HOMEDRIVE");
+    char *path = savedata_windows_env_utf8(L"HOMEPATH");
     if (drive && path) {
-        size_t len = strlen(drive) + strlen(path) + 1;
-        char *buf = (char *)malloc(len);
-        if (buf)
-            snprintf(buf, len, "%s%s", drive, path);
-        char *abs = savedata_absolute_dup(buf);
-        free(buf);
-        return abs;
+        char *combined = savedata_concat4(drive, path, NULL, NULL);
+        char *absolute = combined ? savedata_absolute_dup(combined) : NULL;
+        free(combined);
+        free(drive);
+        free(path);
+        if (absolute)
+            return absolute;
+    } else {
+        free(drive);
+        free(path);
     }
     return savedata_absolute_dup(".");
 #else
@@ -524,6 +609,15 @@ static char *savedata_parent_dir_dup(const char *file_path) {
     if (!last_sep)
         return NULL;
     size_t len = (size_t)(last_sep - file_path);
+#if RT_PLATFORM_WINDOWS
+    if (len == 2 && file_path[1] == ':')
+        len = 3;
+    else if (len == 0)
+        len = 1;
+#else
+    if (len == 0)
+        len = 1;
+#endif
     char *dir = (char *)malloc(len + 1);
     if (!dir)
         return NULL;
@@ -532,7 +626,7 @@ static char *savedata_parent_dir_dup(const char *file_path) {
     return dir;
 }
 
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
 /// @brief Open a file at a UTF-8 path using a non-inheritable CRT fd.
 static FILE *savedata_fopen_utf8(const char *path, const char *mode) {
     wchar_t *wide_path = rt_file_path_utf8_to_wide(path);
@@ -766,22 +860,24 @@ static char *compute_save_path(const char *game_name) {
                 "chars)");
         return NULL;
     }
+    char *path = NULL;
+
+#if RT_PLATFORM_WINDOWS
+    char *appdata_env = savedata_windows_env_utf8(L"APPDATA");
+    char *appdata = appdata_env ? savedata_absolute_dup(appdata_env) : NULL;
+    free(appdata_env);
+    char *home = appdata ? NULL : get_home_dir();
+    const char *base = appdata ? appdata : home;
+    const char *middle = appdata ? "\\Zanna\\" : "\\AppData\\Roaming\\Zanna\\";
+    if (base)
+        path = savedata_concat4(base, middle, game_name, "\\save.json");
+    free(appdata);
+    free(home);
+#else
     char *home = get_home_dir();
     if (!home)
         return NULL;
-    char *path = NULL;
-
-#ifdef _WIN32
-    const char *appdata_env = getenv("APPDATA");
-    char *appdata = (appdata_env && *appdata_env) ? savedata_absolute_dup(appdata_env) : NULL;
-    const char *base = appdata ? appdata : home;
-    const char *middle = appdata ? "\\Zanna\\" : "\\AppData\\Roaming\\Zanna\\";
-    size_t needed = strlen(base) + strlen(middle) + strlen(game_name) + strlen("\\save.json") + 1;
-    path = (char *)malloc(needed);
-    if (path)
-        snprintf(path, needed, "%s%s%s\\save.json", base, middle, game_name);
-    free(appdata);
-#elif defined(__APPLE__)
+#if RT_PLATFORM_MACOS
     size_t needed = strlen(home) + strlen("/Library/Application Support/Zanna/") +
                     strlen(game_name) + strlen("/save.json") + 1;
     path = (char *)malloc(needed);
@@ -795,13 +891,14 @@ static char *compute_save_path(const char *game_name) {
     if (path)
         snprintf(path, needed, "%s/.local/share/zanna/%s/save.json", home, game_name);
 #endif
+    free(home);
+#endif
 
     if (path && !savedata_path_is_abs(path)) {
         char *abs = savedata_absolute_dup(path);
         free(path);
         path = abs;
     }
-    free(home);
     return path;
 }
 
@@ -1027,7 +1124,7 @@ static int json_escape_append(rt_string_builder *sb, const char *str, size_t len
 /// alongside real saves.
 static int savedata_write_atomic(const char *path, const char *data, size_t len) {
     size_t path_len = strlen(path);
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
     unsigned long pid = (unsigned long)_getpid();
 #else
     unsigned long pid = (unsigned long)getpid();
@@ -1052,7 +1149,7 @@ static int savedata_write_atomic(const char *path, const char *data, size_t len)
         if (!tmp_path)
             return 0;
         snprintf(tmp_path, tmp_cap, "%s.tmp.%lu.%s.%u", path, pid, nonce, attempt);
-#ifdef _WIN32
+#if RT_PLATFORM_WINDOWS
         wchar_t *wide_path = rt_file_path_utf8_to_wide(tmp_path);
         if (!wide_path) {
             free(tmp_path);
@@ -1542,17 +1639,14 @@ rt_string rt_path_data_dir(rt_string app_name) {
     char *path = NULL;
 
 #if RT_PLATFORM_WINDOWS
-    const char *appdata_env = getenv("APPDATA");
-    char *appdata = (appdata_env && *appdata_env) ? savedata_absolute_dup(appdata_env) : NULL;
+    char *appdata_env = savedata_windows_env_utf8(L"APPDATA");
+    char *appdata = appdata_env ? savedata_absolute_dup(appdata_env) : NULL;
+    free(appdata_env);
     char *home = appdata ? NULL : get_home_dir();
     const char *base = appdata ? appdata : home;
     const char *middle = appdata ? "\\" : "\\AppData\\Roaming\\";
-    if (base) {
-        size_t needed = strlen(base) + strlen(middle) + strlen(name) + 1;
-        path = (char *)malloc(needed);
-        if (path)
-            snprintf(path, needed, "%s%s%s", base, middle, name);
-    }
+    if (base)
+        path = savedata_concat4(base, middle, name, NULL);
     free(appdata);
     free(home);
 #elif RT_PLATFORM_MACOS

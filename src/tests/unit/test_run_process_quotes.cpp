@@ -13,6 +13,8 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "common/Filesystem.hpp"
+#include "common/PlatformCapabilities.hpp"
 #include "common/RunProcess.hpp"
 #include "tests/TestHarness.hpp"
 #include <chrono>
@@ -53,7 +55,7 @@ TEST(RunProcess, PreservesQuotesAndBackslashes) {
     EXPECT_EQ(trickyArg, trim_trailing_newlines(result.out));
 }
 
-#ifndef _WIN32
+#if !ZANNA_HOST_WINDOWS
 TEST(RunProcess, EscapesPosixShellExpansions) {
     const std::string trickyArg = "literal $PATH and `uname` markers";
 
@@ -133,15 +135,19 @@ TEST(RunProcess, ScopedEnvironmentAssignmentMoveAssignmentPrefersSourceValue) {
 TEST(RunProcess, AppliesWorkingDirectory) {
     const std::filesystem::path tempRoot = std::filesystem::temp_directory_path();
     const auto uniqueSuffix = std::chrono::steady_clock::now().time_since_epoch().count();
+#if ZANNA_HOST_WINDOWS
+    const std::filesystem::path tempDir =
+        tempRoot /
+        (std::wstring(L"zanna-run-process-\u6771\u4eac-") + std::to_wstring(uniqueSuffix));
+#else
     const std::filesystem::path tempDir =
         tempRoot / std::filesystem::path("zanna-run-process-" + std::to_string(uniqueSuffix));
+#endif
 
     std::filesystem::create_directories(tempDir);
 
-    const std::u8string tempDirUtf8 = tempDir.generic_u8string();
-    const std::string tempDirString(tempDirUtf8.begin(), tempDirUtf8.end());
-
-    const RunResult result = run_process({"cmake", "-E", "touch", "marker.txt"}, tempDirString);
+    const RunResult result =
+        run_process({"cmake", "-E", "touch", "marker.txt"}, zanna::filesystem::pathToUtf8(tempDir));
 
     EXPECT_NE(-1, result.exit_code);
     EXPECT_TRUE(std::filesystem::exists(tempDir / "marker.txt"));
@@ -150,7 +156,7 @@ TEST(RunProcess, AppliesWorkingDirectory) {
     std::filesystem::remove_all(tempDir, ec);
 }
 
-#ifndef _WIN32
+#if !ZANNA_HOST_WINDOWS
 TEST(RunProcess, ReportsPosixExitStatus) {
     const RunResult result = run_process({"sh", "-c", "exit 42"});
 

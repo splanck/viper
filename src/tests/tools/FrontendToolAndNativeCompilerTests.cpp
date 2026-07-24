@@ -7,9 +7,15 @@
 //
 // File: tests/tools/FrontendToolAndNativeCompilerTests.cpp
 // Purpose: Regress CLI/frontend parsing and native compiler temp-path behavior.
+// Key invariants:
+//   - Command-line parsing keeps compiler and forwarded program arguments distinct.
+//   - Project and temporary path strings round-trip as UTF-8 on every host.
+// Ownership/Lifetime: Tests own and remove every temporary project tree they create.
+// Links: src/tools/common/frontend_tool.hpp, src/tools/common/project_loader.cpp
 //
 //===----------------------------------------------------------------------===//
 
+#include "common/Filesystem.hpp"
 #include "tools/common/frontend_tool.hpp"
 #include "tools/common/native_compiler.hpp"
 #include "tools/common/project_loader.hpp"
@@ -31,6 +37,17 @@ void noopVersion() {}
 
 int noopFrontend(int, char **) {
     return 0;
+}
+
+std::filesystem::path takeTempProjectDirectoryPath() {
+    const std::filesystem::path reserved =
+        zanna::filesystem::pathFromUtf8(zanna::tools::generateTempIlPath());
+    std::error_code ec;
+    std::filesystem::remove(reserved, ec);
+    assert(!ec);
+    std::filesystem::path directory = reserved;
+    directory.replace_extension("");
+    return directory;
 }
 
 void testFrontendDoubleDashSeparatesProgramArgs() {
@@ -70,8 +87,16 @@ void testNativeCompilerTempPathsAreUnique() {
 
     assert(ilA != ilB);
     assert(assetA != assetB);
-    assert(std::filesystem::path(ilA).extension() == ".il");
-    assert(std::filesystem::path(assetA).extension() == ".zpak");
+    assert(zanna::filesystem::pathFromUtf8(ilA).extension() == ".il");
+    assert(zanna::filesystem::pathFromUtf8(assetA).extension() == ".zpak");
+    std::error_code ec;
+    assert(std::filesystem::remove(zanna::filesystem::pathFromUtf8(ilA), ec) && !ec);
+    ec.clear();
+    assert(std::filesystem::remove(zanna::filesystem::pathFromUtf8(ilB), ec) && !ec);
+    ec.clear();
+    assert(std::filesystem::remove(zanna::filesystem::pathFromUtf8(assetA), ec) && !ec);
+    ec.clear();
+    assert(std::filesystem::remove(zanna::filesystem::pathFromUtf8(assetB), ec) && !ec);
 }
 
 /// @brief Verify IL output detection is case-insensitive.
@@ -134,11 +159,11 @@ void testProjectDefaultsUseBalancedOptimization() {
     using namespace il::tools::common;
     using namespace zanna::tools;
 
-    std::filesystem::path dir = std::filesystem::path(generateTempIlPath()).replace_extension("");
+    std::filesystem::path dir = takeTempProjectDirectoryPath();
     std::filesystem::create_directories(dir);
     writeText(dir / "main.zia", "module main;\nfunc start() {}\n");
 
-    auto resolved = resolveProject(dir.string());
+    auto resolved = resolveProject(zanna::filesystem::pathToUtf8(dir));
     assert(resolved);
     assert(resolved.value().buildProfile == "balanced");
     assert(resolved.value().optimizeLevel == "O1");
@@ -152,7 +177,7 @@ void testProjectProfilesMapToOptimizationLevels() {
     using namespace il::tools::common;
     using namespace zanna::tools;
 
-    std::filesystem::path dir = std::filesystem::path(generateTempIlPath()).replace_extension("");
+    std::filesystem::path dir = takeTempProjectDirectoryPath();
     std::filesystem::create_directories(dir);
     writeText(dir / "main.zia", "module main;\nfunc start() {}\n");
     writeText(dir / "zanna.project",
@@ -162,7 +187,7 @@ void testProjectProfilesMapToOptimizationLevels() {
               "entry main.zia\n"
               "profile release\n");
 
-    auto resolved = resolveProject(dir.string());
+    auto resolved = resolveProject(zanna::filesystem::pathToUtf8(dir));
     assert(resolved);
     assert(resolved.value().buildProfile == "release");
     assert(resolved.value().optimizeLevel == "O2");
@@ -176,7 +201,7 @@ void testProjectProfilesMapToOptimizationLevels() {
               "entry main.zia\n"
               "profile release\n"
               "optimize O1\n");
-    auto overridden = resolveProject(dir.string());
+    auto overridden = resolveProject(zanna::filesystem::pathToUtf8(dir));
     assert(overridden);
     assert(overridden.value().buildProfile == "release");
     assert(overridden.value().optimizeLevel == "O1");
@@ -194,7 +219,7 @@ void testProjectManifestBooleanNumericForms() {
     using namespace il::tools::common;
     using namespace zanna::tools;
 
-    std::filesystem::path dir = std::filesystem::path(generateTempIlPath()).replace_extension("");
+    std::filesystem::path dir = takeTempProjectDirectoryPath();
     std::filesystem::create_directories(dir);
     writeText(dir / "main.zia", "module main;\nfunc start() {}\n");
     writeText(dir / "zanna.project",
@@ -208,7 +233,7 @@ void testProjectManifestBooleanNumericForms() {
               "shortcut-menu 1\n"
               "shortcut-desktop 0\n");
 
-    auto resolved = resolveProject(dir.string());
+    auto resolved = resolveProject(zanna::filesystem::pathToUtf8(dir));
     assert(resolved);
     assert(!resolved.value().boundsChecks);
     assert(resolved.value().overflowChecks);
@@ -223,7 +248,7 @@ void testProjectManifestAcceptsUtf8Bom() {
     using namespace il::tools::common;
     using namespace zanna::tools;
 
-    std::filesystem::path dir = std::filesystem::path(generateTempIlPath()).replace_extension("");
+    std::filesystem::path dir = takeTempProjectDirectoryPath();
     std::filesystem::create_directories(dir);
     writeText(dir / "main.zia", "module main;\nfunc start() {}\n");
     writeText(dir / "zanna.project",
@@ -233,7 +258,7 @@ void testProjectManifestAcceptsUtf8Bom() {
               "lang zia\n"
               "entry main.zia\n");
 
-    auto resolved = resolveProject(dir.string());
+    auto resolved = resolveProject(zanna::filesystem::pathToUtf8(dir));
     assert(resolved);
     assert(resolved.value().name == "bomproj");
 
@@ -244,7 +269,7 @@ void testConventionDiscoverySkipsGeneratedAndVendorTrees() {
     using namespace il::tools::common;
     using namespace zanna::tools;
 
-    std::filesystem::path dir = std::filesystem::path(generateTempIlPath()).replace_extension("");
+    std::filesystem::path dir = takeTempProjectDirectoryPath();
     std::filesystem::create_directories(dir / "build");
     std::filesystem::create_directories(dir / "vendor");
     std::filesystem::create_directories(dir / "node_modules" / "pkg");
@@ -254,15 +279,45 @@ void testConventionDiscoverySkipsGeneratedAndVendorTrees() {
     writeText(dir / "node_modules" / "pkg" / "ignored.zia",
               "module ignored_node;\nfunc helper() {}\n");
 
-    auto resolved = resolveProject(dir.string());
+    auto resolved = resolveProject(zanna::filesystem::pathToUtf8(dir));
     assert(resolved);
     assert(resolved.value().sourceFiles.size() == 1);
-    assert(std::filesystem::path(resolved.value().sourceFiles.front()).filename() == "main.zia");
+    assert(zanna::filesystem::pathFromUtf8(resolved.value().sourceFiles.front()).filename() ==
+           "main.zia");
     assert(std::find_if(resolved.value().sourceFiles.begin(),
                         resolved.value().sourceFiles.end(),
                         [](const std::string &path) {
                             return path.find("ignored.zia") != std::string::npos;
                         }) == resolved.value().sourceFiles.end());
+
+    std::filesystem::remove_all(dir);
+}
+
+void testProjectLoaderPreservesUtf8NativePaths() {
+    using namespace il::tools::common;
+    using namespace zanna::tools;
+
+    std::filesystem::path dir = takeTempProjectDirectoryPath();
+    dir += zanna::filesystem::pathFromUtf8("_\xE6\x9D\xB1\xE4\xBA\xAC").native();
+    const std::string sourceName = "\xE5\x85\xA5\xE5\x8F\xA3.zia";
+    const std::filesystem::path source = dir / zanna::filesystem::pathFromUtf8(sourceName);
+    std::filesystem::create_directories(dir);
+    writeText(source, "module unicode_project;\nfunc start() {}\n");
+    writeText(dir / "zanna.project",
+              "project unicode_project\n"
+              "version 0.1.0\n"
+              "lang zia\n"
+              "entry " +
+                  sourceName + "\n");
+
+    const auto resolved = resolveProject(zanna::filesystem::pathToUtf8(dir));
+    assert(resolved);
+    assert(resolved.value().rootDir ==
+           zanna::filesystem::pathToUtf8(std::filesystem::canonical(dir)));
+    assert(resolved.value().entryFile ==
+           zanna::filesystem::pathToUtf8(std::filesystem::canonical(source)));
+    assert(resolved.value().sourceFiles.size() == 1);
+    assert(resolved.value().sourceFiles.front() == resolved.value().entryFile);
 
     std::filesystem::remove_all(dir);
 }
@@ -280,5 +335,6 @@ int main() {
     testProjectManifestBooleanNumericForms();
     testProjectManifestAcceptsUtf8Bom();
     testConventionDiscoverySkipsGeneratedAndVendorTrees();
+    testProjectLoaderPreservesUtf8NativePaths();
     return 0;
 }

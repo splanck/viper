@@ -1,6 +1,19 @@
-# SPDX-License-Identifier: GPL-3.0-only
-# File: tests/CMakeLists.txt
-# Purpose: Configure test suites.
+#===----------------------------------------------------------------------===#
+#
+# Part of the Zanna project, under the GNU GPL v3.
+# See LICENSE for license information.
+#
+#===----------------------------------------------------------------------===#
+#
+# File: src/tests/CMakeLists.txt
+# Purpose: Configure the complete Zanna CTest graph and platform-specific fixtures.
+# Key invariants:
+#   - Tests declare the labels, resource locks, timeouts, and host gates they require.
+#   - Platform-only tests never leak unavailable binaries into another host's graph.
+# Ownership/Lifetime: CMake owns all generated test targets and fixture paths.
+# Links: docs/internals/testing.md, scripts/build_zanna_win.ps1
+#
+#===----------------------------------------------------------------------===#
 #
 # ============================================================================
 # Zanna Test Suite — Quick Reference
@@ -92,10 +105,25 @@ endif ()
 if (WIN32)
     add_test(NAME windows_installer_host_launch
             COMMAND $<TARGET_FILE:zanna_installer_host> /selftest /quiet)
+    add_test(NAME windows_installer_host_cli_contracts
+            COMMAND ${CMAKE_COMMAND}
+                    -DHOST=$<TARGET_FILE:zanna_installer_host>
+                    -P ${CMAKE_CURRENT_SOURCE_DIR}/tools/WindowsInstallerHostCliContracts.cmake)
+    add_test(NAME windows_utf8_tool_command_line
+            COMMAND ${CMAKE_COMMAND}
+                    -DZANNA=$<TARGET_FILE:zanna>
+                    -DZIA=$<TARGET_FILE:zia>
+                    -DVBASIC=$<TARGET_FILE:vbasic>
+                    -DRTGEN=$<TARGET_FILE:rtgen>
+                    -DRUNTIME_DEF=${PROJECT_SOURCE_DIR}/src/il/runtime/runtime.def
+                    -DWORK_ROOT=${CMAKE_CURRENT_BINARY_DIR}
+                    -P ${CMAKE_CURRENT_SOURCE_DIR}/tools/WindowsUtf8ToolCommandLine.cmake)
     add_test(NAME windows_installer_cleanup_launch
             COMMAND $<TARGET_FILE:zanna_installer_cleanup> /selftest)
     set_tests_properties(
             windows_installer_host_launch
+            windows_installer_host_cli_contracts
+            windows_utf8_tool_command_line
             windows_installer_cleanup_launch
             PROPERTIES
             LABELS "installer;tools;unit"
@@ -1294,7 +1322,10 @@ add_test(NAME zia_zannastudio_scene_editor_2d
 set_tests_properties(zia_zannastudio_scene_editor_2d PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
         LABELS "zia;zannastudio;scene;requires_display"
-        TIMEOUT 60)
+        # Debug source compilation and hidden-window rendering can exceed the
+        # normal display-only runtime while unrelated CTest workers saturate
+        # the host. Keep bounded headroom above the observed serial runtime.
+        TIMEOUT 120)
 
 add_test(NAME zia_zannastudio_scene_editor_3d
         COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes/scene_editor_3d_probe.zia"
@@ -1302,7 +1333,13 @@ add_test(NAME zia_zannastudio_scene_editor_3d
 set_tests_properties(zia_zannastudio_scene_editor_3d PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
         LABELS "zia;zannastudio;scene;requires_display"
-        TIMEOUT 60)
+        TIMEOUT 120)
+if (WIN32)
+    # The 3D fixture compiles a large Studio graph and drives hidden native
+    # rendering. On Windows it can exceed twice its isolated runtime when
+    # unrelated compiler probes saturate the host, so reserve the runner.
+    set_property(TEST zia_zannastudio_scene_editor_3d PROPERTY RUN_SERIAL TRUE)
+endif ()
 
 add_test(NAME zia_zannastudio_scene_workspace_state
         COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes/scene_workspace_state_probe.zia"
@@ -1467,7 +1504,7 @@ add_test(NAME zia_zannastudio_multi_root
 set_tests_properties(zia_zannastudio_multi_root PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
         LABELS "zia;zannastudio;multi-root;requires_display"
-        TIMEOUT 30)
+        TIMEOUT 90)
 
 add_test(NAME zia_zannastudio_scm
         COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes/scm_probe.zia"

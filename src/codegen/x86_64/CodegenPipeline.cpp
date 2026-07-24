@@ -42,6 +42,7 @@
 #include "codegen/x86_64/passes/PreRegAllocOptPass.hpp"
 #include "codegen/x86_64/passes/RegAllocPass.hpp"
 #include "codegen/x86_64/passes/SchedulerPass.hpp"
+#include "common/Filesystem.hpp"
 #include "common/PlatformCapabilities.hpp"
 #include "il/transform/PassManager.hpp"
 #include "tools/common/module_loader.hpp"
@@ -189,31 +190,33 @@ using TargetPlatform = CodegenOptions::TargetPlatform;
                                          std::ostream &err) {
     std::ifstream in(path, std::ios::binary | std::ios::ate);
     if (!in) {
-        err << "error: cannot open asset blob '" << path.string() << "'\n";
+        err << "error: cannot open asset blob '" << zanna::filesystem::pathToUtf8(path) << "'\n";
         return false;
     }
     const std::streampos endPos = in.tellg();
     if (endPos < 0) {
-        err << "error: cannot determine size of asset blob '" << path.string() << "'\n";
+        err << "error: cannot determine size of asset blob '" << zanna::filesystem::pathToUtf8(path)
+            << "'\n";
         return false;
     }
     const auto fileSize = static_cast<std::uintmax_t>(endPos);
     if (fileSize > static_cast<std::uintmax_t>(std::numeric_limits<std::size_t>::max()) ||
         fileSize > static_cast<std::uintmax_t>(std::numeric_limits<std::streamsize>::max())) {
-        err << "error: asset blob '" << path.string() << "' is too large\n";
+        err << "error: asset blob '" << zanna::filesystem::pathToUtf8(path) << "' is too large\n";
         return false;
     }
     outBytes.assign(static_cast<std::size_t>(fileSize), 0);
     in.seekg(0);
     if (!in) {
-        err << "error: cannot seek asset blob '" << path.string() << "'\n";
+        err << "error: cannot seek asset blob '" << zanna::filesystem::pathToUtf8(path) << "'\n";
         return false;
     }
     if (!outBytes.empty()) {
         in.read(reinterpret_cast<char *>(outBytes.data()),
                 static_cast<std::streamsize>(outBytes.size()));
         if (!in) {
-            err << "error: failed to read asset blob '" << path.string() << "'\n";
+            err << "error: failed to read asset blob '" << zanna::filesystem::pathToUtf8(path)
+                << "'\n";
             return false;
         }
     }
@@ -227,7 +230,7 @@ using TargetPlatform = CodegenOptions::TargetPlatform;
 /// @param opts Pipeline configuration specifying the IL input path.
 /// @return Filesystem location for the generated assembly file.
 std::filesystem::path deriveAssemblyPath(const CodegenPipeline::Options &opts) {
-    std::filesystem::path assembly = std::filesystem::path(opts.input_il_path);
+    std::filesystem::path assembly = zanna::filesystem::pathFromUtf8(opts.input_il_path);
     if (assembly.empty()) {
         return std::filesystem::path("out.s");
     }
@@ -246,7 +249,7 @@ std::filesystem::path deriveAssemblyPath(const CodegenPipeline::Options &opts) {
 /// @return Filesystem path for the linked executable.
 std::filesystem::path deriveExecutablePath(const CodegenPipeline::Options &opts) {
     const bool isWindowsTarget = effectiveTargetPlatform(opts) == TargetPlatform::Windows;
-    std::filesystem::path exe = std::filesystem::path(opts.input_il_path);
+    std::filesystem::path exe = zanna::filesystem::pathFromUtf8(opts.input_il_path);
     if (exe.empty()) {
         return isWindowsTarget ? std::filesystem::path("a.exe") : std::filesystem::path("a.out");
     }
@@ -586,7 +589,8 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module module,
     // --- Inject asset blob into .rodata (if present) ---
     if (useNativeAsm && pipelineModule.binaryRodata && !opts_.asset_blob_path.empty()) {
         std::vector<uint8_t> assetBlob;
-        if (!readBinaryFileChecked(opts_.asset_blob_path, assetBlob, err)) {
+        if (!readBinaryFileChecked(
+                zanna::filesystem::pathFromUtf8(opts_.asset_blob_path), assetBlob, err)) {
             result.exit_code = 1;
             return finish();
         }
@@ -631,12 +635,12 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module module,
         // outputs (the -O0/-O2 struct-return ABI tests) race on the same .o.
         std::filesystem::path objPath;
         if (wantsObjectOnly) {
-            objPath = opts_.output_obj_path;
+            objPath = zanna::filesystem::pathFromUtf8(opts_.output_obj_path);
         } else if (!opts_.output_obj_path.empty()) {
-            objPath = std::filesystem::path(opts_.output_obj_path);
+            objPath = zanna::filesystem::pathFromUtf8(opts_.output_obj_path);
             objPath.replace_extension(".o");
         } else {
-            objPath = std::filesystem::path(opts_.input_il_path);
+            objPath = zanna::filesystem::pathFromUtf8(opts_.input_il_path);
             objPath.replace_extension(".o");
         }
 
@@ -668,7 +672,7 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module module,
             objectData.emplace();
         const bool wroteObject =
             hasDebugLine
-                ? (wantsObjectOnly ? writer->write(objPath.string(),
+                ? (wantsObjectOnly ? writer->write(zanna::filesystem::pathToUtf8(objPath),
                                                    *pipelineModule.binaryText,
                                                    *pipelineModule.binaryRodata,
                                                    err)
@@ -676,7 +680,7 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module module,
                                                            *pipelineModule.binaryText,
                                                            *pipelineModule.binaryRodata,
                                                            err))
-                : (wantsObjectOnly ? writer->write(objPath.string(),
+                : (wantsObjectOnly ? writer->write(zanna::filesystem::pathToUtf8(objPath),
                                                    pipelineModule.binaryTextSections,
                                                    *pipelineModule.binaryRodata,
                                                    err)
@@ -697,9 +701,9 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module module,
         // Link the emitted object with the native linker, deriving the runtime
         // archive set from the binary symbol table because there is no assembly
         // text on the native-assembler path.
-        const std::filesystem::path exePath = opts_.output_obj_path.empty()
-                                                  ? deriveExecutablePath(opts_)
-                                                  : std::filesystem::path(opts_.output_obj_path);
+        const std::filesystem::path exePath =
+            opts_.output_obj_path.empty() ? deriveExecutablePath(opts_)
+                                          : zanna::filesystem::pathFromUtf8(opts_.output_obj_path);
 
         std::unordered_set<std::string> extSymbols;
         if (!pipelineModule.binaryTextSections.empty()) {
@@ -780,9 +784,9 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module module,
 
     const std::string &asmText = pipelineModule.codegenResult->asmText;
 
-    const std::filesystem::path asmPath = opts_.output_asm_path.empty()
-                                              ? deriveAssemblyPath(opts_)
-                                              : std::filesystem::path(opts_.output_asm_path);
+    const std::filesystem::path asmPath =
+        opts_.output_asm_path.empty() ? deriveAssemblyPath(opts_)
+                                      : zanna::filesystem::pathFromUtf8(opts_.output_asm_path);
     if (!writeAssemblyFile(asmPath, asmText, err)) {
         result.exit_code = 1;
         return finish();
@@ -800,7 +804,8 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module module,
     const bool wantsObjectOnly = !opts_.output_obj_path.empty() && !opts_.run_native &&
                                  looksLikeObjectFilePath(opts_.output_obj_path);
     if (wantsObjectOnly) {
-        const std::filesystem::path objPath(opts_.output_obj_path);
+        const std::filesystem::path objPath =
+            zanna::filesystem::pathFromUtf8(opts_.output_obj_path);
         const int assembleExit = invokeAssembler(asmPath, objPath, targetPlatform, out, err);
         if (assembleExit != 0) {
             result.exit_code = assembleExit == -1 ? 1 : assembleExit;
@@ -823,10 +828,10 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module module,
         return finish();
     }
 
-    const std::filesystem::path exePath = opts_.output_obj_path.empty()
-                                              ? deriveExecutablePath(opts_)
-                                              : std::filesystem::path(opts_.output_obj_path);
-    std::filesystem::path objPath = std::filesystem::path(opts_.input_il_path);
+    const std::filesystem::path exePath =
+        opts_.output_obj_path.empty() ? deriveExecutablePath(opts_)
+                                      : zanna::filesystem::pathFromUtf8(opts_.output_obj_path);
+    std::filesystem::path objPath = zanna::filesystem::pathFromUtf8(opts_.input_il_path);
     objPath.replace_extension(".o");
 
     const int assembleExit = invokeAssembler(asmPath, objPath, targetPlatform, out, err);
@@ -836,7 +841,9 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module module,
     }
 
     common::LinkContext ctx;
-    if (const int rc = common::prepareLinkContext(asmPath.string(), ctx, out, err); rc != 0) {
+    if (const int rc =
+            common::prepareLinkContext(zanna::filesystem::pathToUtf8(asmPath), ctx, out, err);
+        rc != 0) {
         result.exit_code = 1;
         return finish();
     }

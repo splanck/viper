@@ -21,6 +21,10 @@
 //   - Machine queries preserve drive roots and long environment-backed paths.
 //   - WASAPI source contracts use the CRT thread entry point, strict negotiated
 //     format metadata, bounded repeated failures, and paired buffer release.
+//   - Windows network workers use CRT-aware threads and download paths stay UTF-16.
+//   - SaveData snapshots UTF-16 environment values instead of borrowed ACP strings.
+//   - Child-process capture restricts inherited handles, uses CRT-aware threads,
+//     and reports wait, pipe, and exit-query failures.
 //
 // Ownership/Lifetime:
 //   - The test owns all worker threads and joins them before exit.
@@ -29,12 +33,16 @@
 //        src/runtime/network/rt_socket_platform.h,
 //        src/runtime/network/rt_entropy_platform.h,
 //        src/runtime/io/rt_file_path.h, src/runtime/io/rt_dir_internal.h,
-//        src/lib/audio/src/vaud_platform_win32.c
+//        src/lib/audio/src/vaud_platform_win32.c, src/common/RunProcess.cpp
 //
 //===----------------------------------------------------------------------===//
 
 // WinSock2 must precede any adapter that includes windows.h.
 #include "rt_socket_platform.h"
+
+#ifdef NDEBUG
+#undef NDEBUG
+#endif
 
 #include "rt_dir_internal.h"
 #include "rt_entropy_platform.h"
@@ -51,6 +59,7 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <initializer_list>
 #include <iterator>
 #include <string>
 #include <thread>
@@ -241,7 +250,76 @@ static void test_wasapi_backend_source_contracts() {
     assert(source.find("consecutive_padding_failures >= 8") != std::string::npos);
     assert(source.find("consecutive_buffer_failures >= 8") != std::string::npos);
     assert(source.find("WASAPI failed to release a render buffer") != std::string::npos);
+    assert(source.find("valid_bits == 0 || valid_bits > fmt->wBitsPerSample") != std::string::npos);
+    assert(source.find("IAudioClient_Reset(plat->client)") != std::string::npos);
+    assert(source.find("FAILED(hr) && hr != RPC_E_CHANGED_MODE") == std::string::npos);
+    assert(source.find("Cannot resume an inactive WASAPI client") != std::string::npos);
     assert(source.find("InterlockedExchange(&plat->paused, 0)") != std::string::npos);
+}
+
+static std::string read_source(std::initializer_list<const char *> components) {
+    std::filesystem::path path(ZANNA_SOURCE_DIR);
+    for (const char *component : components)
+        path /= component;
+    std::ifstream input(path, std::ios::binary);
+    assert(input);
+    return {std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()};
+}
+
+static void test_windows_network_worker_source_contracts() {
+    constexpr std::array<const char *, 4> files = {
+        "rt_ws_server.c", "rt_wss_server.c", "rt_http_server.c", "rt_https_server.c"};
+    for (const char *file : files) {
+        const std::string source = read_source({"src", "runtime", "network", file});
+        assert(source.find("_beginthreadex") != std::string::npos);
+        assert(source.find("CreateThread(NULL") == std::string::npos);
+        assert(source.find("unsigned __stdcall") != std::string::npos);
+    }
+}
+
+static void test_windows_unicode_storage_source_contracts() {
+    const std::string http = read_source({"src", "runtime", "network", "rt_network_http_api.c"});
+    assert(http.find("_wopen(") != std::string::npos);
+    assert(http.find("_O_NOINHERIT") != std::string::npos);
+    assert(http.find("MoveFileExW(") != std::string::npos);
+    assert(http.find("_wstat64(") != std::string::npos);
+    assert(http.find("_wchmod(") != std::string::npos);
+    assert(http.find("_wremove(") != std::string::npos);
+    assert(http.find("MoveFileExA(") == std::string::npos);
+
+    const std::string savedata = read_source({"src", "runtime", "io", "rt_savedata.c"});
+    assert(savedata.find("GetEnvironmentVariableW(") != std::string::npos);
+    assert(savedata.find("getenv(\"APPDATA\")") == std::string::npos);
+    assert(savedata.find("getenv(\"USERPROFILE\")") == std::string::npos);
+    assert(savedata.find("getenv(\"HOMEDRIVE\")") == std::string::npos);
+    assert(savedata.find("getenv(\"HOMEPATH\")") == std::string::npos);
+}
+
+static void test_win32_window_source_contracts() {
+    const std::string source =
+        read_source({"src", "lib", "graphics", "src", "vgfx_platform_win32.c"});
+    assert(source.find("GetClassInfoExW(") != std::string::npos);
+    assert(source.find("case WM_UNICHAR:") != std::string::npos);
+    assert(source.find("case WM_SYSKEYDOWN:") != std::string::npos);
+    assert(source.find("case WM_CAPTURECHANGED:") != std::string::npos);
+    assert(source.find("SetCapture(") != std::string::npos);
+    assert(source.find("ReleaseCapture(") != std::string::npos);
+    assert(source.find("count > (UINT)VGFX_EVENT_QUEUE_SIZE") != std::string::npos);
+    assert(source.find("unit_count > (size_t)VGFX_COMPOSITION_TEXT_CAPACITY") != std::string::npos);
+    assert(source.find("if (!win32_adjust_window_rect_for_scale") != std::string::npos);
+}
+
+static void test_windows_run_process_source_contracts() {
+    const std::string source = read_source({"src", "common", "RunProcess.cpp"});
+    assert(source.find("PROC_THREAD_ATTRIBUTE_HANDLE_LIST") != std::string::npos);
+    assert(source.find("EXTENDED_STARTUPINFO_PRESENT") != std::string::npos);
+    assert(source.find("_beginthreadex") != std::string::npos);
+    assert(source.find("CreateThread(") == std::string::npos);
+    assert(source.find("pathFromUtf8(*cwd)") != std::string::npos);
+    assert(source.find("failed while waiting for child process") != std::string::npos);
+    assert(source.find("failed while capturing child stdout") != std::string::npos);
+    assert(source.find("failed while capturing child stderr") != std::string::npos);
+    assert(source.find("failed to query child exit code") != std::string::npos);
 }
 
 int main() {
@@ -254,6 +332,10 @@ int main() {
     test_recursive_delete_path_guards();
     test_machine_windows_snapshots();
     test_wasapi_backend_source_contracts();
+    test_windows_network_worker_source_contracts();
+    test_windows_unicode_storage_source_contracts();
+    test_win32_window_source_contracts();
+    test_windows_run_process_source_contracts();
     std::puts("RTWindowsRuntimeTests passed");
     return 0;
 }

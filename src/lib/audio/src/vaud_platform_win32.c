@@ -102,6 +102,7 @@ typedef struct {
     volatile LONG paused;                          ///< Pause state
     volatile LONG thread_start_status;             ///< -1 failed, 0 pending, 1 ready
     int com_initialized;                           ///< This backend owns a COM apartment reference.
+    DWORD owner_thread_id;                         ///< Thread that owns COM control operations.
     CRITICAL_SECTION pause_cs;                     ///< Protects pause state
 } vaud_win32_data;
 
@@ -147,6 +148,8 @@ static int vaud_win32_configure_render_format(vaud_win32_data *plat, const WAVEF
     WORD valid_bits = 0;
     if (!vaud_win32_format_subtype(fmt, &subtype, &valid_bits))
         return 0;
+    if (valid_bits == 0 || valid_bits > fmt->wBitsPerSample)
+        return 0;
 
     UINT32 bytes_per_sample = fmt->wBitsPerSample / 8u;
     if (bytes_per_sample == 0 || bytes_per_sample > 4)
@@ -162,9 +165,11 @@ static int vaud_win32_configure_render_format(vaud_win32_data *plat, const WAVEF
 
     vaud_win32_sample_format sample_format;
     if (vaud_win32_guid_equal(subtype, &VAUD_KSDATAFORMAT_SUBTYPE_IEEE_FLOAT) &&
-        fmt->wBitsPerSample == 32) {
+        fmt->wBitsPerSample == 32 && valid_bits == 32) {
         sample_format = VAUD_WIN32_SAMPLE_F32;
     } else if (vaud_win32_guid_equal(subtype, &VAUD_KSDATAFORMAT_SUBTYPE_PCM)) {
+        if (valid_bits < 16)
+            return 0;
         if (fmt->wBitsPerSample == 16) {
             sample_format = VAUD_WIN32_SAMPLE_S16;
         } else if (fmt->wBitsPerSample == 24) {
@@ -382,15 +387,23 @@ static void vaud_win32_join_thread(vaud_context_t ctx, vaud_win32_data *plat, DW
     if (!plat || !plat->thread)
         return;
     DWORD wait_rc = WaitForSingleObject(plat->thread, timeout_ms);
-    if (wait_rc != WAIT_OBJECT_0) {
+    if (wait_rc == WAIT_TIMEOUT) {
         vaud_stats_add(&ctx->stats.backend_write_failures, 1);
         vaud_set_error(VAUD_ERR_PLATFORM, "Timed out waiting for WASAPI audio thread");
         if (plat->client)
-            IAudioClient_Stop(plat->client);
-        SetEvent(plat->stop_event);
-        WaitForSingleObject(plat->thread, INFINITE);
+            (void)IAudioClient_Stop(plat->client);
+        if (plat->stop_event)
+            (void)SetEvent(plat->stop_event);
+        wait_rc = WaitForSingleObject(plat->thread, INFINITE);
     }
-    CloseHandle(plat->thread);
+    if (wait_rc != WAIT_OBJECT_0) {
+        vaud_stats_add(&ctx->stats.backend_write_failures, 1);
+        vaud_set_error(VAUD_ERR_PLATFORM, "Failed waiting for WASAPI audio thread");
+    }
+    if (!CloseHandle(plat->thread)) {
+        vaud_stats_add(&ctx->stats.backend_write_failures, 1);
+        vaud_set_error(VAUD_ERR_PLATFORM, "Failed to close WASAPI audio thread handle");
+    }
     plat->thread = NULL;
 }
 
@@ -408,7 +421,7 @@ static unsigned __stdcall audio_thread_func(void *arg) {
     unsigned consecutive_buffer_failures = 0;
     HRESULT hr = CoInitializeEx(NULL, COINIT_MULTITHREADED);
     int com_initialized = SUCCEEDED(hr) ? 1 : 0;
-    if (FAILED(hr) && hr != RPC_E_CHANGED_MODE) {
+    if (FAILED(hr)) {
         InterlockedExchange(&plat->thread_start_status, -1);
         InterlockedExchange(&plat->running, 0);
         vaud_stats_add(&ctx->stats.backend_write_failures, 1);
@@ -452,9 +465,8 @@ static unsigned __stdcall audio_thread_func(void *arg) {
         /* Check pause state */
         EnterCriticalSection(&plat->pause_cs);
         int is_paused = (int)InterlockedCompareExchange(&plat->paused, 0, 0);
-        LeaveCriticalSection(&plat->pause_cs);
-
         if (is_paused) {
+            LeaveCriticalSection(&plat->pause_cs);
             continue;
         }
 
@@ -467,8 +479,10 @@ static unsigned __stdcall audio_thread_func(void *arg) {
                 vaud_set_error(VAUD_ERR_PLATFORM,
                                "WASAPI repeatedly failed to report buffer padding");
                 InterlockedExchange(&plat->running, 0);
+                LeaveCriticalSection(&plat->pause_cs);
                 break;
             }
+            LeaveCriticalSection(&plat->pause_cs);
             continue;
         }
         consecutive_padding_failures = 0;
@@ -476,11 +490,13 @@ static unsigned __stdcall audio_thread_func(void *arg) {
             vaud_stats_add(&ctx->stats.backend_write_failures, 1);
             vaud_set_error(VAUD_ERR_PLATFORM, "WASAPI reported invalid buffer padding");
             InterlockedExchange(&plat->running, 0);
+            LeaveCriticalSection(&plat->pause_cs);
             break;
         }
 
         UINT32 available = plat->buffer_frames - padding;
         if (available == 0) {
+            LeaveCriticalSection(&plat->pause_cs);
             continue;
         }
 
@@ -498,8 +514,10 @@ static unsigned __stdcall audio_thread_func(void *arg) {
                 vaud_set_error(VAUD_ERR_PLATFORM,
                                "WASAPI repeatedly failed to acquire a render buffer");
                 InterlockedExchange(&plat->running, 0);
+                LeaveCriticalSection(&plat->pause_cs);
                 break;
             }
+            LeaveCriticalSection(&plat->pause_cs);
             continue;
         }
         consecutive_buffer_failures = 0;
@@ -511,6 +529,7 @@ static unsigned __stdcall audio_thread_func(void *arg) {
                            FAILED(hr) ? "WASAPI failed to release a null render buffer"
                                       : "WASAPI returned a null render buffer");
             InterlockedExchange(&plat->running, 0);
+            LeaveCriticalSection(&plat->pause_cs);
             break;
         }
 
@@ -525,8 +544,10 @@ static unsigned __stdcall audio_thread_func(void *arg) {
             vaud_stats_add(&ctx->stats.backend_write_failures, 1);
             vaud_set_error(VAUD_ERR_PLATFORM, "WASAPI failed to release a render buffer");
             InterlockedExchange(&plat->running, 0);
+            LeaveCriticalSection(&plat->pause_cs);
             break;
         }
+        LeaveCriticalSection(&plat->pause_cs);
     }
 
     InterlockedExchange(&plat->running, 0);
@@ -553,6 +574,7 @@ int vaud_platform_init(vaud_context_t ctx) {
     }
 
     ctx->platform_data = plat;
+    plat->owner_thread_id = GetCurrentThreadId();
     InterlockedExchange(&plat->running, 0);
     InterlockedExchange(&plat->paused, 0);
     InterlockedExchange(&plat->thread_start_status, 0);
@@ -560,8 +582,8 @@ int vaud_platform_init(vaud_context_t ctx) {
     InitializeCriticalSection(&plat->pause_cs);
 
     /* Initialize COM */
-    hr = CoInitializeEx(NULL, COINIT_MULTITHREADED);
-    if (FAILED(hr) && hr != S_FALSE && hr != RPC_E_CHANGED_MODE) {
+    hr = CoInitializeEx(NULL, COINIT_MULTITHREADED | COINIT_DISABLE_OLE1DDE);
+    if (FAILED(hr)) {
         DeleteCriticalSection(&plat->pause_cs);
         free(plat);
         ctx->platform_data = NULL;
@@ -863,13 +885,18 @@ void vaud_platform_shutdown(vaud_context_t ctx) {
         CloseHandle(plat->ready_event);
 
     int com_initialized = plat->com_initialized;
+    int owns_current_com_apartment = plat->owner_thread_id == GetCurrentThreadId();
     vaud_win32_free_render_buffers(plat);
     DeleteCriticalSection(&plat->pause_cs);
     free(plat);
     ctx->platform_data = NULL;
 
-    if (com_initialized)
+    if (com_initialized && owns_current_com_apartment)
         CoUninitialize();
+    else if (com_initialized) {
+        vaud_stats_add(&ctx->stats.backend_write_failures, 1);
+        vaud_set_error(VAUD_ERR_PLATFORM, "WASAPI context was destroyed from a non-owner thread");
+    }
 }
 
 void vaud_platform_pause(vaud_context_t ctx) {
@@ -877,21 +904,29 @@ void vaud_platform_pause(vaud_context_t ctx) {
         return;
 
     vaud_win32_data *plat = (vaud_win32_data *)ctx->platform_data;
+    if (plat->owner_thread_id != GetCurrentThreadId()) {
+        vaud_stats_add(&ctx->stats.backend_write_failures, 1);
+        vaud_set_error(VAUD_ERR_PLATFORM, "WASAPI pause must run on the context owner thread");
+        return;
+    }
 
     EnterCriticalSection(&plat->pause_cs);
-    InterlockedExchange(&plat->paused, 1);
-    LeaveCriticalSection(&plat->pause_cs);
-
-    if (plat->client) {
-        HRESULT hr = IAudioClient_Stop(plat->client);
-        if (FAILED(hr)) {
-            EnterCriticalSection(&plat->pause_cs);
-            InterlockedExchange(&plat->paused, 0);
-            LeaveCriticalSection(&plat->pause_cs);
-            vaud_stats_add(&ctx->stats.backend_write_failures, 1);
-            vaud_set_error(VAUD_ERR_PLATFORM, "Failed to pause WASAPI client");
-        }
+    if (InterlockedCompareExchange(&plat->paused, 0, 0)) {
+        LeaveCriticalSection(&plat->pause_cs);
+        return;
     }
+
+    InterlockedExchange(&plat->paused, 1);
+    HRESULT stop_hr = plat->client ? IAudioClient_Stop(plat->client) : E_POINTER;
+    HRESULT reset_hr = SUCCEEDED(stop_hr) ? IAudioClient_Reset(plat->client) : stop_hr;
+    if (FAILED(reset_hr)) {
+        if (FAILED(stop_hr) || (plat->client && SUCCEEDED(IAudioClient_Start(plat->client)))) {
+            InterlockedExchange(&plat->paused, 0);
+        }
+        vaud_stats_add(&ctx->stats.backend_write_failures, 1);
+        vaud_set_error(VAUD_ERR_PLATFORM, "Failed to pause and reset WASAPI client");
+    }
+    LeaveCriticalSection(&plat->pause_cs);
 }
 
 void vaud_platform_resume(vaud_context_t ctx) {
@@ -899,17 +934,30 @@ void vaud_platform_resume(vaud_context_t ctx) {
         return;
 
     vaud_win32_data *plat = (vaud_win32_data *)ctx->platform_data;
-
-    if (plat->client) {
-        HRESULT hr = IAudioClient_Start(plat->client);
-        if (FAILED(hr)) {
-            vaud_stats_add(&ctx->stats.backend_write_failures, 1);
-            vaud_set_error(VAUD_ERR_PLATFORM, "Failed to resume WASAPI client");
-            return;
-        }
+    if (plat->owner_thread_id != GetCurrentThreadId()) {
+        vaud_stats_add(&ctx->stats.backend_write_failures, 1);
+        vaud_set_error(VAUD_ERR_PLATFORM, "WASAPI resume must run on the context owner thread");
+        return;
     }
 
     EnterCriticalSection(&plat->pause_cs);
+    if (!InterlockedCompareExchange(&plat->paused, 0, 0)) {
+        LeaveCriticalSection(&plat->pause_cs);
+        return;
+    }
+    if (!InterlockedCompareExchange(&plat->running, 0, 0) || !plat->client) {
+        vaud_stats_add(&ctx->stats.backend_write_failures, 1);
+        vaud_set_error(VAUD_ERR_PLATFORM, "Cannot resume an inactive WASAPI client");
+        LeaveCriticalSection(&plat->pause_cs);
+        return;
+    }
+    HRESULT hr = IAudioClient_Start(plat->client);
+    if (FAILED(hr)) {
+        vaud_stats_add(&ctx->stats.backend_write_failures, 1);
+        vaud_set_error(VAUD_ERR_PLATFORM, "Failed to resume WASAPI client");
+        LeaveCriticalSection(&plat->pause_cs);
+        return;
+    }
     InterlockedExchange(&plat->paused, 0);
     LeaveCriticalSection(&plat->pause_cs);
 }

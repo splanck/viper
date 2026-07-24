@@ -814,6 +814,26 @@ static void d3d11_log_device_removed_reason(d3d11_context_t *ctx, const char *ms
     fputs(buffer, stderr);
 }
 
+/// @brief Validate device health after a D3D11 command that returns no HRESULT.
+/// @details `UpdateSubresource`, `GenerateMips`, and `CopyResource` are void
+///   commands. A removed device can therefore discard the command without a
+///   direct failure result. Callers use this check before publishing CPU-side
+///   cursors, generations, or validity flags that claim the GPU work completed.
+/// @param ctx Backend context containing the device.
+/// @param operation Bounded diagnostic label for the preceding command.
+/// @return `S_OK` while the device remains usable, otherwise the removal reason.
+static HRESULT d3d11_device_status_after_void_command(d3d11_context_t *ctx, const char *operation) {
+    HRESULT hr;
+    if (!ctx || !ctx->device)
+        return E_POINTER;
+    hr = ID3D11Device_GetDeviceRemovedReason(ctx->device);
+    if (FAILED(hr)) {
+        d3d11_log_hresult(operation, hr);
+        d3d11_log_device_removed_reason(ctx, operation, hr);
+    }
+    return hr;
+}
+
 /// @brief Print bounded HLSL compiler diagnostics extracted from an `ID3DBlob`.
 static void d3d11_log_shader_diagnostics(const char *stage, ID3DBlob *diagnostics, int failed) {
     const char *text;
@@ -1912,7 +1932,7 @@ static HRESULT d3d11_update_float_srv_buffer(d3d11_context_t *ctx,
     box.back = 1;
     d3d11_unbind_draw_resources(ctx);
     ID3D11DeviceContext_UpdateSubresource(ctx->ctx, (ID3D11Resource *)*buffer, 0, &box, data, 0, 0);
-    return S_OK;
+    return d3d11_device_status_after_void_command(ctx, "UpdateSubresource(float SRV buffer)");
 }
 
 /// @brief Create the context-owned white fallback SRVs for pending texture uploads.

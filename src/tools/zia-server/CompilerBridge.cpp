@@ -20,6 +20,7 @@
 
 #include "tools/zia-server/CompilerBridge.hpp"
 
+#include "common/Filesystem.hpp"
 #include "tools/lsp-common/DiagnosticUtils.hpp"
 #include "tools/lsp-common/TextUtils.hpp"
 
@@ -448,16 +449,17 @@ static std::vector<std::pair<std::string, std::string>> collectWorkspaceZiaSourc
         docs.emplace_back(path, source);
         seen.insert(path);
         std::error_code ec;
-        fs::path root = fs::weakly_canonical(fs::path(path).parent_path(), ec);
+        const fs::path nativePath = zanna::filesystem::pathFromUtf8(path);
+        fs::path root = fs::weakly_canonical(nativePath.parent_path(), ec);
         if (ec)
-            root = fs::path(path).parent_path().lexically_normal();
+            root = nativePath.parent_path().lexically_normal();
         /* Synthetic editor URIs such as file:///test.zia resolve directly under
          * a filesystem root. Recursing from there is both unrelated to the open
          * document and potentially unbounded; keep the open document indexed,
          * but do not treat a volume root as an inferred workspace. */
         if (root.empty() || root == root.root_path())
             continue;
-        std::string key = root.string();
+        std::string key = zanna::filesystem::pathToUtf8(root);
         if (rootKeys.insert(key).second)
             roots.push_back(std::move(root));
     }
@@ -476,7 +478,7 @@ static std::vector<std::pair<std::string, std::string>> collectWorkspaceZiaSourc
             if (it->path().extension() != ".zia")
                 continue;
             fs::path canonical = fs::weakly_canonical(it->path(), entryEc);
-            std::string path = (entryEc ? it->path() : canonical).string();
+            std::string path = zanna::filesystem::pathToUtf8(entryEc ? it->path() : canonical);
             if (!seen.insert(path).second)
                 continue;
             auto source = readWorkspaceSourceFile(it->path());

@@ -44,14 +44,14 @@ namespace fs = std::filesystem;
 namespace zanna::pkg {
 namespace {
 
-/// @brief Replace every backslash in text with a forward slash.
-/// Normalizes Windows-style paths from cmake_install.cmake to POSIX form.
-std::string toForwardSlashes(std::string text) {
-    for (char &ch : text) {
-        if (ch == '\\')
-            ch = '/';
-    }
-    return text;
+/// @brief Encode a native path as UTF-8 for package metadata and diagnostics.
+std::string pathText(const fs::path &path) {
+    return zanna::filesystem::pathToUtf8(path);
+}
+
+/// @brief Encode a native path as portable UTF-8 package syntax.
+std::string genericPathText(const fs::path &path) {
+    return zanna::filesystem::genericPathToUtf8(path);
 }
 
 /// @brief Return a copy of text with all ASCII letters lowercased.
@@ -104,17 +104,17 @@ void validateStagedPathDoesNotEscape(const fs::path &stagePrefix, const fs::path
     if (fs::is_symlink(path, ec)) {
         const fs::path resolved = fs::canonical(path, ec);
         if (ec)
-            throw std::runtime_error("cannot resolve staged symlink: " + path.string());
+            throw std::runtime_error("cannot resolve staged symlink: " + pathText(path));
         if (!pathWithinStage(stagePrefix, resolved))
-            throw std::runtime_error("staged symlink escapes install prefix: " + path.string());
+            throw std::runtime_error("staged symlink escapes install prefix: " + pathText(path));
         return;
     }
 
     const fs::path resolved = fs::canonical(path, ec);
     if (ec)
-        throw std::runtime_error("cannot resolve staged file: " + path.string());
+        throw std::runtime_error("cannot resolve staged file: " + pathText(path));
     if (!pathWithinStage(stagePrefix, resolved))
-        throw std::runtime_error("staged file escapes install prefix: " + path.string());
+        throw std::runtime_error("staged file escapes install prefix: " + pathText(path));
 }
 
 /// @brief Compute path's lexical relative path from stagePrefix without touching the
@@ -125,10 +125,10 @@ fs::path stagedLexicalRelativePath(const fs::path &stagePrefix, const fs::path &
     const fs::path normalizedPath = path.lexically_normal();
     const fs::path rel = normalizedPath.lexically_relative(normalizedStage);
     if (rel.empty() || rel == fs::path("."))
-        throw std::runtime_error("failed to compute staged relative path for " + path.string());
+        throw std::runtime_error("failed to compute staged relative path for " + pathText(path));
     auto relIt = rel.begin();
     if (relIt == rel.end() || *relIt == fs::path(".."))
-        throw std::runtime_error("staged path escapes install prefix: " + path.string());
+        throw std::runtime_error("staged path escapes install prefix: " + pathText(path));
     return rel;
 }
 
@@ -261,12 +261,12 @@ struct StagedToolchainIdentity {
 std::vector<uint8_t> readBinaryPrefix(const fs::path &path, std::size_t maxBytes) {
     std::ifstream in(path, std::ios::binary);
     if (!in)
-        throw std::runtime_error("cannot read staged executable header: " + path.string());
+        throw std::runtime_error("cannot read staged executable header: " + pathText(path));
     std::vector<uint8_t> bytes(maxBytes);
     in.read(reinterpret_cast<char *>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
     const std::streamsize got = in.gcount();
     if (got < 0)
-        throw std::runtime_error("cannot read staged executable header: " + path.string());
+        throw std::runtime_error("cannot read staged executable header: " + pathText(path));
     bytes.resize(static_cast<std::size_t>(got));
     return bytes;
 }
@@ -334,14 +334,14 @@ std::optional<std::string> detectMachOArchitecture(const fs::path &path,
     }
     if (thin) {
         if (bytes.size() < 8)
-            throw std::runtime_error("truncated Mach-O executable header: " + path.string());
+            throw std::runtime_error("truncated Mach-O executable header: " + pathText(path));
         const uint32_t cpuType = headerBigEndian ? readBe32(bytes, 4) : readLe32(bytes, 4);
         if (cpuType == 0x01000007)
             return std::string("x64");
         if (cpuType == 0x0100000c)
             return std::string("arm64");
-        throw std::runtime_error("unsupported Mach-O executable architecture in '" + path.string() +
-                                 "': CPU type " + std::to_string(cpuType));
+        throw std::runtime_error("unsupported Mach-O executable architecture in '" +
+                                 pathText(path) + "': CPU type " + std::to_string(cpuType));
     }
 
     bool fat64 = false;
@@ -360,23 +360,24 @@ std::optional<std::string> detectMachOArchitecture(const fs::path &path,
     }
 
     if (bytes.size() < 8)
-        throw std::runtime_error("truncated universal Mach-O header: " + path.string());
+        throw std::runtime_error("truncated universal Mach-O header: " + pathText(path));
     const auto read32 = [&](std::size_t offset) {
         return headerBigEndian ? readBe32(bytes, offset) : readLe32(bytes, offset);
     };
     const uint32_t sliceCount = read32(4);
     constexpr uint32_t kMaxFatSlices = 32;
     if (sliceCount == 0 || sliceCount > kMaxFatSlices)
-        throw std::runtime_error("invalid universal Mach-O slice count in '" + path.string() +
+        throw std::runtime_error("invalid universal Mach-O slice count in '" + pathText(path) +
                                  "': " + std::to_string(sliceCount));
     const std::size_t entrySize = fat64 ? 32u : 20u;
     if (sliceCount > (bytes.size() - 8) / entrySize)
-        throw std::runtime_error("truncated universal Mach-O architecture table: " + path.string());
+        throw std::runtime_error("truncated universal Mach-O architecture table: " +
+                                 pathText(path));
 
     std::error_code ec;
     const uint64_t fileSize = fs::file_size(path, ec);
     if (ec)
-        throw std::runtime_error("cannot inspect universal Mach-O size for '" + path.string() +
+        throw std::runtime_error("cannot inspect universal Mach-O size for '" + pathText(path) +
                                  "': " + ec.message());
     const uint64_t headerSize = 8u + static_cast<uint64_t>(sliceCount) * entrySize;
     bool hasX64 = false;
@@ -390,7 +391,7 @@ std::optional<std::string> detectMachOArchitecture(const fs::path &path,
             fat64 ? readEndian64(bytes, entry + 16, headerBigEndian) : read32(entry + 12);
         if (sliceSize == 0 || sliceOffset < headerSize || sliceOffset > fileSize ||
             sliceSize > fileSize - sliceOffset) {
-            throw std::runtime_error("invalid universal Mach-O slice bounds in '" + path.string() +
+            throw std::runtime_error("invalid universal Mach-O slice bounds in '" + pathText(path) +
                                      "'");
         }
         if (cpuType == 0x01000007)
@@ -399,7 +400,7 @@ std::optional<std::string> detectMachOArchitecture(const fs::path &path,
             hasArm64 = true;
         else
             throw std::runtime_error("unsupported universal Mach-O architecture in '" +
-                                     path.string() + "': CPU type " + std::to_string(cpuType));
+                                     pathText(path) + "': CPU type " + std::to_string(cpuType));
     }
     if (hasX64 && hasArm64)
         return std::string("universal");
@@ -407,7 +408,7 @@ std::optional<std::string> detectMachOArchitecture(const fs::path &path,
         return std::string("x64");
     if (hasArm64)
         return std::string("arm64");
-    throw std::runtime_error("universal Mach-O has no supported slices: " + path.string());
+    throw std::runtime_error("universal Mach-O has no supported slices: " + pathText(path));
 }
 
 /// @brief Detect payload platform and architecture from the staged `zanna` binary.
@@ -427,7 +428,7 @@ StagedToolchainIdentity detectStagedExecutableIdentity(const fs::path &path) {
                 return {"windows", "arm64"};
         }
         throw std::runtime_error("unsupported Windows zanna executable architecture: " +
-                                 path.string());
+                                 pathText(path));
     }
     if (bytes.size() >= 20 && bytes[0] == 0x7f && bytes[1] == 'E' && bytes[2] == 'L' &&
         bytes[3] == 'F') {
@@ -436,11 +437,13 @@ StagedToolchainIdentity detectStagedExecutableIdentity(const fs::path &path) {
             return {"linux", "x64"};
         if (machine == 183)
             return {"linux", "arm64"};
-        throw std::runtime_error("unsupported ELF zanna executable architecture: " + path.string());
+        throw std::runtime_error("unsupported ELF zanna executable architecture: " +
+                                 pathText(path));
     }
     if (const auto arch = detectMachOArchitecture(path, bytes))
         return {"macos", *arch};
-    throw std::runtime_error("cannot determine staged zanna executable platform: " + path.string());
+    throw std::runtime_error("cannot determine staged zanna executable platform: " +
+                             pathText(path));
 }
 
 /// @brief Require every Mach-O payload file to match the staged zanna architecture.
@@ -452,7 +455,7 @@ void validateMacOSPayloadArchitectures(const fs::path &stagePrefix,
         if (!fs::is_regular_file(file, ec)) {
             if (ec)
                 throw std::runtime_error("cannot inspect staged macOS payload file '" +
-                                         file.string() + "': " + ec.message());
+                                         pathText(file) + "': " + ec.message());
             continue;
         }
         const std::vector<uint8_t> bytes = readBinaryPrefix(file, 4096);
@@ -461,7 +464,7 @@ void validateMacOSPayloadArchitectures(const fs::path &stagePrefix,
             continue;
         const fs::path relative = stagedLexicalRelativePath(stagePrefix, file);
         throw std::runtime_error("macOS payload architecture mismatch: '" +
-                                 relative.generic_string() + "' is " + *arch +
+                                 genericPathText(relative) + "' is " + *arch +
                                  " but staged zanna is " + expectedArch);
     }
 }
@@ -474,8 +477,8 @@ StagedToolchainIdentity detectStagedToolchainIdentity(const fs::path &stagePrefi
                                                       const std::vector<fs::path> &files) {
     for (const auto &file : files) {
         const fs::path rel = stagedLexicalRelativePath(stagePrefix, file);
-        const std::string relText = lowerCopy(toForwardSlashes(rel.generic_string()));
-        const std::string filename = lowerCopy(file.filename().string());
+        const std::string relText = lowerCopy(genericPathText(rel));
+        const std::string filename = lowerCopy(pathText(file.filename()));
         if (relText == "bin/zanna" || relText == "bin/zanna.exe" || filename == "zanna" ||
             filename == "zanna.exe") {
             return detectStagedExecutableIdentity(file);
@@ -490,8 +493,8 @@ StagedToolchainIdentity detectStagedToolchainIdentity(const fs::path &stagePrefi
 /// The order of checks matters: more specific prefixes must come before general ones.
 ToolchainFileKind classifyFileKind(const std::string &relativePath) {
     const std::string rel = lowerCopy(relativePath);
-    const fs::path relPath(relativePath);
-    const std::string filenameBase = toolchainBaseNameFromFilename(relPath.filename().string());
+    const fs::path relPath = zanna::filesystem::pathFromUtf8(relativePath);
+    const std::string filenameBase = toolchainBaseNameFromFilename(pathText(relPath.filename()));
 
     if (rel.rfind("bin/", 0) == 0 && rel.size() >= 10U &&
         rel.substr(rel.size() - 10U) == ".buildinfo") {
@@ -544,7 +547,7 @@ std::vector<fs::path> gatherFromInstallManifest(const fs::path &stagePrefix,
                                                 const fs::path &installManifestPath) {
     std::ifstream in(installManifestPath);
     if (!in)
-        throw std::runtime_error("cannot read install manifest: " + installManifestPath.string());
+        throw std::runtime_error("cannot read install manifest: " + pathText(installManifestPath));
 
     std::vector<fs::path> files;
     std::set<std::string> seen;
@@ -554,7 +557,7 @@ std::vector<fs::path> gatherFromInstallManifest(const fs::path &stagePrefix,
     while (std::getline(in, line)) {
         if (line.empty())
             continue;
-        fs::path filePath = fs::path(line);
+        fs::path filePath = zanna::filesystem::pathFromUtf8(line);
         if (filePath.is_relative()) {
             filePath = normalizedStage / filePath;
         } else if (auto relViaAlias = lexicalRelativeIfUnder(normalizedAlias, filePath)) {
@@ -564,13 +567,13 @@ std::vector<fs::path> gatherFromInstallManifest(const fs::path &stagePrefix,
         std::error_code ec;
         if (!fs::is_regular_file(filePath, ec) && !fs::is_symlink(filePath, ec)) {
             throw std::runtime_error("install manifest lists a missing or unsupported path: " +
-                                     filePath.string());
+                                     pathText(filePath));
         }
         validateStagedPathDoesNotEscape(normalizedStage, filePath);
         fs::path rel;
         rel = stagedLexicalRelativePath(normalizedStage, filePath);
-        const std::string relKey = sanitizePackageRelativePath(
-            toForwardSlashes(rel.generic_string()), "staged install path");
+        const std::string relKey =
+            sanitizePackageRelativePath(genericPathText(rel), "staged install path");
         if (seen.insert(relKey).second)
             files.push_back(filePath);
     }
@@ -593,10 +596,10 @@ std::vector<fs::path> gatherFromStageWalk(const fs::path &stagePrefix) {
         std::error_code typeEc;
         const bool regular = it->is_regular_file(typeEc);
         if (typeEc)
-            throw std::runtime_error("cannot inspect staged path: " + it->path().string());
+            throw std::runtime_error("cannot inspect staged path: " + pathText(it->path()));
         const bool symlink = it->is_symlink(typeEc);
         if (typeEc)
-            throw std::runtime_error("cannot inspect staged path: " + it->path().string());
+            throw std::runtime_error("cannot inspect staged path: " + pathText(it->path()));
         if (!regular && !symlink)
             continue;
         validateStagedPathDoesNotEscape(normalizedStage, it->path());
@@ -606,8 +609,8 @@ std::vector<fs::path> gatherFromStageWalk(const fs::path &stagePrefix) {
         } catch (const std::runtime_error &) {
             continue;
         }
-        const std::string relKey = sanitizePackageRelativePath(
-            toForwardSlashes(rel.generic_string()), "staged install path");
+        const std::string relKey =
+            sanitizePackageRelativePath(genericPathText(rel), "staged install path");
         if (seen.insert(relKey).second)
             files.push_back(it->path());
     }
@@ -626,28 +629,27 @@ ToolchainFileEntry makeEntry(const fs::path &stagePrefix, const fs::path &filePa
     ToolchainFileEntry entry;
     entry.stagedAbsolutePath = filePath;
     entry.stagedRelativePath =
-        sanitizePackageRelativePath(toForwardSlashes(rel.generic_string()), "staged install path");
+        sanitizePackageRelativePath(genericPathText(rel), "staged install path");
     entry.kind = classifyFileKind(entry.stagedRelativePath);
     entry.symlink = fs::is_symlink(filePath, ec);
     ec.clear();
     if (entry.symlink) {
         const fs::path rawTarget = fs::read_symlink(filePath, ec);
         if (ec)
-            throw std::runtime_error("cannot read staged symlink target: " + filePath.string());
+            throw std::runtime_error("cannot read staged symlink target: " + pathText(filePath));
         const fs::path resolved = fs::canonical(filePath, ec);
         if (ec)
-            throw std::runtime_error("cannot resolve staged symlink: " + filePath.string());
+            throw std::runtime_error("cannot resolve staged symlink: " + pathText(filePath));
         const fs::path parent = fs::canonical(filePath.parent_path(), ec);
         if (ec)
-            throw std::runtime_error("cannot resolve staged symlink parent: " + filePath.string());
+            throw std::runtime_error("cannot resolve staged symlink parent: " + pathText(filePath));
         if (rawTarget.is_absolute()) {
-            entry.symlinkTarget =
-                toForwardSlashes(fs::relative(resolved, parent, ec).generic_string());
+            entry.symlinkTarget = genericPathText(fs::relative(resolved, parent, ec));
             if (ec)
                 throw std::runtime_error("cannot compute staged symlink target: " +
-                                         filePath.string());
+                                         pathText(filePath));
         } else {
-            entry.symlinkTarget = toForwardSlashes(rawTarget.generic_string());
+            entry.symlinkTarget = genericPathText(rawTarget);
         }
         validateSingleLineField(entry.symlinkTarget, "staged symlink target");
         if (entry.symlinkTarget.empty() || entry.symlinkTarget.front() == '/' ||
@@ -655,13 +657,13 @@ ToolchainFileEntry makeEntry(const fs::path &stagePrefix, const fs::path &filePa
              std::isalpha(static_cast<unsigned char>(entry.symlinkTarget[0])) &&
              entry.symlinkTarget[1] == ':')) {
             throw std::runtime_error("staged symlink target must be relative: " +
-                                     filePath.string());
+                                     pathText(filePath));
         }
         entry.sizeBytes = 0;
     } else {
         entry.sizeBytes = static_cast<uint64_t>(fs::file_size(filePath, ec));
         if (ec)
-            throw std::runtime_error("cannot determine staged file size: " + filePath.string());
+            throw std::runtime_error("cannot determine staged file size: " + pathText(filePath));
     }
     const std::string lower = lowerCopy(entry.stagedRelativePath);
     entry.executable = entry.kind == ToolchainFileKind::Binary ||
@@ -692,8 +694,9 @@ bool manifestHasBaseNameKind(const ToolchainInstallManifest &manifest,
         manifest.files.begin(), manifest.files.end(), [&](const ToolchainFileEntry &entry) {
             if (entry.kind != kind)
                 return false;
-            return toolchainBaseNameFromFilename(
-                       fs::path(entry.stagedRelativePath).filename().string()) == baseName;
+            return toolchainBaseNameFromFilename(pathText(
+                       zanna::filesystem::pathFromUtf8(entry.stagedRelativePath).filename())) ==
+                   baseName;
         });
 }
 
@@ -709,12 +712,12 @@ bool stagedCMakeMetadataMentions(const ToolchainInstallManifest &manifest,
         std::ifstream in(entry.stagedAbsolutePath, std::ios::binary);
         if (!in)
             throw std::runtime_error("cannot read staged CMake metadata: " +
-                                     entry.stagedAbsolutePath.string());
+                                     pathText(entry.stagedAbsolutePath));
         std::ostringstream ss;
         ss << in.rdbuf();
         if (!in.good() && !in.eof())
             throw std::runtime_error("failed while reading staged CMake metadata: " +
-                                     entry.stagedAbsolutePath.string());
+                                     pathText(entry.stagedAbsolutePath));
         if (lowerCopy(ss.str()).find(lowerNeedle) != std::string::npos)
             return true;
     }
@@ -749,7 +752,7 @@ void validateManifestFileEntries(const ToolchainInstallManifest &manifest) {
         const fs::file_status symlinkStatus = fs::symlink_status(entry.stagedAbsolutePath, ec);
         if (ec)
             throw std::runtime_error("cannot stat staged manifest path '" +
-                                     entry.stagedAbsolutePath.string() + "': " + ec.message());
+                                     pathText(entry.stagedAbsolutePath) + "': " + ec.message());
         if (entry.symlink) {
             if (!fs::is_symlink(symlinkStatus)) {
                 throw std::runtime_error("toolchain manifest marks a non-symlink as symlink: " +
@@ -761,7 +764,7 @@ void validateManifestFileEntries(const ToolchainInstallManifest &manifest) {
             if (entry.symlinkTarget.empty())
                 throw std::runtime_error("toolchain manifest symlink target is empty: " + clean);
             const std::string normalizedTarget =
-                toForwardSlashes(fs::path(entry.symlinkTarget).generic_string());
+                genericPathText(zanna::filesystem::pathFromUtf8(entry.symlinkTarget));
             if (normalizedTarget.front() == '/' ||
                 (normalizedTarget.size() >= 2 &&
                  std::isalpha(static_cast<unsigned char>(normalizedTarget[0])) &&
@@ -769,9 +772,10 @@ void validateManifestFileEntries(const ToolchainInstallManifest &manifest) {
                 throw std::runtime_error("toolchain manifest symlink target must be relative: " +
                                          clean);
             }
-            const fs::path resolved =
-                (fs::path(clean).parent_path() / normalizedTarget).lexically_normal();
-            const std::string resolvedText = resolved.generic_string();
+            const fs::path resolved = (zanna::filesystem::pathFromUtf8(clean).parent_path() /
+                                       zanna::filesystem::pathFromUtf8(normalizedTarget))
+                                          .lexically_normal();
+            const std::string resolvedText = genericPathText(resolved);
             if (resolvedText.empty() || resolvedText == "." || resolvedText == ".." ||
                 resolvedText.rfind("../", 0) == 0) {
                 throw std::runtime_error(
@@ -852,7 +856,7 @@ ToolchainInstallManifest gatherToolchainInstallManifest(
     const fs::path normalizedStage = fs::weakly_canonical(stagePrefix, ec);
     const fs::path stage = ec ? stagePrefix.lexically_normal() : normalizedStage;
     if (!fs::exists(stage) || !fs::is_directory(stage))
-        throw std::runtime_error("staged install prefix does not exist: " + stage.string());
+        throw std::runtime_error("staged install prefix does not exist: " + pathText(stage));
 
     std::vector<fs::path> files;
     if (installManifestPath && fs::exists(*installManifestPath))
@@ -943,7 +947,7 @@ void validateToolchainInstallManifest(const ToolchainInstallManifest &manifest) 
                 if (entry.kind != ToolchainFileKind::Binary)
                     return false;
                 const std::string base = toolchainBaseNameFromFilename(
-                    fs::path(entry.stagedRelativePath).filename().string());
+                    pathText(zanna::filesystem::pathFromUtf8(entry.stagedRelativePath).filename()));
                 return base == nameNoExt;
             });
     };
@@ -1005,7 +1009,8 @@ std::string mapInstallPath(const ToolchainFileEntry &file, InstallPathPolicy pol
             return rel.empty() ? "/usr/local/zanna" : "/usr/local/zanna/" + rel;
         case InstallPathPolicy::LinuxUsrRoot:
             if (file.kind == ToolchainFileKind::Doc && rel.rfind("share/doc/", 0) != 0) {
-                const std::string name = fs::path(rel).filename().generic_string();
+                const std::string name =
+                    genericPathText(zanna::filesystem::pathFromUtf8(rel).filename());
                 return name.empty() ? "/usr/share/doc/zanna" : "/usr/share/doc/zanna/" + name;
             }
             return rel.empty() ? "/usr" : "/usr/" + rel;

@@ -42,6 +42,7 @@
 #include "codegen/common/NativeEHLowering.hpp"
 #include "codegen/common/linker/NativeLinker.hpp"
 #include "codegen/common/objfile/ObjectFileWriter.hpp"
+#include "common/Filesystem.hpp"
 #include "common/PlatformCapabilities.hpp"
 #include "common/RunProcess.hpp"
 #include "il/transform/PassManager.hpp"
@@ -130,7 +131,8 @@ static std::vector<std::string> systemAssemblerArgs(TargetPlatform platform) {
 
 /// @brief Return true if @p path has a .o or .obj extension (object file output).
 static bool isObjectOutputPath(const std::string &path) {
-    std::string ext = std::filesystem::path(path).extension().string();
+    std::string ext =
+        zanna::filesystem::pathToUtf8(zanna::filesystem::pathFromUtf8(path).extension());
     for (char &ch : ext) {
         if (ch >= 'A' && ch <= 'Z')
             ch = static_cast<char>(ch - 'A' + 'a');
@@ -170,7 +172,7 @@ static int linkToExe(const std::string &asmPath,
     if (const int rc = prepareLinkContext(asmPath, ctx, out, err); rc != 0)
         return rc;
 
-    std::filesystem::path objPath = std::filesystem::path(asmPath);
+    std::filesystem::path objPath = zanna::filesystem::pathFromUtf8(asmPath);
     objPath.replace_extension(".o");
     const int arc = invokeAssembler(
         systemAssemblerArgs(targetPlatform), asmPath, common::pathToUtf8(objPath), out, err);
@@ -573,20 +575,21 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module mod,
     std::string asmText = pipelineModule.assembly;
     std::string asmPath = opts_.output_asm_path;
     if (asmPath.empty()) {
-        std::filesystem::path p(opts_.input_il_path);
+        std::filesystem::path p = zanna::filesystem::pathFromUtf8(opts_.input_il_path);
         p.replace_extension(".s");
         asmPath = common::pathToUtf8(p);
     }
 
     if (opts_.emit_asm) {
-        if (!common::writeTextFile(asmPath, asmText, err)) {
+        if (!common::writeTextFile(zanna::filesystem::pathFromUtf8(asmPath), asmText, err)) {
             result.exit_code = 1;
             return finish();
         }
     }
 
     if (opts_.output_obj_path.empty() && !opts_.run_native) {
-        if (!opts_.emit_asm && !common::writeTextFile(asmPath, asmText, err)) {
+        if (!opts_.emit_asm &&
+            !common::writeTextFile(zanna::filesystem::pathFromUtf8(asmPath), asmText, err)) {
             result.exit_code = 1;
             return finish();
         }
@@ -595,7 +598,8 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module mod,
 
     // --- Inject asset blob into .rodata (if present) ---
     if (pipelineModule.binaryRodata && !opts_.asset_blob_path.empty()) {
-        std::ifstream af(opts_.asset_blob_path, std::ios::binary | std::ios::ate);
+        std::ifstream af(zanna::filesystem::pathFromUtf8(opts_.asset_blob_path),
+                         std::ios::binary | std::ios::ate);
         if (!af.is_open()) {
             err << "error: failed to open asset blob '" << opts_.asset_blob_path << "'\n";
             result.exit_code = 1;
@@ -656,7 +660,7 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module mod,
         std::filesystem::path objPath;
         bool outputIsObj = false;
         if (!opts_.output_obj_path.empty() && isObjectOutputPath(opts_.output_obj_path)) {
-            objPath = opts_.output_obj_path;
+            objPath = zanna::filesystem::pathFromUtf8(opts_.output_obj_path);
             outputIsObj = true;
         } else if (!opts_.output_obj_path.empty()) {
             // Native-exe build: the intermediate object belongs next to the
@@ -664,9 +668,10 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module mod,
             // Deriving it from input_il_path lets two concurrent builds of the
             // same source to different -o outputs (e.g. the -O0/-O2 struct-return
             // ABI tests) clobber each other's intermediate .o under parallel ctest.
-            objPath = std::filesystem::path(opts_.output_obj_path).replace_extension(".o");
+            objPath =
+                zanna::filesystem::pathFromUtf8(opts_.output_obj_path).replace_extension(".o");
         } else {
-            objPath = std::filesystem::path(opts_.input_il_path).replace_extension(".o");
+            objPath = zanna::filesystem::pathFromUtf8(opts_.input_il_path).replace_extension(".o");
         }
 
         using namespace zanna::codegen::objfile;
@@ -745,8 +750,8 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module mod,
 
         std::filesystem::path exe =
             opts_.output_obj_path.empty()
-                ? std::filesystem::path(opts_.input_il_path).replace_extension("")
-                : std::filesystem::path(opts_.output_obj_path);
+                ? zanna::filesystem::pathFromUtf8(opts_.input_il_path).replace_extension("")
+                : zanna::filesystem::pathFromUtf8(opts_.output_obj_path);
 
         if (opts_.link_mode == LinkMode::System)
             err << "warning: --system-link is deprecated; using the native linker\n";
@@ -781,7 +786,8 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module mod,
         return finish();
     }
 
-    if (!opts_.emit_asm && !common::writeTextFile(asmPath, asmText, err)) {
+    if (!opts_.emit_asm &&
+        !common::writeTextFile(zanna::filesystem::pathFromUtf8(asmPath), asmText, err)) {
         result.exit_code = 1;
         return finish();
     }
@@ -817,8 +823,8 @@ PipelineResult CodegenPipeline::runWithModule(il::core::Module mod,
 
     std::filesystem::path exe =
         opts_.output_obj_path.empty()
-            ? std::filesystem::path(opts_.input_il_path).replace_extension("")
-            : std::filesystem::path(opts_.output_obj_path);
+            ? zanna::filesystem::pathFromUtf8(opts_.input_il_path).replace_extension("")
+            : zanna::filesystem::pathFromUtf8(opts_.output_obj_path);
 
     if (opts_.link_mode == LinkMode::System)
         err << "warning: --system-link is deprecated; using the native linker\n";

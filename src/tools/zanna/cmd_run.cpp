@@ -13,6 +13,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "cli.hpp"
+#include "common/Filesystem.hpp"
 #include "frontends/basic/BasicCompiler.hpp"
 #include "frontends/zia/Compiler.hpp"
 #include "frontends/zia/Warnings.hpp"
@@ -78,7 +79,7 @@ std::string selectMixedLibraryEntry(std::vector<std::string> files, ProjectLang 
     std::sort(files.begin(), files.end());
     const char *mainName = lang == ProjectLang::Zia ? "main.zia" : "main.bas";
     const auto it = std::find_if(files.begin(), files.end(), [&](const std::string &path) {
-        return std::filesystem::path(path).filename() == mainName;
+        return zanna::filesystem::pathFromUtf8(path).filename() == mainName;
     });
     return it != files.end() ? *it : files.front();
 }
@@ -95,7 +96,7 @@ class ScopedTempPath {
     ~ScopedTempPath() {
         if (!path_.empty()) {
             std::error_code ec;
-            std::filesystem::remove(path_, ec);
+            std::filesystem::remove(zanna::filesystem::pathFromUtf8(path_), ec);
         }
     }
 
@@ -106,7 +107,7 @@ class ScopedTempPath {
     void reset(std::string path) {
         if (!path_.empty()) {
             std::error_code ec;
-            std::filesystem::remove(path_, ec);
+            std::filesystem::remove(zanna::filesystem::pathFromUtf8(path_), ec);
         }
         path_ = std::move(path);
     }
@@ -541,11 +542,8 @@ il::support::Expected<RunBuildConfig> parseRunBuildArgs(RunMode mode, int argc, 
                                             {}});
             }
             if (i + 1 >= argc) {
-                return il::support::Expected<RunBuildConfig>(
-                    il::support::Diagnostic{il::support::Severity::Error,
-                                            "--stack-size requires a byte count",
-                                            {},
-                                            {}});
+                return il::support::Expected<RunBuildConfig>(il::support::Diagnostic{
+                    il::support::Severity::Error, "--stack-size requires a byte count", {}, {}});
             }
             const std::string val = argv[++i];
             char *end = nullptr;
@@ -1126,16 +1124,18 @@ int executeRunBuildConfig(RunBuildConfig config) {
 
         // -o path ends in .il: emit IL text (backwards compat)
         if (!zanna::tools::isNativeOutputPath(config.outputPath)) {
-            const auto outputParent = std::filesystem::path(config.outputPath).parent_path();
+            const auto outputParent =
+                zanna::filesystem::pathFromUtf8(config.outputPath).parent_path();
             if (!outputParent.empty()) {
                 std::error_code ec;
                 std::filesystem::create_directories(outputParent, ec);
                 if (ec) {
-                    printCommandDiagnostic(makeCommandError("cannot create output directory: " +
-                                                            outputParent.string() + ": " +
-                                                            ec.message()),
-                                           &sm,
-                                           config.shared.diagnosticFormat);
+                    printCommandDiagnostic(
+                        makeCommandError("cannot create output directory: " +
+                                         zanna::filesystem::pathToUtf8(outputParent) + ": " +
+                                         ec.message()),
+                        &sm,
+                        config.shared.diagnosticFormat);
                     return 1;
                 }
             }
@@ -1168,7 +1168,8 @@ int executeRunBuildConfig(RunBuildConfig config) {
         std::string assetBlobPath;
         if (!proj.embedAssets.empty() || !proj.packGroups.empty()) {
             const auto assetStart = std::chrono::steady_clock::now();
-            std::string outputDir = std::filesystem::path(config.outputPath).parent_path().string();
+            std::string outputDir = zanna::filesystem::pathToUtf8(
+                zanna::filesystem::pathFromUtf8(config.outputPath).parent_path());
             if (outputDir.empty())
                 outputDir = ".";
 
@@ -1293,7 +1294,7 @@ int cmdBuildMany(int argc, char **argv) {
                 std::cerr << "error: --output-dir requires a path\n" << usage;
                 return 1;
             }
-            outputDir = argv[index];
+            outputDir = zanna::filesystem::pathFromUtf8(argv[index]);
             continue;
         }
         if (arg == "--arch") {
@@ -1322,7 +1323,9 @@ int cmdBuildMany(int argc, char **argv) {
             return 1;
         }
         const std::string name(arg.substr(0, equals));
-        if (std::filesystem::path(name).filename() != name || name == "." || name == "..") {
+        if (zanna::filesystem::pathFromUtf8(name).filename() !=
+                zanna::filesystem::pathFromUtf8(name) ||
+            name == "." || name == "..") {
             std::cerr << "error: build-many output name must be one path component: '" << name
                       << "'\n";
             return 1;
@@ -1347,7 +1350,8 @@ int cmdBuildMany(int argc, char **argv) {
         RunBuildConfig config;
         config.mode = RunMode::Build;
         config.target = target;
-        config.outputPath = (outputDir / name).string();
+        config.outputPath =
+            zanna::filesystem::pathToUtf8(outputDir / zanna::filesystem::pathFromUtf8(name));
         config.shared.timeCompile = timeCompile;
         config.fastLinkOverride = fastLink;
         if (arch)

@@ -22,6 +22,8 @@
 
 #include "tools/common/source_loader.hpp"
 
+#include "common/Filesystem.hpp"
+
 #include <fstream>
 #include <new>
 #include <utility>
@@ -39,7 +41,7 @@ constexpr auto kMaxSourceSize = static_cast<std::streamoff>(256ULL * 1024 * 1024
 /// @param path Source file path to read.
 /// @return File contents on success, or an I/O diagnostic on failure.
 il::support::Expected<std::string> readSourceContents(const std::string &path) {
-    std::ifstream in(path, std::ios::binary);
+    std::ifstream in(zanna::filesystem::pathFromUtf8(path), std::ios::binary);
     if (!in) {
         return il::support::Expected<std::string>(il::support::Diagnostic{
             il::support::Severity::Error, "unable to open " + path, {}, {}});

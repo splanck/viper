@@ -20,6 +20,7 @@
 #include "codegen/common/objfile/ElfWriter.hpp"
 #include "codegen/common/objfile/MachOWriter.hpp"
 #include "codegen/common/objfile/ObjFileWriterUtil.hpp"
+#include "common/Filesystem.hpp"
 
 #include <fstream>
 
@@ -84,7 +85,7 @@ bool ObjectFileWriter::commitOutput(const std::string &path,
         *memoryOutput_ = bytes;
         return true;
     }
-    std::ofstream ofs(path, std::ios::binary | std::ios::trunc);
+    std::ofstream ofs(zanna::filesystem::pathFromUtf8(path), std::ios::binary | std::ios::trunc);
     if (!ofs) {
         err << writerName << ": cannot open " << path << " for writing\n";
         return false;

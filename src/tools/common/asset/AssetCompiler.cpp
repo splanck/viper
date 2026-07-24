@@ -28,6 +28,7 @@
 
 #include "ZpakWriter.hpp"
 #include "codegen/common/objfile/ObjectFileWriter.hpp"
+#include "common/Filesystem.hpp"
 #include "tools/common/packaging/PkgHash.hpp"
 #include "tools/common/packaging/PkgUtils.hpp"
 #include "tools/common/project_loader.hpp"
@@ -69,7 +70,7 @@ struct CachedAssetFile {
 static std::string assetFileCacheKey(const fs::path &path) {
     std::error_code ec;
     const fs::path canonical = fs::weakly_canonical(path, ec);
-    return (ec ? path.lexically_normal() : canonical).string();
+    return zanna::filesystem::pathToUtf8(ec ? path.lexically_normal() : canonical);
 }
 
 /// @brief Shared cache for asset file payloads read during one process.
@@ -104,12 +105,13 @@ static std::vector<uint8_t> readAssetFileUncached(const fs::path &path,
                                                   std::uintmax_t expectedSize) {
     std::ifstream in(path, std::ios::binary);
     if (!in)
-        throw std::runtime_error("cannot read asset: " + path.string());
+        throw std::runtime_error("cannot read asset: " + zanna::filesystem::pathToUtf8(path));
     std::vector<uint8_t> data(static_cast<size_t>(expectedSize));
     if (!data.empty())
         in.read(reinterpret_cast<char *>(data.data()), static_cast<std::streamsize>(data.size()));
     if (!in)
-        throw std::runtime_error("failed while reading asset: " + path.string());
+        throw std::runtime_error("failed while reading asset: " +
+                                 zanna::filesystem::pathToUtf8(path));
     return data;
 }
 
@@ -156,12 +158,15 @@ static std::string contentHashForFile(const fs::path &path) {
     std::error_code ec;
     const auto size = fs::file_size(path, ec);
     if (ec)
-        throw std::runtime_error("cannot stat asset for cache key: " + path.string());
+        throw std::runtime_error("cannot stat asset for cache key: " +
+                                 zanna::filesystem::pathToUtf8(path));
     if (size > kMaxAssetFileBytes)
-        throw std::runtime_error("asset file too large for cache key: " + path.string());
+        throw std::runtime_error("asset file too large for cache key: " +
+                                 zanna::filesystem::pathToUtf8(path));
     const auto mtime = fs::last_write_time(path, ec);
     if (ec)
-        throw std::runtime_error("cannot stat asset mtime for cache key: " + path.string());
+        throw std::runtime_error("cannot stat asset mtime for cache key: " +
+                                 zanna::filesystem::pathToUtf8(path));
     if (auto cached = lookupCachedAssetFile(path, size, mtime))
         return cached->hash;
     auto data = readAssetFileUncached(path, size);
@@ -180,7 +185,7 @@ static std::string contentHashForFile(const fs::path &path) {
 /// @param key Cache-key string accumulated in place.
 static void appendFileFingerprint(const fs::path &path, std::string &key) {
     std::error_code ec;
-    key += path.lexically_normal().string();
+    key += zanna::filesystem::pathToUtf8(path.lexically_normal());
     key.push_back('|');
     const auto size = fs::file_size(path, ec);
     key += ec ? std::string{"?"} : std::to_string(size);
@@ -222,7 +227,8 @@ static void appendSourceFingerprint(const fs::path &rootDir,
                     files.push_back(entry.resolvedPath);
             });
         std::sort(files.begin(), files.end(), [](const fs::path &a, const fs::path &b) {
-            return a.generic_string() < b.generic_string();
+            return zanna::filesystem::genericPathToUtf8(a) <
+                   zanna::filesystem::genericPathToUtf8(b);
         });
         for (const auto &file : files)
             appendFileFingerprint(file, key);
@@ -245,8 +251,9 @@ static void appendSourceFingerprint(const fs::path &rootDir,
 /// @return A string uniquely identifying this asset build.
 static std::string assetCacheKey(const il::tools::common::ProjectConfig &config,
                                  const std::string &outputDir) {
-    fs::path rootDir(config.rootDir);
-    std::string key = rootDir.lexically_normal().string() + "\n" + outputDir + "\n";
+    const fs::path rootDir = zanna::filesystem::pathFromUtf8(config.rootDir);
+    std::string key =
+        zanna::filesystem::pathToUtf8(rootDir.lexically_normal()) + "\n" + outputDir + "\n";
     for (const auto &entry : config.embedAssets)
         appendSourceFingerprint(rootDir, entry.sourcePath, false, key);
     for (const auto &group : config.packGroups) {
@@ -279,7 +286,7 @@ static std::uintmax_t &assetBundleCacheBytes() {
 ///          limit enforced by asset validation. Reading here keeps cache
 ///          validation self-contained and catches same-size external rewrites.
 static std::string hashGeneratedPackFile(const fs::path &path) {
-    const auto data = zanna::pkg::readFile(path.string());
+    const auto data = zanna::pkg::readFile(path);
     return data.empty() ? zanna::pkg::sha256Hex(nullptr, 0)
                         : zanna::pkg::sha256Hex(data.data(), data.size());
 }
@@ -300,16 +307,16 @@ static bool readFile(const fs::path &path, std::vector<uint8_t> &out, std::strin
     std::error_code ec;
     const auto size = fs::file_size(path, ec);
     if (ec) {
-        err = "cannot determine size of: " + path.string();
+        err = "cannot determine size of: " + zanna::filesystem::pathToUtf8(path);
         return false;
     }
     if (size > kMaxAssetFileBytes) {
-        err = "asset file too large: " + path.string() + " (limit: 256 MB)";
+        err = "asset file too large: " + zanna::filesystem::pathToUtf8(path) + " (limit: 256 MB)";
         return false;
     }
     const auto mtime = fs::last_write_time(path, ec);
     if (ec) {
-        err = "cannot determine modification time of: " + path.string();
+        err = "cannot determine modification time of: " + zanna::filesystem::pathToUtf8(path);
         return false;
     }
     if (auto cached = lookupCachedAssetFile(path, size, mtime)) {
@@ -319,7 +326,7 @@ static bool readFile(const fs::path &path, std::vector<uint8_t> &out, std::strin
     try {
         out = readAssetFileUncached(path, size);
     } catch (const std::bad_alloc &) {
-        err = "out of memory reading asset: " + path.string();
+        err = "out of memory reading asset: " + zanna::filesystem::pathToUtf8(path);
         return false;
     } catch (const std::exception &ex) {
         err = ex.what();
@@ -352,9 +359,10 @@ static bool enumerateDir(const fs::path &dir,
                 fs::path relPath = fs::relative(entry.logicalPath, dir, ec);
                 if (ec) {
                     throw std::runtime_error("cannot compute relative path for: " +
-                                             entry.logicalPath.string());
+                                             zanna::filesystem::pathToUtf8(entry.logicalPath));
                 }
-                entries.push_back({relPath.generic_string(), entry.resolvedPath});
+                entries.push_back(
+                    {zanna::filesystem::genericPathToUtf8(relPath), entry.resolvedPath});
             });
     } catch (const std::exception &e) {
         err = e.what();
@@ -400,7 +408,7 @@ static bool resolveAssetSourcePath(const std::string &sourcePath,
 /// @param err Set to the first validation failure encountered.
 /// @return true when all sources and pack names are valid; false otherwise.
 static bool validateAssetSources(const il::tools::common::ProjectConfig &config, std::string &err) {
-    const fs::path rootDir(config.rootDir);
+    const fs::path rootDir = zanna::filesystem::pathFromUtf8(config.rootDir);
     fs::path resolvedPath;
     std::string cleanPath;
     for (const auto &entry : config.embedAssets) {
@@ -443,7 +451,8 @@ static bool addSourceToWriter(const std::string &sourcePath,
 
     std::error_code ec;
     if (!fs::exists(absPath, ec)) {
-        err = "asset source not found: " + sourcePath + " (resolved to " + absPath.string() + ")";
+        err = "asset source not found: " + sourcePath + " (resolved to " +
+              zanna::filesystem::pathToUtf8(absPath) + ")";
         return false;
     }
 
@@ -471,7 +480,10 @@ static bool addSourceToWriter(const std::string &sourcePath,
         // Use the sourcePath as the asset name (forward slashes).
         try {
             writer.addEntry(
-                fs::path(cleanPath).generic_string(), data.data(), data.size(), compress);
+                zanna::filesystem::genericPathToUtf8(zanna::filesystem::pathFromUtf8(cleanPath)),
+                data.data(),
+                data.size(),
+                compress);
         } catch (const std::exception &e) {
             err = e.what();
             return false;
@@ -516,18 +528,19 @@ std::optional<AssetBundle> compileAssets(const il::tools::common::ProjectConfig 
                 packsExist = false;
             for (size_t i = 0; packsExist && i < it->second.packFilePaths.size(); ++i) {
                 const auto &pack = it->second.packFilePaths[i];
+                const fs::path packPath = zanna::filesystem::pathFromUtf8(pack);
                 std::error_code ec;
-                if (!fs::exists(pack, ec) || ec) {
+                if (!fs::exists(packPath, ec) || ec) {
                     packsExist = false;
                     break;
                 }
-                const auto size = fs::file_size(pack, ec);
+                const auto size = fs::file_size(packPath, ec);
                 if (ec || size != it->second.packFileSizes[i]) {
                     packsExist = false;
                     break;
                 }
                 try {
-                    if (hashGeneratedPackFile(pack) != it->second.packFileHashes[i]) {
+                    if (hashGeneratedPackFile(packPath) != it->second.packFileHashes[i]) {
                         packsExist = false;
                         break;
                     }
@@ -542,7 +555,7 @@ std::optional<AssetBundle> compileAssets(const il::tools::common::ProjectConfig 
     }
 
     AssetBundle bundle;
-    fs::path rootDir(config.rootDir);
+    const fs::path rootDir = zanna::filesystem::pathFromUtf8(config.rootDir);
 
     // ── 1. Process embed directives → ZPAK blob for .rodata ──
 
@@ -588,16 +601,18 @@ std::optional<AssetBundle> compileAssets(const il::tools::common::ProjectConfig 
 
         // Output path: <outputDir>/<projectName>-<packName>.zpak
         std::string zpakName = safeProjectName + "-" + safeGroupName + ".zpak";
-        fs::path zpakPath = fs::path(outputDir) / zpakName;
+        const fs::path zpakPath =
+            zanna::filesystem::pathFromUtf8(outputDir) / zanna::filesystem::pathFromUtf8(zpakName);
+        const std::string zpakPathUtf8 = zanna::filesystem::pathToUtf8(zpakPath);
 
-        if (!packWriter.writeToFile(zpakPath.string(), err))
+        if (!packWriter.writeToFile(zpakPathUtf8, err))
             return std::nullopt;
 
-        bundle.packFilePaths.push_back(zpakPath.string());
+        bundle.packFilePaths.push_back(zpakPathUtf8);
         std::error_code sizeEc;
         const auto zpakSize = fs::file_size(zpakPath, sizeEc);
         if (sizeEc) {
-            err = "cannot stat generated asset pack: " + zpakPath.string();
+            err = "cannot stat generated asset pack: " + zpakPathUtf8;
             return std::nullopt;
         }
         bundle.packFileSizes.push_back(zpakSize);

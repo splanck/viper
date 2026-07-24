@@ -10,6 +10,7 @@
 # Key invariants:
 #   - A failed signer cannot replace an existing artifact or its metadata.
 #   - Successful signing publishes both the artifact and canonical hash metadata.
+#   - Signing validates output ancestry before and after directory creation.
 #   - Demo automation retains single-config lookup and path-confinement guards.
 #   - Studio artifacts are staged, PE-validated, provenance-bound, and pair-published.
 #   - The cmd.exe demo compatibility entry point remains a logic-free forwarding shim.
@@ -166,6 +167,28 @@ $status = Invoke-PowerShellScript -Path $SignScript -Arguments @(
     "-SignToolPath", $successfulSigner
 )
 Assert-True ($status -ne 0) "A whitespace-bearing timestamp URL was accepted."
+
+$signSource = [IO.File]::ReadAllText($SignScript)
+$outputPreflight = $signSource.IndexOf(
+    'Assert-FileDestination -Path $outputFull',
+    [StringComparison]::Ordinal)
+$directoryCreate = $signSource.IndexOf(
+    '[IO.Directory]::CreateDirectory($parent)',
+    [StringComparison]::Ordinal)
+$outputRecheck = if ($outputPreflight -ge 0) {
+    $signSource.IndexOf(
+        'Assert-FileDestination -Path $outputFull',
+        $outputPreflight + 1,
+        [StringComparison]::Ordinal)
+} else {
+    -1
+}
+Assert-True ($outputPreflight -ge 0 -and $directoryCreate -gt $outputPreflight -and
+             $outputRecheck -gt $directoryCreate) `
+    "The signing script does not validate output ancestry around directory creation."
+Assert-True ($signSource.Contains('Signing artifact staging path') -and
+             $signSource.Contains('Signed installer backup path')) `
+    "The signing script does not preflight every staging and backup destination."
 
 $status = Invoke-PowerShellScript -Path $DemoScript -Arguments @("--help")
 Assert-True ($status -eq 0) "The Windows demo driver help path failed."

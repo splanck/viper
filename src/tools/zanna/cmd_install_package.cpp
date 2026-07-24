@@ -26,6 +26,8 @@
 
 #include "cli.hpp"
 
+#include "common/Environment.hpp"
+#include "common/Filesystem.hpp"
 #include "common/PlatformCapabilities.hpp"
 #include "common/RunProcess.hpp"
 #include "tools/common/packaging/LinuxPackageBuilder.hpp"
@@ -311,8 +313,9 @@ std::optional<bool> readCMakeCacheBool(const fs::path &cachePath, std::string_vi
 
 /// @brief Read an environment variable, returning "" when it is unset.
 std::string getenvOrEmpty(const char *name) {
-    const char *value = std::getenv(name);
-    return value == nullptr ? std::string{} : std::string(value);
+    const auto value =
+        zanna::environment::getUtf8(name ? std::string_view(name) : std::string_view{});
+    return value.value_or(std::string{});
 }
 
 /// @brief Return true if the args request Windows Authenticode signing.
@@ -343,7 +346,7 @@ bool macOSPackageSigningRequested(const InstallPackageArgs &args) {
 fs::path defaultWindowsSigningScriptPath(const InstallPackageArgs &args) {
     const std::string envScript = getenvOrEmpty("ZANNA_WINDOWS_SIGN_SCRIPT");
     if (!envScript.empty())
-        return envScript;
+        return zanna::filesystem::pathFromUtf8(envScript);
     const fs::path rel = fs::path("scripts") / "sign-windows-installer.ps1";
     std::vector<fs::path> roots;
     roots.push_back(fs::current_path());
@@ -412,18 +415,21 @@ bool signWindowsInstallerArtifact(const InstallPackageArgs &args,
 
     const fs::path signScript = defaultWindowsSigningScriptPath(args);
     if (!fs::is_regular_file(signScript)) {
-        err << "error: Windows signing script not found: " << signScript.string() << "\n";
+        err << "error: Windows signing script not found: "
+            << zanna::filesystem::pathToUtf8(signScript) << "\n";
         return false;
     }
 
+    const std::string signScriptUtf8 = zanna::filesystem::pathToUtf8(signScript);
+    const std::string artifactPathUtf8 = zanna::filesystem::pathToUtf8(artifactPath);
     std::vector<std::string> signCmd = {"powershell.exe",
                                         "-NoProfile",
                                         "-ExecutionPolicy",
                                         "Bypass",
                                         "-File",
-                                        signScript.string(),
+                                        signScriptUtf8,
                                         "-InputPath",
-                                        artifactPath.string(),
+                                        artifactPathUtf8,
                                         "-TimestampUrl",
                                         timestampUrl,
                                         "-SignToolPath",
@@ -432,7 +438,7 @@ bool signWindowsInstallerArtifact(const InstallPackageArgs &args,
         signCmd.push_back("-Thumbprint");
         signCmd.push_back(thumbprint);
     } else {
-        if (!fs::is_regular_file(pfxPath)) {
+        if (!fs::is_regular_file(zanna::filesystem::pathFromUtf8(pfxPath))) {
             err << "error: Windows signing PFX not found: " << pfxPath << "\n";
             return false;
         }
@@ -477,7 +483,7 @@ std::vector<uint8_t> signWindowsPeBytes(const InstallPackageArgs &args,
     const fs::path tempDir =
         zanna::pkg::createUniqueTempDirectory(fs::temp_directory_path(), "zanna-pe-sign");
     try {
-        fs::path leaf = fs::path(logicalName).filename();
+        fs::path leaf = zanna::filesystem::pathFromUtf8(logicalName).filename();
         if (leaf.empty())
             leaf = "payload.exe";
         const fs::path tempPe = tempDir / leaf;
@@ -488,7 +494,7 @@ std::vector<uint8_t> signWindowsPeBytes(const InstallPackageArgs &args,
             throw std::runtime_error("Authenticode signing failed for '" +
                                      std::string(logicalName) + "': " + signingError.str());
         }
-        std::vector<uint8_t> signedPe = zanna::pkg::readFile(tempPe.string());
+        std::vector<uint8_t> signedPe = zanna::pkg::readFile(tempPe);
         std::error_code cleanupEc;
         fs::remove_all(tempDir, cleanupEc);
         return signedPe;
@@ -545,8 +551,11 @@ bool signMacOSPackageArtifact(const InstallPackageArgs &args,
     const fs::path signedDir = zanna::pkg::createUniqueTempDirectory(signedParent, "signed-pkg");
     const fs::path signedPath = signedDir / artifactPath.filename();
     std::error_code ec;
-    const RunResult signResult = run_process(
-        {"productsign", "--sign", identity, artifactPath.string(), signedPath.string()});
+    const RunResult signResult = run_process({"productsign",
+                                              "--sign",
+                                              identity,
+                                              zanna::filesystem::pathToUtf8(artifactPath),
+                                              zanna::filesystem::pathToUtf8(signedPath)});
     if (signResult.exit_code != 0) {
         err << "error: productsign failed with exit code " << signResult.exit_code << "\n"
             << signResult.out << signResult.err;
@@ -563,7 +572,7 @@ bool signMacOSPackageArtifact(const InstallPackageArgs &args,
     fs::remove_all(signedDir, ec);
 
     const RunResult verifyResult =
-        run_process({"pkgutil", "--check-signature", artifactPath.string()});
+        run_process({"pkgutil", "--check-signature", zanna::filesystem::pathToUtf8(artifactPath)});
     if (verifyResult.exit_code != 0) {
         err << "error: pkgutil --check-signature failed for signed macOS package\n"
             << verifyResult.out << verifyResult.err;
@@ -580,7 +589,7 @@ bool signMacOSPackageArtifact(const InstallPackageArgs &args,
             notaryResult = run_process({"xcrun",
                                         "notarytool",
                                         "submit",
-                                        artifactPath.string(),
+                                        zanna::filesystem::pathToUtf8(artifactPath),
                                         "--keychain-profile",
                                         notaryProfile,
                                         "--wait",
@@ -596,15 +605,15 @@ bool signMacOSPackageArtifact(const InstallPackageArgs &args,
             return false;
         }
         if (args.macosStaple) {
-            const RunResult stapleResult =
-                run_process({"xcrun", "stapler", "staple", artifactPath.string()});
+            const RunResult stapleResult = run_process(
+                {"xcrun", "stapler", "staple", zanna::filesystem::pathToUtf8(artifactPath)});
             if (stapleResult.exit_code != 0) {
                 err << "error: stapler failed with exit code " << stapleResult.exit_code << "\n"
                     << stapleResult.out << stapleResult.err;
                 return false;
             }
-            const RunResult stapleValidateResult =
-                run_process({"xcrun", "stapler", "validate", artifactPath.string()});
+            const RunResult stapleValidateResult = run_process(
+                {"xcrun", "stapler", "validate", zanna::filesystem::pathToUtf8(artifactPath)});
             if (stapleValidateResult.exit_code != 0) {
                 err << "error: stapler validation failed with exit code "
                     << stapleValidateResult.exit_code << "\n"
@@ -612,8 +621,13 @@ bool signMacOSPackageArtifact(const InstallPackageArgs &args,
                 return false;
             }
         }
-        const RunResult gatekeeperResult = run_process(
-            {"spctl", "--assess", "--type", "install", "--verbose=2", artifactPath.string()});
+        const RunResult gatekeeperResult =
+            run_process({"spctl",
+                         "--assess",
+                         "--type",
+                         "install",
+                         "--verbose=2",
+                         zanna::filesystem::pathToUtf8(artifactPath)});
         if (gatekeeperResult.exit_code != 0) {
             err << "error: Gatekeeper assessment failed for notarized macOS package\n"
                 << gatekeeperResult.out << gatekeeperResult.err;
@@ -662,7 +676,7 @@ bool notarizeMacOSDmgArtifact(const InstallPackageArgs &args,
         notaryResult = run_process({"xcrun",
                                     "notarytool",
                                     "submit",
-                                    dmgPath.string(),
+                                    zanna::filesystem::pathToUtf8(dmgPath),
                                     "--keychain-profile",
                                     notaryProfile,
                                     "--wait",
@@ -679,7 +693,7 @@ bool notarizeMacOSDmgArtifact(const InstallPackageArgs &args,
     }
     if (args.macosStaple) {
         const RunResult stapleResult =
-            run_process({"xcrun", "stapler", "staple", dmgPath.string()});
+            run_process({"xcrun", "stapler", "staple", zanna::filesystem::pathToUtf8(dmgPath)});
         if (stapleResult.exit_code != 0) {
             err << "error: stapler failed for .dmg with exit code " << stapleResult.exit_code
                 << "\n"
@@ -687,7 +701,7 @@ bool notarizeMacOSDmgArtifact(const InstallPackageArgs &args,
             return false;
         }
         const RunResult stapleValidateResult =
-            run_process({"xcrun", "stapler", "validate", dmgPath.string()});
+            run_process({"xcrun", "stapler", "validate", zanna::filesystem::pathToUtf8(dmgPath)});
         if (stapleValidateResult.exit_code != 0) {
             err << "error: stapler validation failed for .dmg with exit code "
                 << stapleValidateResult.exit_code << "\n"
@@ -702,7 +716,7 @@ bool notarizeMacOSDmgArtifact(const InstallPackageArgs &args,
                                                     "--context",
                                                     "context:primary-signature",
                                                     "--verbose=2",
-                                                    dmgPath.string()});
+                                                    zanna::filesystem::pathToUtf8(dmgPath)});
     if (gatekeeperResult.exit_code != 0) {
         err << "error: Gatekeeper assessment failed for notarized macOS .dmg\n"
             << gatekeeperResult.out << gatekeeperResult.err;
@@ -771,7 +785,7 @@ std::string portableArchiveVersionComponent(const std::string &version) {
 ///          decoding the machine/cputype field into platform+arch.
 /// @return The detected info, or std::nullopt if the format is unrecognized.
 std::optional<NativeExecutableInfo> detectNativeExecutableInfo(const fs::path &path) {
-    const auto data = zanna::pkg::readFile(path.string());
+    const auto data = zanna::pkg::readFile(path);
     if (data.size() < 20)
         return std::nullopt;
 
@@ -842,7 +856,8 @@ std::optional<NativeExecutableInfo> detectManifestToolchainExecutableInfo(
     for (const auto &file : manifest.files) {
         if (file.kind != zanna::pkg::ToolchainFileKind::Binary)
             continue;
-        if (binaryBaseName(file.stagedAbsolutePath.filename().string()) != "zanna")
+        if (binaryBaseName(zanna::filesystem::pathToUtf8(file.stagedAbsolutePath.filename())) !=
+            "zanna")
             continue;
         return detectNativeExecutableInfo(file.stagedAbsolutePath);
     }
@@ -860,10 +875,11 @@ std::optional<std::string> firstWindowsDebugRuntimeReference(
     for (const auto &file : manifest.files) {
         if (file.symlink)
             continue;
-        const std::string ext = lowerAscii(file.stagedAbsolutePath.extension().string());
+        const std::string ext =
+            lowerAscii(zanna::filesystem::pathToUtf8(file.stagedAbsolutePath.extension()));
         if (ext != ".exe" && ext != ".dll")
             continue;
-        const auto data = zanna::pkg::readFile(file.stagedAbsolutePath.string());
+        const auto data = zanna::pkg::readFile(file.stagedAbsolutePath);
         const auto imports = zanna::pkg::importedDllNamesFromPe(data);
         for (const char *dll : debugDlls) {
             if (std::find(imports.begin(), imports.end(), dll) != imports.end())
@@ -998,13 +1014,13 @@ bool parseInstallPackageArgs(int argc, char **argv, InstallPackageArgs &args) {
                 return false;
             }
         } else if (arg == "--stage-dir" && i + 1 < expandedArgs.size()) {
-            args.stageDir = expandedArgs[++i];
+            args.stageDir = zanna::filesystem::pathFromUtf8(expandedArgs[++i]);
         } else if (arg == "--build-dir" && i + 1 < expandedArgs.size()) {
-            args.buildDir = expandedArgs[++i];
+            args.buildDir = zanna::filesystem::pathFromUtf8(expandedArgs[++i]);
         } else if (arg == "--config" && i + 1 < expandedArgs.size()) {
             args.buildConfig = expandedArgs[++i];
         } else if (arg == "--verify-only" && i + 1 < expandedArgs.size()) {
-            args.verifyOnlyPath = expandedArgs[++i];
+            args.verifyOnlyPath = zanna::filesystem::pathFromUtf8(expandedArgs[++i]);
         } else if (arg == "--macos-pkg-version" && i + 1 < expandedArgs.size()) {
             args.macosPackageVersion = expandedArgs[++i];
             try {
@@ -1049,27 +1065,27 @@ bool parseInstallPackageArgs(int argc, char **argv, InstallPackageArgs &args) {
             args.macosDmg = true;
         } else if (arg == "--macos-dmg-background" && i + 1 < expandedArgs.size()) {
             args.macosDmgBackground = expandedArgs[++i];
-            if (!fs::is_regular_file(args.macosDmgBackground)) {
+            if (!fs::is_regular_file(zanna::filesystem::pathFromUtf8(args.macosDmgBackground))) {
                 std::cerr << "error: --macos-dmg-background not found: " << args.macosDmgBackground
                           << "\n";
                 return false;
             }
         } else if (arg == "--macos-dmg-icon" && i + 1 < expandedArgs.size()) {
             args.macosDmgIcon = expandedArgs[++i];
-            if (!fs::is_regular_file(args.macosDmgIcon)) {
+            if (!fs::is_regular_file(zanna::filesystem::pathFromUtf8(args.macosDmgIcon))) {
                 std::cerr << "error: --macos-dmg-icon not found: " << args.macosDmgIcon << "\n";
                 return false;
             }
         } else if (arg == "--macos-pkg-license" && i + 1 < expandedArgs.size()) {
             args.macosPkgLicense = expandedArgs[++i];
-            if (!fs::is_regular_file(args.macosPkgLicense)) {
+            if (!fs::is_regular_file(zanna::filesystem::pathFromUtf8(args.macosPkgLicense))) {
                 std::cerr << "error: --macos-pkg-license not found: " << args.macosPkgLicense
                           << "\n";
                 return false;
             }
         } else if (arg == "--macos-pkg-background" && i + 1 < expandedArgs.size()) {
             args.macosPkgBackground = expandedArgs[++i];
-            if (!fs::is_regular_file(args.macosPkgBackground)) {
+            if (!fs::is_regular_file(zanna::filesystem::pathFromUtf8(args.macosPkgBackground))) {
                 std::cerr << "error: --macos-pkg-background not found: " << args.macosPkgBackground
                           << "\n";
                 return false;
@@ -1127,15 +1143,15 @@ bool parseInstallPackageArgs(int argc, char **argv, InstallPackageArgs &args) {
         } else if (arg == "--allow-debug-toolchain") {
             args.allowDebugToolchain = true;
         } else if (arg == "-o" && i + 1 < expandedArgs.size()) {
-            args.outputPath = expandedArgs[++i];
+            args.outputPath = zanna::filesystem::pathFromUtf8(expandedArgs[++i]);
         } else if (arg == "--output-file" && i + 1 < expandedArgs.size()) {
-            args.outputPath = expandedArgs[++i];
+            args.outputPath = zanna::filesystem::pathFromUtf8(expandedArgs[++i]);
             args.outputAsFile = true;
         } else if (arg == "--output-dir" && i + 1 < expandedArgs.size()) {
-            args.outputPath = expandedArgs[++i];
+            args.outputPath = zanna::filesystem::pathFromUtf8(expandedArgs[++i]);
             args.outputAsDirectory = true;
         } else if (arg == "--artifact-manifest" && i + 1 < expandedArgs.size()) {
-            args.artifactManifestPath = expandedArgs[++i];
+            args.artifactManifestPath = zanna::filesystem::pathFromUtf8(expandedArgs[++i]);
         } else if (arg == "--release") {
             args.releaseMode = true;
         } else if (arg == "--require-checksum") {
@@ -1347,7 +1363,7 @@ ArtifactRecord inventoryArtifact(const fs::path &path,
                                  const zanna::pkg::ToolchainInstallManifest &manifest,
                                  bool verified,
                                  std::string trust) {
-    const std::vector<uint8_t> bytes = zanna::pkg::readFile(path.string());
+    const std::vector<uint8_t> bytes = zanna::pkg::readFile(path);
     ArtifactRecord record;
     record.path = path;
     record.format = artifactFormatName(target);
@@ -1363,35 +1379,39 @@ ArtifactRecord inventoryArtifact(const fs::path &path,
 
 /// @brief Validate an adjacent SHA-256 sidecar when present or required.
 bool verifyArtifactChecksum(const fs::path &artifact, bool required, std::ostream &err) {
-    const fs::path sidecar(artifact.string() + ".sha256");
+    fs::path sidecar = artifact;
+    sidecar += ".sha256";
     std::error_code ec;
     if (!fs::is_regular_file(sidecar, ec)) {
         if (required)
-            err << "checksum: required sidecar is missing: " << sidecar.string() << "\n";
+            err << "checksum: required sidecar is missing: "
+                << zanna::filesystem::pathToUtf8(sidecar) << "\n";
         return !required;
     }
-    const std::vector<uint8_t> sidecarBytes = zanna::pkg::readFile(sidecar.string());
+    const std::vector<uint8_t> sidecarBytes = zanna::pkg::readFile(sidecar);
     const std::string text(sidecarBytes.begin(), sidecarBytes.end());
     if (text.size() < 66u || text[64] != ' ' || text[65] != ' ' ||
         !std::all_of(text.begin(), text.begin() + 64, [](char c) {
             return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f');
         })) {
-        err << "checksum: invalid SHA-256 sidecar: " << sidecar.string() << "\n";
+        err << "checksum: invalid SHA-256 sidecar: " << zanna::filesystem::pathToUtf8(sidecar)
+            << "\n";
         return false;
     }
     if (text.size() > 66u) {
         const size_t newline = text.find_first_of("\r\n", 66u);
         const std::string listedName = text.substr(66u, newline - 66u);
-        if (!listedName.empty() && listedName != artifact.filename().string()) {
-            err << "checksum: sidecar names '" << listedName << "' instead of '"
-                << artifact.filename().string() << "'\n";
+        const std::string artifactName = zanna::filesystem::pathToUtf8(artifact.filename());
+        if (!listedName.empty() && listedName != artifactName) {
+            err << "checksum: sidecar names '" << listedName << "' instead of '" << artifactName
+                << "'\n";
             return false;
         }
     }
-    const std::vector<uint8_t> artifactBytes = zanna::pkg::readFile(artifact.string());
+    const std::vector<uint8_t> artifactBytes = zanna::pkg::readFile(artifact);
     const std::string actual = zanna::pkg::sha256Hex(artifactBytes.data(), artifactBytes.size());
     if (actual != text.substr(0, 64u)) {
-        err << "checksum: SHA-256 mismatch for " << artifact.string() << "\n";
+        err << "checksum: SHA-256 mismatch for " << zanna::filesystem::pathToUtf8(artifact) << "\n";
         return false;
     }
     return true;
@@ -1403,41 +1423,45 @@ fs::path writeArtifactInventory(std::vector<ArtifactRecord> records,
                                 const fs::path &outputBase,
                                 const fs::path &manifestOverride) {
     std::sort(records.begin(), records.end(), [](const auto &lhs, const auto &rhs) {
-        return lhs.path.filename().string() < rhs.path.filename().string();
+        return zanna::filesystem::pathToUtf8(lhs.path.filename()) <
+               zanna::filesystem::pathToUtf8(rhs.path.filename());
     });
     const fs::path outputDirectory = directoryOutput ? outputBase
                                                      : (records.front().path.parent_path().empty()
                                                             ? fs::current_path()
                                                             : records.front().path.parent_path());
+    fs::path defaultManifest = records.front().path;
+    defaultManifest += ".manifest.json";
     const fs::path manifestPath =
         !manifestOverride.empty()
             ? manifestOverride
-            : (directoryOutput || records.size() > 1u
-                   ? outputDirectory / "zanna-artifacts.json"
-                   : fs::path(records.front().path.string() + ".manifest.json"));
+            : (directoryOutput || records.size() > 1u ? outputDirectory / "zanna-artifacts.json"
+                                                      : defaultManifest);
     const fs::path normalizedManifest = fs::absolute(manifestPath).lexically_normal();
     const fs::path checksumPath = outputDirectory / "SHA256SUMS";
     if ((directoryOutput || records.size() > 1u) &&
         normalizedManifest == fs::absolute(checksumPath).lexically_normal()) {
         throw std::runtime_error("artifact manifest path collides with SHA256SUMS: " +
-                                 manifestPath.string());
+                                 zanna::filesystem::pathToUtf8(manifestPath));
     }
     for (const auto &record : records) {
         const fs::path normalizedArtifact = fs::absolute(record.path).lexically_normal();
-        const fs::path normalizedSidecar =
-            fs::absolute(record.path.string() + ".sha256").lexically_normal();
+        fs::path sidecarPath = record.path;
+        sidecarPath += ".sha256";
+        const fs::path normalizedSidecar = fs::absolute(sidecarPath).lexically_normal();
         if (normalizedManifest == normalizedArtifact || normalizedManifest == normalizedSidecar) {
             throw std::runtime_error("artifact manifest path collides with artifact output: " +
-                                     manifestPath.string());
+                                     zanna::filesystem::pathToUtf8(manifestPath));
         }
-        zanna::pkg::writeTextFileAtomic(record.path.string() + ".sha256",
-                                        record.sha256 + "  " + record.path.filename().string() +
-                                            "\n");
+        zanna::pkg::writeTextFileAtomic(
+            sidecarPath,
+            record.sha256 + "  " + zanna::filesystem::pathToUtf8(record.path.filename()) + "\n");
     }
     if (directoryOutput || records.size() > 1u) {
         std::ostringstream checksums;
         for (const auto &record : records)
-            checksums << record.sha256 << "  " << record.path.filename().string() << "\n";
+            checksums << record.sha256 << "  "
+                      << zanna::filesystem::pathToUtf8(record.path.filename()) << "\n";
         zanna::pkg::writeTextFileAtomic(checksumPath, checksums.str());
     }
     std::ostringstream json;
@@ -1450,7 +1474,8 @@ fs::path writeArtifactInventory(std::vector<ArtifactRecord> records,
     json << ",\n  \"artifacts\": [\n";
     for (size_t index = 0; index < records.size(); ++index) {
         const ArtifactRecord &record = records[index];
-        json << "    {\"file\": \"" << artifactJsonEscape(record.path.filename().string())
+        json << "    {\"file\": \""
+             << artifactJsonEscape(zanna::filesystem::pathToUtf8(record.path.filename()))
              << "\", \"format\": \"" << artifactJsonEscape(record.format) << "\", \"platform\": \""
              << artifactJsonEscape(record.platform) << "\", \"arch\": \""
              << artifactJsonEscape(record.arch) << "\", \"version\": \""
@@ -1570,7 +1595,9 @@ std::vector<std::string> requiredPayloadPaths(
                 paths.push_back("usr/local/zanna/" + rel);
                 if (file.kind == zanna::pkg::ToolchainFileKind::Binary ||
                     rel.rfind("bin/", 0) == 0) {
-                    paths.push_back("usr/local/bin/" + fs::path(rel).filename().generic_string());
+                    paths.push_back("usr/local/bin/" +
+                                    zanna::filesystem::genericPathToUtf8(
+                                        zanna::filesystem::pathFromUtf8(rel).filename()));
                 } else if (file.kind == zanna::pkg::ToolchainFileKind::ManPage ||
                            rel.rfind("share/man/", 0) == 0) {
                     static constexpr std::string_view kManPrefix = "share/man/";
@@ -1913,7 +1940,7 @@ bool verifyArtifact(const fs::path &artifact,
                     InstallPackageTarget target,
                     std::ostream &err,
                     const zanna::pkg::ToolchainInstallManifest *manifest = nullptr) {
-    const auto data = zanna::pkg::readFile(artifact.string());
+    const auto data = zanna::pkg::readFile(artifact);
     switch (target) {
         case InstallPackageTarget::Windows:
             if (!zanna::pkg::verifyWindowsNativeInstaller(data, err))
@@ -1950,8 +1977,10 @@ bool verifyArtifact(const fs::path &artifact,
             if (!structurallyValid)
                 return false;
 #if ZANNA_HOST_MACOS
-            const RunResult nativeResult =
-                run_process({"/usr/sbin/installer", "-pkginfo", "-pkg", artifact.string()});
+            const RunResult nativeResult = run_process({"/usr/sbin/installer",
+                                                        "-pkginfo",
+                                                        "-pkg",
+                                                        zanna::filesystem::pathToUtf8(artifact)});
             if (nativeResult.exit_code != 0) {
                 err << "macOS pkg: Installer.app rejected package metadata\n"
                     << nativeResult.out << nativeResult.err;
@@ -1964,7 +1993,8 @@ bool verifyArtifact(const fs::path &artifact,
             if (!zanna::pkg::verifyMacOSDmg(data, err))
                 return false;
 #if ZANNA_HOST_MACOS
-            const RunResult nativeResult = run_process({"hdiutil", "verify", artifact.string()});
+            const RunResult nativeResult =
+                run_process({"hdiutil", "verify", zanna::filesystem::pathToUtf8(artifact)});
             if (nativeResult.exit_code != 0) {
                 err << "dmg: hdiutil verification failed\n" << nativeResult.out << nativeResult.err;
                 return false;
@@ -2014,7 +2044,7 @@ bool verifyArtifact(const fs::path &artifact,
 /// @details Maps .exe/.pkg/.dmg/.deb/.rpm/.run/.tar.gz/.tgz to their targets for
 ///          `--verify-only`. @return true on a recognized extension.
 bool inferVerifyTargetFromPath(const fs::path &path, InstallPackageTarget &target) {
-    const std::string name = lowerAscii(path.filename().string());
+    const std::string name = lowerAscii(zanna::filesystem::pathToUtf8(path.filename()));
     if (name.size() >= 4 && name.substr(name.size() - 4) == ".exe")
         target = InstallPackageTarget::Windows;
     else if (name.size() >= 4 && name.substr(name.size() - 4) == ".pkg")
@@ -2073,11 +2103,17 @@ class ReleaseArtifactCleanup {
         for (const fs::path &path : paths_) {
             fs::remove(path, ec);
             ec.clear();
-            fs::remove(path.string() + ".sha256", ec);
+            fs::path sidecar = path;
+            sidecar += ".sha256";
+            fs::remove(sidecar, ec);
             ec.clear();
-            fs::remove(path.string() + ".sha256.txt", ec);
+            sidecar = path;
+            sidecar += ".sha256.txt";
+            fs::remove(sidecar, ec);
             ec.clear();
-            fs::remove(path.string() + ".manifest.json", ec);
+            sidecar = path;
+            sidecar += ".manifest.json";
+            fs::remove(sidecar, ec);
             ec.clear();
         }
         for (const fs::path &path : auxiliaryPaths_) {
@@ -2115,7 +2151,8 @@ class ReleaseOutputLock {
         path_ = directory / ".zanna-release.lock";
         std::error_code ec;
         if (!fs::create_directory(path_, ec)) {
-            throw std::runtime_error("cannot acquire release output lock '" + path_.string() +
+            throw std::runtime_error("cannot acquire release output lock '" +
+                                     zanna::filesystem::pathToUtf8(path_) +
                                      "' (another release may be running; remove a stale lock only "
                                      "after confirming no writer is active)" +
                                      (ec ? ": " + ec.message() : std::string{}));
@@ -2155,7 +2192,8 @@ fs::path ensureStageDir(const InstallPackageArgs &args) {
     }
 
     if (!args.skipBuild) {
-        std::vector<std::string> buildCmd = {"cmake", "--build", args.buildDir.string()};
+        std::vector<std::string> buildCmd = {
+            "cmake", "--build", zanna::filesystem::pathToUtf8(args.buildDir)};
         if (!args.buildConfig.empty()) {
             buildCmd.push_back("--config");
             buildCmd.push_back(args.buildConfig);
@@ -2167,8 +2205,11 @@ fs::path ensureStageDir(const InstallPackageArgs &args) {
         }
     }
 
-    std::vector<std::string> installCmd = {
-        "cmake", "--install", args.buildDir.string(), "--prefix", stageDir.string()};
+    std::vector<std::string> installCmd = {"cmake",
+                                           "--install",
+                                           zanna::filesystem::pathToUtf8(args.buildDir),
+                                           "--prefix",
+                                           zanna::filesystem::pathToUtf8(stageDir)};
     if (!args.buildConfig.empty()) {
         installCmd.push_back("--config");
         installCmd.push_back(args.buildConfig);
@@ -2258,7 +2299,7 @@ int cmdInstallPackage(int argc, char **argv) {
                  target == InstallPackageTarget::AllAvailable) &&
                 !inferVerifyTargetFromPath(args.verifyOnlyPath, target)) {
                 std::cerr << "error: cannot infer install-package artifact type from extension: "
-                          << args.verifyOnlyPath.string()
+                          << zanna::filesystem::pathToUtf8(args.verifyOnlyPath)
                           << " (use --target for supported artifact formats)\n";
                 return 1;
             }
@@ -2326,7 +2367,7 @@ int cmdInstallPackage(int argc, char **argv) {
         }
 
         if (args.verbose) {
-            std::cout << "Stage: " << stageDir.string() << "\n";
+            std::cout << "Stage: " << zanna::filesystem::pathToUtf8(stageDir) << "\n";
             std::cout << "Version: " << manifest.version << "\n";
             std::cout << "Source: "
                       << (manifest.sourceCommit.empty() ? "unknown" : manifest.sourceCommit) << " ("
@@ -2363,13 +2404,13 @@ int cmdInstallPackage(int argc, char **argv) {
             return 1;
         }
         if (args.outputAsFile && outPathExistsAsDirectory) {
-            std::cerr << "error: --output-file names an existing directory: " << outBase.string()
-                      << "\n";
+            std::cerr << "error: --output-file names an existing directory: "
+                      << zanna::filesystem::pathToUtf8(outBase) << "\n";
             return 1;
         }
         if (args.outputAsDirectory && fs::exists(outBase, outEc) && !outPathExistsAsDirectory) {
-            std::cerr << "error: --output-dir names an existing non-directory: " << outBase.string()
-                      << "\n";
+            std::cerr << "error: --output-dir names an existing non-directory: "
+                      << zanna::filesystem::pathToUtf8(outBase) << "\n";
             return 1;
         }
         const bool outIsDirectoryLike = args.outputAsDirectory || args.outputPath.empty() ||
@@ -2461,18 +2502,23 @@ int cmdInstallPackage(int argc, char **argv) {
                 outIsDirectoryLike ? (outBase / targetFileName(target, manifest)) : outBase;
             fs::path explicitMacOSDmgPath;
             if (target == InstallPackageTarget::MacOS && args.macosDmg && !outIsDirectoryLike &&
-                lowerAscii(artifactPath.extension().string()) == ".dmg") {
+                lowerAscii(zanna::filesystem::pathToUtf8(artifactPath.extension())) == ".dmg") {
                 explicitMacOSDmgPath = artifactPath;
                 artifactPath.replace_extension(".pkg");
             }
             if (!outIsDirectoryLike && !artifactPath.parent_path().empty())
                 fs::create_directories(artifactPath.parent_path());
+            fs::path artifactSha256 = artifactPath;
+            artifactSha256 += ".sha256";
+            fs::path artifactSigningMetadata = artifactPath;
+            artifactSigningMetadata += ".sha256.txt";
+            fs::path artifactManifest = artifactPath;
+            artifactManifest += ".manifest.json";
             if (args.releaseMode &&
-                (fs::exists(artifactPath) || fs::exists(artifactPath.string() + ".sha256") ||
-                 fs::exists(artifactPath.string() + ".sha256.txt") ||
-                 fs::exists(artifactPath.string() + ".manifest.json"))) {
+                (fs::exists(artifactPath) || fs::exists(artifactSha256) ||
+                 fs::exists(artifactSigningMetadata) || fs::exists(artifactManifest))) {
                 std::cerr << "error: --release refuses to overwrite an existing artifact set: "
-                          << artifactPath.string() << "\n";
+                          << zanna::filesystem::pathToUtf8(artifactPath) << "\n";
                 return 1;
             }
             releaseCleanup.trackArtifact(artifactPath);
@@ -2482,7 +2528,7 @@ int cmdInstallPackage(int argc, char **argv) {
                     zanna::pkg::WindowsToolchainBuildParams params;
                     const WindowsToolchainIdentity identity = windowsToolchainIdentity(args);
                     params.manifest = manifest;
-                    params.outputPath = artifactPath.string();
+                    params.outputPath = zanna::filesystem::pathToUtf8(artifactPath);
                     params.archStr = manifest.arch;
                     params.installScope = args.windowsInstallScope;
                     params.installDirName = identity.installDir;
@@ -2509,9 +2555,11 @@ int cmdInstallPackage(int argc, char **argv) {
                             relative.begin(),
                             [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
                         if (relative == "bin/zanna-installer-host.exe") {
-                            params.installerHostPath = file.stagedAbsolutePath.string();
+                            params.installerHostPath =
+                                zanna::filesystem::pathToUtf8(file.stagedAbsolutePath);
                         } else if (relative == "bin/zanna-installer-cleanup.exe") {
-                            params.installerCleanupPath = file.stagedAbsolutePath.string();
+                            params.installerCleanupPath =
+                                zanna::filesystem::pathToUtf8(file.stagedAbsolutePath);
                         }
                     }
                     if (params.installerHostPath.empty()) {
@@ -2536,7 +2584,7 @@ int cmdInstallPackage(int argc, char **argv) {
                 case InstallPackageTarget::MacOS: {
                     zanna::pkg::MacOSToolchainBuildParams params;
                     params.manifest = manifest;
-                    params.outputPath = artifactPath.string();
+                    params.outputPath = zanna::filesystem::pathToUtf8(artifactPath);
                     params.packageVersion = args.macosPackageVersion;
                     params.minimumMacOSVersion = args.macosMinimumVersion.empty()
                                                      ? getenvOrEmpty("ZANNA_MACOS_MIN_VERSION")
@@ -2560,28 +2608,28 @@ int cmdInstallPackage(int argc, char **argv) {
                 case InstallPackageTarget::LinuxDeb: {
                     zanna::pkg::LinuxToolchainBuildParams params;
                     params.manifest = manifest;
-                    params.outputPath = artifactPath.string();
+                    params.outputPath = zanna::filesystem::pathToUtf8(artifactPath);
                     zanna::pkg::buildToolchainDebPackage(params);
                     break;
                 }
                 case InstallPackageTarget::LinuxRpm: {
                     zanna::pkg::LinuxToolchainBuildParams params;
                     params.manifest = manifest;
-                    params.outputPath = artifactPath.string();
+                    params.outputPath = zanna::filesystem::pathToUtf8(artifactPath);
                     zanna::pkg::buildToolchainRpmPackage(params);
                     break;
                 }
                 case InstallPackageTarget::LinuxBundle: {
                     zanna::pkg::LinuxToolchainBuildParams params;
                     params.manifest = manifest;
-                    params.outputPath = artifactPath.string();
+                    params.outputPath = zanna::filesystem::pathToUtf8(artifactPath);
                     zanna::pkg::buildToolchainBundle(params);
                     break;
                 }
                 case InstallPackageTarget::Tarball: {
                     zanna::pkg::LinuxToolchainBuildParams params;
                     params.manifest = manifest;
-                    params.outputPath = artifactPath.string();
+                    params.outputPath = zanna::filesystem::pathToUtf8(artifactPath);
                     zanna::pkg::buildToolchainTarball(params);
                     break;
                 }
@@ -2610,7 +2658,7 @@ int cmdInstallPackage(int argc, char **argv) {
                  target == InstallPackageTarget::LinuxRpm) &&
                 !args.linuxSignKey.empty()) {
                 try {
-                    zanna::pkg::signLinuxPackage(artifactPath.string(),
+                    zanna::pkg::signLinuxPackage(zanna::filesystem::pathToUtf8(artifactPath),
                                                  args.linuxSignKey,
                                                  target == InstallPackageTarget::LinuxRpm);
                 } catch (const std::exception &ex) {
@@ -2624,7 +2672,8 @@ int cmdInstallPackage(int argc, char **argv) {
             if (!args.noVerify) {
                 std::ostringstream err;
                 if (!verifyArtifact(artifactPath, target, err, &manifest)) {
-                    std::cerr << "error: verification failed for " << artifactPath.string() << "\n"
+                    std::cerr << "error: verification failed for "
+                              << zanna::filesystem::pathToUtf8(artifactPath) << "\n"
                               << err.str();
                     std::error_code removeEc;
                     fs::remove(artifactPath, removeEc);
@@ -2650,34 +2699,40 @@ int cmdInstallPackage(int argc, char **argv) {
             artifactRecords.push_back(inventoryArtifact(
                 artifactPath, target, manifest, !args.noVerify, std::move(artifactTrust)));
 
-            std::cout << artifactPath.string() << "\n";
+            std::cout << zanna::filesystem::pathToUtf8(artifactPath) << "\n";
 
             if (target == InstallPackageTarget::MacOS && args.macosDmg) {
                 zanna::pkg::MacOSToolchainDmgParams dmgParams;
-                dmgParams.pkgPath = artifactPath.string();
-                dmgParams.outputPath =
-                    explicitMacOSDmgPath.empty()
-                        ? fs::path(artifactPath).replace_extension(".dmg").string()
-                        : explicitMacOSDmgPath.string();
+                dmgParams.pkgPath = zanna::filesystem::pathToUtf8(artifactPath);
+                fs::path defaultDmgPath = artifactPath;
+                defaultDmgPath.replace_extension(".dmg");
+                dmgParams.outputPath = zanna::filesystem::pathToUtf8(
+                    explicitMacOSDmgPath.empty() ? defaultDmgPath : explicitMacOSDmgPath);
                 dmgParams.backgroundPng = args.macosDmgBackground;
                 dmgParams.volumeIcns = args.macosDmgIcon;
-                if (args.releaseMode && (fs::exists(dmgParams.outputPath) ||
-                                         fs::exists(dmgParams.outputPath + ".sha256") ||
-                                         fs::exists(dmgParams.outputPath + ".sha256.txt") ||
-                                         fs::exists(dmgParams.outputPath + ".manifest.json"))) {
+                const fs::path dmgOutput = zanna::filesystem::pathFromUtf8(dmgParams.outputPath);
+                fs::path dmgSha256 = dmgOutput;
+                dmgSha256 += ".sha256";
+                fs::path dmgSigningMetadata = dmgOutput;
+                dmgSigningMetadata += ".sha256.txt";
+                fs::path dmgManifest = dmgOutput;
+                dmgManifest += ".manifest.json";
+                if (args.releaseMode &&
+                    (fs::exists(dmgOutput) || fs::exists(dmgSha256) ||
+                     fs::exists(dmgSigningMetadata) || fs::exists(dmgManifest))) {
                     std::cerr << "error: --release refuses to overwrite an existing artifact set: "
                               << dmgParams.outputPath << "\n";
                     return 1;
                 }
-                releaseCleanup.trackArtifact(dmgParams.outputPath);
+                releaseCleanup.trackArtifact(dmgOutput);
                 zanna::pkg::buildMacOSToolchainDmg(dmgParams);
                 std::error_code dmgEc;
-                if (!fs::exists(dmgParams.outputPath, dmgEc)) {
+                if (!fs::exists(dmgOutput, dmgEc)) {
                     std::cerr << "error: macOS .dmg builder did not create output file: "
                               << dmgParams.outputPath << "\n";
                     return 1;
                 }
-                const auto dmgSize = fs::file_size(dmgParams.outputPath, dmgEc);
+                const auto dmgSize = fs::file_size(dmgOutput, dmgEc);
                 if (dmgEc || dmgSize == 0) {
                     std::cerr << "error: macOS .dmg output is not readable or is empty: "
                               << dmgParams.outputPath;
@@ -2686,22 +2741,20 @@ int cmdInstallPackage(int argc, char **argv) {
                     std::cerr << "\n";
                     return 1;
                 }
-                if (!notarizeMacOSDmgArtifact(args, dmgParams.outputPath, std::cerr)) {
+                if (!notarizeMacOSDmgArtifact(args, dmgOutput, std::cerr)) {
                     std::error_code removeEc;
-                    fs::remove(dmgParams.outputPath, removeEc);
+                    fs::remove(dmgOutput, removeEc);
                     return 1;
                 }
                 if (!args.noVerify) {
                     std::ostringstream dmgErr;
-                    if (!verifyArtifact(dmgParams.outputPath,
-                                        InstallPackageTarget::MacOSDmg,
-                                        dmgErr,
-                                        nullptr)) {
+                    if (!verifyArtifact(
+                            dmgOutput, InstallPackageTarget::MacOSDmg, dmgErr, nullptr)) {
                         std::cerr << "error: verification failed for " << dmgParams.outputPath
                                   << "\n"
                                   << dmgErr.str();
                         std::error_code removeEc;
-                        fs::remove(dmgParams.outputPath, removeEc);
+                        fs::remove(dmgOutput, removeEc);
                         return 1;
                     }
                 }
@@ -2709,7 +2762,7 @@ int cmdInstallPackage(int argc, char **argv) {
                                                       ? getenvOrEmpty("ZANNA_MACOS_NOTARY_PROFILE")
                                                       : args.macosNotaryProfile;
                 artifactRecords.push_back(
-                    inventoryArtifact(dmgParams.outputPath,
+                    inventoryArtifact(dmgOutput,
                                       InstallPackageTarget::MacOSDmg,
                                       manifest,
                                       !args.noVerify,
@@ -2724,21 +2777,23 @@ int cmdInstallPackage(int argc, char **argv) {
                                    : (artifactRecords.front().path.parent_path().empty()
                                           ? fs::current_path()
                                           : artifactRecords.front().path.parent_path());
+            fs::path singleArtifactInventory = artifactRecords.front().path;
+            singleArtifactInventory += ".manifest.json";
             const fs::path expectedInventory =
                 !args.artifactManifestPath.empty()
                     ? args.artifactManifestPath
                     : (outIsDirectoryLike || artifactRecords.size() > 1u
                            ? inventoryDirectory / "zanna-artifacts.json"
-                           : fs::path(artifactRecords.front().path.string() + ".manifest.json"));
+                           : singleArtifactInventory);
             if (args.releaseMode && fs::exists(expectedInventory)) {
                 std::cerr << "error: --release refuses to overwrite artifact manifest: "
-                          << expectedInventory.string() << "\n";
+                          << zanna::filesystem::pathToUtf8(expectedInventory) << "\n";
                 return 1;
             }
             if (args.releaseMode && (outIsDirectoryLike || artifactRecords.size() > 1u) &&
                 fs::exists(inventoryDirectory / "SHA256SUMS")) {
                 std::cerr << "error: --release refuses to overwrite existing SHA256SUMS in "
-                          << inventoryDirectory.string() << "\n";
+                          << zanna::filesystem::pathToUtf8(inventoryDirectory) << "\n";
                 return 1;
             }
             releaseCleanup.trackAuxiliary(expectedInventory);
@@ -2746,7 +2801,8 @@ int cmdInstallPackage(int argc, char **argv) {
                 releaseCleanup.trackAuxiliary(inventoryDirectory / "SHA256SUMS");
             const fs::path inventoryPath = writeArtifactInventory(
                 artifactRecords, outIsDirectoryLike, outBase, args.artifactManifestPath);
-            std::cerr << "Artifact manifest: " << inventoryPath.string() << "\n";
+            std::cerr << "Artifact manifest: " << zanna::filesystem::pathToUtf8(inventoryPath)
+                      << "\n";
         }
 
         if (!args.keepStageDir && args.stageDir.empty())

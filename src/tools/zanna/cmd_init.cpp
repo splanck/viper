@@ -11,6 +11,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "cli.hpp"
+#include "common/Filesystem.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -26,12 +27,12 @@ namespace fs = std::filesystem;
 static bool writeFile(const fs::path &path, const std::string &content) {
     std::ofstream out(path, std::ios::binary);
     if (!out) {
-        std::cerr << "error: could not write " << path.string() << "\n";
+        std::cerr << "error: could not write " << zanna::filesystem::pathToUtf8(path) << "\n";
         return false;
     }
     out << content;
     if (!out) {
-        std::cerr << "error: failed while writing " << path.string() << "\n";
+        std::cerr << "error: failed while writing " << zanna::filesystem::pathToUtf8(path) << "\n";
         return false;
     }
     return true;
@@ -158,7 +159,7 @@ int cmdInit(int argc, char **argv) {
     if (!validateProjectName(projectName))
         return 1;
 
-    fs::path projectDir = fs::current_path() / projectName;
+    fs::path projectDir = fs::current_path() / zanna::filesystem::pathFromUtf8(projectName);
 
     if (fs::exists(projectDir)) {
         std::cerr << "error: directory '" << projectName << "' already exists\n";

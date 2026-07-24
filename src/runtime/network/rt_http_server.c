@@ -50,6 +50,7 @@
 
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
+#include <process.h>
 #include <windows.h>
 #define strcasecmp _stricmp
 #define strncasecmp _strnicmp
@@ -1141,13 +1142,13 @@ static void handle_connection_task(void *arg) {
 /// worker pool. If allocation or submission fails, the connection is
 /// closed immediately.
 ///
-/// The platform-specific signature differs (`DWORD WINAPI` on Windows
+/// The platform-specific signature differs (`unsigned __stdcall` on Windows
 /// vs `void *` on POSIX) but the body is identical.
 ///
 /// @param arg `rt_http_server_impl *` cast to `void *`.
 /// @return 0 / NULL on normal shutdown.
 #ifdef _WIN32
-static DWORD WINAPI accept_loop(LPVOID arg)
+static unsigned __stdcall accept_loop(void *arg)
 #else
 static void *accept_loop(void *arg)
 #endif
@@ -1599,7 +1600,8 @@ void rt_http_server_start(void *obj) {
     published = 1;
 
 #ifdef _WIN32
-    server->accept_thread = CreateThread(NULL, 0, accept_loop, server, 0, NULL);
+    uintptr_t thread_handle = _beginthreadex(NULL, 0, accept_loop, server, 0, NULL);
+    server->accept_thread = thread_handle ? (HANDLE)thread_handle : NULL;
     int thread_started = server->accept_thread != NULL;
 #else
     int thread_started = pthread_create(&server->accept_thread, NULL, accept_loop, server) == 0;

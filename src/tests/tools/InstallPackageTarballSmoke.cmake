@@ -1,3 +1,20 @@
+#===----------------------------------------------------------------------===#
+#
+# Part of the Zanna project, under the GNU GPL v3.
+# See LICENSE for license information.
+#
+#===----------------------------------------------------------------------===#
+#
+# File: src/tests/tools/InstallPackageTarballSmoke.cmake
+# Purpose: Exercise portable toolchain tarball creation with a bounded fixture.
+# Key invariants:
+#   - The fixture contains the complete minimal manifest and provenance surface.
+#   - Temporary artifacts remain inside the configured build test directory.
+# Ownership/Lifetime: This script creates and removes its private fixture tree.
+# Links: src/tools/zanna/cmd_install_package.cpp, docs/tools/cli.md
+#
+#===----------------------------------------------------------------------===#
+
 cmake_minimum_required(VERSION 3.20)
 
 foreach (_required ZANNA_BIN ZANNA_BUILD_DIR)
@@ -78,6 +95,7 @@ file(WRITE "${_stage}/lib/cmake/Zanna/ZannaTargets.cmake" "# tarball smoke fixtu
 file(WRITE "${_stage}/lib/cmake/Zanna/ZannaConfigVersion.cmake"
         "set(PACKAGE_VERSION \"1.2.3\")\n")
 file(WRITE "${_stage}/include/zanna/version.hpp"
+        "#define ZANNA_VERSION_STR \"1.2.3-test\"\n"
         "#define ZANNA_SNAPSHOT_STR \"1.2.3-test\"\n"
         "#define ZANNA_SOURCE_COMMIT_STR \"0123456789abcdef0123456789abcdef01234567\"\n"
         "#define ZANNA_SOURCE_STATE_STR \"clean\"\n")

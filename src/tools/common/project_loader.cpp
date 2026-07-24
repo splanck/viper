@@ -31,6 +31,7 @@
 #include "tools/common/project_loader.hpp"
 #include "tools/common/packaging/PkgUtils.hpp"
 
+#include "common/Filesystem.hpp"
 #include "frontends/basic/Lexer.hpp"
 #include "frontends/basic/Token.hpp"
 #include "frontends/zia/Lexer.hpp"
@@ -62,6 +63,16 @@ namespace zia = il::frontends::zia;
 inline constexpr std::uint64_t kMaxManifestHookScriptBytes = 1024u * 1024u;
 inline constexpr std::streamoff kMaxConventionScanBytes = 1024 * 1024;
 
+/// @brief Encode a native path as a Zanna UTF-8 path string.
+std::string pathText(const fs::path &path) {
+    return zanna::filesystem::pathToUtf8(path);
+}
+
+/// @brief Encode a native path with portable separators for manifest matching.
+std::string genericPathText(const fs::path &path) {
+    return zanna::filesystem::genericPathToUtf8(path);
+}
+
 /// @brief Make a diagnostic error with a message.
 il::support::Diag makeErr(const std::string &msg) {
     return il::support::Diagnostic{il::support::Severity::Error, msg, {}, {}};
@@ -88,7 +99,7 @@ bool pathSegmentMatchesExclude(std::string_view segment, std::string_view exclud
 ///          a slash-free exclude matches if any single path segment matches it
 ///          (via pathSegmentMatchesExclude).
 bool relativePathMatchesExclude(const fs::path &relativePath, const std::string &exclude) {
-    const std::string rel = relativePath.generic_string();
+    const std::string rel = genericPathText(relativePath);
     if (rel == exclude || rel.rfind(exclude + "/", 0) == 0)
         return true;
 
@@ -96,7 +107,7 @@ bool relativePathMatchesExclude(const fs::path &relativePath, const std::string 
         return false;
 
     for (const auto &part : relativePath) {
-        if (pathSegmentMatchesExclude(part.generic_string(), exclude))
+        if (pathSegmentMatchesExclude(genericPathText(part), exclude))
             return true;
     }
     return false;
@@ -140,13 +151,13 @@ std::vector<std::string> collectFiles(const fs::path &dir,
     auto it = fs::recursive_directory_iterator(dir, ec);
     if (ec) {
         if (err)
-            *err = "cannot traverse source directory " + dir.string() + ": " + ec.message();
+            *err = "cannot traverse source directory " + pathText(dir) + ": " + ec.message();
         return {};
     }
     const fs::path canonicalRoot = fs::canonical(dir, ec);
     if (ec) {
         if (err)
-            *err = "cannot resolve source directory " + dir.string() + ": " + ec.message();
+            *err = "cannot resolve source directory " + pathText(dir) + ": " + ec.message();
         return {};
     }
     ec.clear();
@@ -159,7 +170,7 @@ std::vector<std::string> collectFiles(const fs::path &dir,
             if (entryEc) {
                 if (err)
                     *err = "cannot compute relative source directory path for " +
-                           it->path().string() + ": " + entryEc.message();
+                           pathText(it->path()) + ": " + entryEc.message();
                 return {};
             }
             for (const auto &ex : effectiveExcludes) {
@@ -173,27 +184,27 @@ std::vector<std::string> collectFiles(const fs::path &dir,
         }
 
         if (it->is_regular_file(entryEc) && !entryEc &&
-            lowerAscii(it->path().extension().string()) == ext) {
+            lowerAscii(pathText(it->path().extension())) == ext) {
             auto canonical = fs::canonical(it->path(), entryEc);
             if (entryEc) {
                 if (err)
-                    *err = "cannot resolve source file " + it->path().string() + ": " +
+                    *err = "cannot resolve source file " + pathText(it->path()) + ": " +
                            entryEc.message();
                 return {};
             }
             if (!zanna::pkg::isPathWithin(canonicalRoot, canonical)) {
                 if (err)
                     *err = "source file escapes project root through a symlink: " +
-                           it->path().string();
+                           pathText(it->path());
                 return {};
             }
-            result.push_back(canonical.string());
+            result.push_back(pathText(canonical));
         }
         it.increment(ec);
     }
     if (ec) {
         if (err)
-            *err = "cannot traverse source directory " + dir.string() + ": " + ec.message();
+            *err = "cannot traverse source directory " + pathText(dir) + ": " + ec.message();
         return {};
     }
 
@@ -214,7 +225,7 @@ std::optional<std::string> readConventionScanText(const std::string &path,
                                                   std::string *skipReason = nullptr) {
     if (skipReason)
         skipReason->clear();
-    std::ifstream in(path, std::ios::binary | std::ios::ate);
+    std::ifstream in(zanna::filesystem::pathFromUtf8(path), std::ios::binary | std::ios::ate);
     if (!in) {
         if (skipReason)
             *skipReason = "cannot open " + path;
@@ -472,7 +483,7 @@ BasicConventionSignals scanBasicConventionSignals(const std::string &path,
 il::support::Expected<std::string> findZiaEntry(const std::vector<std::string> &files) {
     // Priority 1: file named main.zia
     for (const auto &f : files) {
-        if (lowerAscii(fs::path(f).filename().string()) == "main.zia")
+        if (lowerAscii(pathText(zanna::filesystem::pathFromUtf8(f).filename())) == "main.zia")
             return f;
     }
 
@@ -489,7 +500,7 @@ il::support::Expected<std::string> findZiaEntry(const std::vector<std::string> &
     if (candidates.size() > 1) {
         std::string msg = "multiple entry points found:";
         for (const auto &c : candidates)
-            msg += " " + fs::path(c).filename().string();
+            msg += " " + pathText(zanna::filesystem::pathFromUtf8(c).filename());
         msg += "; specify entry in zanna.project";
         return makeErr(msg);
     }
@@ -504,7 +515,7 @@ il::support::Expected<std::string> findZiaEntry(const std::vector<std::string> &
 il::support::Expected<std::string> findBasicEntry(const std::vector<std::string> &files) {
     // Priority 1: file named main.bas
     for (const auto &f : files) {
-        if (lowerAscii(fs::path(f).filename().string()) == "main.bas")
+        if (lowerAscii(pathText(zanna::filesystem::pathFromUtf8(f).filename())) == "main.bas")
             return f;
     }
 
@@ -526,7 +537,7 @@ il::support::Expected<std::string> findBasicEntry(const std::vector<std::string>
     if (roots.size() > 1) {
         std::string msg = "multiple root files found:";
         for (const auto &r : roots)
-            msg += " " + fs::path(r).filename().string();
+            msg += " " + pathText(zanna::filesystem::pathFromUtf8(r).filename());
         msg += "; specify entry in zanna.project";
         return makeErr(msg);
     }
@@ -543,7 +554,7 @@ il::support::Expected<std::string> findBasicEntry(const std::vector<std::string>
     if (execFiles.size() > 1) {
         std::string msg = "multiple BASIC files contain top-level statements:";
         for (const auto &f : execFiles)
-            msg += " " + fs::path(f).filename().string();
+            msg += " " + pathText(zanna::filesystem::pathFromUtf8(f).filename());
         msg += "; specify entry in zanna.project";
         return makeErr(msg);
     }
@@ -570,12 +581,12 @@ il::support::Expected<ProjectConfig> discoverConvention(const fs::path &dir,
 
     // Language detection
     if (ziaFiles.empty() && basFiles.empty())
-        return makeErr("no source files found in " + dir.string());
+        return makeErr("no source files found in " + pathText(dir));
 
     if (!ziaFiles.empty() && !basFiles.empty()) {
         // Mixed project detected — require a zanna.project manifest to
         // specify the entry point and 'lang mixed'.
-        return makeErr("mixed .zia and .bas files in " + dir.string() +
+        return makeErr("mixed .zia and .bas files in " + pathText(dir) +
                        "; create zanna.project with 'lang mixed' and 'entry <file>'");
     }
 
@@ -583,9 +594,9 @@ il::support::Expected<ProjectConfig> discoverConvention(const fs::path &dir,
     std::error_code ec;
     auto canonicalDir = fs::canonical(dir, ec);
     if (ec)
-        return makeErr("cannot resolve project directory: " + dir.string());
-    config.rootDir = canonicalDir.string();
-    config.name = dir.filename().string();
+        return makeErr("cannot resolve project directory: " + pathText(dir));
+    config.rootDir = pathText(canonicalDir);
+    config.name = pathText(dir.filename());
 
     if (!ziaFiles.empty()) {
         config.lang = ProjectLang::Zia;
@@ -809,7 +820,8 @@ il::support::Expected<fs::path> resolveManifestRelativePath(const fs::path &mani
         }
 
         std::error_code ec;
-        fs::path candidate = (manifestDir / fs::path(clean)).lexically_normal();
+        fs::path candidate =
+            (manifestDir / zanna::filesystem::pathFromUtf8(clean)).lexically_normal();
         fs::path resolved = fs::weakly_canonical(candidate, ec);
         if (ec)
             return makeManifestErr(
@@ -841,7 +853,7 @@ il::support::Expected<std::string> parseManifestRelativeToken(const fs::path &ma
         manifestDir, tokens.value()[0], manifestPath, line, directive, allowProjectRoot);
     if (!path)
         return il::support::Expected<std::string>(path.error());
-    return path.value().string();
+    return pathText(path.value());
 }
 
 /// @brief Read the contents of a project-relative script hook file.
@@ -883,27 +895,27 @@ il::support::Expected<std::string> readManifestScriptHook(const fs::path &manife
     std::ifstream in(scriptPath, std::ios::binary | std::ios::ate);
     if (!in)
         return makeManifestErr(
-            manifestPath, line, "cannot read " + directive + " script: " + scriptPath.string());
+            manifestPath, line, "cannot read " + directive + " script: " + pathText(scriptPath));
     const std::streamoff scriptSize = in.tellg();
     if (scriptSize < 0)
         return makeManifestErr(manifestPath,
                                line,
                                "cannot determine size of " + directive +
-                                   " script: " + scriptPath.string());
+                                   " script: " + pathText(scriptPath));
     if (static_cast<std::uint64_t>(scriptSize) > kMaxManifestHookScriptBytes)
         return makeManifestErr(
-            manifestPath, line, directive + " script exceeds 1 MiB limit: " + scriptPath.string());
+            manifestPath, line, directive + " script exceeds 1 MiB limit: " + pathText(scriptPath));
     in.seekg(0);
     if (!in)
         return makeManifestErr(
-            manifestPath, line, "cannot seek " + directive + " script: " + scriptPath.string());
+            manifestPath, line, "cannot seek " + directive + " script: " + pathText(scriptPath));
     std::ostringstream contents;
     contents << in.rdbuf();
     if (!in.good() && !in.eof())
         return makeManifestErr(manifestPath,
                                line,
                                "failed while reading " + directive +
-                                   " script: " + scriptPath.string());
+                                   " script: " + pathText(scriptPath));
     return contents.str();
 }
 
@@ -1485,11 +1497,11 @@ il::support::Expected<bool> parsePackageDirective(ProjectConfig &config,
 ///          the entry point is resolved or validated. See the header for the
 ///          parameter and return contract.
 il::support::Expected<ProjectConfig> parseManifest(const std::string &manifestPath) {
-    std::ifstream file(manifestPath);
+    std::ifstream file(zanna::filesystem::pathFromUtf8(manifestPath));
     if (!file.is_open())
         return makeErr("cannot open manifest: " + manifestPath);
 
-    fs::path manifestDir = fs::path(manifestPath).parent_path();
+    fs::path manifestDir = zanna::filesystem::pathFromUtf8(manifestPath).parent_path();
     std::error_code ec;
     if (manifestDir.empty()) {
         manifestDir = fs::current_path(ec);
@@ -1501,8 +1513,8 @@ il::support::Expected<ProjectConfig> parseManifest(const std::string &manifestPa
         return makeErr("cannot resolve manifest directory: " + ec.message());
 
     ProjectConfig config;
-    config.rootDir = manifestDir.string();
-    config.name = manifestDir.filename().string();
+    config.rootDir = pathText(manifestDir);
+    config.name = pathText(manifestDir.filename());
 
     std::vector<std::string> sourceDirs;
     std::vector<std::string> excludes;
@@ -1699,7 +1711,7 @@ il::support::Expected<ProjectConfig> parseManifest(const std::string &manifestPa
 
     // Collect source files from declared directories (or project root by default)
     if (sourceDirs.empty())
-        sourceDirs.push_back(manifestDir.string());
+        sourceDirs.push_back(pathText(manifestDir));
 
     std::string ext = (config.lang == ProjectLang::Zia) ? ".zia" : ".bas";
 
@@ -1708,7 +1720,7 @@ il::support::Expected<ProjectConfig> parseManifest(const std::string &manifestPa
         // Scan all source dirs for both extensions
         std::vector<std::string> allZia, allBas;
         for (const auto &sd : sourceDirs) {
-            fs::path srcDir = sd;
+            fs::path srcDir = zanna::filesystem::pathFromUtf8(sd);
             if (srcDir.is_relative())
                 srcDir = manifestDir / srcDir;
             std::string collectErr;
@@ -1740,12 +1752,12 @@ il::support::Expected<ProjectConfig> parseManifest(const std::string &manifestPa
     if (config.lang == ProjectLang::Mixed) {
         // Mixed projects: collect both .zia and .bas files.
         for (const auto &sd : sourceDirs) {
-            fs::path srcDir = sd;
+            fs::path srcDir = zanna::filesystem::pathFromUtf8(sd);
             if (srcDir.is_relative())
                 srcDir = manifestDir / srcDir;
             std::error_code srcEc;
             if (!fs::is_directory(srcDir, srcEc))
-                return makeErr("sources directory not found: " + srcDir.string());
+                return makeErr("sources directory not found: " + pathText(srcDir));
 
             std::string collectErr;
             auto zia = collectFiles(srcDir, ".zia", excludes, &collectErr);
@@ -1761,12 +1773,12 @@ il::support::Expected<ProjectConfig> parseManifest(const std::string &manifestPa
         }
     } else {
         for (const auto &sd : sourceDirs) {
-            fs::path srcDir = sd;
+            fs::path srcDir = zanna::filesystem::pathFromUtf8(sd);
             if (srcDir.is_relative())
                 srcDir = manifestDir / srcDir;
             std::error_code srcEc;
             if (!fs::is_directory(srcDir, srcEc))
-                return makeErr("sources directory not found: " + srcDir.string());
+                return makeErr("sources directory not found: " + pathText(srcDir));
             std::string collectErr;
             auto files = collectFiles(srcDir, ext, excludes, &collectErr);
             if (!collectErr.empty())
@@ -1803,7 +1815,7 @@ il::support::Expected<ProjectConfig> parseManifest(const std::string &manifestPa
     } else {
         // Verify entry file exists
         std::error_code entryEc;
-        if (!fs::is_regular_file(config.entryFile, entryEc))
+        if (!fs::is_regular_file(zanna::filesystem::pathFromUtf8(config.entryFile), entryEc))
             return makeErr("entry file not found: " + config.entryFile);
         if (std::find(config.sourceFiles.begin(), config.sourceFiles.end(), config.entryFile) ==
             config.sourceFiles.end()) {
@@ -1823,7 +1835,7 @@ il::support::Expected<ProjectConfig> parseManifest(const std::string &manifestPa
 ///          See the header for the full parameter and return contract.
 il::support::Expected<ProjectConfig> resolveProject(const std::string &target) {
     // Determine what the target is
-    fs::path targetPath(target);
+    fs::path targetPath = zanna::filesystem::pathFromUtf8(target);
     std::error_code ec;
 
     // Handle relative paths
@@ -1842,7 +1854,7 @@ il::support::Expected<ProjectConfig> resolveProject(const std::string &target) {
     ec.clear();
 
     // Case 1: Single .zia file
-    const std::string targetExt = lowerAscii(targetPath.extension().string());
+    const std::string targetExt = lowerAscii(pathText(targetPath.extension()));
     const bool targetIsRegularFile = fs::is_regular_file(targetPath, ec);
     if (ec)
         return makeErr("cannot inspect target '" + target + "': " + ec.message());
@@ -1854,10 +1866,10 @@ il::support::Expected<ProjectConfig> resolveProject(const std::string &target) {
         if (ec)
             return makeErr("cannot resolve target: " + target);
         config.lang = ProjectLang::Zia;
-        config.entryFile = canonical.string();
+        config.entryFile = pathText(canonical);
         config.sourceFiles = {config.entryFile};
-        config.rootDir = canonical.parent_path().string();
-        config.name = canonical.stem().string();
+        config.rootDir = pathText(canonical.parent_path());
+        config.name = pathText(canonical.stem());
         return config;
     }
 
@@ -1868,21 +1880,21 @@ il::support::Expected<ProjectConfig> resolveProject(const std::string &target) {
         if (ec)
             return makeErr("cannot resolve target: " + target);
         config.lang = ProjectLang::Basic;
-        config.entryFile = canonical.string();
+        config.entryFile = pathText(canonical);
         config.sourceFiles = {config.entryFile};
-        config.rootDir = canonical.parent_path().string();
-        config.name = canonical.stem().string();
+        config.rootDir = pathText(canonical.parent_path());
+        config.name = pathText(canonical.stem());
         return config;
     }
 
     // Case 3: Explicit manifest file
     if (targetIsRegularFile) {
-        auto filename = targetPath.filename().string();
+        auto filename = pathText(targetPath.filename());
         if (filename == "zanna.project" || targetPath.extension() == ".project") {
             auto canonical = fs::canonical(targetPath, ec);
             if (ec)
                 return makeErr("cannot resolve manifest: " + target);
-            return parseManifest(canonical.string());
+            return parseManifest(pathText(canonical));
         }
         return makeErr(target + " is not a .zia, .bas, or zanna.project file");
     }
@@ -1900,9 +1912,9 @@ il::support::Expected<ProjectConfig> resolveProject(const std::string &target) {
         // Check for zanna.project in directory
         auto manifestPath = canonical / "zanna.project";
         if (fs::exists(manifestPath, ec))
-            return parseManifest(manifestPath.string());
+            return parseManifest(pathText(manifestPath));
         if (ec)
-            return makeErr("cannot inspect project manifest '" + manifestPath.string() +
+            return makeErr("cannot inspect project manifest '" + pathText(manifestPath) +
                            "': " + ec.message());
 
         // Convention discovery

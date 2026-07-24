@@ -379,6 +379,7 @@ static ID3D11ShaderResourceView *d3d11_create_temp_texture_srv(d3d11_context_t *
     }
     if (FAILED(d3d11_allocate_texture_srv(ctx, width, height, &out_temp->tex, &out_temp->srv))) {
         free(rgba);
+        out_temp->temporary = 1;
         d3d11_release_temp_srv(out_temp);
         return NULL;
     }
@@ -386,6 +387,12 @@ static ID3D11ShaderResourceView *d3d11_create_temp_texture_srv(d3d11_context_t *
     ID3D11DeviceContext_UpdateSubresource(
         ctx->ctx, (ID3D11Resource *)out_temp->tex, 0, NULL, rgba, row_pitch, 0);
     ID3D11DeviceContext_GenerateMips(ctx->ctx, out_temp->srv);
+    if (FAILED(d3d11_device_status_after_void_command(ctx, "Upload/generate temporary texture"))) {
+        free(rgba);
+        out_temp->temporary = 1;
+        d3d11_release_temp_srv(out_temp);
+        return NULL;
+    }
     upload_bytes = (uint64_t)(uint32_t)width * (uint64_t)(uint32_t)height * 4u;
     d3d11_record_texture_upload_bytes(ctx, upload_bytes);
     free(rgba);
@@ -423,6 +430,7 @@ static ID3D11ShaderResourceView *d3d11_create_temp_cubemap_srv(d3d11_context_t *
     if (FAILED(d3d11_allocate_cubemap_srv(ctx, face_size, &out_temp->tex, &out_temp->srv))) {
         for (int32_t i = 0; i < 6; i++)
             free(faces[i]);
+        out_temp->temporary = 1;
         d3d11_release_temp_srv(out_temp);
         return NULL;
     }
@@ -440,6 +448,11 @@ static ID3D11ShaderResourceView *d3d11_create_temp_cubemap_srv(d3d11_context_t *
         faces[face] = NULL;
     }
     ID3D11DeviceContext_GenerateMips(ctx->ctx, out_temp->srv);
+    if (FAILED(d3d11_device_status_after_void_command(ctx, "Upload/generate temporary cubemap"))) {
+        out_temp->temporary = 1;
+        d3d11_release_temp_srv(out_temp);
+        return NULL;
+    }
     face_bytes = (uint64_t)(uint32_t)face_size * (uint64_t)(uint32_t)face_size * 4u;
     d3d11_record_texture_upload_bytes(ctx, face_bytes * 6u);
     out_temp->temporary = 1;
@@ -906,6 +919,9 @@ static vgfx3d_d3d11_upload_result_t d3d11_continue_native_texture_upload(
                                               (const uint8_t *)mip.data + offset,
                                               (UINT)row_bytes,
                                               (UINT)upload_bytes);
+        if (FAILED(d3d11_device_status_after_void_command(
+                ctx, "UpdateSubresource(native compressed texture)")))
+            return VGFX3D_D3D11_UPLOAD_FAILED;
         d3d11_record_texture_upload_bytes(ctx, upload_bytes);
         entry->native_next_block_row += rows;
         if ((uint64_t)(uint32_t)entry->native_next_block_row >= block_rows) {
@@ -1038,6 +1054,11 @@ static vgfx3d_d3d11_upload_result_t d3d11_continue_texture_upload(d3d11_context_
     }
     ID3D11DeviceContext_UpdateSubresource(
         ctx->ctx, (ID3D11Resource *)entry->tex, 0, &box, rgba, (UINT)row_pitch, 0);
+    if (FAILED(
+            d3d11_device_status_after_void_command(ctx, "UpdateSubresource(streamed texture)"))) {
+        free(rgba);
+        return VGFX3D_D3D11_UPLOAD_FAILED;
+    }
     bytes = (uint64_t)(uint32_t)slice_w * (uint64_t)(uint32_t)slice_rows * 4u;
     d3d11_record_texture_upload_bytes(ctx, bytes);
     free(rgba);
@@ -1046,6 +1067,8 @@ static vgfx3d_d3d11_upload_result_t d3d11_continue_texture_upload(d3d11_context_
     entry->last_used_frame = ctx->frame_serial;
     if (entry->upload_next_row >= entry->height) {
         ID3D11DeviceContext_GenerateMips(ctx->ctx, entry->srv);
+        if (FAILED(d3d11_device_status_after_void_command(ctx, "GenerateMips(streamed texture)")))
+            return VGFX3D_D3D11_UPLOAD_FAILED;
         entry->generation = entry->pending_generation;
         entry->pending_generation = 0;
         entry->upload_in_progress = 0;
@@ -1436,6 +1459,8 @@ static int d3d11_apply_ibl_mips(d3d11_context_t *ctx,
                 0);
         }
     }
+    if (FAILED(d3d11_device_status_after_void_command(ctx, "UpdateSubresource(cubemap IBL)")))
+        goto cleanup;
     d3d11_record_texture_upload_bytes(ctx, upload_bytes);
     entry->applied_ibl_identity = cubemap->ibl_identity;
     entry->failed_ibl_identity = 0;
@@ -1527,6 +1552,11 @@ static vgfx3d_d3d11_upload_result_t d3d11_continue_cubemap_upload(d3d11_context_
             rgba,
             (UINT)row_pitch,
             0);
+        if (FAILED(d3d11_device_status_after_void_command(ctx,
+                                                          "UpdateSubresource(streamed cubemap)"))) {
+            free(rgba);
+            return VGFX3D_D3D11_UPLOAD_FAILED;
+        }
         bytes = (uint64_t)(uint32_t)slice_size * (uint64_t)(uint32_t)slice_rows * 4u;
         d3d11_record_texture_upload_bytes(ctx, bytes);
         free(rgba);
@@ -1540,6 +1570,8 @@ static vgfx3d_d3d11_upload_result_t d3d11_continue_cubemap_upload(d3d11_context_
     }
 
     ID3D11DeviceContext_GenerateMips(ctx->ctx, entry->srv);
+    if (FAILED(d3d11_device_status_after_void_command(ctx, "GenerateMips(streamed cubemap)")))
+        return VGFX3D_D3D11_UPLOAD_FAILED;
     entry->generation = entry->pending_generation;
     entry->pending_generation = 0;
     entry->upload_in_progress = 0;

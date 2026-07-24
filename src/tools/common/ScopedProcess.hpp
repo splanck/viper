@@ -17,6 +17,8 @@
 
 #pragma once
 
+#include "common/Filesystem.hpp"
+
 #include <cerrno>
 #include <cstdio>
 #include <cstdlib>
@@ -24,6 +26,7 @@
 #include <filesystem>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <utility>
 
 #ifdef _WIN32
@@ -53,11 +56,17 @@ inline int scopedClose(int fd) {
 }
 
 inline int scopedOpenRead(const char *path) {
-    return _open(path, _O_RDONLY | _O_BINARY);
+    const std::filesystem::path nativePath =
+        zanna::filesystem::pathFromUtf8(path ? std::string_view(path) : std::string_view());
+    return _wopen(nativePath.c_str(), _O_RDONLY | _O_BINARY | _O_NOINHERIT);
 }
 
 inline int scopedOpenWriteTruncate(const char *path) {
-    return _open(path, _O_WRONLY | _O_CREAT | _O_TRUNC | _O_BINARY, _S_IREAD | _S_IWRITE);
+    const std::filesystem::path nativePath =
+        zanna::filesystem::pathFromUtf8(path ? std::string_view(path) : std::string_view());
+    return _wopen(nativePath.c_str(),
+                  _O_WRONLY | _O_CREAT | _O_TRUNC | _O_BINARY | _O_NOINHERIT,
+                  _S_IREAD | _S_IWRITE);
 }
 
 inline std::string scopedLastError() {

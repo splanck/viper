@@ -169,6 +169,29 @@ int main() {
             hostSource.find("/elevated-worker was specified more than once") != std::string::npos &&
             hostSource.find("/uninstall-worker was specified more than once") != std::string::npos,
         "Internal worker options reject duplicate spellings");
+    expect(hostSource.find("readLe16(bytes.data()) != 0x5A4DU") != std::string::npos &&
+               hostSource.find("kPe32PlusMagic") != std::string::npos &&
+               hostSource.find("overlapping PE sections") != std::string::npos,
+           "Embedded executables require bounded, non-overlapping PE32+ images");
+    expect(hostSource.find("metadata architecture is unsupported") != std::string::npos &&
+               hostSource.find("else if (architecture == \"x64\")") != std::string::npos,
+           "Installer PE checks reject unknown architecture metadata");
+    expect(hostSource.find("(ch >= 0x202A && ch <= 0x202E)") != std::string::npos &&
+               hostSource.find("(ch >= 0x2066 && ch <= 0x2069)") != std::string::npos &&
+               hostSource.find("static_cast<wchar_t>(0xFFFD)") != std::string::npos,
+           "Installer logs neutralize direction controls and malformed UTF-16");
+    expect(hostSource.find("appendLogRecord") != std::string::npos &&
+               hostSource.find("written == 0 || written > requested") != std::string::npos,
+           "Installer logs handle partial native writes without spinning");
+    expect(hostSource.find("A broken presentation callback must stop mutation") !=
+               std::string::npos,
+           "Cancellation callback failures fail closed");
+    expect(hostSource.find("installer lifecycle operation was specified more than once") !=
+                   std::string::npos &&
+               hostSource.find("installer option requires a non-empty value") !=
+                   std::string::npos &&
+               hostSource.find("parseHandoffProcessId") != std::string::npos,
+           "Installer CLI parsing rejects duplicate, empty, and ambiguous internal options");
 
     std::cout << testsPassed << "/" << testsRun << " tests passed\n";
     return testsPassed == testsRun ? 0 : 1;

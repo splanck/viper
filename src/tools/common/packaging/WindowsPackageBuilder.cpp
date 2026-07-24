@@ -23,6 +23,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "WindowsPackageBuilder.hpp"
+#include "../../../common/Filesystem.hpp"
 #include "IconGenerator.hpp"
 #include "InstallerStub.hpp"
 #include "LnkWriter.hpp"
@@ -98,7 +99,7 @@ std::optional<PkgImage> stagedToolchainPng(const ToolchainInstallManifest &manif
     const std::string wanted = lowerAscii(std::string(relativePath));
     for (const ToolchainFileEntry &file : manifest.files) {
         if (lowerAscii(file.stagedRelativePath) == wanted)
-            return pngRead(file.stagedAbsolutePath.string());
+            return pngRead(zanna::filesystem::pathToUtf8(file.stagedAbsolutePath));
     }
     return std::nullopt;
 }
@@ -537,16 +538,16 @@ uint16_t windowsMachineForArch(const std::string &arch) {
 /// @throws std::runtime_error if the file is not PE32+ or its machine type does
 ///         not match the requested architecture.
 void validateWindowsPayloadExecutable(const fs::path &path, const std::string &arch) {
-    const auto data = readFile(path.string());
+    const auto data = readFile(path);
     const auto info = inspectPeExecutable(data);
     if (!info || !info->pe32Plus)
         throw std::runtime_error("Windows package executable must be a PE32+ executable: " +
-                                 path.string());
+                                 zanna::filesystem::pathToUtf8(path));
     const uint16_t expected = windowsMachineForArch(arch);
     if (info->machine != expected) {
         std::ostringstream os;
         os << "Windows package executable architecture does not match selected architecture '"
-           << (arch.empty() ? "x64" : arch) << "': " << path.string();
+           << (arch.empty() ? "x64" : arch) << "': " << zanna::filesystem::pathToUtf8(path);
         throw std::runtime_error(os.str());
     }
 }
@@ -610,8 +611,7 @@ bool validateZannaStudioArtifacts(const ToolchainInstallManifest &manifest,
             "bin/zannastudio.buildinfo must be a non-executable, non-symlink regular file");
     }
 
-    const std::vector<uint8_t> executableBytes =
-        readFile(studioExecutable->stagedAbsolutePath.string());
+    const std::vector<uint8_t> executableBytes = readFile(studioExecutable->stagedAbsolutePath);
     if (executableBytes.empty() || studioExecutable->sizeBytes != executableBytes.size())
         throw std::runtime_error("Zanna Studio executable size disagrees with the stage manifest");
     validateWindowsPayloadExecutable(studioExecutable->stagedAbsolutePath, architecture);
@@ -622,8 +622,7 @@ bool validateZannaStudioArtifacts(const ToolchainInstallManifest &manifest,
         studioBuildInfo->sizeBytes != buildInfoSize) {
         throw std::runtime_error("Zanna Studio build metadata has an invalid size");
     }
-    const std::vector<uint8_t> buildInfoBytes =
-        readFile(studioBuildInfo->stagedAbsolutePath.string());
+    const std::vector<uint8_t> buildInfoBytes = readFile(studioBuildInfo->stagedAbsolutePath);
     if (std::find(buildInfoBytes.begin(), buildInfoBytes.end(), uint8_t{0}) != buildInfoBytes.end())
         throw std::runtime_error("Zanna Studio build metadata contains a NUL byte");
     const std::string buildInfo(buildInfoBytes.begin(), buildInfoBytes.end());
@@ -869,10 +868,16 @@ bool isAppLocalMsvcRuntimeDll(const std::string &dll) {
 ///          not passed to the signer.
 bool shouldSignWindowsPayloadPe(std::string_view logicalName, const std::vector<uint8_t> &data) {
     const std::string lowerName = lowerAscii(std::string(logicalName));
-    const std::string ext = lowerAscii(fs::path(lowerName).extension().string());
+    const size_t slash = lowerName.find_last_of("/\\");
+    const std::string_view leaf = slash == std::string::npos
+                                      ? std::string_view(lowerName)
+                                      : std::string_view(lowerName).substr(slash + 1U);
+    const size_t dot = leaf.find_last_of('.');
+    const std::string ext =
+        dot == std::string_view::npos ? std::string{} : std::string(leaf.substr(dot));
     if (ext != ".exe" && ext != ".dll")
         return false;
-    if (ext == ".dll" && isAppLocalMsvcRuntimeDll(fs::path(lowerName).filename().string()))
+    if (ext == ".dll" && isAppLocalMsvcRuntimeDll(std::string(leaf)))
         return false;
     return inspectPeExecutable(data).has_value();
 }
@@ -918,15 +923,17 @@ void validateToolchainMsvcRuntimeClosure(const ToolchainInstallManifest &manifes
     for (const ToolchainFileEntry &file : manifest.files) {
         if (file.symlink)
             continue;
-        const std::string ext = lowerAscii(file.stagedAbsolutePath.extension().string());
+        const std::string ext =
+            lowerAscii(zanna::filesystem::pathToUtf8(file.stagedAbsolutePath.extension()));
         if (ext != ".exe" && ext != ".dll")
             continue;
-        const auto imports = importedDllNamesFromPeImpl(readFile(file.stagedAbsolutePath.string()));
-        const fs::path parent = fs::path(file.stagedRelativePath).parent_path();
+        const auto imports = importedDllNamesFromPeImpl(readFile(file.stagedAbsolutePath));
+        const fs::path parent =
+            zanna::filesystem::pathFromUtf8(file.stagedRelativePath).parent_path();
         for (const std::string &dll : imports) {
             if (!isAppLocalMsvcRuntimeDll(dll))
                 continue;
-            const std::string expected = (parent / dll).generic_string();
+            const std::string expected = zanna::filesystem::genericPathToUtf8(parent / dll);
             if (stagedPaths.find(lowerAscii(expected)) == stagedPaths.end()) {
                 throw std::runtime_error("Windows toolchain payload '" + file.stagedRelativePath +
                                          "' imports app-local MSVC "
@@ -956,7 +963,7 @@ std::optional<fs::path> findLocalDllCaseInsensitive(const fs::path &dir,
         std::error_code statusEc;
         if (!fs::is_regular_file(entry.path(), statusEc))
             continue;
-        if (lowerAscii(entry.path().filename().generic_string()) == filename)
+        if (lowerAscii(zanna::filesystem::genericPathToUtf8(entry.path().filename())) == filename)
             return entry.path();
     }
     constexpr size_t kMaxRecursiveDllSearchEntries = 4096;
@@ -968,7 +975,7 @@ std::optional<fs::path> findLocalDllCaseInsensitive(const fs::path &dir,
         const fs::path candidate = it->path();
         std::error_code statusEc;
         if (fs::is_regular_file(candidate, statusEc) &&
-            lowerAscii(candidate.filename().generic_string()) == filename) {
+            lowerAscii(zanna::filesystem::genericPathToUtf8(candidate.filename())) == filename) {
             return candidate;
         }
         it.increment(ec);
@@ -988,10 +995,11 @@ std::optional<fs::path> findLocalDllCaseInsensitive(const fs::path &dir,
 std::string dllInstallRelativePath(const fs::path &exeDir, const fs::path &dllPath) {
     std::error_code ec;
     fs::path rel = fs::relative(dllPath, exeDir, ec);
-    const std::string relText = rel.generic_string();
+    const std::string relText = zanna::filesystem::genericPathToUtf8(rel);
     if (ec || rel.empty() || relText == ".." || relText.rfind("../", 0) == 0)
         rel = dllPath.filename();
-    return sanitizePackageRelativePath(rel.generic_string(), "Windows DLL dependency path");
+    return sanitizePackageRelativePath(zanna::filesystem::genericPathToUtf8(rel),
+                                       "Windows DLL dependency path");
 }
 
 /// @brief Transitively collect non-system DLLs that ship next to @p exePath.
@@ -1008,7 +1016,7 @@ std::vector<WindowsDllDependency> discoverAdjacentDllDependencies(const fs::path
     std::vector<fs::path> queue{exePath};
     for (size_t index = 0; index < queue.size(); ++index) {
         const fs::path current = queue[index];
-        const auto imports = importedDllNamesFromPeImpl(readFile(current.string()));
+        const auto imports = importedDllNamesFromPeImpl(readFile(current));
         for (const auto &dll : imports) {
             if (!seen.insert(dll).second)
                 continue;
@@ -1021,7 +1029,8 @@ std::vector<WindowsDllDependency> discoverAdjacentDllDependencies(const fs::path
                 continue;
             }
             throw std::runtime_error("Windows package executable imports non-system DLL '" + dll +
-                                     "' but no adjacent DLL was found next to " + exePath.string());
+                                     "' but no adjacent DLL was found next to " +
+                                     zanna::filesystem::pathToUtf8(exePath));
         }
     }
     return deps;
@@ -1332,13 +1341,13 @@ std::string textFromBytes(const std::vector<uint8_t> &data) {
 /// @param pkg Package metadata.
 /// @return License or license-summary text for installer display.
 std::string appLicenseTextFor(const std::string &projectRoot, const PackageConfig &pkg) {
-    const fs::path root(projectRoot);
+    const fs::path root = zanna::filesystem::pathFromUtf8(projectRoot);
     if (!pkg.licenseFilePath.empty())
         return readPackageTextFile(root, pkg.licenseFilePath, "package license file");
     for (const char *name : {"LICENSE", "LICENSE.txt"}) {
         const fs::path candidate = root / name;
         if (fs::is_regular_file(candidate))
-            return textFromBytes(readFile(candidate.string()));
+            return textFromBytes(readFile(candidate));
     }
     if (!pkg.license.empty())
         return pkg.license;
@@ -1388,14 +1397,15 @@ void addParentDirs(std::vector<WindowsPackageDirEntry> &out,
                    std::set<std::string> &seen,
                    WindowsInstallRoot root,
                    const std::string &relativeFilePath) {
-    fs::path rel(relativeFilePath);
+    fs::path rel = zanna::filesystem::pathFromUtf8(relativeFilePath);
     fs::path cur = rel.parent_path();
     if (cur.empty())
         return;
 
     std::vector<std::string> dirs;
     while (!cur.empty() && cur != ".") {
-        dirs.push_back(sanitizePackageRelativePath(cur.generic_string(), "windows package path"));
+        dirs.push_back(sanitizePackageRelativePath(zanna::filesystem::genericPathToUtf8(cur),
+                                                   "windows package path"));
         cur = cur.parent_path();
     }
     std::reverse(dirs.begin(), dirs.end());
@@ -1641,13 +1651,14 @@ WindowsInstallerMetadata nativeMetadataForLayout(const WindowsPackageLayout &lay
 /// @brief Prove that @p path is an unsigned, static-runtime native host for @p arch.
 std::vector<uint8_t> loadNativeInstallerHost(const fs::path &path, const std::string &arch) {
     if (!fs::is_regular_file(path))
-        throw std::runtime_error("Windows native installer host is missing: " + path.string());
-    std::vector<uint8_t> bytes = readFile(path.string());
+        throw std::runtime_error("Windows native installer host is missing: " +
+                                 zanna::filesystem::pathToUtf8(path));
+    std::vector<uint8_t> bytes = readFile(path);
     const auto info = inspectPeExecutable(bytes);
     if (!info || !info->pe32Plus || info->machine != windowsMachineForArch(arch)) {
         throw std::runtime_error("Windows native installer host architecture does not match '" +
                                  (arch.empty() ? std::string("x64") : arch) +
-                                 "': " + path.string());
+                                 "': " + zanna::filesystem::pathToUtf8(path));
     }
     for (const std::string &dependency : importedDllNamesFromPeImpl(bytes)) {
         const std::string lower = lowerAscii(dependency);
@@ -1773,7 +1784,7 @@ std::vector<uint8_t> buildNativeInstallerPair(ZipWriter &outer,
 /// @brief Locate a staged host template for a toolchain package.
 fs::path toolchainNativeHostPath(const WindowsToolchainBuildParams &params) {
     if (!params.installerHostPath.empty())
-        return params.installerHostPath;
+        return zanna::filesystem::pathFromUtf8(params.installerHostPath);
     for (const ToolchainFileEntry &file : params.manifest.files) {
         if (lowerAscii(metadataPath(file.stagedRelativePath)) == "bin/zanna-installer-host.exe") {
             return file.stagedAbsolutePath;
@@ -1785,7 +1796,7 @@ fs::path toolchainNativeHostPath(const WindowsToolchainBuildParams &params) {
 /// @brief Locate the staged detached-cleanup helper for a toolchain package.
 fs::path toolchainNativeCleanupPath(const WindowsToolchainBuildParams &params) {
     if (!params.installerCleanupPath.empty())
-        return params.installerCleanupPath;
+        return zanna::filesystem::pathFromUtf8(params.installerCleanupPath);
     for (const ToolchainFileEntry &file : params.manifest.files) {
         if (lowerAscii(metadataPath(file.stagedRelativePath)) ==
             "bin/zanna-installer-cleanup.exe") {
@@ -1807,6 +1818,9 @@ std::vector<std::string> importedDllNamesFromPe(const std::vector<uint8_t> &data
 /// the final PE. The uninstaller is built first so it can be included in the ZIP.
 void buildWindowsPackage(const WindowsBuildParams &params) {
     const auto &pkg = params.pkgConfig;
+    const fs::path executablePath = zanna::filesystem::pathFromUtf8(params.executablePath);
+    const fs::path projectRoot = zanna::filesystem::pathFromUtf8(params.projectRoot);
+    const fs::path outputPath = zanna::filesystem::pathFromUtf8(params.outputPath);
     const std::string displayName = pkg.displayName.empty() ? params.projectName : pkg.displayName;
     const std::string exec = normalizeExecName(params.projectName);
     const std::string installDir =
@@ -1828,10 +1842,10 @@ void buildWindowsPackage(const WindowsBuildParams &params) {
     validateSingleLineField(pkg.description, "Windows package description");
     validatePackageUrl(pkg.homepage, "package homepage");
     validatePackageFileAssociations(pkg.fileAssociations);
-    if (!fs::is_regular_file(params.executablePath))
+    if (!fs::is_regular_file(executablePath))
         throw std::runtime_error("Windows package executable is not a regular file: " +
                                  params.executablePath);
-    validateWindowsPayloadExecutable(params.executablePath, params.archStr);
+    validateWindowsPayloadExecutable(executablePath, params.archStr);
 
     WindowsPackageLayout layout;
     layout.displayName = displayName;
@@ -1885,18 +1899,17 @@ void buildWindowsPackage(const WindowsBuildParams &params) {
 
     std::vector<uint8_t> icoData;
     if (!pkg.iconPath.empty()) {
-        fs::path iconSrc =
-            resolvePackageSourcePath(params.projectRoot, pkg.iconPath, "package icon");
+        fs::path iconSrc = resolvePackageSourcePath(projectRoot, pkg.iconPath, "package icon");
         if (!fs::is_regular_file(iconSrc))
             throw std::runtime_error("package icon not found: " + pkg.iconPath);
-        auto srcImage = pngRead(iconSrc.string());
+        auto srcImage = pngRead(zanna::filesystem::pathToUtf8(iconSrc));
         icoData = generateIco(srcImage);
     } else {
         icoData = generateIco(defaultZannaToolchainIconImage());
     }
 
     const auto execData = signWindowsPayloadPe(
-        params.peSigner, exec + ".exe", readFile(params.executablePath), params.archStr);
+        params.peSigner, exec + ".exe", readFile(executablePath), params.archStr);
     noteInstallFile(exec + ".exe");
     addCompressedPayloadFile(payloadZip,
                              exec + ".exe",
@@ -1910,10 +1923,10 @@ void buildWindowsPackage(const WindowsBuildParams &params) {
                              &installedManifestPaths);
 
     std::vector<WindowsDllDependency> dllDependencies =
-        discoverAdjacentDllDependencies(params.executablePath);
+        discoverAdjacentDllDependencies(executablePath);
     for (const auto &dllRelPath : pkg.windowsDlls) {
         const fs::path dllPath =
-            resolvePackageSourcePath(params.projectRoot, dllRelPath, "Windows DLL dependency");
+            resolvePackageSourcePath(projectRoot, dllRelPath, "Windows DLL dependency");
         if (!fs::is_regular_file(dllPath))
             throw std::runtime_error("Windows DLL dependency is not a regular file: " + dllRelPath);
         dllDependencies.push_back(
@@ -1925,7 +1938,7 @@ void buildWindowsPackage(const WindowsBuildParams &params) {
         addParentDirs(
             layout.installDirectories, installDirSet, WindowsInstallRoot::InstallDir, dllName);
         const auto dllData = signWindowsPayloadPe(
-            params.peSigner, dllName, readFile(dll.sourcePath.string()), params.archStr);
+            params.peSigner, dllName, readFile(dll.sourcePath), params.archStr);
         addCompressedPayloadFile(payloadZip,
                                  dllName,
                                  dllData.data(),
@@ -1956,9 +1969,10 @@ void buildWindowsPackage(const WindowsBuildParams &params) {
     for (const auto &asset : pkg.assets) {
         const std::string sourceRel =
             sanitizePackageRelativePath(asset.sourcePath, "asset source path");
-        const std::string sourceLeaf = fs::path(sourceRel).filename().generic_string();
+        const std::string sourceLeaf = zanna::filesystem::genericPathToUtf8(
+            zanna::filesystem::pathFromUtf8(sourceRel).filename());
         fs::path srcPath =
-            resolvePackageSourcePath(params.projectRoot, asset.sourcePath, "asset source path");
+            resolvePackageSourcePath(projectRoot, asset.sourcePath, "asset source path");
         const std::string targetDir =
             sanitizePackageRelativePath(asset.targetPath, "asset target path");
         validateWindowsRelativePath(targetDir, "asset target path");
@@ -1974,9 +1988,10 @@ void buildWindowsPackage(const WindowsBuildParams &params) {
                              targetDir);
             }
             safeDirectoryIterateResolved(
-                srcPath, params.projectRoot, [&](const SafeDirectoryEntry &entry) {
+                srcPath, projectRoot, [&](const SafeDirectoryEntry &entry) {
                     const auto relPath = sanitizePackageRelativePath(
-                        entry.logicalPath.lexically_relative(srcPath).generic_string(),
+                        zanna::filesystem::genericPathToUtf8(
+                            entry.logicalPath.lexically_relative(srcPath)),
                         "asset path");
                     if (entry.directory) {
                         const std::string relInstall =
@@ -1997,7 +2012,7 @@ void buildWindowsPackage(const WindowsBuildParams &params) {
                                   installDirSet,
                                   WindowsInstallRoot::InstallDir,
                                   relInstall);
-                    const auto data = readFile(entry.resolvedPath.string());
+                    const auto data = readFile(entry.resolvedPath);
                     addCompressedPayloadFile(payloadZip,
                                              relInstall,
                                              data.data(),
@@ -2017,7 +2032,7 @@ void buildWindowsPackage(const WindowsBuildParams &params) {
                           installDirSet,
                           WindowsInstallRoot::InstallDir,
                           relInstall);
-            const auto data = readFile(srcPath.string());
+            const auto data = readFile(srcPath);
             addCompressedPayloadFile(payloadZip,
                                      relInstall,
                                      data.data(),
@@ -2109,12 +2124,12 @@ void buildWindowsPackage(const WindowsBuildParams &params) {
         const std::vector<uint8_t> compressedPayload = payloadZip.finishToVector();
         WindowsInstallerMetadata metadata =
             nativeMetadataForLayout(layout, "application", "setup", params.archStr);
-        const std::vector<uint8_t> host =
-            loadNativeInstallerHost(params.installerHostPath, params.archStr);
+        const std::vector<uint8_t> host = loadNativeInstallerHost(
+            zanna::filesystem::pathFromUtf8(params.installerHostPath), params.archStr);
         if (params.installerCleanupPath.empty())
             throw std::runtime_error("Windows native installer cleanup helper path is required");
-        const std::vector<uint8_t> cleanup =
-            loadNativeInstallerHost(params.installerCleanupPath, params.archStr);
+        const std::vector<uint8_t> cleanup = loadNativeInstallerHost(
+            zanna::filesystem::pathFromUtf8(params.installerCleanupPath), params.archStr);
         const std::vector<uint8_t> nativeInstaller = buildNativeInstallerPair(zip,
                                                                               compressedPayload,
                                                                               std::move(metadata),
@@ -2211,7 +2226,7 @@ void buildWindowsPackage(const WindowsBuildParams &params) {
     provisionalPe.iconData = icoData;
     provisionalPe.overlay = zipPayload;
     provisionalPe.versionInfo = windowsVersionInfoForLayout(
-        layout, fs::path(params.outputPath).filename().generic_string(), "Setup");
+        layout, zanna::filesystem::genericPathToUtf8(outputPath.filename()), "Setup");
     configureInstallerStack(provisionalPe);
     const auto provisionalBytes = buildPE(provisionalPe);
     layout.overlayFileOffset = static_cast<uint64_t>(provisionalBytes.size() - zipPayload.size());
@@ -2228,7 +2243,7 @@ void buildWindowsPackage(const WindowsBuildParams &params) {
         pe.iconData = icoData;
         pe.overlay = zipPayload;
         pe.versionInfo = windowsVersionInfoForLayout(
-            layout, fs::path(params.outputPath).filename().generic_string(), "Setup");
+            layout, zanna::filesystem::genericPathToUtf8(outputPath.filename()), "Setup");
         configureInstallerStack(pe);
 
         peBytes = buildPE(pe);
@@ -2248,6 +2263,7 @@ void buildWindowsPackage(const WindowsBuildParams &params) {
 /// Staged files are installed as-is, while generated developer helper scripts and
 /// Start Menu shortcuts are added by the packager. Symlinks are dereferenced.
 void buildWindowsToolchainInstaller(const WindowsToolchainBuildParams &params) {
+    const fs::path outputPath = zanna::filesystem::pathFromUtf8(params.outputPath);
     validateToolchainInstallManifest(params.manifest);
     if (params.manifest.platform != "windows") {
         throw std::runtime_error("Windows toolchain installer requires a Windows staged "
@@ -2348,7 +2364,7 @@ void buildWindowsToolchainInstaller(const WindowsToolchainBuildParams &params) {
             continue;
         }
         try {
-            const std::vector<uint8_t> bytes = readFile(file.stagedAbsolutePath.string());
+            const std::vector<uint8_t> bytes = readFile(file.stagedAbsolutePath);
             ZipReader vsix(bytes.data(), bytes.size());
             if (!vsix.find("[Content_Types].xml") || !vsix.find("extension.vsixmanifest") ||
                 !vsix.find("extension/package.json")) {
@@ -2417,11 +2433,10 @@ void buildWindowsToolchainInstaller(const WindowsToolchainBuildParams &params) {
             std::string normalized = lowerAscii(file.stagedRelativePath);
             std::replace(normalized.begin(), normalized.end(), '\\', '/');
             if (normalized == "bin/zannastudio.exe") {
-                packagedStudioExecutable =
-                    signWindowsPayloadPe(params.peSigner,
-                                         "bin/zannastudio.exe",
-                                         readFile(file.stagedAbsolutePath.string()),
-                                         params.archStr);
+                packagedStudioExecutable = signWindowsPayloadPe(params.peSigner,
+                                                                "bin/zannastudio.exe",
+                                                                readFile(file.stagedAbsolutePath),
+                                                                params.archStr);
                 break;
             }
         }
@@ -2447,7 +2462,7 @@ void buildWindowsToolchainInstaller(const WindowsToolchainBuildParams &params) {
         if (lowerRel == "bin/zannastudio.exe" && packagedStudioExecutable) {
             data = *packagedStudioExecutable;
         } else {
-            const std::vector<uint8_t> stagedData = readFile(file.stagedAbsolutePath.string());
+            const std::vector<uint8_t> stagedData = readFile(file.stagedAbsolutePath);
             if (lowerRel == "bin/zannastudio.buildinfo" && packagedStudioExecutable) {
                 data = bindZannaStudioBuildInfo(stagedData, *packagedStudioExecutable);
             } else {
@@ -2787,7 +2802,7 @@ void buildWindowsToolchainInstaller(const WindowsToolchainBuildParams &params) {
     provisionalPe.iconData = toolchainIcon;
     provisionalPe.overlay = zipPayload;
     provisionalPe.versionInfo = windowsVersionInfoForLayout(
-        layout, fs::path(params.outputPath).filename().generic_string(), "Setup");
+        layout, zanna::filesystem::genericPathToUtf8(outputPath.filename()), "Setup");
     configureInstallerStack(provisionalPe);
     const auto provisionalBytes = buildPE(provisionalPe);
     layout.overlayFileOffset = static_cast<uint64_t>(provisionalBytes.size() - zipPayload.size());
@@ -2804,7 +2819,7 @@ void buildWindowsToolchainInstaller(const WindowsToolchainBuildParams &params) {
         pe.iconData = toolchainIcon;
         pe.overlay = zipPayload;
         pe.versionInfo = windowsVersionInfoForLayout(
-            layout, fs::path(params.outputPath).filename().generic_string(), "Setup");
+            layout, zanna::filesystem::genericPathToUtf8(outputPath.filename()), "Setup");
         configureInstallerStack(pe);
         peBytes = buildPE(pe);
         const uint64_t finalOverlayOffset =

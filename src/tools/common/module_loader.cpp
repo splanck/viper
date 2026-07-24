@@ -26,6 +26,7 @@
 
 #include "tools/common/module_loader.hpp"
 
+#include "common/Filesystem.hpp"
 #include "il/api/expected_api.hpp"
 #include "il/verify/Verifier.hpp"
 
@@ -120,7 +121,7 @@ LoadResult loadModuleFromFile(const std::string &path,
                               std::ostream &err,
                               std::string_view ioErrorPrefix,
                               bool printDiagnostics) {
-    std::ifstream input(path, std::ios::binary | std::ios::ate);
+    std::ifstream input(zanna::filesystem::pathFromUtf8(path), std::ios::binary | std::ios::ate);
     if (!input) {
         std::string message = std::string(ioErrorPrefix) + path;
         if (printDiagnostics)

@@ -322,6 +322,10 @@ TEST(PlatformImportPlanners, WindowsPlannerCreatesGroupedImportsAndThunks) {
                                         "SleepConditionVariableSRW",
                                         "TryAcquireSRWLockExclusive",
                                         "SetFocus",
+                                        "GetCapture",
+                                        "GetClassInfoExW",
+                                        "ReleaseCapture",
+                                        "SetCapture",
                                         "MsgWaitForMultipleObjectsEx",
                                         "RegisterRawInputDevices",
                                         "D3D11CreateDevice",
@@ -383,6 +387,10 @@ TEST(PlatformImportPlanners, WindowsPlannerCreatesGroupedImportsAndThunks) {
     EXPECT_TRUE(importPlanDllHasFunction(plan, "user32.dll", "ClipCursor"));
     EXPECT_TRUE(importPlanDllHasFunction(plan, "user32.dll", "GetRawInputData"));
     EXPECT_TRUE(importPlanDllHasFunction(plan, "user32.dll", "SetFocus"));
+    EXPECT_TRUE(importPlanDllHasFunction(plan, "user32.dll", "GetCapture"));
+    EXPECT_TRUE(importPlanDllHasFunction(plan, "user32.dll", "GetClassInfoExW"));
+    EXPECT_TRUE(importPlanDllHasFunction(plan, "user32.dll", "ReleaseCapture"));
+    EXPECT_TRUE(importPlanDllHasFunction(plan, "user32.dll", "SetCapture"));
     EXPECT_TRUE(importPlanDllHasFunction(plan, "user32.dll", "LoadIconW"));
     EXPECT_TRUE(importPlanDllHasFunction(plan, "user32.dll", "LoadImageW"));
     EXPECT_TRUE(importPlanDllHasFunction(plan, "kernel32.dll", "GetModuleFileNameW"));

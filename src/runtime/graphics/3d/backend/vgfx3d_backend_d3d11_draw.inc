@@ -570,6 +570,8 @@ static void d3d11_resolve_opaque_targets(void *ctx_ptr) {
     ID3D11DeviceContext_CopyResource(
         ctx->ctx, (ID3D11Resource *)ctx->opaque_depth_tex, (ID3D11Resource *)depth);
     d3d11_restore_current_target_bindings(ctx);
+    if (FAILED(d3d11_device_status_after_void_command(ctx, "CopyResource(opaqueDepth)")))
+        return;
     ctx->opaque_depth_valid = 1;
 }
 

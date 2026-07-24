@@ -44,6 +44,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "frontends/zia/Compiler.hpp"
+#include "common/Filesystem.hpp"
 #include "frontends/zia/ImportResolver.hpp"
 #include "frontends/zia/Lexer.hpp"
 #include "frontends/zia/Lowerer.hpp"
@@ -288,7 +289,7 @@ CompilerResult compileFile(const std::string &path,
                            il::support::SourceManager &sm) {
     auto readStart = std::chrono::steady_clock::now();
     // Read file contents
-    std::ifstream file(path, std::ios::binary | std::ios::ate);
+    std::ifstream file(zanna::filesystem::pathFromUtf8(path), std::ios::binary | std::ios::ate);
     if (!file) {
         CompilerResult result{};
         result.diagnostics.report({il::support::Severity::Error,

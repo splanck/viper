@@ -22,6 +22,7 @@
 #include "cmd_codegen_arm64.hpp"
 #include "cmd_codegen_x64.hpp"
 #include "common/PlatformCapabilities.hpp"
+#include "common/Utf8CommandLine.hpp"
 #include "il/core/Module.hpp"
 #include "il/core/OpcodeInfo.hpp"
 #include "il/runtime/RuntimeSignatures.hpp"
@@ -1369,6 +1370,9 @@ int run_codegen_x64(int argc, char **argv) {
 ///          3. Dispatch to the matching handler with the remaining arguments.
 ///          4. Fall back to displaying usage when no match exists.
 int main(int argc, char **argv) {
+    zanna::tools::Utf8CommandLine commandLine(argc, argv);
+    if (!commandLine.applyOrReport(argc, argv))
+        return 1;
 #if ZANNA_HOST_WINDOWS
     // Disable Windows abort dialog so runtime panics exit cleanly
     _set_abort_behavior(0, _WRITE_ABORT_MSG | _CALL_REPORTFAULT);

@@ -16,6 +16,7 @@
 /// @details Uses shared frontend tool infrastructure and delegates to ilc front basic.
 ///          When invoked with no arguments, launches the interactive BASIC REPL.
 
+#include "common/Utf8CommandLine.hpp"
 #include "repl/BasicReplAdapter.hpp"
 #include "repl/ReplSession.hpp"
 #include "tools/common/frontend_tool.hpp"
@@ -36,6 +37,9 @@
 ///          - vbasic script.bas --emit-il -> shows generated IL
 ///          - vbasic script.bas -o file   -> saves IL to file
 int main(int argc, char **argv) {
+    zanna::tools::Utf8CommandLine commandLine(argc, argv);
+    if (!commandLine.applyOrReport(argc, argv))
+        return 1;
     // Zero-arg: launch the interactive BASIC REPL
     if (argc < 2) {
         auto adapter = std::make_unique<zanna::repl::BasicReplAdapter>();

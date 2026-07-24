@@ -148,15 +148,88 @@ std::string bytesToString(const std::vector<uint8_t> &bytes) {
 void requirePeArchitecture(const std::vector<uint8_t> &bytes,
                            std::string_view architecture,
                            std::string_view label) {
-    if (bytes.size() < 64U)
+    constexpr uint16_t kPe32PlusMagic = 0x020BU;
+    constexpr uint16_t kExecutableImage = 0x0002U;
+    constexpr uint16_t kDllImage = 0x2000U;
+    constexpr size_t kCoffHeaderBytes = 20U;
+    constexpr size_t kSectionHeaderBytes = 40U;
+    if (bytes.size() < 64U || readLe16(bytes.data()) != 0x5A4DU)
         throw std::runtime_error(std::string(label) + " is too small for a PE header");
     const uint32_t peOffset = readLe32(bytes.data() + 60U);
-    if (peOffset > bytes.size() - 6U || readLe32(bytes.data() + peOffset) != 0x00004550U)
+    if (peOffset < 64U || peOffset > bytes.size() - 4U - kCoffHeaderBytes ||
+        readLe32(bytes.data() + peOffset) != 0x00004550U) {
         throw std::runtime_error(std::string(label) + " has an invalid PE header");
+    }
+    const size_t coff = static_cast<size_t>(peOffset) + 4U;
     const uint16_t machine = readLe16(bytes.data() + peOffset + 4U);
-    const uint16_t expected = architecture == "arm64" ? 0xAA64U : 0x8664U;
+    uint16_t expected = 0;
+    if (architecture == "arm64")
+        expected = 0xAA64U;
+    else if (architecture == "x64")
+        expected = 0x8664U;
+    else
+        throw std::runtime_error(std::string(label) + " metadata architecture is unsupported");
     if (machine != expected)
         throw std::runtime_error(std::string(label) + " architecture does not match metadata");
+
+    const uint16_t sectionCount = readLe16(bytes.data() + coff + 2U);
+    const uint16_t optionalSize = readLe16(bytes.data() + coff + 16U);
+    const uint16_t characteristics = readLe16(bytes.data() + coff + 18U);
+    if (sectionCount == 0 || sectionCount > 96U || optionalSize < 112U ||
+        (characteristics & kExecutableImage) == 0 || (characteristics & kDllImage) != 0) {
+        throw std::runtime_error(std::string(label) + " has invalid PE image characteristics");
+    }
+
+    const size_t optional = coff + kCoffHeaderBytes;
+    if (optionalSize > bytes.size() - optional ||
+        readLe16(bytes.data() + optional) != kPe32PlusMagic) {
+        throw std::runtime_error(std::string(label) + " is not a bounded PE32+ image");
+    }
+    const uint32_t entryPoint = readLe32(bytes.data() + optional + 16U);
+    const uint32_t sectionAlignment = readLe32(bytes.data() + optional + 32U);
+    const uint32_t fileAlignment = readLe32(bytes.data() + optional + 36U);
+    const uint32_t sizeOfImage = readLe32(bytes.data() + optional + 56U);
+    const uint32_t sizeOfHeaders = readLe32(bytes.data() + optional + 60U);
+    const uint16_t subsystem = readLe16(bytes.data() + optional + 68U);
+    if (entryPoint == 0 || sectionAlignment == 0 || fileAlignment == 0 ||
+        (fileAlignment & (fileAlignment - 1U)) != 0 || fileAlignment > 65536U || sizeOfImage == 0 ||
+        sizeOfHeaders == 0 || sizeOfHeaders > bytes.size() ||
+        (subsystem != 2U && subsystem != 3U)) {
+        throw std::runtime_error(std::string(label) + " has invalid PE32+ optional metadata");
+    }
+
+    const size_t sectionTable = optional + optionalSize;
+    if (sectionCount > (bytes.size() - sectionTable) / kSectionHeaderBytes)
+        throw std::runtime_error(std::string(label) + " has a truncated PE section table");
+    const size_t sectionTableEnd =
+        sectionTable + static_cast<size_t>(sectionCount) * kSectionHeaderBytes;
+    if (sizeOfHeaders < sectionTableEnd)
+        throw std::runtime_error(std::string(label) + " has overlapping PE headers and sections");
+
+    std::vector<std::pair<uint64_t, uint64_t>> rawRanges;
+    for (uint16_t index = 0; index < sectionCount; ++index) {
+        const uint8_t *section =
+            bytes.data() + sectionTable + static_cast<size_t>(index) * kSectionHeaderBytes;
+        const uint32_t virtualSize = readLe32(section + 8U);
+        const uint32_t virtualAddress = readLe32(section + 12U);
+        const uint32_t rawSize = readLe32(section + 16U);
+        const uint32_t rawOffset = readLe32(section + 20U);
+        const uint64_t virtualEnd =
+            static_cast<uint64_t>(virtualAddress) + std::max(virtualSize, rawSize);
+        if (virtualEnd > sizeOfImage)
+            throw std::runtime_error(std::string(label) + " has an out-of-range PE section");
+        if (rawSize == 0)
+            continue;
+        const uint64_t rawEnd = static_cast<uint64_t>(rawOffset) + rawSize;
+        if (rawOffset < sizeOfHeaders || rawEnd > bytes.size())
+            throw std::runtime_error(std::string(label) + " has invalid PE section storage");
+        rawRanges.emplace_back(rawOffset, rawEnd);
+    }
+    std::sort(rawRanges.begin(), rawRanges.end());
+    for (size_t index = 1; index < rawRanges.size(); ++index) {
+        if (rawRanges[index].first < rawRanges[index - 1U].second)
+            throw std::runtime_error(std::string(label) + " has overlapping PE sections");
+    }
 }
 
 void requireOuterInventory(const zanna::pkg::ZipReader &outer,
@@ -232,14 +305,30 @@ bool startsWith(std::wstring_view value, std::wstring_view prefix) {
     return value.size() >= prefix.size() && value.substr(0, prefix.size()) == prefix;
 }
 
-std::wstring optionValue(std::wstring_view original,
-                         std::wstring_view lower,
-                         std::wstring_view name) {
+std::optional<std::wstring> optionValue(std::wstring_view original,
+                                        std::wstring_view lower,
+                                        std::wstring_view name) {
     const std::wstring equals = std::wstring(name) + L"=";
     const std::wstring colon = std::wstring(name) + L":";
     if (startsWith(lower, equals) || startsWith(lower, colon))
         return std::wstring(original.substr(name.size() + 1));
-    return {};
+    return std::nullopt;
+}
+
+DWORD parseHandoffProcessId(std::wstring_view text) {
+    if (text.empty())
+        throw std::runtime_error("invalid internal handoff process identifier");
+    uint64_t value = 0;
+    for (wchar_t ch : text) {
+        if (ch < L'0' || ch > L'9')
+            throw std::runtime_error("invalid internal handoff process identifier");
+        value = value * 10U + static_cast<unsigned>(ch - L'0');
+        if (value > MAXDWORD)
+            throw std::runtime_error("invalid internal handoff process identifier");
+    }
+    if (value == 0)
+        throw std::runtime_error("invalid internal handoff process identifier");
+    return static_cast<DWORD>(value);
 }
 
 std::set<std::string> parseComponents(std::wstring_view text) {
@@ -281,19 +370,54 @@ ComponentPreset parseComponentPreset(std::wstring value) {
 
 std::wstring sanitizeLogLine(std::wstring_view message) {
     std::wstring result;
-    result.reserve(message.size());
-    for (wchar_t ch : message) {
-        if (ch == L'\r' || ch == L'\n' || ch == L'\t')
-            result.push_back(L' ');
-        else if (ch >= 0x20)
-            result.push_back(ch);
-    }
     constexpr size_t kMaximumLine = 8192;
-    if (result.size() > kMaximumLine) {
-        result.resize(kMaximumLine);
-        result += L" [truncated]";
+    constexpr std::wstring_view kTruncated = L" [truncated]";
+    result.reserve(std::min(message.size(), kMaximumLine));
+    for (size_t index = 0; index < message.size();) {
+        const wchar_t ch = message[index++];
+        if (ch >= 0xD800 && ch <= 0xDBFF) {
+            if (index < message.size() && message[index] >= 0xDC00 && message[index] <= 0xDFFF) {
+                if (result.size() + 2U > kMaximumLine - kTruncated.size())
+                    break;
+                result.push_back(ch);
+                result.push_back(message[index++]);
+                continue;
+            }
+            result.push_back(static_cast<wchar_t>(0xFFFD));
+        } else if (ch >= 0xDC00 && ch <= 0xDFFF) {
+            result.push_back(static_cast<wchar_t>(0xFFFD));
+        } else if (ch < 0x20 || (ch >= 0x7F && ch <= 0x9F) || ch == 0x2028 || ch == 0x2029 ||
+                   (ch >= 0x202A && ch <= 0x202E) || (ch >= 0x2066 && ch <= 0x2069) ||
+                   ch == 0xFEFF) {
+            result.push_back(L' ');
+        } else {
+            result.push_back(ch);
+        }
+        if (result.size() > kMaximumLine - kTruncated.size())
+            break;
+    }
+    if (result.size() > kMaximumLine - kTruncated.size() || message.size() > result.size()) {
+        result.resize(std::min(result.size(), kMaximumLine - kTruncated.size()));
+        if (!result.empty() && result.back() >= 0xD800 && result.back() <= 0xDBFF)
+            result.pop_back();
+        result += kTruncated;
     }
     return result;
+}
+
+bool appendLogRecord(HANDLE handle, std::string_view record) {
+    size_t offset = 0;
+    while (offset < record.size()) {
+        const DWORD requested =
+            static_cast<DWORD>(std::min<size_t>(record.size() - offset, MAXDWORD));
+        DWORD written = 0;
+        if (!WriteFile(handle, record.data() + offset, requested, &written, nullptr) ||
+            written == 0 || written > requested) {
+            return false;
+        }
+        offset += written;
+    }
+    return FlushFileBuffers(handle) != FALSE;
 }
 
 } // namespace
@@ -456,8 +580,12 @@ Logger &Logger::operator=(Logger &&other) noexcept {
 }
 
 void Logger::open(const fs::path &path) {
-    if (handle_ != INVALID_HANDLE_VALUE)
-        CloseHandle(handle_);
+    if (handle_ != INVALID_HANDLE_VALUE) {
+        const HANDLE previous = handle_;
+        handle_ = INVALID_HANDLE_VALUE;
+        if (!CloseHandle(previous))
+            throw std::runtime_error("cannot close the previous installer log");
+    }
     path_ = path;
     if (!path.parent_path().empty())
         fs::create_directories(path.parent_path());
@@ -482,7 +610,7 @@ void Logger::open(const fs::path &path) {
         static constexpr uint8_t kUtf8Bom[] = {0xEF, 0xBB, 0xBF};
         DWORD written = 0;
         if (!WriteFile(handle_, kUtf8Bom, sizeof(kUtf8Bom), &written, nullptr) ||
-            written != sizeof(kUtf8Bom)) {
+            written != sizeof(kUtf8Bom) || !FlushFileBuffers(handle_)) {
             const DWORD error = GetLastError();
             CloseHandle(handle_);
             handle_ = INVALID_HANDLE_VALUE;
@@ -503,12 +631,7 @@ void Logger::write(std::wstring_view level, std::wstring_view message) {
              << std::setw(3) << now.wMilliseconds << L"Z [" << level << L"] "
              << sanitizeLogLine(message) << L"\r\n";
         const std::string utf8 = wideToUtf8(line.str());
-        DWORD written = 0;
-        if (utf8.size() <= MAXDWORD &&
-            WriteFile(handle_, utf8.data(), static_cast<DWORD>(utf8.size()), &written, nullptr) &&
-            written == utf8.size()) {
-            (void)FlushFileBuffers(handle_);
-        }
+        (void)appendLogRecord(handle_, utf8);
     }
     if (progressCallback_ && level != L"ERROR") {
         try {
@@ -540,7 +663,15 @@ void Logger::setCancellationCallback(std::function<bool()> callback) {
 }
 
 bool Logger::cancellationRequested() const {
-    return cancellationCallback_ && cancellationCallback_();
+    if (!cancellationCallback_)
+        return false;
+    try {
+        return cancellationCallback_();
+    } catch (...) {
+        /* A broken presentation callback must stop mutation, not disable the
+         * installer's cooperative cancellation boundary. */
+        return true;
+    }
 }
 
 HostOptions parseCommandLine(int argc, wchar_t **argv) {
@@ -557,40 +688,56 @@ HostOptions parseCommandLine(int argc, wchar_t **argv) {
     bool handoffParentSpecified = false;
     bool helpRequested = false;
     auto setOperation = [&](Operation operation) {
-        if (explicitOperation && *explicitOperation != operation)
-            throw std::runtime_error("installer lifecycle operations are mutually exclusive");
+        if (explicitOperation)
+            throw std::runtime_error(
+                *explicitOperation == operation
+                    ? "installer lifecycle operation was specified more than once"
+                    : "installer lifecycle operations are mutually exclusive");
         explicitOperation = operation;
         result.operation = operation;
     };
     auto setUiLevel = [&](UiLevel level) {
-        if (uiSpecified && result.uiLevel != level)
-            throw std::runtime_error("/quiet and /passive cannot be combined");
+        if (uiSpecified)
+            throw std::runtime_error(result.uiLevel == level
+                                         ? "installer UI level was specified more than once"
+                                         : "/quiet and /passive cannot be combined");
         uiSpecified = true;
         result.uiLevel = level;
     };
     auto setIntegration = [](std::optional<bool> &field, bool value, std::string_view name) {
-        if (field && *field != value)
-            throw std::runtime_error("conflicting installer integration options for " +
-                                     std::string(name));
+        if (field)
+            throw std::runtime_error(
+                *field == value
+                    ? "installer integration option was specified more than once for " +
+                          std::string(name)
+                    : "conflicting installer integration options for " + std::string(name));
         field = value;
     };
     auto setScope = [&](InstallScope scope) {
-        if (scopeSpecified && result.scope != scope)
-            throw std::runtime_error("conflicting /scope values");
+        if (scopeSpecified)
+            throw std::runtime_error(result.scope == scope ? "/scope was specified more than once"
+                                                           : "conflicting /scope values");
         scopeSpecified = true;
         result.scope = scope;
     };
     auto setPreset = [&](ComponentPreset preset) {
-        if (presetSpecified && result.componentPreset != preset)
-            throw std::runtime_error("conflicting /type or /preset values");
+        if (presetSpecified)
+            throw std::runtime_error(result.componentPreset == preset
+                                         ? "/type or /preset was specified more than once"
+                                         : "conflicting /type or /preset values");
         presetSpecified = true;
         result.componentPreset = preset;
+    };
+    auto setFlag = [](bool &field, std::string_view name) {
+        if (field)
+            throw std::runtime_error(std::string(name) + " was specified more than once");
+        field = true;
     };
     for (int i = 1; i < argc; ++i) {
         const std::wstring original(argv[i]);
         const std::wstring arg = lowerWide(original);
         if (arg == L"/?" || arg == L"/help" || arg == L"--help" || arg == L"-h") {
-            helpRequested = true;
+            setFlag(helpRequested, "installer help option");
         } else if (arg == L"/quiet" || arg == L"/silent") {
             setUiLevel(UiLevel::Quiet);
         } else if (arg == L"/passive") {
@@ -610,11 +757,11 @@ HostOptions parseCommandLine(int argc, wchar_t **argv) {
         } else if (arg == L"/selftest" || arg == L"/self-test") {
             setOperation(Operation::SelfTest);
         } else if (arg == L"/allowdowngrade") {
-            result.allowDowngrade = true;
+            setFlag(result.allowDowngrade, "/allowDowngrade");
         } else if (arg == L"/norestart") {
-            result.noRestart = true;
+            setFlag(result.noRestart, "/noRestart");
         } else if (arg == L"/closeapplications" || arg == L"/closeapps") {
-            result.closeApplications = true;
+            setFlag(result.closeApplications, "/closeApplications");
         } else if (arg == L"/addtopath" || arg == L"/path") {
             setIntegration(result.addToPath, true, "PATH");
         } else if (arg == L"/nopath" || arg == L"/no-path") {
@@ -638,58 +785,69 @@ HostOptions parseCommandLine(int argc, wchar_t **argv) {
             uninstallWorkerSpecified = true;
             result.uninstallWorker = true;
         } else if (arg == L"/launch-ide") {
-            result.launchIDE = true;
+            setFlag(result.launchIDE, "/launch-ide");
         } else if (arg == L"/launch-prompt") {
-            result.launchPrompt = true;
+            setFlag(result.launchPrompt, "/launch-prompt");
         } else if (arg == L"/open-quickstart") {
-            result.openQuickstart = true;
+            setFlag(result.openQuickstart, "/open-quickstart");
         } else if (arg == L"/open-samples") {
-            result.openSamples = true;
-        } else if (const std::wstring scopeValue = optionValue(original, arg, L"/scope");
-                   !scopeValue.empty()) {
-            const std::wstring lower = lowerWide(scopeValue);
+            setFlag(result.openSamples, "/open-samples");
+        } else if (const auto scopeValue = optionValue(original, arg, L"/scope"); scopeValue) {
+            if (scopeValue->empty())
+                throw std::runtime_error("/scope requires a non-empty value");
+            const std::wstring lower = lowerWide(*scopeValue);
             if (lower == L"user" || lower == L"currentuser")
                 setScope(InstallScope::User);
             else if (lower == L"machine" || lower == L"allusers")
                 setScope(InstallScope::Machine);
             else
                 throw std::runtime_error("/scope must be user or machine");
-        } else if (const std::wstring installDirValue = optionValue(original, arg, L"/installdir");
-                   !installDirValue.empty()) {
+        } else if (const auto installDirValue = optionValue(original, arg, L"/installdir");
+                   installDirValue) {
+            if (installDirValue->empty())
+                throw std::runtime_error("/installDir requires a non-empty path");
             if (destinationSpecified)
                 throw std::runtime_error("/installDir was specified more than once");
             destinationSpecified = true;
-            result.destination = installDirValue;
-        } else if (const std::wstring logValue = optionValue(original, arg, L"/log");
-                   !logValue.empty()) {
+            result.destination = *installDirValue;
+        } else if (const auto logValue = optionValue(original, arg, L"/log"); logValue) {
+            if (logValue->empty())
+                throw std::runtime_error("/log requires a non-empty path");
             if (logSpecified)
                 throw std::runtime_error("/log was specified more than once");
             logSpecified = true;
-            result.logPath = logValue;
-        } else if (const std::wstring outputValue = optionValue(original, arg, L"/output");
-                   !outputValue.empty()) {
+            result.logPath = *logValue;
+        } else if (const auto outputValue = optionValue(original, arg, L"/output"); outputValue) {
+            if (outputValue->empty())
+                throw std::runtime_error("/output requires a non-empty path");
             if (outputSpecified)
                 throw std::runtime_error("/output was specified more than once");
             outputSpecified = true;
-            result.outputPath = outputValue;
-        } else if (const std::wstring componentsValue = optionValue(original, arg, L"/components");
-                   !componentsValue.empty()) {
-            result.selectedComponents = parseComponents(componentsValue);
+            result.outputPath = *outputValue;
+        } else if (const auto componentsValue = optionValue(original, arg, L"/components");
+                   componentsValue) {
             if (result.componentsSpecified)
                 throw std::runtime_error("/components was specified more than once");
+            result.selectedComponents = parseComponents(*componentsValue);
             result.componentsSpecified = true;
-        } else if (const std::wstring typeValue = optionValue(original, arg, L"/type");
-                   !typeValue.empty()) {
-            setPreset(parseComponentPreset(typeValue));
-        } else if (const std::wstring presetValue = optionValue(original, arg, L"/preset");
-                   !presetValue.empty()) {
-            setPreset(parseComponentPreset(presetValue));
+        } else if (const auto typeValue = optionValue(original, arg, L"/type"); typeValue) {
+            setPreset(parseComponentPreset(*typeValue));
+        } else if (const auto presetValue = optionValue(original, arg, L"/preset"); presetValue) {
+            setPreset(parseComponentPreset(*presetValue));
+        } else if (const auto handoffValue = optionValue(original, arg, L"/handoff-parent");
+                   handoffValue) {
+            if (handoffParentSpecified)
+                throw std::runtime_error("/handoff-parent was specified more than once");
+            result.handoffParentId = parseHandoffProcessId(*handoffValue);
+            handoffParentSpecified = true;
         } else if (arg == L"/scope" || arg == L"/installdir" || arg == L"/log" ||
                    arg == L"/output" || arg == L"/components" || arg == L"/type" ||
                    arg == L"/preset" || arg == L"/handoff-parent") {
             if (++i >= argc)
                 throw std::runtime_error("installer option is missing its value");
             const std::wstring separatedValue(argv[i]);
+            if (separatedValue.empty())
+                throw std::runtime_error("installer option requires a non-empty value");
             if (arg == L"/scope") {
                 const std::wstring lower = lowerWide(separatedValue);
                 if (lower == L"user" || lower == L"currentuser")
@@ -716,13 +874,8 @@ HostOptions parseCommandLine(int argc, wchar_t **argv) {
             } else if (arg == L"/handoff-parent") {
                 if (handoffParentSpecified)
                     throw std::runtime_error("/handoff-parent was specified more than once");
-                wchar_t *end = nullptr;
-                errno = 0;
-                const unsigned long value = std::wcstoul(separatedValue.c_str(), &end, 10);
-                if (errno != 0 || !end || *end != L'\0' || value == 0 || value > MAXDWORD)
-                    throw std::runtime_error("invalid internal handoff process identifier");
                 handoffParentSpecified = true;
-                result.handoffParentId = static_cast<DWORD>(value);
+                result.handoffParentId = parseHandoffProcessId(separatedValue);
             } else if (arg == L"/type" || arg == L"/preset") {
                 setPreset(parseComponentPreset(separatedValue));
             } else {
@@ -741,6 +894,8 @@ HostOptions parseCommandLine(int argc, wchar_t **argv) {
         throw std::runtime_error("/uninstall-worker and /handoff-parent must be supplied together");
     if (result.elevatedWorker && result.uninstallWorker)
         throw std::runtime_error("elevated and maintenance-handoff worker modes are exclusive");
+    if (helpRequested && explicitOperation)
+        throw std::runtime_error("installer help cannot be combined with a lifecycle operation");
     if (helpRequested)
         result.operation = Operation::Help;
     if (outputSpecified && result.outputPath.empty())

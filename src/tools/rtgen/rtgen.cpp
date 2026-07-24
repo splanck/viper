@@ -28,6 +28,8 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "../../common/Filesystem.hpp"
+#include "../../common/Utf8CommandLine.hpp"
 #include "../common/packaging/PkgUtils.hpp"
 
 #include <algorithm>
@@ -566,8 +568,8 @@ static void parseRtClassBegin(ParseState &state, const std::string &args) {
 
     auto parts = split(args, ',');
     if (parts.size() != 4 && parts.size() != 5) {
-        state.error(
-            "RT_CLASS_BEGIN requires 4 or 5 arguments: name, type_id, layout, ctor_id[, base_name]");
+        state.error("RT_CLASS_BEGIN requires 4 or 5 arguments: name, type_id, layout, ctor_id[, "
+                    "base_name]");
     }
 
     RuntimeClass cls;
@@ -827,13 +829,14 @@ static void parseDefinitionFile(ParseState &state,
     std::error_code canonicalEc;
     fs::path canonicalPath = fs::weakly_canonical(path, canonicalEc);
     if (canonicalEc)
-        throw std::runtime_error("cannot resolve runtime definition file " + path.string() + ": " +
+        throw std::runtime_error("cannot resolve runtime definition file " +
+                                 zanna::filesystem::pathToUtf8(path) + ": " +
                                  canonicalEc.message());
     if (!pathIsWithin(canonicalPath, definitionRoot))
         throw std::runtime_error("runtime definition include escapes definition root: " +
-                                 canonicalPath.string());
+                                 zanna::filesystem::pathToUtf8(canonicalPath));
 
-    const std::string pathKey = canonicalPath.generic_string();
+    const std::string pathKey = zanna::filesystem::genericPathToUtf8(canonicalPath);
     if (std::find(includeStack.begin(), includeStack.end(), pathKey) != includeStack.end())
         throw std::runtime_error("cyclic runtime definition include: " + pathKey);
     if (!includedFiles.insert(pathKey).second)
@@ -841,12 +844,12 @@ static void parseDefinitionFile(ParseState &state,
 
     std::ifstream in(canonicalPath);
     if (!in) {
-        throw std::runtime_error("cannot open " + canonicalPath.string());
+        throw std::runtime_error("cannot open " + zanna::filesystem::pathToUtf8(canonicalPath));
     }
 
     const std::string previousFilename = state.filename;
     const int previousLine = state.line_num;
-    state.filename = canonicalPath.generic_string();
+    state.filename = zanna::filesystem::genericPathToUtf8(canonicalPath);
     state.line_num = 0;
     includeStack.push_back(pathKey);
 
@@ -870,7 +873,7 @@ static void parseDefinitionFile(ParseState &state,
             }
             if (!includePath)
                 state.error("invalid runtime definition include");
-            fs::path relativePath(*includePath);
+            fs::path relativePath = zanna::filesystem::pathFromUtf8(*includePath);
             if (relativePath.empty() || relativePath.is_absolute())
                 state.error("runtime definition include path must be relative");
 
@@ -980,7 +983,8 @@ static void validateDefinitionReferences(const ParseState &state, const fs::path
         return;
     std::sort(errors.begin(), errors.end());
     std::ostringstream message;
-    message << inputPath << ": error: runtime definition validation found " << errors.size()
+    message << zanna::filesystem::pathToUtf8(inputPath)
+            << ": error: runtime definition validation found " << errors.size()
             << " unresolved reference(s)";
     for (const auto &error : errors)
         message << "\n  " << error;
@@ -1120,7 +1124,7 @@ static bool signatureExposesRawPointer(const std::string &sig) {
 static std::vector<std::string> parseRtSigNames(const fs::path &path) {
     std::ifstream in(path);
     if (!in) {
-        throw std::runtime_error("cannot read " + path.string());
+        throw std::runtime_error("cannot read " + zanna::filesystem::pathToUtf8(path));
     }
 
     std::vector<std::string> names;
@@ -1148,7 +1152,7 @@ static std::vector<std::string> parseRtSigNames(const fs::path &path) {
 static std::vector<std::string> parseRtSigSymbols(const fs::path &path) {
     std::ifstream in(path);
     if (!in) {
-        throw std::runtime_error("cannot read " + path.string());
+        throw std::runtime_error("cannot read " + zanna::filesystem::pathToUtf8(path));
     }
 
     std::string contents((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
@@ -1293,12 +1297,14 @@ static std::string readTextFile(const fs::path &path) {
     std::error_code ec;
     const auto size = fs::file_size(path, ec);
     if (ec)
-        throw std::runtime_error("cannot stat " + path.string() + ": " + ec.message());
+        throw std::runtime_error("cannot stat " + zanna::filesystem::pathToUtf8(path) + ": " +
+                                 ec.message());
     if (size > kMaxRtgenTextFileBytes)
-        throw std::runtime_error("rtgen input file is too large: " + path.string());
+        throw std::runtime_error("rtgen input file is too large: " +
+                                 zanna::filesystem::pathToUtf8(path));
     std::ifstream in(path);
     if (!in) {
-        throw std::runtime_error("cannot read " + path.string());
+        throw std::runtime_error("cannot read " + zanna::filesystem::pathToUtf8(path));
     }
     return std::string((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
 }
@@ -1313,7 +1319,7 @@ static void writeGeneratedTextFile(const fs::path &path, const std::ostringstrea
 
 /// @brief Normalize @p path and return it with forward slashes.
 static std::string pathToGenericString(const fs::path &path) {
-    return path.lexically_normal().generic_string();
+    return zanna::filesystem::genericPathToUtf8(path.lexically_normal());
 }
 
 /// @brief Return @p path relative to @p base in forward-slash form (absolute if
@@ -2001,7 +2007,7 @@ static void generateNameMap(const ParseState &state, const fs::path &outDir) {
     }
 
     writeGeneratedTextFile(outPath, out);
-    std::cout << "  Generated " << outPath << "\n";
+    std::cout << "  Generated " << zanna::filesystem::pathToUtf8(outPath) << "\n";
 }
 
 /// @brief Generate RuntimeClasses.inc: the OOP class/property/method catalog.
@@ -2062,7 +2068,7 @@ static void generateClasses(const ParseState &state, const fs::path &outDir) {
     }
 
     writeGeneratedTextFile(outPath, out);
-    std::cout << "  Generated " << outPath << "\n";
+    std::cout << "  Generated " << zanna::filesystem::pathToUtf8(outPath) << "\n";
 }
 
 /// @brief Generate RuntimeSignatures.inc: the descriptor row per runtime function.
@@ -2119,7 +2125,7 @@ static void generateSignatures(const ParseState &state,
     }
 
     writeGeneratedTextFile(outPath, out);
-    std::cout << "  Generated " << outPath << "\n";
+    std::cout << "  Generated " << zanna::filesystem::pathToUtf8(outPath) << "\n";
 }
 
 /// @brief Encode Zia extern parameter names into a compact generated string.
@@ -2254,7 +2260,7 @@ static void generateZiaExterns(const ParseState &state,
     out << "};\n";
 
     writeGeneratedTextFile(outPath, out);
-    std::cout << "  Generated " << outPath << "\n";
+    std::cout << "  Generated " << zanna::filesystem::pathToUtf8(outPath) << "\n";
 }
 
 /// @brief Convert a canonical name to a C++ constant identifier.
@@ -2402,7 +2408,7 @@ static void generateFrontendNames(const ParseState &state, const fs::path &outDi
     out << "} // namespace il::runtime::names\n";
 
     writeGeneratedTextFile(outPath, out);
-    std::cout << "  Generated " << outPath << "\n";
+    std::cout << "  Generated " << zanna::filesystem::pathToUtf8(outPath) << "\n";
 }
 
 /// @brief Return the first namespace segment beneath `Zanna` for @p name.
@@ -2456,11 +2462,13 @@ static bool emitRuntimeDocumentationFile(const fs::path &path,
     const std::string expected = contents.str();
     if (checkOnly) {
         if (!fs::exists(path)) {
-            std::cerr << "error: generated runtime documentation is missing: " << path << "\n";
+            std::cerr << "error: generated runtime documentation is missing: "
+                      << zanna::filesystem::pathToUtf8(path) << "\n";
             return false;
         }
         if (readTextFile(path) != expected) {
-            std::cerr << "error: generated runtime documentation is stale: " << path << "\n";
+            std::cerr << "error: generated runtime documentation is stale: "
+                      << zanna::filesystem::pathToUtf8(path) << "\n";
             return false;
         }
         return true;
@@ -2469,7 +2477,7 @@ static bool emitRuntimeDocumentationFile(const fs::path &path,
     std::ostringstream writable;
     writable << expected;
     writeGeneratedTextFile(path, writable);
-    std::cout << "  Generated " << path << "\n";
+    std::cout << "  Generated " << zanna::filesystem::pathToUtf8(path) << "\n";
     return true;
 }
 
@@ -2497,8 +2505,8 @@ static bool generateRuntimeDocumentation(const ParseState &state,
     if (!checkOnly)
         fs::create_directories(outDir, directoryEc);
     if (directoryEc) {
-        std::cerr << "error: cannot create runtime documentation directory " << outDir << ": "
-                  << directoryEc.message() << "\n";
+        std::cerr << "error: cannot create runtime documentation directory "
+                  << zanna::filesystem::pathToUtf8(outDir) << ": " << directoryEc.message() << "\n";
         return false;
     }
 
@@ -2604,19 +2612,20 @@ static bool generateRuntimeDocumentation(const ParseState &state,
         for (const auto &entry : fs::directory_iterator(outDir)) {
             if (!entry.is_regular_file() || entry.path().extension() != ".md")
                 continue;
-            const std::string filename = entry.path().filename().string();
+            const std::string filename = zanna::filesystem::pathToUtf8(entry.path().filename());
             if (expectedFiles.count(filename))
                 continue;
             if (checkOnly) {
-                std::cerr << "error: stale generated runtime documentation file: " << entry.path()
-                          << "\n";
+                std::cerr << "error: stale generated runtime documentation file: "
+                          << zanna::filesystem::pathToUtf8(entry.path()) << "\n";
                 clean = false;
             } else {
                 std::error_code removeEc;
                 fs::remove(entry.path(), removeEc);
                 if (removeEc) {
                     std::cerr << "error: cannot remove stale generated runtime documentation file "
-                              << entry.path() << ": " << removeEc.message() << "\n";
+                              << zanna::filesystem::pathToUtf8(entry.path()) << ": "
+                              << removeEc.message() << "\n";
                     clean = false;
                 }
             }
@@ -2861,6 +2870,9 @@ static void printUsage(const char *prog) {
 /// @param argv Argument vector from the C runtime.
 /// @return 0 on success; non-zero on usage error or audit failure.
 int main(int argc, char **argv) {
+    zanna::tools::Utf8CommandLine commandLine(argc, argv);
+    if (!commandLine.applyOrReport(argc, argv))
+        return 1;
     bool auditMode = false;
     bool validateMode = false;
     bool docsMode = false;
@@ -2901,17 +2913,18 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    fs::path inputPath = positional[0];
+    fs::path inputPath = zanna::filesystem::pathFromUtf8(positional[0]);
 
     std::error_code inputEc;
     if (!fs::exists(inputPath, inputEc)) {
-        std::cerr << "error: input file not found: " << inputPath << "\n";
+        std::cerr << "error: input file not found: " << zanna::filesystem::pathToUtf8(inputPath)
+                  << "\n";
         return 1;
     }
 
     ParseState state;
     try {
-        std::cout << "rtgen: Parsing " << inputPath << "\n";
+        std::cout << "rtgen: Parsing " << zanna::filesystem::pathToUtf8(inputPath) << "\n";
         state = parseFile(inputPath);
         validateDefinitionReferences(state, inputPath);
     } catch (const std::exception &e) {
@@ -2927,7 +2940,7 @@ int main(int argc, char **argv) {
         return 0;
     }
     if (docsMode) {
-        const fs::path documentationDir = positional[1];
+        const fs::path documentationDir = zanna::filesystem::pathFromUtf8(positional[1]);
         if (!generateRuntimeDocumentation(state, documentationDir, checkDocs))
             return 1;
         if (checkDocs)
@@ -2935,14 +2948,14 @@ int main(int argc, char **argv) {
         return 0;
     }
 
-    fs::path outputDir = positional[1];
+    fs::path outputDir = zanna::filesystem::pathFromUtf8(positional[1]);
 
     // Create output directory if needed
     std::error_code ec;
     if (!fs::exists(outputDir, ec)) {
         if (!fs::create_directories(outputDir, ec) || ec) {
-            std::cerr << "error: cannot create output directory " << outputDir << ": "
-                      << ec.message() << "\n";
+            std::cerr << "error: cannot create output directory "
+                      << zanna::filesystem::pathToUtf8(outputDir) << ": " << ec.message() << "\n";
             return 1;
         }
     }
@@ -2950,7 +2963,8 @@ int main(int argc, char **argv) {
     std::cout << "rtgen: Parsed " << state.functions.size() << " functions, "
               << state.classes.size() << " classes\n";
 
-    std::cout << "rtgen: Generating output files in " << outputDir << "\n";
+    std::cout << "rtgen: Generating output files in " << zanna::filesystem::pathToUtf8(outputDir)
+              << "\n";
     try {
         generateNameMap(state, outputDir);
         generateClasses(state, outputDir);

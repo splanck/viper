@@ -112,13 +112,101 @@ static int generate_unique_id(char *buffer, size_t size) {
         return 0;
     }
 
-    snprintf(buffer,
-             size,
-             "%016llx%016llx",
-             (unsigned long long)rnd_hi,
-             (unsigned long long)rnd_lo);
+    snprintf(
+        buffer, size, "%016llx%016llx", (unsigned long long)rnd_hi, (unsigned long long)rnd_lo);
     return 1;
 }
+
+#if defined(_WIN32)
+typedef DWORD(WINAPI *tempfile_path_query_fn)(DWORD, LPWSTR);
+
+/// @brief Return nonzero when a separator-terminated path is a Windows volume root.
+/// @details Covers drive, UNC, extended drive, extended UNC, and volume-GUID roots so
+///          normalization never turns `\\?\C:\` into the drive-relative `\\?\C:`.
+static int tempfile_windows_path_is_root(const wchar_t *path, size_t length) {
+    size_t start = 0;
+    size_t required_components = 0;
+    size_t components = 0;
+    int in_component = 0;
+    if (!path || length == 0 || (path[length - 1] != L'\\' && path[length - 1] != L'/'))
+        return 0;
+    if (length == 1)
+        return 1;
+    if (length == 3 && path[1] == L':')
+        return 1;
+    if (length >= 8 && path[0] == L'\\' && path[1] == L'\\' && path[2] == L'?' &&
+        path[3] == L'\\' && (path[4] == L'U' || path[4] == L'u') &&
+        (path[5] == L'N' || path[5] == L'n') && (path[6] == L'C' || path[6] == L'c') &&
+        (path[7] == L'\\' || path[7] == L'/')) {
+        start = 8;
+        required_components = 2;
+    } else if (length >= 4 && path[0] == L'\\' && path[1] == L'\\' && path[2] == L'?' &&
+               path[3] == L'\\') {
+        start = 4;
+        required_components = 1;
+    } else if (length >= 2 && path[0] == L'\\' && path[1] == L'\\') {
+        start = 2;
+        required_components = 2;
+    } else {
+        return 0;
+    }
+    for (size_t i = start; i + 1u < length; ++i) {
+        if (path[i] == L'\\' || path[i] == L'/') {
+            if (in_component)
+                components++;
+            in_component = 0;
+        } else {
+            in_component = 1;
+        }
+    }
+    if (in_component)
+        components++;
+    return components == required_components;
+}
+
+/// @brief Query, normalize, and validate one native Windows directory provider.
+static rt_string tempfile_windows_directory_from_query(tempfile_path_query_fn query) {
+    if (!query)
+        return NULL;
+    DWORD capacity = query(0, NULL);
+    for (int attempt = 0; capacity > 0 && attempt < 8; ++attempt) {
+        if (capacity == MAXDWORD || (size_t)capacity + 1u > SIZE_MAX / sizeof(wchar_t))
+            return NULL;
+        capacity++;
+        wchar_t *buffer = (wchar_t *)malloc((size_t)capacity * sizeof(wchar_t));
+        if (!buffer)
+            return NULL;
+        DWORD length = query(capacity, buffer);
+        if (length == 0) {
+            free(buffer);
+            return NULL;
+        }
+        if (length >= capacity) {
+            free(buffer);
+            capacity = length;
+            continue;
+        }
+
+        while (length > 1 && (buffer[length - 1] == L'\\' || buffer[length - 1] == L'/') &&
+               !tempfile_windows_path_is_root(buffer, (size_t)length)) {
+            buffer[--length] = L'\0';
+        }
+        DWORD attributes = GetFileAttributesW(buffer);
+        if (attributes == INVALID_FILE_ATTRIBUTES || !(attributes & FILE_ATTRIBUTE_DIRECTORY)) {
+            free(buffer);
+            return NULL;
+        }
+        rt_string result = rt_file_path_wide_to_string(buffer);
+        free(buffer);
+        if (result && rt_str_len(result) > 0)
+            return result;
+        if (result)
+            rt_string_unref(result);
+        return NULL;
+    }
+    return NULL;
+}
+#endif
 
 #if !defined(_WIN32)
 /// @brief Validate a POSIX temporary directory candidate.
@@ -158,15 +246,26 @@ static int tempfile_try_create_path(const char *cpath) {
         rt_trap("TempFile.Create: invalid temporary file path");
         return -1;
     }
-    HANDLE h =
-        CreateFileW(wide_path, GENERIC_WRITE, 0, NULL, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, NULL);
-    free(wide_path);
+    HANDLE h = CreateFileW(wide_path,
+                           GENERIC_WRITE,
+                           0,
+                           NULL,
+                           CREATE_NEW,
+                           FILE_ATTRIBUTE_TEMPORARY | FILE_ATTRIBUTE_NOT_CONTENT_INDEXED,
+                           NULL);
     if (h != INVALID_HANDLE_VALUE) {
-        CloseHandle(h);
+        if (!CloseHandle(h)) {
+            (void)DeleteFileW(wide_path);
+            free(wide_path);
+            rt_trap("TempFile.Create: failed to close temporary file");
+            return -1;
+        }
+        free(wide_path);
         return 1;
     }
 
     DWORD err = GetLastError();
+    free(wide_path);
     if (err == ERROR_FILE_EXISTS || err == ERROR_ALREADY_EXISTS)
         return 0;
 
@@ -230,31 +329,23 @@ static int tempfile_try_create_dir(const char *cpath) {
 /// every probe fails.
 rt_string rt_tempfile_dir(void) {
 #ifdef _WIN32
-    DWORD len = GetTempPathW(0, NULL);
-    if (len > 0) {
-        if (len == UINT32_MAX) {
-            rt_trap("TempFile.Dir: temporary path too long");
-            return rt_string_from_bytes("C:\\Temp", 7);
-        }
-        DWORD cap = len + 1;
-        wchar_t *buffer = (wchar_t *)malloc((size_t)cap * sizeof(wchar_t));
-        if (!buffer) {
-            rt_trap("TempFile.Dir: memory allocation failed");
-            return rt_string_from_bytes("C:\\Temp", 7);
-        }
-        DWORD got = GetTempPathW(cap, buffer);
-        if (got > 0 && got < cap) {
-            while (got > 1 && (buffer[got - 1] == L'\\' || buffer[got - 1] == L'/')) {
-                buffer[got - 1] = L'\0';
-                got--;
-            }
-            rt_string result = rt_file_path_wide_to_string(buffer);
-            free(buffer);
-            return result;
-        }
-        free(buffer);
+    tempfile_path_query_fn query = NULL;
+    HMODULE kernel32 = GetModuleHandleW(L"kernel32.dll");
+    if (kernel32)
+        query = (tempfile_path_query_fn)(void *)GetProcAddress(kernel32, "GetTempPath2W");
+    rt_string result = tempfile_windows_directory_from_query(query);
+    if (!result)
+        result = tempfile_windows_directory_from_query(GetTempPathW);
+    if (!result) {
+        /* A malformed or stale environment-provided temp path must not escape
+         * as a plausible but nonexistent C:\Temp fallback. The process current
+         * directory is an existing absolute last resort. */
+        result = tempfile_windows_directory_from_query(GetCurrentDirectoryW);
     }
-    return rt_const_cstr("C:\\Temp");
+    if (result)
+        return result;
+    rt_trap("TempFile.Dir: no usable temporary directory");
+    return rt_str_empty();
 #else
     const char *tmp = getenv("TMPDIR");
     if (tmp && *tmp) {

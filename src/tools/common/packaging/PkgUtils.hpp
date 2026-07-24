@@ -41,6 +41,7 @@
 #include <system_error>
 #include <vector>
 
+#include "../../../common/Filesystem.hpp"
 #include "../../../common/PlatformCapabilities.hpp"
 #include "PackageConfig.hpp"
 
@@ -125,27 +126,30 @@ inline std::filesystem::path createUniqueTempDirectory(const std::filesystem::pa
     std::error_code ec;
     fs::create_directories(parent, ec);
     if (ec)
-        throw std::runtime_error("cannot create temp directory parent '" + parent.string() +
-                                 "': " + ec.message());
+        throw std::runtime_error("cannot create temp directory parent '" +
+                                 zanna::filesystem::pathToUtf8(parent) + "': " + ec.message());
     for (unsigned attempt = 0; attempt < 100; ++attempt) {
         const fs::path candidate = parent / (std::string(stem) + "-" + uniqueTempSuffix(attempt));
         ec.clear();
         if (fs::create_directory(candidate, ec))
             return candidate;
         if (ec && ec != std::errc::file_exists) {
-            throw std::runtime_error("cannot create temp directory '" + candidate.string() +
+            throw std::runtime_error("cannot create temp directory '" +
+                                     zanna::filesystem::pathToUtf8(candidate) +
                                      "': " + ec.message());
         }
     }
-    throw std::runtime_error("cannot create a unique temp directory under " + parent.string());
+    throw std::runtime_error("cannot create a unique temp directory under " +
+                             zanna::filesystem::pathToUtf8(parent));
 }
 
 namespace detail {
 
 #if ZANNA_HOST_WINDOWS
 inline int openExclusiveTempFile(const std::filesystem::path &path) {
-    return _wopen(
-        path.native().c_str(), _O_WRONLY | _O_CREAT | _O_EXCL | _O_BINARY, _S_IREAD | _S_IWRITE);
+    return _wopen(path.native().c_str(),
+                  _O_WRONLY | _O_CREAT | _O_EXCL | _O_BINARY | _O_NOINHERIT,
+                  _S_IREAD | _S_IWRITE);
 }
 
 inline int writeTempFileBytes(int fd, const uint8_t *data, size_t size) {
@@ -194,7 +198,11 @@ inline void replaceFileAtomic(const std::filesystem::path &tempPath,
 
 #else
 inline int openExclusiveTempFile(const std::filesystem::path &path) {
-    return open(path.c_str(), O_WRONLY | O_CREAT | O_EXCL, 0666);
+    int flags = O_WRONLY | O_CREAT | O_EXCL;
+#ifdef O_CLOEXEC
+    flags |= O_CLOEXEC;
+#endif
+    return open(path.c_str(), flags, 0666);
 }
 
 inline int writeTempFileBytes(int fd, const uint8_t *data, size_t size) {
@@ -257,18 +265,22 @@ class ExclusiveTempFile {
         const fs::path parent =
             finalPath.parent_path().empty() ? fs::current_path() : finalPath.parent_path();
         for (unsigned attempt = 0; attempt < 100; ++attempt) {
-            path_ = parent /
-                    ("." + finalPath.filename().string() + ".tmp-" + uniqueTempSuffix(attempt));
+            fs::path temporaryName{"."};
+            temporaryName += finalPath.filename().native();
+            temporaryName +=
+                zanna::filesystem::pathFromUtf8(".tmp-" + uniqueTempSuffix(attempt)).native();
+            path_ = parent / temporaryName;
             fd_ = openExclusiveTempFile(path_);
             if (fd_ >= 0)
                 return;
             if (errno != EEXIST) {
-                throw std::runtime_error("cannot create temporary output file '" + path_.string() +
+                throw std::runtime_error("cannot create temporary output file '" +
+                                         zanna::filesystem::pathToUtf8(path_) +
                                          "': " + lastIoError());
             }
         }
         throw std::runtime_error("cannot find a unique temporary output path for " +
-                                 finalPath.string());
+                                 zanna::filesystem::pathToUtf8(finalPath));
     }
 
     /// @brief Close and remove the temp file unless ownership was released.
@@ -299,12 +311,12 @@ class ExclusiveTempFile {
         if (fd_ < 0)
             return;
         if (syncTempFile(fd_) != 0)
-            throw std::runtime_error("failed to flush temporary output file '" + path_.string() +
-                                     "': " + lastIoError());
+            throw std::runtime_error("failed to flush temporary output file '" +
+                                     zanna::filesystem::pathToUtf8(path_) + "': " + lastIoError());
         if (closeTempFile(fd_) != 0) {
             fd_ = -1;
-            throw std::runtime_error("failed to close temporary output file '" + path_.string() +
-                                     "': " + lastIoError());
+            throw std::runtime_error("failed to close temporary output file '" +
+                                     zanna::filesystem::pathToUtf8(path_) + "': " + lastIoError());
         }
         fd_ = -1;
     }
@@ -336,24 +348,30 @@ inline void writeFileAtomic(const std::filesystem::path &path, const std::vector
     std::error_code ec;
     fs::create_directories(parent, ec);
     if (ec)
-        throw std::runtime_error("cannot create output directory '" + parent.string() +
-                                 "': " + ec.message());
+        throw std::runtime_error("cannot create output directory '" +
+                                 zanna::filesystem::pathToUtf8(parent) + "': " + ec.message());
 
     detail::ExclusiveTempFile temp(path);
     if (!data.empty() && detail::writeTempFileBytes(temp.fd(), data.data(), data.size()) != 0)
-        throw std::runtime_error("failed to write temporary output file '" + temp.path().string() +
+        throw std::runtime_error("failed to write temporary output file '" +
+                                 zanna::filesystem::pathToUtf8(temp.path()) +
                                  "': " + detail::lastIoError());
     temp.flushAndClose();
 
     detail::replaceFileAtomic(temp.path(), path, ec);
     if (ec) {
-        throw std::runtime_error("cannot move temporary output into place at '" + path.string() +
-                                 "': " + ec.message());
+        throw std::runtime_error("cannot move temporary output into place at '" +
+                                 zanna::filesystem::pathToUtf8(path) + "': " + ec.message());
     }
 #if !ZANNA_HOST_WINDOWS
     detail::syncParentDirectoryBestEffort(parent);
 #endif
     temp.release();
+}
+
+/// @brief Decode a UTF-8 package output path and write it without using the Windows ACP.
+inline void writeFileAtomic(const std::string &path, const std::vector<uint8_t> &data) {
+    writeFileAtomic(zanna::filesystem::pathFromUtf8(path), data);
 }
 
 /// @brief Write UTF-8/text content atomically using the package byte writer.
@@ -371,30 +389,43 @@ inline void writeTextFileAtomic(const std::filesystem::path &path, std::string_v
     writeFileAtomic(path, bytes);
 }
 
-/// @brief Read a file into a byte vector.
+/// @brief Decode a UTF-8 package text-output path and write it atomically.
+inline void writeTextFileAtomic(const std::string &path, std::string_view text) {
+    writeTextFileAtomic(zanna::filesystem::pathFromUtf8(path), text);
+}
+
+/// @brief Read a native filesystem path into a byte vector.
 /// @throws std::runtime_error on open or read failure.
-inline std::vector<uint8_t> readFile(const std::string &path) {
+inline std::vector<uint8_t> readFile(const std::filesystem::path &path) {
+    const std::string displayPath = zanna::filesystem::pathToUtf8(path);
     std::ifstream f(path, std::ios::binary | std::ios::ate);
     if (!f)
-        throw std::runtime_error("cannot read file: " + path);
+        throw std::runtime_error("cannot read file: " + displayPath);
     auto size = f.tellg();
     if (size < 0)
-        throw std::runtime_error("cannot determine file size: " + path);
+        throw std::runtime_error("cannot determine file size: " + displayPath);
     const auto size64 = static_cast<uint64_t>(size);
     if (size64 > kMaxPackageFileBytes)
-        throw std::runtime_error("file is too large for ZAPS package formats: " + path);
+        throw std::runtime_error("file is too large for ZAPS package formats: " + displayPath);
     if (size64 > static_cast<uint64_t>(std::vector<uint8_t>().max_size()))
-        throw std::runtime_error("file is too large to read into memory: " + path);
+        throw std::runtime_error("file is too large to read into memory: " + displayPath);
+    if (size64 > static_cast<uint64_t>(std::numeric_limits<std::streamsize>::max()))
+        throw std::runtime_error("file is too large for a single stream read: " + displayPath);
     f.seekg(0);
     if (!f)
-        throw std::runtime_error("cannot seek file: " + path);
+        throw std::runtime_error("cannot seek file: " + displayPath);
     std::vector<uint8_t> data(static_cast<size_t>(size64));
     if (data.empty())
         return data;
     f.read(reinterpret_cast<char *>(data.data()), static_cast<std::streamsize>(data.size()));
     if (!f || f.gcount() != static_cast<std::streamsize>(data.size()))
-        throw std::runtime_error("incomplete read of: " + path);
+        throw std::runtime_error("incomplete read of: " + displayPath);
     return data;
+}
+
+/// @brief Decode a UTF-8 package path and read it without using the Windows ACP.
+inline std::vector<uint8_t> readFile(const std::string &path) {
+    return readFile(zanna::filesystem::pathFromUtf8(path));
 }
 
 /// @brief Normalize a project name to a lowercase executable name.
@@ -1620,9 +1651,10 @@ inline std::filesystem::path resolvePackageSourcePath(const std::filesystem::pat
     const fs::path canonicalRoot = fs::canonical(projectRoot, ec);
     if (ec)
         throw std::runtime_error("cannot resolve project root for packaging: " +
-                                 projectRoot.string());
+                                 zanna::filesystem::pathToUtf8(projectRoot));
 
-    fs::path candidate = (canonicalRoot / fs::path(clean)).lexically_normal();
+    fs::path candidate =
+        (canonicalRoot / zanna::filesystem::pathFromUtf8(clean)).lexically_normal();
     const fs::path weakCandidate = fs::weakly_canonical(candidate, ec);
     if (ec)
         throw std::runtime_error(std::string("cannot resolve ") + fieldName + ": " + raw);
@@ -1665,7 +1697,7 @@ inline std::string readPackageTextFile(const std::filesystem::path &projectRoot,
     const fs::path path = resolvePackageSourcePath(projectRoot, raw, fieldName);
     if (!fs::is_regular_file(path))
         throw std::runtime_error(std::string(fieldName) + " is not a regular file: " + raw);
-    const std::vector<uint8_t> data = readFile(path.string());
+    const std::vector<uint8_t> data = readFile(path);
     return std::string(reinterpret_cast<const char *>(data.data()), data.size());
 }
 
@@ -1776,12 +1808,13 @@ inline void safeDirectoryIterateResolved(
     fs::path canonicalRoot = fs::canonical(projectRoot, ec);
     if (ec)
         throw std::runtime_error("cannot resolve project root for directory traversal: " +
-                                 projectRoot.string());
+                                 zanna::filesystem::pathToUtf8(projectRoot));
     ec.clear();
 
     fs::path canonicalIterRoot = fs::canonical(root, ec);
     if (ec)
-        throw std::runtime_error("cannot resolve directory for traversal: " + root.string());
+        throw std::runtime_error("cannot resolve directory for traversal: " +
+                                 zanna::filesystem::pathToUtf8(root));
     ec.clear();
     std::set<fs::path> visitedDirectories;
     visitedDirectories.insert(canonicalIterRoot);
@@ -1791,7 +1824,8 @@ inline void safeDirectoryIterateResolved(
         auto it = fs::directory_iterator(physicalDir, ec);
         if (ec) {
             throw std::runtime_error("cannot access package asset directory '" +
-                                     logicalDir.string() + "': " + ec.message());
+                                     zanna::filesystem::pathToUtf8(logicalDir) +
+                                     "': " + ec.message());
         }
         const auto end = fs::directory_iterator();
         while (it != end) {
@@ -1807,10 +1841,11 @@ inline void safeDirectoryIterateResolved(
                 fs::path resolved = fs::canonical(physicalEntryPath, entryEc);
                 if (entryEc) {
                     throw std::runtime_error("cannot resolve package asset symlink '" +
-                                             entryPath.string() + "': " + entryEc.message());
+                                             zanna::filesystem::pathToUtf8(entryPath) +
+                                             "': " + entryEc.message());
                 } else if (!isPathWithin(canonicalRoot, resolved)) {
                     throw std::runtime_error("package asset symlink escapes the project root: '" +
-                                             entryPath.string() + "'");
+                                             zanna::filesystem::pathToUtf8(entryPath) + "'");
                 } else {
                     resolvedSymlink = resolved;
                     hasResolvedSymlink = true;
@@ -1825,7 +1860,8 @@ inline void safeDirectoryIterateResolved(
                 isRegularFile = fs::is_regular_file(status);
             }
             if (entryEc) {
-                throw std::runtime_error("cannot stat package asset entry '" + entryPath.string() +
+                throw std::runtime_error("cannot stat package asset entry '" +
+                                         zanna::filesystem::pathToUtf8(entryPath) +
                                          "': " + entryEc.message());
             }
 
@@ -1838,7 +1874,8 @@ inline void safeDirectoryIterateResolved(
                                            : fs::canonical(physicalEntryPath, entryEc);
                 if (entryEc) {
                     throw std::runtime_error("cannot resolve package asset directory '" +
-                                             entryPath.string() + "': " + entryEc.message());
+                                             zanna::filesystem::pathToUtf8(entryPath) +
+                                             "': " + entryEc.message());
                 } else if (visitedDirectories.insert(resolvedDir).second) {
                     walk(resolvedDir, entryPath);
                 }
@@ -1847,7 +1884,8 @@ inline void safeDirectoryIterateResolved(
             it.increment(ec);
             if (ec) {
                 throw std::runtime_error("cannot advance package asset directory iterator from '" +
-                                         entryPath.string() + "': " + ec.message());
+                                         zanna::filesystem::pathToUtf8(entryPath) +
+                                         "': " + ec.message());
             }
         }
     };

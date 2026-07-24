@@ -17,6 +17,7 @@
 /// @details The utility shares command-line parsing helpers with other BASIC
 ///          developer tools so diagnostics and usage text stay consistent.
 
+#include "common/Utf8CommandLine.hpp"
 #include "frontends/basic/AstPrinter.hpp"
 #include "frontends/basic/DiagnosticEmitter.hpp"
 #include "frontends/basic/Parser.hpp"
@@ -56,6 +57,9 @@ using il::tools::basic::loadBasicSource;
 /// @param argv Argument vector containing UTF-8 encoded strings.
 /// @return Zero on success; one when argument validation or file loading fails.
 int main(int argc, char **argv) {
+    zanna::tools::Utf8CommandLine commandLine(argc, argv);
+    if (!commandLine.applyOrReport(argc, argv))
+        return 1;
     std::string src;
     SourceManager sm;
     std::optional<std::uint32_t> fileId = loadBasicSource(argc == 2 ? argv[1] : nullptr, src, sm);

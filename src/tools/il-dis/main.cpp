@@ -16,6 +16,7 @@
 #include "bytecode/Bytecode.hpp"
 #include "bytecode/BytecodeCompiler.hpp"
 #include "bytecode/BytecodeModule.hpp"
+#include "common/Utf8CommandLine.hpp"
 #include "il/core/Type.hpp"
 #include "support/diag_expected.hpp"
 #include "tools/common/module_loader.hpp"
@@ -38,9 +39,9 @@ namespace bc = zanna::bytecode;
 
 /// @brief Command-line options for the il-dis disassembler.
 struct Options {
-    bool showPools = true;     ///< Print constant/global/native pool listings.
-    bool showRaw = false;      ///< Include the raw 32-bit instruction words.
-    std::string inputPath;     ///< Path to the input IL file.
+    bool showPools = true; ///< Print constant/global/native pool listings.
+    bool showRaw = false;  ///< Include the raw 32-bit instruction words.
+    std::string inputPath; ///< Path to the input IL file.
 };
 
 /// @brief Outcome of parsing the il-dis command line.
@@ -358,8 +359,8 @@ uint32_t disassembleInstruction(const bc::BytecodeModule &module,
     const uint32_t word = fn.code[pc];
     const auto rawOpcode = static_cast<uint8_t>(word & 0xFFu);
     const bc::BCOpcode op = bc::decodeOpcode(word);
-    std::string opcode = bc::isKnownOpcode(rawOpcode) ? bc::opcodeName(op)
-                                                       : "UNKNOWN_" + hexByte(rawOpcode);
+    std::string opcode =
+        bc::isKnownOpcode(rawOpcode) ? bc::opcodeName(op) : "UNKNOWN_" + hexByte(rawOpcode);
     std::ostringstream operands;
     std::vector<std::string> comments;
     std::vector<std::string> extraLines;
@@ -476,10 +477,9 @@ uint32_t disassembleInstruction(const bc::BytecodeModule &module,
             const uint32_t numCases = fn.code[pc + 1];
             const auto defaultOffset = static_cast<int32_t>(fn.code[pc + 2]);
             operands << "cases=" << numCases;
-            extraLines.push_back("default -> " +
-                                 targetText(static_cast<int64_t>(pc + 2),
-                                            defaultOffset,
-                                            fn.code.size()));
+            extraLines.push_back("default -> " + targetText(static_cast<int64_t>(pc + 2),
+                                                            defaultOffset,
+                                                            fn.code.size()));
 
             const uint64_t tableWords = static_cast<uint64_t>(numCases) * 2u;
             const uint64_t tableStart = static_cast<uint64_t>(pc) + 3u;
@@ -496,10 +496,9 @@ uint32_t disassembleInstruction(const bc::BytecodeModule &module,
                 const uint32_t caseOffsetPc = caseValuePc + 1;
                 const auto caseValue = static_cast<int32_t>(fn.code[caseValuePc]);
                 const auto caseOffset = static_cast<int32_t>(fn.code[caseOffsetPc]);
-                extraLines.push_back("case " + std::to_string(caseValue) + " -> " +
-                                     targetText(static_cast<int64_t>(caseOffsetPc),
-                                                caseOffset,
-                                                fn.code.size()));
+                extraLines.push_back(
+                    "case " + std::to_string(caseValue) + " -> " +
+                    targetText(static_cast<int64_t>(caseOffsetPc), caseOffset, fn.code.size()));
             }
             nextPc = static_cast<uint32_t>(next);
             break;
@@ -751,9 +750,8 @@ void printFunctionMetadata(const bc::BytecodeModule &module,
                            uint32_t index,
                            std::ostream &out) {
     out << "function[" << index << "] @" << fn.name << " params=" << fn.numParams
-        << " locals=" << fn.numLocals << " max_stack=" << fn.maxStack
-        << " alloca=" << fn.allocaSize << " returns=" << (fn.hasReturn ? "yes" : "no")
-        << " words=" << fn.code.size();
+        << " locals=" << fn.numLocals << " max_stack=" << fn.maxStack << " alloca=" << fn.allocaSize
+        << " returns=" << (fn.hasReturn ? "yes" : "no") << " words=" << fn.code.size();
     if (fn.sourceFileIdx < module.sourceFiles.size()) {
         out << " source=" << module.sourceFiles[fn.sourceFileIdx].path;
     }
@@ -786,8 +784,8 @@ void printFunctionSideTables(const bc::BytecodeFunction &fn, std::ostream &out) 
     if (!fn.localVars.empty()) {
         out << "  locals_debug:\n";
         for (const auto &local : fn.localVars) {
-            out << "    local=" << local.localIdx << " " << local.name << " live=["
-                << local.startPc << ", " << local.endPc << ")\n";
+            out << "    local=" << local.localIdx << " " << local.name << " live=[" << local.startPc
+                << ", " << local.endPc << ")\n";
         }
     }
 }
@@ -841,6 +839,9 @@ void disassemble(const bc::BytecodeModule &module, const Options &options, std::
 /// @param argv Argument vector from the C runtime.
 /// @return 0 on success; non-zero on argument, load, or compile errors.
 int main(int argc, char **argv) {
+    zanna::tools::Utf8CommandLine commandLine(argc, argv);
+    if (!commandLine.applyOrReport(argc, argv))
+        return 1;
     Options options;
     const ParseResult args = parseArgs(argc, argv, options, std::cerr);
     switch (args) {

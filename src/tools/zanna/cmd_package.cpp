@@ -24,6 +24,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "cli.hpp"
+#include "common/Environment.hpp"
+#include "common/Filesystem.hpp"
 #include "common/PlatformCapabilities.hpp"
 #include "common/RunProcess.hpp"
 #include "tools/common/native_compiler.hpp"
@@ -217,10 +219,10 @@ bool isPackageArchName(std::string_view value) {
 /// @param path Artifact path to remove.
 /// @param keep True when `--keep-failed-artifact` was supplied.
 /// @param ec Receives any best-effort filesystem removal error.
-void removeFailedArtifactUnlessKept(const fs::path &path, bool keep, std::error_code &ec) {
+void removeFailedArtifactUnlessKept(std::string_view path, bool keep, std::error_code &ec) {
     if (keep || path.empty())
         return;
-    fs::remove(path, ec);
+    fs::remove(zanna::filesystem::pathFromUtf8(path), ec);
 }
 
 /// @brief Return the lowercase platform name for a target (e.g. "macos").
@@ -426,7 +428,7 @@ uint32_t readBE32(const std::vector<uint8_t> &data, size_t off) {
 /// @throws std::runtime_error on open/size/seek/read failure.
 std::vector<uint8_t> readExecutableHeader(const std::string &path) {
     constexpr std::streamoff kMaxHeaderBytes = 64 * 1024;
-    std::ifstream f(path, std::ios::binary | std::ios::ate);
+    std::ifstream f(zanna::filesystem::pathFromUtf8(path), std::ios::binary | std::ios::ate);
     if (!f)
         throw std::runtime_error("cannot read executable: " + path);
     const std::streamoff fileSize = f.tellg();
@@ -598,8 +600,9 @@ void validateExecutableForPackageTarget(const std::string &path,
 
 /// @brief Read an environment variable, returning "" when it is unset.
 std::string getenvOrEmpty(const char *name) {
-    const char *value = std::getenv(name);
-    return value == nullptr ? std::string{} : std::string(value);
+    const auto value =
+        zanna::environment::getUtf8(name ? std::string_view(name) : std::string_view{});
+    return value.value_or(std::string{});
 }
 
 /// @brief Locate one statically linked native Windows installer support executable.
@@ -610,13 +613,13 @@ fs::path findWindowsInstallerSupportExecutable(const ProjectConfig &proj,
                                                std::string_view fileName) {
     const std::string overridePath = getenvOrEmpty(environmentName);
     if (!overridePath.empty()) {
-        fs::path resolved(overridePath);
+        fs::path resolved = zanna::filesystem::pathFromUtf8(overridePath);
         if (!resolved.is_absolute())
-            resolved = fs::path(proj.rootDir) / resolved;
+            resolved = zanna::filesystem::pathFromUtf8(proj.rootDir) / resolved;
         resolved = resolved.lexically_normal();
         if (!fs::is_regular_file(resolved))
-            throw std::runtime_error(std::string(environmentName) +
-                                     " is not a regular file: " + resolved.string());
+            throw std::runtime_error(std::string(environmentName) + " is not a regular file: " +
+                                     zanna::filesystem::pathToUtf8(resolved));
         return resolved;
     }
 #if ZANNA_HOST_WINDOWS
@@ -630,9 +633,9 @@ fs::path findWindowsInstallerSupportExecutable(const ProjectConfig &proj,
             modulePath.resize(length);
             const fs::path executableDir = fs::path(modulePath).parent_path();
             const std::array<fs::path, 2> candidates = {
-                executableDir / fileName,
+                executableDir / zanna::filesystem::pathFromUtf8(fileName),
                 executableDir.parent_path().parent_path().parent_path() / executableDir.filename() /
-                    fileName};
+                    zanna::filesystem::pathFromUtf8(fileName)};
             for (const fs::path &candidate : candidates) {
                 if (fs::is_regular_file(candidate))
                     return candidate;
@@ -649,10 +652,10 @@ fs::path findWindowsInstallerSupportExecutable(const ProjectConfig &proj,
 
 /// @brief Resolve @p pathText relative to @p projectRoot (absolute paths kept as-is).
 fs::path resolveOptionalProjectPath(const std::string &projectRoot, const std::string &pathText) {
-    fs::path p(pathText);
+    fs::path p = zanna::filesystem::pathFromUtf8(pathText);
     if (p.is_absolute())
         return p.lexically_normal();
-    return (fs::path(projectRoot) / p).lexically_normal();
+    return (zanna::filesystem::pathFromUtf8(projectRoot) / p).lexically_normal();
 }
 
 /// @brief Return true if the package config requests Windows Authenticode signing.
@@ -698,7 +701,8 @@ bool signWindowsInstallerArtifact(const ProjectConfig &proj,
     if (!pfxPath.empty()) {
         resolvedPfx = resolveOptionalProjectPath(proj.rootDir, pfxPath);
         if (!fs::is_regular_file(resolvedPfx)) {
-            err << "error: Windows signing PFX not found: " << resolvedPfx.string() << "\n";
+            err << "error: Windows signing PFX not found: "
+                << zanna::filesystem::pathToUtf8(resolvedPfx) << "\n";
             return false;
         }
         password = getenvOrEmpty("ZANNA_WINDOWS_SIGN_PASSWORD");
@@ -741,11 +745,12 @@ bool signWindowsInstallerArtifact(const ProjectConfig &proj,
         signCmd.push_back(thumbprint);
     } else {
         signCmd.push_back("/f");
-        signCmd.push_back(resolvedPfx.string());
+        signCmd.push_back(zanna::filesystem::pathToUtf8(resolvedPfx));
         signCmd.push_back("/p");
         signCmd.push_back(password);
     }
-    signCmd.push_back(artifactPath.string());
+    const std::string artifactPathUtf8 = zanna::filesystem::pathToUtf8(artifactPath);
+    signCmd.push_back(artifactPathUtf8);
     const RunResult signResult = run_process(signCmd);
     if (signResult.exit_code != 0) {
         err << "error: signtool sign failed with exit code " << signResult.exit_code << "\n"
@@ -755,7 +760,7 @@ bool signWindowsInstallerArtifact(const ProjectConfig &proj,
 
     if (!pkg.windowsSignNoVerify) {
         const RunResult verifyResult =
-            run_process({signtool, "verify", "/pa", "/all", "/tw", "/v", artifactPath.string()});
+            run_process({signtool, "verify", "/pa", "/all", "/tw", "/v", artifactPathUtf8});
         if (verifyResult.exit_code != 0) {
             err << "error: signtool verify failed with exit code " << verifyResult.exit_code << "\n"
                 << verifyResult.out << verifyResult.err;
@@ -779,7 +784,7 @@ std::vector<uint8_t> signWindowsPeBytes(const ProjectConfig &proj,
     const fs::path tempDir =
         zanna::pkg::createUniqueTempDirectory(fs::temp_directory_path(), "zanna-pe-sign");
     try {
-        fs::path leaf = fs::path(logicalName).filename();
+        fs::path leaf = zanna::filesystem::pathFromUtf8(logicalName).filename();
         if (leaf.empty())
             leaf = "payload.exe";
         const fs::path tempPe = tempDir / leaf;
@@ -790,7 +795,7 @@ std::vector<uint8_t> signWindowsPeBytes(const ProjectConfig &proj,
             throw std::runtime_error("Authenticode signing failed for '" +
                                      std::string(logicalName) + "': " + signingError.str());
         }
-        std::vector<uint8_t> signedPe = zanna::pkg::readFile(tempPe.string());
+        std::vector<uint8_t> signedPe = zanna::pkg::readFile(tempPe);
         std::error_code cleanupEc;
         fs::remove_all(tempDir, cleanupEc);
         return signedPe;
@@ -1296,7 +1301,8 @@ bool validatePackageConfigForTarget(const ProjectConfig &proj,
                     const fs::path pfx =
                         resolveOptionalProjectPath(proj.rootDir, pkg.windowsSignPfx);
                     if (!fs::is_regular_file(pfx)) {
-                        throw std::runtime_error("Windows signing PFX not found: " + pfx.string());
+                        throw std::runtime_error("Windows signing PFX not found: " +
+                                                 zanna::filesystem::pathToUtf8(pfx));
                     }
                 }
                 for (const auto &dllPath : pkg.windowsDlls) {
@@ -1418,7 +1424,8 @@ std::vector<std::string> requiredAssetPayloadPaths(const ProjectConfig &proj,
     for (const auto &asset : proj.packageConfig.assets) {
         const std::string sourceRel =
             zanna::pkg::sanitizePackageRelativePath(asset.sourcePath, "asset source path");
-        const std::string sourceLeaf = fs::path(sourceRel).filename().generic_string();
+        const std::string sourceLeaf = zanna::filesystem::genericPathToUtf8(
+            zanna::filesystem::pathFromUtf8(sourceRel).filename());
         const std::string targetDir =
             zanna::pkg::sanitizePackageRelativePath(asset.targetPath, "asset target path");
         const fs::path srcPath = zanna::pkg::resolvePackageSourcePath(
@@ -1434,7 +1441,8 @@ std::vector<std::string> requiredAssetPayloadPaths(const ProjectConfig &proj,
                     if (!entry.regularFile)
                         return;
                     const std::string relPath = zanna::pkg::sanitizePackageRelativePath(
-                        entry.logicalPath.lexically_relative(srcPath).generic_string(),
+                        zanna::filesystem::genericPathToUtf8(
+                            entry.logicalPath.lexically_relative(srcPath)),
                         "asset path");
                     appendRequiredPayloadPath(paths, payloadPrefix, targetDir, relPath);
                 });
@@ -1720,7 +1728,7 @@ int cmdPackage(int argc, char **argv) {
     bool cleanupPackagedBinary = false;
 
     if (!args.executablePath.empty()) {
-        fs::path exePath(args.executablePath);
+        fs::path exePath = zanna::filesystem::pathFromUtf8(args.executablePath);
         if (!exePath.is_absolute()) {
             std::error_code cwdEc;
             auto cwd = fs::current_path(cwdEc);
@@ -1732,9 +1740,11 @@ int cmdPackage(int argc, char **argv) {
         }
         std::error_code exeEc;
         const fs::path canonicalExe = fs::weakly_canonical(exePath, exeEc);
-        packageBinaryPath = (exeEc ? exePath.lexically_normal() : canonicalExe).string();
+        packageBinaryPath =
+            zanna::filesystem::pathToUtf8(exeEc ? exePath.lexically_normal() : canonicalExe);
+        const fs::path packageBinaryNative = zanna::filesystem::pathFromUtf8(packageBinaryPath);
         exeEc.clear();
-        if (!fs::exists(packageBinaryPath, exeEc)) {
+        if (!fs::exists(packageBinaryNative, exeEc)) {
             if (exeEc) {
                 std::cerr << "error: cannot inspect prebuilt executable at " << packageBinaryPath
                           << ": " << exeEc.message() << "\n";
@@ -1744,7 +1754,7 @@ int cmdPackage(int argc, char **argv) {
             return 1;
         }
         exeEc.clear();
-        if (!fs::is_regular_file(packageBinaryPath, exeEc)) {
+        if (!fs::is_regular_file(packageBinaryNative, exeEc)) {
             if (exeEc) {
                 std::cerr << "error: cannot inspect prebuilt executable at " << packageBinaryPath
                           << ": " << exeEc.message() << "\n";
@@ -1787,7 +1797,7 @@ int cmdPackage(int argc, char **argv) {
         }
 
         std::error_code compiledEc;
-        if (!fs::exists(packageBinaryPath, compiledEc)) {
+        if (!fs::exists(zanna::filesystem::pathFromUtf8(packageBinaryPath), compiledEc)) {
             if (compiledEc) {
                 std::cerr << "error: cannot inspect compiled binary at " << packageBinaryPath
                           << ": " << compiledEc.message() << "\n";
@@ -1818,7 +1828,7 @@ int cmdPackage(int argc, char **argv) {
 
     if (args.verbose) {
         std::error_code sizeEc;
-        auto binSize = fs::file_size(packageBinaryPath, sizeEc);
+        auto binSize = fs::file_size(zanna::filesystem::pathFromUtf8(packageBinaryPath), sizeEc);
         std::cerr << "  Binary: " << packageBinaryPath;
         if (!sizeEc)
             std::cerr << " (" << binSize << " bytes)";
@@ -1838,13 +1848,15 @@ int cmdPackage(int argc, char **argv) {
             throw std::runtime_error(
                 "--linux-sign-key applies only to --target linux or --target rpm");
         }
-        const fs::path outputParent = fs::path(args.outputPath).parent_path();
+        const fs::path outputParent =
+            zanna::filesystem::pathFromUtf8(args.outputPath).parent_path();
         if (!outputParent.empty()) {
             std::error_code mkdirEc;
             fs::create_directories(outputParent, mkdirEc);
             if (mkdirEc) {
                 throw std::runtime_error("cannot create output directory '" +
-                                         outputParent.string() + "': " + mkdirEc.message());
+                                         zanna::filesystem::pathToUtf8(outputParent) +
+                                         "': " + mkdirEc.message());
             }
         }
         switch (args.platformTarget) {
@@ -1886,18 +1898,16 @@ int cmdPackage(int argc, char **argv) {
                 wparams.outputPath = args.outputPath;
                 wparams.archStr = archStr;
                 wparams.installerHostPath =
-                    findWindowsInstallerSupportExecutable(
-                        proj, "ZANNA_WINDOWS_INSTALLER_HOST", "zanna-installer-host.exe")
-                        .string();
+                    zanna::filesystem::pathToUtf8(findWindowsInstallerSupportExecutable(
+                        proj, "ZANNA_WINDOWS_INSTALLER_HOST", "zanna-installer-host.exe"));
                 if (wparams.installerHostPath.empty()) {
                     throw std::runtime_error(
                         "native Windows installer host not found; install/build "
                         "zanna-installer-host or set ZANNA_WINDOWS_INSTALLER_HOST");
                 }
                 wparams.installerCleanupPath =
-                    findWindowsInstallerSupportExecutable(
-                        proj, "ZANNA_WINDOWS_INSTALLER_CLEANUP", "zanna-installer-cleanup.exe")
-                        .string();
+                    zanna::filesystem::pathToUtf8(findWindowsInstallerSupportExecutable(
+                        proj, "ZANNA_WINDOWS_INSTALLER_CLEANUP", "zanna-installer-cleanup.exe"));
                 if (wparams.installerCleanupPath.empty()) {
                     throw std::runtime_error(
                         "native Windows installer cleanup helper not found; install/build "
@@ -1977,7 +1987,8 @@ int cmdPackage(int argc, char **argv) {
 
     // Step 4: Verify the generated package
     std::error_code ec;
-    if (!fs::exists(args.outputPath, ec)) {
+    const fs::path outputNative = zanna::filesystem::pathFromUtf8(args.outputPath);
+    if (!fs::exists(outputNative, ec)) {
         if (ec)
             std::cerr << "error: cannot inspect generated package: " << ec.message() << "\n";
         else
@@ -1989,7 +2000,7 @@ int cmdPackage(int argc, char **argv) {
     }
 
     if (args.platformTarget == PackageTarget::Windows &&
-        !signWindowsInstallerArtifact(proj, args.outputPath, args.verbose, std::cerr)) {
+        !signWindowsInstallerArtifact(proj, outputNative, args.verbose, std::cerr)) {
         removeFailedArtifactUnlessKept(args.outputPath, args.keepFailedArtifact, ec);
         if (cleanupPackagedBinary)
             removeFailedArtifactUnlessKept(packageBinaryPath, args.keepFailedArtifact, ec);
@@ -2098,10 +2109,10 @@ int cmdPackage(int argc, char **argv) {
 
     try {
         const std::string packageSha256 = zanna::pkg::sha256Hex(pkgData.data(), pkgData.size());
-        const fs::path packagePath(args.outputPath);
+        const fs::path packagePath = zanna::filesystem::pathFromUtf8(args.outputPath);
+        const std::string packageFilename = zanna::filesystem::pathToUtf8(packagePath.filename());
         zanna::pkg::writeTextFileAtomic(args.outputPath + ".sha256",
-                                        packageSha256 + "  " + packagePath.filename().string() +
-                                            "\n");
+                                        packageSha256 + "  " + packageFilename + "\n");
         std::string trust = "checksum-only";
         if (args.platformTarget == PackageTarget::Windows)
             trust = windowsSigningRequested(proj.packageConfig) ? "authenticode" : "unsigned";
@@ -2120,8 +2131,8 @@ int cmdPackage(int argc, char **argv) {
         std::ostringstream artifactManifest;
         artifactManifest << "{\n"
                          << "  \"schema_version\": 1,\n"
-                         << "  \"artifact\": {\"file\": \""
-                         << jsonEscape(packagePath.filename().string()) << "\", \"format\": \""
+                         << "  \"artifact\": {\"file\": \"" << jsonEscape(packageFilename)
+                         << "\", \"format\": \""
                          << jsonEscape(platformExtension(args.platformTarget))
                          << "\", \"platform\": \"" << jsonEscape(platformName(args.platformTarget))
                          << "\", \"arch\": \"" << jsonEscape(archStr) << "\", \"version\": \""
@@ -2132,9 +2143,9 @@ int cmdPackage(int argc, char **argv) {
         zanna::pkg::writeTextFileAtomic(args.outputPath + ".manifest.json", artifactManifest.str());
     } catch (const std::exception &ex) {
         std::cerr << "error: cannot write package checksum/manifest: " << ex.what() << "\n";
-        fs::remove(args.outputPath + ".sha256", ec);
+        fs::remove(zanna::filesystem::pathFromUtf8(args.outputPath + ".sha256"), ec);
         ec.clear();
-        fs::remove(args.outputPath + ".manifest.json", ec);
+        fs::remove(zanna::filesystem::pathFromUtf8(args.outputPath + ".manifest.json"), ec);
         removeFailedArtifactUnlessKept(args.outputPath, args.keepFailedArtifact, ec);
         if (cleanupPackagedBinary)
             removeFailedArtifactUnlessKept(packageBinaryPath, args.keepFailedArtifact, ec);
@@ -2144,7 +2155,7 @@ int cmdPackage(int argc, char **argv) {
     // Cleanup temp binary
     if (cleanupPackagedBinary) {
         ec.clear();
-        fs::remove(packageBinaryPath, ec);
+        fs::remove(zanna::filesystem::pathFromUtf8(packageBinaryPath), ec);
         if (ec && args.verbose) {
             std::cerr << "warning: failed to remove temporary packaged binary '"
                       << packageBinaryPath << "': " << ec.message() << "\n";
@@ -2153,9 +2164,9 @@ int cmdPackage(int argc, char **argv) {
 
     std::cerr << "Package created: " << args.outputPath;
     ec.clear();
-    if (args.verbose && fs::exists(args.outputPath, ec)) {
+    if (args.verbose && fs::exists(outputNative, ec)) {
         ec.clear();
-        auto finalPackageSize = fs::file_size(args.outputPath, ec);
+        auto finalPackageSize = fs::file_size(outputNative, ec);
         if (!ec)
             std::cerr << " (" << finalPackageSize << " bytes)";
     }

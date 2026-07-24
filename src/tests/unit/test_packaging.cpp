@@ -13,7 +13,7 @@
 // Key invariants:
 //   - Each test verifies structural correctness via magic bytes and offsets.
 //   - Round-trip tests ensure compress->decompress produces original data.
-//   - No file I/O — all tests use in-memory APIs.
+//   - Filesystem tests use isolated temporary roots and remove them after each case.
 //
 // Ownership/Lifetime:
 //   - Self-contained test binary.
@@ -52,6 +52,7 @@
 #include "XarWriter.hpp"
 #include "ZipReader.hpp"
 #include "ZipWriter.hpp"
+#include "common/Filesystem.hpp"
 #include "common/RunProcess.hpp"
 #include "zanna/platform/Capabilities.hpp"
 #include "zanna/runtime/RuntimeComponentManifest.hpp"
@@ -3982,6 +3983,55 @@ TEST(WindowsPackageBuilder, BuildsInstallerWithCompressedPayloadOverlay) {
     fs::remove_all(tmpRoot);
 }
 
+TEST(WindowsPackageBuilder, SupportsUtf8SourceAssetAndOutputPathsOnWindows) {
+    namespace fs = std::filesystem;
+    const std::string rootName = "zanna_packaging_\xE6\x9D\xB1\xE4\xBA\xAC";
+    const std::string executableName = "\xE5\xBF\x9C\xE7\x94\xA8.exe";
+    const std::string assetName = "\xE8\xA8\xAD\xE5\xAE\x9A.txt";
+    const std::string outputName = "\xE3\x82\xBB\xE3\x83\x83\xE3\x83\x88\xE3\x82\xA2\xE3\x83\x83"
+                                   "\xE3\x83\x97.exe";
+    const fs::path tmpRoot = fs::temp_directory_path() / zanna::filesystem::pathFromUtf8(rootName);
+    const fs::path executable = tmpRoot / zanna::filesystem::pathFromUtf8(executableName);
+    const fs::path asset = tmpRoot / zanna::filesystem::pathFromUtf8(assetName);
+    const fs::path output = tmpRoot / zanna::filesystem::pathFromUtf8(outputName);
+    fs::remove_all(tmpRoot);
+    fs::create_directories(tmpRoot);
+
+    writeTestWindowsPe(executable);
+    const std::vector<uint8_t> assetBytes{'u', 't', 'f', '8'};
+    writeFileAtomic(asset, assetBytes);
+
+    PackageConfig pkg;
+    pkg.displayName = "Unicode Paths";
+    pkg.identifier = "org.zanna.unicode-paths";
+    pkg.author = "Zanna";
+    pkg.assets.push_back({assetName, "data"});
+
+    WindowsBuildParams params;
+    params.projectName = "unicode_paths";
+    params.version = "1.0.0";
+    params.executablePath = zanna::filesystem::pathToUtf8(executable);
+    params.projectRoot = zanna::filesystem::pathToUtf8(tmpRoot);
+    params.pkgConfig = pkg;
+    params.outputPath = zanna::filesystem::pathToUtf8(output);
+    params.archStr = "x64";
+
+    buildWindowsPackage(params);
+
+    ASSERT_TRUE(fs::is_regular_file(output));
+    const auto pe = readFile(params.outputPath);
+    const auto payloadZip = extractPeOverlayZipEntry(pe, "meta/payload.zip");
+    ASSERT_FALSE(payloadZip.empty());
+    EXPECT_TRUE(zipContainsEntries(payloadZip,
+                                   {"unicode_paths.exe",
+                                    "data/" + assetName,
+                                    "uninstall.exe",
+                                    ".zanna-install-manifest.txt"}));
+    EXPECT_EQ(readFile(zanna::filesystem::pathToUtf8(asset)), assetBytes);
+
+    fs::remove_all(tmpRoot);
+}
+
 TEST(AppImage, BuildsVerifiableApplicationImage) {
     namespace fs = std::filesystem;
     const fs::path tmpRoot = fs::temp_directory_path() / "zanna_packaging_appimage_test";
@@ -5173,6 +5223,26 @@ TEST(ToolchainInstallManifest, GatherAndValidateMockStage) {
                        entry.stagedRelativePath.find("bin/" + binary) == 0;
             }));
     }
+
+    fs::remove_all(tmpRoot);
+}
+
+TEST(ToolchainInstallManifest, PreservesUtf8StagePaths) {
+    namespace fs = std::filesystem;
+    const std::string rootName = "zanna_manifest_\xE6\x9D\xB1\xE4\xBA\xAC";
+    const std::string relativePath = "share/zanna/\xE8\xB3\x87\xE6\x96\x99.txt";
+    const fs::path tmpRoot = fs::temp_directory_path() / zanna::filesystem::pathFromUtf8(rootName);
+    fs::remove_all(tmpRoot);
+    const fs::path stage = createMockToolchainStage(tmpRoot);
+    const fs::path extra = stage / zanna::filesystem::pathFromUtf8(relativePath);
+    fs::create_directories(extra.parent_path());
+    writeFileAtomic(extra, std::vector<uint8_t>{'d', 'a', 't', 'a'});
+
+    const auto manifest = gatherToolchainInstallManifest(stage);
+    EXPECT_TRUE(std::any_of(
+        manifest.files.begin(), manifest.files.end(), [&](const ToolchainFileEntry &entry) {
+            return entry.stagedRelativePath == relativePath && entry.stagedAbsolutePath == extra;
+        }));
 
     fs::remove_all(tmpRoot);
 }

@@ -17,6 +17,7 @@
 
 #pragma once
 
+#include "common/Filesystem.hpp"
 #include "tools/common/ScopedProcess.hpp"
 #include "tools/common/native_compiler.hpp"
 
@@ -368,12 +369,12 @@ inline int runFrontendTool(int argc, char **argv, const FrontendToolCallbacks &c
     std::optional<ScopedStdoutRedirect> stdoutRedirect;
     if (!config.outputPath.empty()) {
         const std::filesystem::path outputParent =
-            std::filesystem::path(config.outputPath).parent_path();
+            zanna::filesystem::pathFromUtf8(config.outputPath).parent_path();
         if (!outputParent.empty()) {
             std::error_code ec;
             std::filesystem::create_directories(outputParent, ec);
             if (ec) {
-                std::cerr << "error: failed to create output directory: " << outputParent.string()
+                std::cerr << "error: failed to create output directory for " << config.outputPath
                           << ": " << ec.message() << "\n";
                 return 1;
             }
@@ -405,7 +406,7 @@ inline int runFrontendTool(int argc, char **argv, const FrontendToolCallbacks &c
     // Clean up temp file
     if (!tempIlPath.empty()) {
         std::error_code ec;
-        std::filesystem::remove(tempIlPath, ec);
+        std::filesystem::remove(zanna::filesystem::pathFromUtf8(tempIlPath), ec);
     }
 
     return result;

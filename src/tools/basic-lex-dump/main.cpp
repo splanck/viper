@@ -16,6 +16,7 @@
 /// @details Sharing usage text and file-loading logic with the other BASIC
 ///          helpers keeps the tooling suite uniform.
 
+#include "common/Utf8CommandLine.hpp"
 #include "frontends/basic/Lexer.hpp"
 #include "frontends/basic/Token.hpp"
 #include "support/source_manager.hpp"
@@ -46,6 +47,9 @@ using il::tools::basic::loadBasicSource;
 /// @param argv Argument vector supplied by the C runtime.
 /// @return Zero on success, non-zero when the file cannot be loaded.
 int main(int argc, char **argv) {
+    zanna::tools::Utf8CommandLine commandLine(argc, argv);
+    if (!commandLine.applyOrReport(argc, argv))
+        return 1;
     std::string src;
     SourceManager sm;
     std::optional<std::uint32_t> fileId = loadBasicSource(argc == 2 ? argv[1] : nullptr, src, sm);

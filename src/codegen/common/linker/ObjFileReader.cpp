@@ -15,6 +15,7 @@
 
 #include "codegen/common/linker/ObjFileReader.hpp"
 
+#include "common/Filesystem.hpp"
 #include <cstdint>
 #include <fstream>
 #include <limits>
@@ -111,7 +112,7 @@ bool readObjFile(
 }
 
 bool readObjFile(const std::string &path, ObjFile &obj, std::ostream &err) {
-    std::ifstream f(path, std::ios::binary | std::ios::ate);
+    std::ifstream f(zanna::filesystem::pathFromUtf8(path), std::ios::binary | std::ios::ate);
     if (!f) {
         err << "error: cannot open object file '" << path << "'\n";
         return false;

@@ -18,6 +18,7 @@
 ///
 //===----------------------------------------------------------------------===//
 
+#include "common/Filesystem.hpp"
 #include "common/PlatformCapabilities.hpp"
 #include "frontends/common/CharUtils.hpp"
 #include "frontends/zia/Lexer.hpp"
@@ -730,11 +731,11 @@ std::string normalizeProjectRoot(std::string root) {
     if (root == "<editor>")
         return root;
     std::error_code ec;
-    std::filesystem::path path(root);
+    std::filesystem::path path = zanna::filesystem::pathFromUtf8(root);
     path = std::filesystem::absolute(path, ec);
     if (ec)
-        path = std::filesystem::path(root);
-    return path.lexically_normal().string();
+        path = zanna::filesystem::pathFromUtf8(root);
+    return zanna::filesystem::pathToUtf8(path.lexically_normal());
 }
 
 std::string normalizeProjectPath(const ProjectIndex &index, std::string path) {
@@ -743,29 +744,30 @@ std::string normalizeProjectPath(const ProjectIndex &index, std::string path) {
     if (path == "<editor>")
         return path;
 
-    std::filesystem::path fsPath(path);
+    std::filesystem::path fsPath = zanna::filesystem::pathFromUtf8(path);
     if (fsPath.is_relative() && !index.root.empty() && index.root != "<editor>")
-        fsPath = std::filesystem::path(index.root) / fsPath;
+        fsPath = zanna::filesystem::pathFromUtf8(index.root) / fsPath;
 
     std::error_code ec;
     fsPath = std::filesystem::absolute(fsPath, ec);
     if (ec)
-        fsPath = std::filesystem::path(path);
-    return fsPath.lexically_normal().string();
+        fsPath = zanna::filesystem::pathFromUtf8(path);
+    return zanna::filesystem::pathToUtf8(fsPath.lexically_normal());
 }
 
 std::string projectPathLookupKey(std::string path) {
     if (path.empty() || path == "<editor>")
         return path;
     std::error_code ec;
-    std::filesystem::path fsPath = std::filesystem::absolute(std::filesystem::path(path), ec);
+    std::filesystem::path fsPath =
+        std::filesystem::absolute(zanna::filesystem::pathFromUtf8(path), ec);
     if (ec)
-        fsPath = std::filesystem::path(path);
+        fsPath = zanna::filesystem::pathFromUtf8(path);
     std::filesystem::path canonical = std::filesystem::weakly_canonical(fsPath, ec);
     if (!ec)
-        path = canonical.lexically_normal().string();
+        path = zanna::filesystem::pathToUtf8(canonical.lexically_normal());
     else
-        path = fsPath.lexically_normal().string();
+        path = zanna::filesystem::pathToUtf8(fsPath.lexically_normal());
     std::replace(path.begin(), path.end(), '\\', '/');
     if (zanna::platform::kHostWindows) {
         std::transform(path.begin(), path.end(), path.begin(), [](unsigned char ch) {

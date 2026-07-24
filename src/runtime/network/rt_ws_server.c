@@ -43,6 +43,7 @@
 #include <string.h>
 
 #if RT_PLATFORM_WINDOWS
+#include <process.h>
 typedef CRITICAL_SECTION ws_mutex_t;
 #else
 #include <pthread.h>
@@ -883,7 +884,7 @@ static void ws_accept_task_run(void *arg) {
 //=============================================================================
 
 #if RT_PLATFORM_WINDOWS
-static DWORD WINAPI ws_accept_loop(LPVOID arg)
+static unsigned __stdcall ws_accept_loop(void *arg)
 #else
 static void *ws_accept_loop(void *arg)
 #endif
@@ -1000,7 +1001,7 @@ void *rt_ws_server_new(int64_t port) {
 }
 
 /// @brief Start listening: bind the TCP server, mark `running=true`, and spawn the accept loop
-/// on a dedicated thread (Win32 `CreateThread` or POSIX `pthread_create`). Idempotent — calling
+/// on a dedicated CRT-aware thread. Idempotent — calling
 /// while already running is a no-op.
 void rt_ws_server_start(void *obj) {
     if (!obj)
@@ -1062,7 +1063,8 @@ void rt_ws_server_start(void *obj) {
     WS_MUTEX_UNLOCK(&s->lock);
 
 #if RT_PLATFORM_WINDOWS
-    s->accept_thread = CreateThread(NULL, 0, ws_accept_loop, s, 0, NULL);
+    uintptr_t thread_handle = _beginthreadex(NULL, 0, ws_accept_loop, s, 0, NULL);
+    s->accept_thread = thread_handle ? (HANDLE)thread_handle : NULL;
     s->thread_started = s->accept_thread != NULL;
 #else
     s->thread_started = pthread_create(&s->accept_thread, NULL, ws_accept_loop, s) == 0;

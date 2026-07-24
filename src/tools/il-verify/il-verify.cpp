@@ -20,6 +20,7 @@
 ///          wires together the parser, verifier, and diagnostic reporting in the
 ///          minimal amount of code necessary to expose a user-facing CLI.
 
+#include "common/Utf8CommandLine.hpp"
 #include "support/diag_expected.hpp"
 #include "support/source_manager.hpp"
 #include "tools/common/module_loader.hpp"
@@ -92,6 +93,9 @@ int runCLI(
 ///         to signal argument, I/O, parse, or verification failures.
 #ifndef ZANNA_IL_VERIFY_SKIP_MAIN
 int main(int argc, char **argv) {
+    zanna::tools::Utf8CommandLine commandLine(argc, argv);
+    if (!commandLine.applyOrReport(argc, argv))
+        return 1;
     il::support::SourceManager sm;
     return il::tools::verify::runCLI(argc, argv, std::cout, std::cerr, sm);
 }

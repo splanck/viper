@@ -17,7 +17,6 @@
 
 #include "il/core/Module.hpp"
 
-#include <filesystem>
 #include <optional>
 #include <string>
 

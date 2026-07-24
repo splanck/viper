@@ -11,6 +11,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "frontends/zia/ImportResolver.hpp"
+#include "common/Filesystem.hpp"
 #include "frontends/zia/Lexer.hpp"
 #include "frontends/zia/Parser.hpp"
 #include <algorithm>
@@ -69,13 +70,14 @@ bool ImportResolver::resolve(ModuleDecl &module, const std::string &modulePath) 
 std::string ImportResolver::normalizePath(const std::string &path) const {
     namespace fs = std::filesystem;
     std::error_code ec;
-    fs::path absolute = fs::absolute(fs::path(path), ec);
+    const fs::path nativePath = zanna::filesystem::pathFromUtf8(path);
+    fs::path absolute = fs::absolute(nativePath, ec);
     if (ec)
-        absolute = fs::path(path);
+        absolute = nativePath;
     fs::path canonical = fs::weakly_canonical(absolute, ec);
     if (!ec)
-        return canonical.lexically_normal().string();
-    return absolute.lexically_normal().string();
+        return zanna::filesystem::pathToUtf8(canonical.lexically_normal());
+    return zanna::filesystem::pathToUtf8(absolute.lexically_normal());
 }
 
 /// @brief Resolve an import path relative to the importing file.
@@ -87,17 +89,17 @@ std::string ImportResolver::resolveImportPath(const std::string &importPath,
                                               const std::string &importingFile) const {
     namespace fs = std::filesystem;
 
-    fs::path importingDir = fs::path(importingFile).parent_path();
+    fs::path importingDir = zanna::filesystem::pathFromUtf8(importingFile).parent_path();
     if (importingDir.empty())
         importingDir = ".";
 
-    fs::path importP(importPath);
+    fs::path importP = zanna::filesystem::pathFromUtf8(importPath);
     fs::path resolved = importP.is_absolute() ? importP : (importingDir / importP);
 
     if (resolved.extension().empty())
         resolved += ".zia";
 
-    return resolved.lexically_normal().string();
+    return zanna::filesystem::pathToUtf8(resolved.lexically_normal());
 }
 
 /// @brief Read, lex, and parse an imported file into a module AST.
@@ -123,8 +125,9 @@ std::unique_ptr<ModuleDecl> ImportResolver::parseFile(const std::string &path,
     const std::string normalized = normalizePath(path);
     std::error_code stampEc;
     std::error_code sizeEc;
-    const auto stamp = std::filesystem::last_write_time(path, stampEc);
-    const auto fileSize = std::filesystem::file_size(path, sizeEc);
+    const std::filesystem::path nativePath = zanna::filesystem::pathFromUtf8(path);
+    const auto stamp = std::filesystem::last_write_time(nativePath, stampEc);
+    const auto fileSize = std::filesystem::file_size(nativePath, sizeEc);
     const bool canCache = !stampEc && !sizeEc;
 
     std::string source;
@@ -146,7 +149,7 @@ std::unique_ptr<ModuleDecl> ImportResolver::parseFile(const std::string &path,
     }
 
     if (!cacheHit) {
-        std::ifstream file(path, std::ios::binary | std::ios::ate);
+        std::ifstream file(nativePath, std::ios::binary | std::ios::ate);
         if (!file) {
             diag_.report({il::support::Severity::Error,
                           "Failed to open imported file: " + path,

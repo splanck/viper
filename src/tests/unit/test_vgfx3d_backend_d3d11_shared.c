@@ -2132,6 +2132,11 @@ static void test_d3d11_backend_source_contracts(void) {
     EXPECT_TRUE(strstr(source, "CopyResource(presentedSnapshot)") != NULL &&
                     strstr(source, "CopySubresourceRegion(depthProbeStaging)") != NULL,
                 "D3D11 checks device health before publishing asynchronous copy results");
+    EXPECT_TRUE(count_text(source, "d3d11_device_status_after_void_command(") >= 10 &&
+                    strstr(source, "CopyResource(opaqueDepth)") != NULL &&
+                    strstr(source, "GenerateMips(streamed texture)") != NULL &&
+                    strstr(source, "GenerateMips(streamed cubemap)") != NULL,
+                "D3D11 validates device health before publishing void upload and copy commands");
     EXPECT_TRUE(strstr(source, "SyncRTTBeforeUnbind") != NULL &&
                     strstr(source, "CreateTexture2D(rttStagingRecovery)") != NULL,
                 "D3D11 preserves dirty RTT data and replaces failed staging resources");
@@ -2247,6 +2252,9 @@ static void test_d3d11_backend_source_contracts(void) {
         "Required state, shader, and input-layout factories validate COM outputs");
     EXPECT_TRUE(strstr(source, "(!ctx->swap_chain || !ctx->device || !ctx->ctx)") != NULL,
                 "Device creation rejects a successful HRESULT with any missing core interface");
+    EXPECT_TRUE(strstr(source, "D3D11_CREATE_DEVICE_BGRA_SUPPORT") != NULL &&
+                    strstr(source, "created_feature_level != requested_feature_level") != NULL,
+                "Device creation requests interop support and confirms Direct3D 11.0");
     EXPECT_TRUE(strstr(source, "if (hr != S_OK)") != NULL,
                 "Present status codes do not publish an unconfirmed displayed-frame snapshot");
     EXPECT_TRUE(strstr(source, "D3D11_TEXTURE_CACHE_MAX_ENTRIES 4096") != NULL &&

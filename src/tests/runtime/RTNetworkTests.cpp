@@ -24,6 +24,7 @@
 #include "rt_bytes.h"
 #include "rt_compress.h"
 #include "rt_connpool.h"
+#include "rt_file_path.h"
 #include "rt_future.h"
 #include "rt_gc.h"
 #include "rt_heap.h"
@@ -55,6 +56,7 @@
 #include <vector>
 
 #if RT_PLATFORM_WINDOWS
+#include <io.h>
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #pragma comment(lib, "ws2_32.lib")
@@ -75,6 +77,26 @@ static constexpr int64_t kNetworkTimeoutUpperBoundMs = 500;
 static constexpr int64_t kNetworkTimeoutLowerBoundMs = 50;
 #else
 static constexpr int64_t kNetworkTimeoutLowerBoundMs = 90;
+#endif
+
+#if RT_PLATFORM_WINDOWS
+static FILE *network_test_fopen_utf8(const char *path, const wchar_t *mode) {
+    wchar_t *wide = rt_file_path_utf8_to_wide(path);
+    if (!wide)
+        return nullptr;
+    FILE *stream = _wfopen(wide, mode);
+    std::free(wide);
+    return stream;
+}
+
+static int network_test_remove_utf8(const char *path) {
+    wchar_t *wide = rt_file_path_utf8_to_wide(path);
+    if (!wide)
+        return -1;
+    int result = _wremove(wide);
+    std::free(wide);
+    return result;
+}
 #endif
 
 /// @brief Helper to print test result.
@@ -3404,10 +3426,16 @@ static void test_http_download() {
 
     char url[64];
     snprintf(url, sizeof(url), "http://127.0.0.1:%d/download", port);
-    char path[128];
+    char path[256];
+#if RT_PLATFORM_WINDOWS
+    snprintf(path, sizeof(path), "/tmp/zanna_http_download_\xE6\x9D\xB1\xE4\xBA\xAC_%d.txt", port);
+    network_test_remove_utf8(path);
+    FILE *existing = network_test_fopen_utf8(path, L"wb");
+#else
     snprintf(path, sizeof(path), "/tmp/zanna_http_download_%d.txt", port);
     remove(path);
     FILE *existing = fopen(path, "wb");
+#endif
     assert(existing != nullptr);
     assert(fwrite("stale", 1, 5, existing) == 5);
     assert(fclose(existing) == 0);
@@ -3418,7 +3446,11 @@ static void test_http_download() {
     int8_t ok = rt_http_download(rt_const_cstr(url), rt_const_cstr(path));
     test_result("Http.Download succeeds", ok == 1);
 
+#if RT_PLATFORM_WINDOWS
+    FILE *f = network_test_fopen_utf8(path, L"rb");
+#else
     FILE *f = fopen(path, "rb");
+#endif
     test_result("Http.Download creates destination file", f != nullptr);
     char buffer[128] = {0};
     size_t read_len = f ? fread(buffer, 1, sizeof(buffer) - 1, f) : 0;
@@ -3429,9 +3461,18 @@ static void test_http_download() {
     const bool mode_preserved =
         stat(path, &downloaded_stat) == 0 && (downloaded_stat.st_mode & 0777) == 0640;
 #else
-    const bool mode_preserved = true;
+    wchar_t *wide_path = rt_file_path_utf8_to_wide(path);
+    struct _stat64 downloaded_stat = {};
+    const bool mode_preserved =
+        wide_path && _wstat64(wide_path, &downloaded_stat) == 0 &&
+        (downloaded_stat.st_mode & (_S_IREAD | _S_IWRITE)) == (_S_IREAD | _S_IWRITE);
+    std::free(wide_path);
 #endif
+#if RT_PLATFORM_WINDOWS
+    network_test_remove_utf8(path);
+#else
     remove(path);
+#endif
 
     test_result("Http.Download writes expected bytes", read_len == strlen(body));
     test_result("Http.Download file contents match", strcmp(buffer, body) == 0);

@@ -20,6 +20,7 @@
 ///          delegated to sibling translation units.
 
 #include "frontends/basic/Parser.hpp"
+#include "common/Filesystem.hpp"
 #include "frontends/basic/ASTUtils.hpp"
 #include "frontends/basic/LineUtils.hpp"
 #include "frontends/basic/Options.hpp"
@@ -403,14 +404,15 @@ Parser::AddFileResult Parser::processAddFileInclude(const Token &kw) {
 
     // Resolve path relative to including file.
     const uint32_t includingFileId = kw.loc.file_id;
-    std::filesystem::path base(sm_->getPath(includingFileId));
-    std::filesystem::path candidate(rawPath);
+    std::filesystem::path base = zanna::filesystem::pathFromUtf8(sm_->getPath(includingFileId));
+    std::filesystem::path candidate = zanna::filesystem::pathFromUtf8(rawPath);
     std::filesystem::path resolved =
         candidate.is_absolute() ? candidate : base.parent_path() / candidate;
 
     std::error_code ec;
     std::filesystem::path canon = std::filesystem::weakly_canonical(resolved, ec);
-    const std::string canonStr = ec ? resolved.lexically_normal().string() : canon.string();
+    const std::filesystem::path nativeCanonical = ec ? resolved.lexically_normal() : canon;
+    const std::string canonStr = zanna::filesystem::pathToUtf8(nativeCanonical);
 
     // Check include depth and cycles.
     struct IncludeStackGuard {
@@ -441,14 +443,14 @@ Parser::AddFileResult Parser::processAddFileInclude(const Token &kw) {
     }
 
     // Read file contents.
-    std::ifstream in(canonStr);
+    std::ifstream in(nativeCanonical);
     if (!in) {
         emitError("B0001", kw.loc, "unable to open: " + canonStr);
         return result;
     }
     constexpr std::uintmax_t kMaxAddFileBytes = 64U * 1024U * 1024U;
     ec.clear();
-    const auto fileSize = std::filesystem::file_size(canonStr, ec);
+    const auto fileSize = std::filesystem::file_size(nativeCanonical, ec);
     if (!ec && fileSize > kMaxAddFileBytes) {
         emitError("B0001", kw.loc, "ADDFILE source exceeds 64 MiB limit: " + canonStr);
         return result;

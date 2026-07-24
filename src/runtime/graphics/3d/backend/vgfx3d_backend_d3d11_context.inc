@@ -897,7 +897,8 @@ static void *d3d11_create_ctx(vgfx_window_t win, int32_t width, int32_t height) 
     HWND hwnd = (HWND)vgfx_get_native_view(win);
     vgfx_framebuffer_t fb;
     DXGI_SWAP_CHAIN_DESC swap_desc;
-    D3D_FEATURE_LEVEL feature_level = D3D_FEATURE_LEVEL_11_0;
+    const D3D_FEATURE_LEVEL requested_feature_level = D3D_FEATURE_LEVEL_11_0;
+    D3D_FEATURE_LEVEL created_feature_level = (D3D_FEATURE_LEVEL)0;
     d3d11_shader_blobs_t blobs;
     HRESULT hr;
     memset(&blobs, 0, sizeof(blobs));
@@ -924,17 +925,19 @@ static void *d3d11_create_ctx(vgfx_window_t win, int32_t width, int32_t height) 
     hr = D3D11CreateDeviceAndSwapChain(NULL,
                                        D3D_DRIVER_TYPE_HARDWARE,
                                        NULL,
-                                       0,
-                                       &feature_level,
+                                       D3D11_CREATE_DEVICE_BGRA_SUPPORT,
+                                       &requested_feature_level,
                                        1,
                                        D3D11_SDK_VERSION,
                                        &swap_desc,
                                        &ctx->swap_chain,
                                        &ctx->device,
-                                       NULL,
+                                       &created_feature_level,
                                        &ctx->ctx);
     if (SUCCEEDED(hr) && (!ctx->swap_chain || !ctx->device || !ctx->ctx))
         hr = E_POINTER;
+    if (SUCCEEDED(hr) && created_feature_level != requested_feature_level)
+        hr = E_FAIL;
     if (FAILED(hr)) {
         d3d11_log_hresult("D3D11CreateDeviceAndSwapChain", hr);
         d3d11_destroy_ctx(ctx);

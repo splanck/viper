@@ -1031,6 +1031,9 @@ func main() {
 
     // Widening the same side dock restores descriptive action geometry and
     // places include/exclude filters back on one row without rebuilding input.
+    // Collapse the primary sidebar so low-resolution and fractionally scaled
+    // Windows test desktops still have room to cross the 520 px threshold.
+    shell.workbench.SetSidebarVisible(false);
     shell.app.SetSize(1400, 760);
     shell.Poll();
     shell.toolPanels.SetSidePanelWidthPct(55);
@@ -1080,6 +1083,7 @@ func main() {
     shell.Render();
     shell.toolPanels.FocusSearchQuery();
 
+    shell.workbench.SetSidebarVisible(true);
     shell.app.SetSize(1100, 760);
     shell.Poll();
     shell.toolPanels.SetSidePanelWidthPct(45);

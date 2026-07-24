@@ -34,6 +34,7 @@
 
 #include "codegen/aarch64/CodegenPipeline.hpp"
 #include "codegen/x86_64/CodegenPipeline.hpp"
+#include "common/Filesystem.hpp"
 #include "common/PlatformCapabilities.hpp"
 #include "support/source_manager.hpp"
 
@@ -89,9 +90,9 @@ std::string generateUniqueTempPath(const char *prefix, const char *extension) {
     const auto pid = static_cast<uint64_t>(getpid());
 #endif
     const auto uniqueId = counter.fetch_add(1, std::memory_order_relaxed);
-    return (dir / (std::string(prefix) + "_" + std::to_string(pid) + "_" + std::to_string(tick) +
-                   "_" + std::to_string(uniqueId) + extension))
-        .string();
+    return zanna::filesystem::pathToUtf8(dir / (std::string(prefix) + "_" + std::to_string(pid) +
+                                                "_" + std::to_string(tick) + "_" +
+                                                std::to_string(uniqueId) + extension));
 }
 
 /// @brief Atomically create @p path so it is reserved against concurrent callers.
@@ -103,15 +104,21 @@ std::string generateUniqueTempPath(const char *prefix, const char *extension) {
 ///         filesystem errors.
 bool reserveTempPath(const std::string &path) {
 #if ZANNA_HOST_WINDOWS
-    const int fd =
-        _open(path.c_str(), _O_CREAT | _O_EXCL | _O_WRONLY | _O_BINARY, _S_IREAD | _S_IWRITE);
+    const std::filesystem::path nativePath = zanna::filesystem::pathFromUtf8(path);
+    const int fd = _wopen(nativePath.c_str(),
+                          _O_CREAT | _O_EXCL | _O_WRONLY | _O_BINARY | _O_NOINHERIT,
+                          _S_IREAD | _S_IWRITE);
     if (fd < 0) {
         if (errno == EEXIST)
             return false;
         throw std::runtime_error("failed to reserve temporary file: " + path + ": " +
                                  std::strerror(errno));
     }
-    _close(fd);
+    if (_close(fd) != 0) {
+        std::error_code removeError;
+        std::filesystem::remove(nativePath, removeError);
+        throw std::runtime_error("failed to close reserved temporary file: " + path);
+    }
 #else
     const int fd = open(path.c_str(), O_CREAT | O_EXCL | O_WRONLY, S_IRUSR | S_IWUSR);
     if (fd < 0) {
@@ -134,7 +141,8 @@ bool reserveTempPath(const std::string &path) {
 /// @param path Output path supplied on the command line.
 /// @return True when @p path should be treated as a native executable output.
 bool isNativeOutputPath(const std::string &path) {
-    std::string ext = std::filesystem::path(path).extension().string();
+    std::string ext =
+        zanna::filesystem::pathToUtf8(zanna::filesystem::pathFromUtf8(path).extension());
     for (char &ch : ext)
         ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
     return ext != ".il";

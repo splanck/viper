@@ -277,6 +277,9 @@ audio thread:
 - Do not call `vaud_destroy`, `vaud_free_sound`, or `vaud_free_music`
   concurrently with other operations on the same context or handle. Stop worker
   activity first, then destroy/free handles.
+- On Windows, create, pause/resume, and destroy a context on the same control
+  thread. The WASAPI backend owns that thread's COM apartment reference and
+  rejects cross-thread pause/resume requests.
 
 **Correct usage:**
 

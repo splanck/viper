@@ -56,11 +56,31 @@
 #include <sys/stat.h>
 #if RT_PLATFORM_WINDOWS
 #include <io.h>
+#include <windows.h>
 #else
 #include <unistd.h>
 #endif
 
 static size_t g_http_download_temp_counter = 0;
+
+#if RT_PLATFORM_WINDOWS
+/// @brief Convert one runtime UTF-8 filesystem path to a caller-owned UTF-16 path.
+static wchar_t *http_download_utf8_to_wide(const char *path) {
+    if (!path)
+        return NULL;
+    int required = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, path, -1, NULL, 0);
+    if (required <= 0 || (size_t)required > SIZE_MAX / sizeof(wchar_t))
+        return NULL;
+    wchar_t *wide = (wchar_t *)malloc((size_t)required * sizeof(wchar_t));
+    if (!wide)
+        return NULL;
+    if (MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, path, -1, wide, required) != required) {
+        free(wide);
+        return NULL;
+    }
+    return wide;
+}
+#endif
 
 /// @brief Release a temporary object after a container has retained it.
 /// @details `Result.Ok` retains the response payload; this helper drops the
@@ -204,8 +224,12 @@ static char *http_download_temp_path(const char *dest, const char *kind) {
     char *path = (char *)malloc(cap);
     if (!path)
         return NULL;
-    snprintf(
+    int written = snprintf(
         path, cap, "%s%s%016llx-%zu.%s", dest, marker, (unsigned long long)random_id, id, kind);
+    if (written < 0 || (size_t)written >= cap) {
+        free(path);
+        return NULL;
+    }
     return path;
 }
 
@@ -217,9 +241,18 @@ static char *http_download_temp_path(const char *dest, const char *kind) {
 /// @return Writable binary stream, or NULL when the file exists or creation fails.
 static FILE *http_download_fopen_exclusive(const char *path) {
 #if RT_PLATFORM_WINDOWS
-    int fd = _open(path, _O_CREAT | _O_EXCL | _O_WRONLY | _O_BINARY, _S_IREAD | _S_IWRITE);
+    wchar_t *wide = http_download_utf8_to_wide(path);
+    if (!wide)
+        return NULL;
+    int fd = _wopen(
+        wide, _O_CREAT | _O_EXCL | _O_WRONLY | _O_BINARY | _O_NOINHERIT, _S_IREAD | _S_IWRITE);
+    free(wide);
 #else
-    int fd = open(path, O_CREAT | O_EXCL | O_WRONLY, 0600);
+    int flags = O_CREAT | O_EXCL | O_WRONLY;
+#ifdef O_CLOEXEC
+    flags |= O_CLOEXEC;
+#endif
+    int fd = open(path, flags, 0600);
 #endif
     if (fd < 0)
         return NULL;
@@ -280,9 +313,14 @@ static int http_download_replace_file(const char *temp_path, const char *dest_pa
     if (!temp_path || !dest_path)
         return 0;
 #if RT_PLATFORM_WINDOWS
-    return MoveFileExA(temp_path, dest_path, MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)
-               ? 1
-               : 0;
+    wchar_t *wide_temp = http_download_utf8_to_wide(temp_path);
+    wchar_t *wide_dest = http_download_utf8_to_wide(dest_path);
+    int replaced =
+        wide_temp && wide_dest &&
+        MoveFileExW(wide_temp, wide_dest, MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH);
+    free(wide_temp);
+    free(wide_dest);
+    return replaced ? 1 : 0;
 #else
     return rename(temp_path, dest_path) == 0 ? 1 : 0;
 #endif
@@ -317,14 +355,48 @@ static int http_download_flush_and_sync(FILE *stream) {
 /// @return One when no change is needed or permissions were applied; zero only
 ///         when an existing file was statted but its ordinary mode could not be set.
 static int http_download_preserve_mode(const char *temp_path, const char *dest_path) {
-    struct stat existing;
-    if (!temp_path || !dest_path || stat(dest_path, &existing) != 0)
+    if (!temp_path || !dest_path)
         return 1;
 #if RT_PLATFORM_WINDOWS
+    wchar_t *wide_temp = http_download_utf8_to_wide(temp_path);
+    wchar_t *wide_dest = http_download_utf8_to_wide(dest_path);
+    if (!wide_temp || !wide_dest) {
+        free(wide_temp);
+        free(wide_dest);
+        return 0;
+    }
+    struct _stat64 existing;
+    if (_wstat64(wide_dest, &existing) != 0) {
+        free(wide_temp);
+        free(wide_dest);
+        return 1;
+    }
     int mode = existing.st_mode & (_S_IREAD | _S_IWRITE);
-    return _chmod(temp_path, mode) == 0 ? 1 : 0;
+    int changed = _wchmod(wide_temp, mode) == 0 ? 1 : 0;
+    free(wide_temp);
+    free(wide_dest);
+    return changed;
 #else
+    struct stat existing;
+    if (stat(dest_path, &existing) != 0)
+        return 1;
     return chmod(temp_path, existing.st_mode & 0777) == 0 ? 1 : 0;
+#endif
+}
+
+/// @brief Remove a staged download using the platform's native path encoding.
+static int http_download_remove_file(const char *path) {
+    if (!path)
+        return 0;
+#if RT_PLATFORM_WINDOWS
+    wchar_t *wide = http_download_utf8_to_wide(path);
+    if (!wide)
+        return 0;
+    int removed = _wremove(wide) == 0 ? 1 : 0;
+    free(wide);
+    return removed;
+#else
+    return remove(path) == 0 ? 1 : 0;
 #endif
 }
 
@@ -685,7 +757,7 @@ static void http_download_state_destroy(http_download_state_t *state, int remove
         state->stream = NULL;
     }
     if (remove_temp && state->temp_path)
-        (void)remove(state->temp_path);
+        (void)http_download_remove_file(state->temp_path);
     http_cleanup_stack_request(&state->request, 1);
     free(state->temp_path);
     state->temp_path = NULL;

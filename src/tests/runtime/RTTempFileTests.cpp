@@ -11,16 +11,25 @@
 //===----------------------------------------------------------------------===//
 
 #include "rt_dir.h"
+#include "rt_file_path.h"
 #include "rt_internal.h"
+#include "rt_platform.h"
 #include "rt_string.h"
 #include "rt_tempfile.h"
+
+#ifdef NDEBUG
+#undef NDEBUG
+#endif
 
 #include <cassert>
 #include <csetjmp>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#ifndef _WIN32
+#if RT_PLATFORM_WINDOWS
+#include <string>
+#include <windows.h>
+#else
 #include <unistd.h>
 #endif
 
@@ -29,6 +38,35 @@ static jmp_buf g_trap_jmp;
 static const char *g_last_trap = nullptr;
 static bool g_trap_expected = false;
 } // namespace
+
+#if RT_PLATFORM_WINDOWS
+class ScopedWindowsEnvironment {
+  public:
+    explicit ScopedWindowsEnvironment(const wchar_t *name) : name_(name) {
+        DWORD required = GetEnvironmentVariableW(name_.c_str(), nullptr, 0);
+        if (required == 0)
+            return;
+        value_.resize(required);
+        DWORD length = GetEnvironmentVariableW(name_.c_str(), value_.data(), required);
+        if (length > 0 && length < required) {
+            value_.resize(length);
+            present_ = true;
+        }
+    }
+
+    ~ScopedWindowsEnvironment() {
+        (void)SetEnvironmentVariableW(name_.c_str(), present_ ? value_.c_str() : nullptr);
+    }
+
+    ScopedWindowsEnvironment(const ScopedWindowsEnvironment &) = delete;
+    ScopedWindowsEnvironment &operator=(const ScopedWindowsEnvironment &) = delete;
+
+  private:
+    std::wstring name_;
+    std::wstring value_;
+    bool present_{false};
+};
+#endif
 
 extern "C" void vm_trap(const char *msg) {
     g_last_trap = msg;
@@ -95,13 +133,25 @@ static void test_tempfile() {
     {
         rt_string path = rt_tempfile_create();
         // Check file was created (it should exist)
+#if RT_PLATFORM_WINDOWS
+        wchar_t *wide_path = rt_file_path_utf8_to_wide(rt_string_cstr(path));
+        FILE *f = wide_path ? _wfopen(wide_path, L"rb") : nullptr;
+#else
         FILE *f = fopen(rt_string_cstr(path), "r");
+#endif
         test_result("Create creates file", f != NULL);
         if (f) {
             fclose(f);
             // Clean up
+#if RT_PLATFORM_WINDOWS
+            (void)_wremove(wide_path);
+#else
             remove(rt_string_cstr(path));
+#endif
         }
+#if RT_PLATFORM_WINDOWS
+        free(wide_path);
+#endif
     }
 
     // Test 6: CreateDir creates a directory
@@ -112,7 +162,7 @@ static void test_tempfile() {
         rt_dir_remove(path);
     }
 
-#ifndef _WIN32
+#if !RT_PLATFORM_WINDOWS
     // Test 7: Root TMPDIR remains absolute instead of becoming an empty path
     {
         const char *old_tmpdir = getenv("TMPDIR");
@@ -129,7 +179,20 @@ static void test_tempfile() {
     }
 #endif
 
-#ifndef _WIN32
+#if RT_PLATFORM_WINDOWS
+    // Test 8: A drive-root temp path remains absolute and root-qualified.
+    {
+        ScopedWindowsEnvironment saved_tmp(L"TMP");
+        ScopedWindowsEnvironment saved_temp(L"TEMP");
+        assert(SetEnvironmentVariableW(L"TMP", L"C:\\"));
+        assert(SetEnvironmentVariableW(L"TEMP", L"C:\\"));
+        rt_string dir = rt_tempfile_dir();
+        test_result("drive-root temp path preserved", strcmp(rt_string_cstr(dir), "C:\\") == 0);
+        rt_string_unref(dir);
+    }
+#endif
+
+#if !RT_PLATFORM_WINDOWS
     // Test 8: Invalid TMPDIR values fall back instead of being trusted.
     {
         char bad_tmpdir[256];

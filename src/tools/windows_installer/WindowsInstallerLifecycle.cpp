@@ -32,6 +32,7 @@
 
 #include "PkgHash.hpp"
 #include "ZipReader.hpp"
+#include "common/Filesystem.hpp"
 
 #include <restartmanager.h>
 #include <shellapi.h>
@@ -1169,8 +1170,9 @@ uint64_t preservedDirectoryBytes(const fs::path &root, const std::set<std::strin
             if (error)
                 throw std::runtime_error(
                     "cannot resolve an existing installation file for disk preflight");
-            if (!ownedPaths.empty() && ownedPaths.find(normalizedPathKey(
-                                           relativePath.generic_string())) != ownedPaths.end()) {
+            if (!ownedPaths.empty() &&
+                ownedPaths.find(normalizedPathKey(
+                    zanna::filesystem::genericPathToUtf8(relativePath))) != ownedPaths.end()) {
                 continue;
             }
             const uint64_t size = it->file_size(error);
