@@ -530,6 +530,7 @@ static char *savedata_windows_env_utf8(const wchar_t *name) {
 }
 #endif
 
+#if RT_PLATFORM_WINDOWS
 /// @brief Concatenate four optional path fragments with checked size arithmetic.
 static char *savedata_concat4(const char *a, const char *b, const char *c, const char *d) {
     const char *parts[4] = {a ? a : "", b ? b : "", c ? c : "", d ? d : ""};
@@ -552,6 +553,7 @@ static char *savedata_concat4(const char *a, const char *b, const char *c, const
     result[offset] = '\0';
     return result;
 }
+#endif
 
 /// @brief Resolve the user's home directory as a fresh heap-allocated C string.
 ///
