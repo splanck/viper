@@ -5010,8 +5010,10 @@ class SceneEditor2D {
             Input.Mouse.Capture();
         }
         renderDirty = true;
-        toolbarStatus.SetText(
-            "Drag a box around objects; Escape cancels");
+        // Keep this transient status short enough to remain on one toolbar
+        // line. Reflowing the retained layout after pointer capture moves the
+        // canvas underneath the physical pointer and corrupts the drag cell.
+        toolbarStatus.SetText("Box select; Escape cancels");
     }
 
     /// @brief Clear transient marquee state and optionally release its capture.

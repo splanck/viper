@@ -216,3 +216,22 @@ Wayland/X11 resize publication, SplitPane ancestor invalidation, scaled
 responsive-width, wrapped-toolbar, directory-watcher degradation, and
 viewport-relative overlay issues. Those root causes were repaired and the
 original behavioral tests now pass without relaxed layout assertions.
+
+### Post-merge verification
+
+Verification after merging the Linux review with the concurrent Windows and
+Studio scene-authoring work found and repaired two additional integration
+regressions:
+
+- Windows-only checked path concatenation in `rt_savedata.c` is now scoped to
+  the Windows adapter, keeping Linux warning-as-error builds clean.
+- Beginning a 2D marquee now uses a bounded one-line status message. The prior
+  message could reflow the retained toolbar after pointer capture, move the
+  canvas beneath the physical pointer, and corrupt the selected Linux display
+  cell.
+
+The monolithic 3D Studio scene probe is classified `slow`: its source/compiler
+graph exceeds the routine platform-test budget and its contracts are retained
+by the focused rotation, scale-plane, material, viewport, picking, component,
+and workspace probes. It remains available through
+`ZANNA_RUN_SLOW_TESTS=1`.

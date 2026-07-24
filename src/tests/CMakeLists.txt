@@ -1340,8 +1340,11 @@ add_test(NAME zia_zannastudio_scene_editor_3d
         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes")
 set_tests_properties(zia_zannastudio_scene_editor_3d PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
-        LABELS "zia;zannastudio;scene;requires_display"
-        TIMEOUT 150)
+        # This legacy aggregate compiles a very large Studio graph and repeats
+        # contracts covered by the focused scene probes below. Keep it opt-in
+        # with the other slow tests so routine platform validation is bounded.
+        LABELS "zia;zannastudio;scene;requires_display;slow"
+        TIMEOUT 600)
 if (WIN32)
     # The 3D fixture compiles a large Studio graph and drives hidden native
     # rendering. On Windows it can exceed twice its isolated runtime when
