@@ -222,6 +222,14 @@ static void vgfx_data_finish_transfer(vgfx_wayland_data_t *data,
     }
 }
 
+static void vgfx_data_fail_transfer(vgfx_wayland_data_t *data,
+                                    vgfx_wayland_transfer_t *transfer,
+                                    const char *message) {
+    transfer->failed = 1;
+    vgfx_internal_set_error(VGFX_ERR_PLATFORM, message);
+    vgfx_data_finish_transfer(data, transfer);
+}
+
 void vgfx_wayland_data_tick(vgfx_wayland_data_t *data) {
     if (!data)
         return;
@@ -242,23 +250,36 @@ void vgfx_wayland_data_tick(vgfx_wayland_data_t *data) {
         if (transfer->capacity == 0) {
             transfer->capacity = 4096;
             transfer->bytes = malloc(transfer->capacity + 1);
-            if (!transfer->bytes) { vgfx_data_finish_transfer(data, transfer); continue; }
+            if (!transfer->bytes) {
+                vgfx_data_fail_transfer(
+                    data, transfer, "Wayland clipboard transfer allocation failed");
+                continue;
+            }
         }
         if (transfer->size == transfer->capacity && transfer->capacity < VGFX_WAYLAND_TRANSFER_LIMIT) {
             size_t next = transfer->capacity * 2;
             if (next > VGFX_WAYLAND_TRANSFER_LIMIT) next = VGFX_WAYLAND_TRANSFER_LIMIT;
             char *grown = realloc(transfer->bytes, next + 1);
-            if (!grown) { vgfx_data_finish_transfer(data, transfer); continue; }
+            if (!grown) {
+                vgfx_data_fail_transfer(
+                    data, transfer, "Wayland clipboard transfer allocation failed");
+                continue;
+            }
             transfer->bytes = grown;
             transfer->capacity = next;
         }
-        if (transfer->size == transfer->capacity) { vgfx_data_finish_transfer(data, transfer); continue; }
+        if (transfer->size == transfer->capacity) {
+            vgfx_data_fail_transfer(data, transfer, "Wayland clipboard transfer exceeded 8 MiB");
+            continue;
+        }
         ssize_t count = read(transfer->fd,
                              transfer->bytes + transfer->size,
                              transfer->capacity - transfer->size);
         if (count > 0) transfer->size += (size_t)count;
-        else if (count == 0 || (count < 0 && errno != EAGAIN && errno != EINTR))
+        else if (count == 0)
             vgfx_data_finish_transfer(data, transfer);
+        else if (errno != EAGAIN && errno != EINTR)
+            vgfx_data_fail_transfer(data, transfer, "Wayland clipboard transfer read failed");
     }
     if (data->pending_selection &&
         (data->input->keyboard_serial || data->input->pointer_serial)) {
@@ -302,6 +323,12 @@ static void vgfx_source_send(void *opaque, struct wl_proxy *proxy, const char *m
     vgfx_wayland_data_t *data = opaque;
     vgfx_wayland_transfer_t *transfer = vgfx_data_transfer(data);
     if (!transfer || !data->local_text || !vgfx_data_nonblocking(fd)) { close(fd); return; }
+    if (strnlen(data->local_text, VGFX_WAYLAND_TRANSFER_LIMIT + 1u) >
+        VGFX_WAYLAND_TRANSFER_LIMIT) {
+        vgfx_internal_set_error(VGFX_ERR_PLATFORM, "Wayland clipboard text exceeded 8 MiB");
+        close(fd);
+        return;
+    }
     transfer->bytes = strdup(data->local_text);
     if (!transfer->bytes) { close(fd); return; }
     transfer->fd = fd;
@@ -457,22 +484,41 @@ char *vgfx_wayland_data_get_text(vgfx_wayland_data_t *data) {
         if (data->transfers[i].fd >= 0 && !data->transfers[i].outbound && !data->transfers[i].uri_list)
             transfer = &data->transfers[i];
     if (!transfer) return NULL;
-    int64_t deadline = vgfx_platform_now_ms() + 1000;
-    while (transfer->fd >= 0 && vgfx_platform_now_ms() < deadline) {
+    int64_t started_ms = vgfx_platform_now_ms();
+    while (transfer->fd >= 0) {
+        int64_t now_ms = vgfx_platform_now_ms();
+        if (now_ms < started_ms || now_ms - started_ms >= 1000)
+            break;
         vgfx_wayland_data_tick(data);
         if (transfer->fd < 0) break;
         struct pollfd pollfd = {.fd = transfer->fd, .events = POLLIN | POLLHUP};
-        (void)poll(&pollfd, 1, 10);
+        int poll_result = poll(&pollfd, 1, 10);
+        if (poll_result < 0 && errno == EINTR)
+            continue;
+        if (poll_result < 0 || (poll_result > 0 && (pollfd.revents & (POLLERR | POLLNVAL)))) {
+            vgfx_data_fail_transfer(data, transfer, "Wayland clipboard transfer poll failed");
+            break;
+        }
     }
-    if (transfer->fd >= 0) vgfx_data_finish_transfer(data, transfer);
+    if (transfer->fd >= 0)
+        vgfx_data_fail_transfer(data, transfer, "Wayland clipboard transfer timed out");
+    int failed = transfer->failed;
     char *result = transfer->bytes;
     memset(transfer, 0, sizeof(*transfer));
     transfer->fd = -1;
+    if (failed) {
+        free(result);
+        return NULL;
+    }
     return result;
 }
 
 int vgfx_wayland_data_set_text(vgfx_wayland_data_t *data, const char *text) {
     if (!data) return 0;
+    if (text && strnlen(text, VGFX_WAYLAND_TRANSFER_LIMIT + 1u) > VGFX_WAYLAND_TRANSFER_LIMIT) {
+        vgfx_internal_set_error(VGFX_ERR_PLATFORM, "Wayland clipboard text exceeded 8 MiB");
+        return 0;
+    }
     char *copy = text ? strdup(text) : NULL;
     if (text && !copy) return 0;
     free(data->local_text);

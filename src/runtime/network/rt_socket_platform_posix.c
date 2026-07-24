@@ -100,13 +100,21 @@ bool rt_socket_recv_timed_out(void) {
 ///          query cannot non-locally exit while an in-flight listener operation
 ///          is registered. Seconds and nanoseconds are converted with unsigned
 ///          arithmetic after validating the native fields.
-/// @return Monotonic milliseconds, or zero if the platform query fails or
-///         returns malformed negative fields.
+/// @return Monotonic milliseconds, UINT64_MAX when conversion would overflow,
+///         or zero if the platform query fails or returns malformed fields.
 uint64_t rt_socket_monotonic_ms(void) {
     struct timespec now;
-    if (clock_gettime(CLOCK_MONOTONIC, &now) != 0 || now.tv_sec < 0 || now.tv_nsec < 0)
+    if (clock_gettime(CLOCK_MONOTONIC, &now) != 0 || now.tv_sec < 0 || now.tv_nsec < 0 ||
+        now.tv_nsec >= 1000000000L)
         return 0;
-    return (uint64_t)now.tv_sec * UINT64_C(1000) + (uint64_t)now.tv_nsec / UINT64_C(1000000);
+    const uint64_t seconds = (uint64_t)now.tv_sec;
+    const uint64_t fractional_ms = (uint64_t)now.tv_nsec / UINT64_C(1000000);
+    if (seconds > UINT64_MAX / UINT64_C(1000))
+        return UINT64_MAX;
+    const uint64_t whole_ms = seconds * UINT64_C(1000);
+    if (whole_ms > UINT64_MAX - fractional_ms)
+        return UINT64_MAX;
+    return whole_ms + fractional_ms;
 }
 
 /// @brief Detect accept() failures caused by listener shutdown races.
@@ -137,6 +145,8 @@ bool rt_socket_set_nonblocking(socket_t sock, bool nonblocking) {
     if (flags < 0)
         return false;
     int new_flags = nonblocking ? (flags | O_NONBLOCK) : (flags & ~O_NONBLOCK);
+    if (new_flags == flags)
+        return true;
     return fcntl(sock, F_SETFL, new_flags) == 0;
 }
 
@@ -167,8 +177,14 @@ bool rt_socket_pending_error(socket_t sock, int *error_out) {
         return false;
     *error_out = 0;
     socklen_t error_len = (socklen_t)sizeof(*error_out);
-    return getsockopt(sock, SOL_SOCKET, SO_ERROR, error_out, &error_len) == 0 &&
-           error_len == (socklen_t)sizeof(*error_out);
+    if (getsockopt(sock, SOL_SOCKET, SO_ERROR, error_out, &error_len) != 0)
+        return false;
+    if (error_len != (socklen_t)sizeof(*error_out)) {
+        *error_out = 0;
+        errno = EIO;
+        return false;
+    }
+    return true;
 }
 
 /// @brief Apply SO_RCVTIMEO or SO_SNDTIMEO to a POSIX socket.

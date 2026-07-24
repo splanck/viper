@@ -1,0 +1,364 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/ui/scene_component_authoring_controller.zia
+// Purpose: Coordinate structured schema UI intent with conflict-safe file edits.
+// Key invariants:
+//   - Scene documents are never dirtied by project schema authoring.
+//   - One UI intent performs at most one atomic schema file transition.
+//   - Selection is restored by stable component name and field key after reload.
+//   - External changes clear local schema history before new edits are accepted.
+// Ownership/Lifetime: Each scene editor owns one controller and one session.
+// Links: zannastudio/src/ui/scene_component_authoring.zia,
+//        zannastudio/src/ui/scene_component_palette.zia,
+//        zannastudio/src/ui/scene_component_schema.zia
+//
+//===----------------------------------------------------------------------===//
+
+module scene_component_authoring_controller;
+
+bind "scene_component_authoring";
+bind "scene_component_palette";
+bind "scene_component_schema";
+
+bind Clock = Zanna.Time.Clock;
+
+/// @brief Shared file-authoring controller used by both scene inspectors.
+class SceneComponentAuthoringController {
+    expose scene_component_authoring.SceneComponentAuthoringSession session;
+    expose scene_component_schema.SceneComponentSchema schema;
+    expose String path;
+    expose String target;
+    expose String message;
+    expose Boolean handled;
+    hide Integer lastExternalPollMs;
+
+    expose func init() {
+        session =
+            new scene_component_authoring.SceneComponentAuthoringSession();
+        schema = new scene_component_schema.SceneComponentSchema();
+        path = "";
+        target = "";
+        message = "";
+        handled = false;
+        lastExternalPollMs = -1;
+    }
+
+    /// @brief Load a new owner path and reset incompatible file history.
+    expose func Load(
+        nextPath: String,
+        nextTarget: String,
+        palette: scene_component_palette.SceneComponentPalette)
+        -> Boolean {
+        path = nextPath;
+        target = nextTarget;
+        var loaded = session.Load(path);
+        if loaded {
+            message = "";
+        } else {
+            message = session.error;
+        }
+        lastExternalPollMs = Clock.NowMs();
+        RefreshPalette(palette);
+        return loaded;
+    }
+
+    /// @brief Explicitly accept current disk bytes and clear stale history.
+    expose func Reload(
+        palette: scene_component_palette.SceneComponentPalette)
+        -> Boolean {
+        var loaded = session.Reload();
+        if loaded {
+            message = "Reloaded project component schema.";
+        } else {
+            message = session.error;
+        }
+        lastExternalPollMs = Clock.NowMs();
+        RefreshPalette(palette);
+        return loaded;
+    }
+
+    /// @brief Quietly accept an external schema edit on a bounded interval.
+    /// @return True when the published schema state changed.
+    expose func PollExternalChanges(
+        intervalMs: Integer,
+        palette: scene_component_palette.SceneComponentPalette)
+        -> Boolean {
+        if path == "" { return false; }
+        var interval = intervalMs;
+        if interval < 100 { interval = 100; }
+        var now = Clock.NowMs();
+        if lastExternalPollMs >= 0
+           and now - lastExternalPollMs < interval {
+            return false;
+        }
+        lastExternalPollMs = now;
+        if session.HasExternalChange() == false { return false; }
+        var loaded = session.Reload();
+        if loaded {
+            message = "Reloaded an external component-schema change.";
+        } else {
+            message = session.error;
+        }
+        RefreshPalette(palette);
+        return true;
+    }
+
+    /// @brief Consume at most one structured file-authoring command.
+    /// @return True when schema disk/published state changed.
+    expose func Pump(
+        palette: scene_component_palette.SceneComponentPalette)
+        -> Boolean {
+        handled = false;
+        if palette == null { return false; }
+        if palette.TakeReloadRequested() {
+            handled = true;
+            Reload(palette);
+            return true;
+        }
+        if palette.TakeSchemaUndoRequested() {
+            handled = true;
+            return Undo(palette);
+        }
+        if palette.TakeSchemaRedoRequested() {
+            handled = true;
+            return Redo(palette);
+        }
+        if palette.TakeNewComponentRequested() {
+            handled = true;
+            return ApplyEdit(
+                scene_component_authoring.AddStarterComponent(
+                    session.currentText, target),
+                palette,
+                "Created a starter project component.");
+        }
+
+        var component = palette.SelectedAuthoredComponent();
+        if palette.TakeSaveComponentRequested() {
+            handled = true;
+            if component == null {
+                message = "Choose a component to update.";
+                PublishState(palette);
+                return false;
+            }
+            return ApplyEdit(
+                scene_component_authoring.UpdateComponent(
+                    session.currentText,
+                    component.name,
+                    palette.componentNameInput.Text,
+                    palette.componentLabelInput.Text,
+                    palette.DraftComponentTarget(),
+                    palette.componentDescriptionInput.Text),
+                palette,
+                "Updated project component " + component.name + ".");
+        }
+        if palette.TakeDeleteComponentRequested() {
+            handled = true;
+            if component == null {
+                message = "Choose a component to remove.";
+                PublishState(palette);
+                return false;
+            }
+            return ApplyEdit(
+                scene_component_authoring.RemoveComponent(
+                    session.currentText, component.name),
+                palette,
+                "Removed project component " + component.name
+                + "; existing scene data was retained.");
+        }
+        if palette.TakeMoveComponentEarlierRequested() {
+            handled = true;
+            if component == null { return false; }
+            return ApplyEdit(
+                scene_component_authoring.MoveComponent(
+                    session.currentText, component.name, -1),
+                palette,
+                "Moved project component earlier.");
+        }
+        if palette.TakeMoveComponentLaterRequested() {
+            handled = true;
+            if component == null { return false; }
+            return ApplyEdit(
+                scene_component_authoring.MoveComponent(
+                    session.currentText, component.name, 1),
+                palette,
+                "Moved project component later.");
+        }
+        if palette.TakeNewFieldRequested() {
+            handled = true;
+            if component == null {
+                message = "Choose a component before adding a field.";
+                PublishState(palette);
+                return false;
+            }
+            return ApplyEdit(
+                scene_component_authoring.AddStarterField(
+                    session.currentText, component.name),
+                palette,
+                "Added a starter field to " + component.name + ".");
+        }
+
+        var field = palette.SelectedAuthoredField();
+        if palette.TakeSaveFieldRequested() {
+            handled = true;
+            if component == null or field == null {
+                message = "Choose a component field to update.";
+                PublishState(palette);
+                return false;
+            }
+            return ApplyEdit(
+                scene_component_authoring.UpdateField(
+                    session.currentText,
+                    component.name,
+                    field.key,
+                    palette.fieldKeyInput.Text,
+                    palette.fieldLabelInput.Text,
+                    palette.DraftFieldKind(),
+                    palette.fieldDefaultInput.Text,
+                    palette.fieldDescriptionInput.Text),
+                palette,
+                "Updated project component field " + field.key + ".");
+        }
+        if palette.TakeDeleteFieldRequested() {
+            handled = true;
+            if component == null or field == null {
+                message = "Choose a component field to remove.";
+                PublishState(palette);
+                return false;
+            }
+            return ApplyEdit(
+                scene_component_authoring.RemoveField(
+                    session.currentText,
+                    component.name,
+                    field.key),
+                palette,
+                "Removed schema field " + field.key
+                + "; existing scene values were retained.");
+        }
+        if palette.TakeMoveFieldEarlierRequested() {
+            handled = true;
+            if component == null or field == null { return false; }
+            return ApplyEdit(
+                scene_component_authoring.MoveField(
+                    session.currentText,
+                    component.name,
+                    field.key,
+                    -1),
+                palette,
+                "Moved component field earlier.");
+        }
+        if palette.TakeMoveFieldLaterRequested() {
+            handled = true;
+            if component == null or field == null { return false; }
+            return ApplyEdit(
+                scene_component_authoring.MoveField(
+                    session.currentText,
+                    component.name,
+                    field.key,
+                    1),
+                palette,
+                "Moved component field later.");
+        }
+        return false;
+    }
+
+    /// @brief Undo one exact schema file transition and refresh both lists.
+    expose func Undo(
+        palette: scene_component_palette.SceneComponentPalette)
+        -> Boolean {
+        if session.Undo() {
+            message = "Undid project component-schema edit.";
+            RefreshPalette(palette);
+            return true;
+        }
+        message = session.error;
+        PublishState(palette);
+        return false;
+    }
+
+    /// @brief Redo one exact schema file transition and refresh both lists.
+    expose func Redo(
+        palette: scene_component_palette.SceneComponentPalette)
+        -> Boolean {
+        if session.Redo() {
+            message = "Redid project component-schema edit.";
+            RefreshPalette(palette);
+            return true;
+        }
+        message = session.error;
+        PublishState(palette);
+        return false;
+    }
+
+    /// @brief Apply one prevalidated structured edit through the live session.
+    /// @details Command and probe callers share the same conflict/history path
+    ///          as pointer-driven palette actions.
+    expose func ApplyStructuredEdit(
+        edit: scene_component_authoring.SceneComponentEditResult,
+        palette: scene_component_palette.SceneComponentPalette,
+        successMessage: String) -> Boolean {
+        return ApplyEdit(edit, palette, successMessage);
+    }
+
+    hide func ApplyEdit(
+        edit: scene_component_authoring.SceneComponentEditResult,
+        palette: scene_component_palette.SceneComponentPalette,
+        successMessage: String) -> Boolean {
+        if edit == null {
+            message = "The component schema edit was unavailable.";
+            PublishState(palette);
+            return false;
+        }
+        if edit.ok == false {
+            message = edit.error;
+            PublishState(palette);
+            return false;
+        }
+        if edit.changed == false {
+            message = "The project component schema is already up to date.";
+            PublishState(palette);
+            return false;
+        }
+        if session.Apply(edit.content) == false {
+            message = session.error;
+            PublishState(palette);
+            return false;
+        }
+
+        message = successMessage;
+        RefreshPalette(palette);
+        if edit.componentName != "" {
+            palette.SelectAuthoredComponent(edit.componentName);
+            palette.SelectComponent(edit.componentName);
+        }
+        if edit.fieldKey != "" {
+            palette.SelectAuthoredField(edit.fieldKey);
+            palette.SelectField(edit.fieldKey);
+        }
+        palette.SetAuthoringMessage(message);
+        return true;
+    }
+
+    hide func RefreshPalette(
+        palette: scene_component_palette.SceneComponentPalette) {
+        schema = scene_component_schema.LoadPath(path);
+        if palette != null {
+            palette.SetSchema(schema, target);
+            PublishState(palette);
+        }
+    }
+
+    hide func PublishState(
+        palette: scene_component_palette.SceneComponentPalette) {
+        if palette == null { return; }
+        palette.SetAuthoringState(
+            path != "" and schema.valid,
+            session.CanUndo(),
+            session.CanRedo(),
+            message);
+    }
+}

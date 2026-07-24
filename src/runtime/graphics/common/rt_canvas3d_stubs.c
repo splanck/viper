@@ -25,7 +25,8 @@
 // Ownership/Lifetime:
 //   - Stub entry points allocate no graphics resources and retain no handles.
 //
-// Links: src/runtime/graphics/common/rt_graphics_stubs_internal.h
+// Links: src/runtime/graphics/common/rt_graphics_stubs_internal.h,
+//        docs/adr/0168-windowless-canvas3d-rendering.md
 //
 //===----------------------------------------------------------------------===//
 
@@ -210,6 +211,21 @@ void *rt_canvas3d_new(rt_string title, int64_t w, int64_t h) {
     (void)h;
     rt_graphics_unavailable_("Canvas3D.New: graphics support not compiled in");
     return NULL;
+}
+
+/// @brief Stub for windowless Canvas3D construction.
+/// @details A usable offscreen renderer still requires graphics support, so this follows the
+///          existing stateful-constructor trap policy.
+void *rt_canvas3d_new_offscreen(void *target) {
+    (void)target;
+    rt_graphics_unavailable_("Canvas3D.NewOffscreen: graphics support not compiled in");
+    return NULL;
+}
+
+/// @brief Report false because graphics-disabled builds cannot create any Canvas3D.
+int8_t rt_canvas3d_get_is_offscreen(void *obj) {
+    (void)obj;
+    return 0;
 }
 
 /// @brief Stub for `Canvas3D.Clear` — would normally clear the color and

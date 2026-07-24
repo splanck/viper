@@ -21,6 +21,10 @@ set(ZANNA_UNIT_SUPPORT_LIBS ${ZANNA_UNIT_SUPPORT_LIBS} PARENT_SCOPE)
 set(ZANNA_RUNTIME_TEST_LIBS zanna_runtime)
 set(ZANNA_RUNTIME_TEST_LIBS ${ZANNA_RUNTIME_TEST_LIBS} PARENT_SCOPE)
 
+zanna_add_test(test_platform_capabilities test_platform_capabilities.cpp)
+zanna_add_ctest(test_platform_capabilities test_platform_capabilities)
+zanna_add_test_labels(test_platform_capabilities unit)
+
 function(zanna_add_isolated_runtime_test target)
     if (NOT TARGET runtime_contract_tests)
         add_custom_target(runtime_contract_tests)
@@ -1341,6 +1345,18 @@ function(zanna_add_runtime_tests)
                 ${ZANNA_RUNTIME_TEST_LIBS} Threads::Threads)
         zanna_add_ctest(test_rt_posix_socket_platform test_rt_posix_socket_platform)
         zanna_add_test_labels(test_rt_posix_socket_platform runtime unit)
+
+        if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
+            zanna_add_isolated_runtime_test(test_rt_posix_entropy_platform
+                    ${ZANNA_TESTS_DIR}/runtime/RTPosixEntropyPlatformTests.c)
+            zanna_add_test_labels(test_rt_posix_entropy_platform
+                    runtime unit requires_linux)
+
+            zanna_add_isolated_runtime_test(test_rt_posix_socket_faults
+                    ${ZANNA_TESTS_DIR}/runtime/RTPosixSocketFaultTests.c)
+            zanna_add_test_labels(test_rt_posix_socket_faults
+                    runtime unit requires_linux)
+        endif ()
     endif ()
 
     zanna_add_test(test_rt_locale_manager ${ZANNA_TESTS_DIR}/runtime/RTLocaleManagerTests.cpp)
@@ -1805,9 +1821,16 @@ function(zanna_add_runtime_tests)
                 RESOURCE_LOCK zanna_display)
     endif ()
 
-    if (UNIX AND NOT APPLE AND
+    if (CMAKE_SYSTEM_NAME STREQUAL "Linux" AND
         (ZANNAGFX_BACKEND STREQUAL "Wayland" OR ZANNAGFX_BACKEND STREQUAL "LinuxAuto" OR
          ZANNAGFX_BACKEND STREQUAL "X11"))
+        zanna_add_test(test_rt_gui_linux_platform
+                ${ZANNA_TESTS_DIR}/runtime/RTGuiLinuxPlatformTests.c)
+        target_link_libraries(test_rt_gui_linux_platform PRIVATE
+                ${ZANNA_RUNTIME_TEST_LIBS} zannagfx zannagui)
+        zanna_add_ctest(test_rt_gui_linux_platform test_rt_gui_linux_platform)
+        zanna_add_test_labels(test_rt_gui_linux_platform runtime gui unit requires_linux)
+
         zanna_add_test(test_rt_gui_atspi_linux
                 ${ZANNA_TESTS_DIR}/runtime/RTGuiAtspiLinuxTests.c)
         target_link_libraries(test_rt_gui_atspi_linux PRIVATE ${ZANNA_RUNTIME_TEST_LIBS})

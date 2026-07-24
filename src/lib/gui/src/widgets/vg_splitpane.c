@@ -319,8 +319,7 @@ static bool splitpane_adjust_position_by_pixels(vg_splitpane_t *split, float del
     split->split_position = new_position;
     split->collapsed_side = VG_SPLIT_COLLAPSED_NONE;
     split->restore_position = new_position;
-    split->base.needs_layout = true;
-    split->base.needs_paint = true;
+    vg_widget_invalidate_layout(&split->base);
     vg_widget_note_change(&split->base);
     return true;
 }
@@ -446,8 +445,7 @@ static bool splitpane_handle_event(vg_widget_t *widget, vg_event_t *event) {
                     split->split_position = pos;
                     split->collapsed_side = VG_SPLIT_COLLAPSED_NONE;
                     split->restore_position = pos;
-                    widget->needs_layout = true;
-                    widget->needs_paint = true;
+                    vg_widget_invalidate_layout(widget);
                     vg_widget_note_change(widget);
                 }
                 return true;
@@ -555,8 +553,7 @@ void vg_splitpane_set_position(vg_splitpane_t *split, float position) {
     split->split_position = position;
     split->restore_position = position;
     split->collapsed_side = VG_SPLIT_COLLAPSED_NONE;
-    split->base.needs_layout = true;
-    split->base.needs_paint = true;
+    vg_widget_invalidate_layout(&split->base);
     vg_widget_note_change(&split->base);
 }
 
@@ -586,8 +583,7 @@ void vg_splitpane_set_min_sizes(vg_splitpane_t *split, float min_first, float mi
         return;
     split->min_first_size = min_first;
     split->min_second_size = min_second;
-    split->base.needs_layout = true;
-    split->base.needs_paint = true;
+    vg_widget_invalidate_layout(&split->base);
     vg_widget_note_change(&split->base);
 }
 
@@ -603,8 +599,7 @@ void vg_splitpane_set_min_first(vg_splitpane_t *split, float size) {
     if (split->min_first_size == normalized)
         return;
     split->min_first_size = normalized;
-    split->base.needs_layout = true;
-    split->base.needs_paint = true;
+    vg_widget_invalidate_layout(&split->base);
     vg_widget_note_change(&split->base);
 }
 
@@ -620,8 +615,7 @@ void vg_splitpane_set_min_second(vg_splitpane_t *split, float size) {
     if (split->min_second_size == normalized)
         return;
     split->min_second_size = normalized;
-    split->base.needs_layout = true;
-    split->base.needs_paint = true;
+    vg_widget_invalidate_layout(&split->base);
     vg_widget_note_change(&split->base);
 }
 
@@ -658,8 +652,7 @@ static void splitpane_collapse(vg_splitpane_t *split, vg_split_collapsed_side_t 
         split->restore_position = split->split_position;
     split->collapsed_side = side;
     split->split_position = side == VG_SPLIT_COLLAPSED_FIRST ? 0.0f : 1.0f;
-    split->base.needs_layout = true;
-    split->base.needs_paint = true;
+    vg_widget_invalidate_layout(&split->base);
     vg_widget_note_change(&split->base);
 }
 
@@ -689,8 +682,7 @@ void vg_splitpane_restore(vg_splitpane_t *split) {
         restored = 1.0f;
     split->split_position = restored;
     split->collapsed_side = VG_SPLIT_COLLAPSED_NONE;
-    split->base.needs_layout = true;
-    split->base.needs_paint = true;
+    vg_widget_invalidate_layout(&split->base);
     vg_widget_note_change(&split->base);
 }
 

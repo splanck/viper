@@ -12,12 +12,16 @@
 //   - All create functions return NULL on allocation failure.
 //   - String parameters are copied internally unless documented otherwise.
 //   - TreeView node depth is unlimited; rendering uses iterative traversal.
+//   - Retained TreeView selection flags may contain several nodes only when
+//     multi-select is enabled; selected names the primary selected node.
+//   - Public TreeView drop positions are stable: BEFORE=0, INTO=1, AFTER=2.
 // Ownership/Lifetime:
 //   - TreeView and MenuBar are owned by their parent in the widget tree.
 //   - ContextMenu may be created without a parent and must be explicitly
 //     destroyed.
 // Links: lib/gui/include/vg_ide_widgets_common.h,
-//        lib/gui/include/vg_widget.h
+//        lib/gui/include/vg_widget.h,
+//        docs/adr/0163-stable-multiselect-and-row-aware-treeview-editing.md
 //
 //===----------------------------------------------------------------------===//
 #pragma once
@@ -257,10 +261,17 @@ typedef void (*vg_tree_activate_callback_t)(vg_widget_t *tree,
 
 /// @brief Drop position for drag-and-drop
 typedef enum vg_tree_drop_position {
-    VG_TREE_DROP_BEFORE, ///< Drop before target node
-    VG_TREE_DROP_AFTER,  ///< Drop after target node
-    VG_TREE_DROP_INTO    ///< Drop as child of target node
+    VG_TREE_DROP_BEFORE = 0, ///< Drop before target node
+    VG_TREE_DROP_INTO = 1,   ///< Drop as child of target node
+    VG_TREE_DROP_AFTER = 2   ///< Drop after target node
 } vg_tree_drop_position_t;
+
+/// @brief Application-directed TreeView drag-and-drop behavior.
+typedef enum vg_treeview_app_dnd_mode {
+    VG_TREEVIEW_APP_DND_DISABLED = 0,    ///< Do not enable poll-model dragging.
+    VG_TREEVIEW_APP_DND_LEGACY_INTO = 1, ///< Accept container-only INTO drops.
+    VG_TREEVIEW_APP_DND_ROW_AWARE = 2    ///< Classify BEFORE/INTO/AFTER on any row.
+} vg_treeview_app_dnd_mode_t;
 
 /// @brief Drag-and-drop callback types
 typedef bool (*vg_tree_can_drag_callback_t)(vg_tree_node_t *node, void *user_data);
@@ -332,8 +343,10 @@ typedef struct vg_treeview {
     vg_widget_t base;
 
     vg_tree_node_t *root;                 ///< Root node (hidden, children are top-level)
-    vg_tree_node_t *selected;             ///< Currently selected node
+    vg_tree_node_t *selected;             ///< Primary selected retained node
     vg_tree_node_t *prev_selected;        ///< Previous selection (for change detection)
+    vg_tree_node_t *anchor_selected;      ///< Visible range-selection anchor
+    bool multi_select;                    ///< Allow multiple retained nodes to be selected
     vg_tree_node_t *retired_nodes;        ///< Detached stale node subtrees freed on tree destroy
     uint64_t selection_revision;          ///< Incremented whenever logical selection changes
     uint64_t reported_selection_revision; ///< Last selection revision reported to runtime callers
@@ -400,14 +413,14 @@ typedef struct vg_treeview {
     void *drag_user_data;
 
     // Application-directed drag-and-drop (poll model for the Zia runtime).
-    // When enabled, a completed drop is INTO-only, is latched for polling
-    // instead of firing on_drop, and the tree does NOT reorder itself — the
-    // application performs the move and refreshes the tree.
-    bool app_directed_dnd;               ///< Latch drops instead of self-reordering.
-    bool drop_latched;                   ///< A completed drop is waiting to be consumed.
-    vg_tree_node_t *latched_src;         ///< Dragged node at the latched drop.
-    vg_tree_node_t *latched_tgt;         ///< Target node at the latched drop.
-    vg_tree_drop_position_t latched_pos; ///< Drop position at the latched drop.
+    // A completed drop is latched rather than self-reordered or sent through
+    // on_drop. Legacy mode is container-only/INTO; row-aware mode exposes all
+    // three drop regions and leaves semantic validation to the application.
+    vg_treeview_app_dnd_mode_t app_directed_dnd_mode; ///< Poll-model drop behavior.
+    bool drop_latched;                                ///< Completed drop awaits consumption.
+    vg_tree_node_t *latched_src;                      ///< Dragged node at latched drop.
+    vg_tree_node_t *latched_tgt;                      ///< Target node at latched drop.
+    vg_tree_drop_position_t latched_pos;              ///< Position at latched drop.
 
     // State
     vg_tree_node_t *hovered; ///< Currently hovered node
@@ -537,10 +550,19 @@ void vg_treeview_collapse(vg_treeview_t *tree, vg_tree_node_t *node);
 /// @param node Node to toggle.
 void vg_treeview_toggle(vg_treeview_t *tree, vg_tree_node_t *node);
 
-/// @brief Select a node, deselecting the previous selection.
+/// @brief Select a node.
+/// @details Replaces the selection in single-select mode and adds @p node in multi-select mode.
+///          Passing NULL always clears every retained selection.
 /// @param tree Tree view widget.
 /// @param node Node to select, or NULL to deselect all.
 void vg_treeview_select(vg_treeview_t *tree, vg_tree_node_t *node);
+
+/// @brief Enable or disable retained-node multi-selection.
+/// @details Disabling keeps only the primary selected node. Virtual TreeViews remain
+///          single-select regardless of this setting.
+/// @param tree Tree view widget.
+/// @param enabled true to allow additive, toggle, and visible range selection.
+void vg_treeview_set_multi_select(vg_treeview_t *tree, bool enabled);
 
 /// @brief Return the visible node under a window-space point.
 /// @param tree Tree view widget.
@@ -654,10 +676,18 @@ void vg_treeview_set_drag_enabled(vg_treeview_t *tree, bool enabled);
 /// @brief Enable application-directed (poll-model) drag-and-drop.
 /// @details Turns on dragging, restricts drops to INTO an expandable node, and
 ///          latches a completed drop for polling instead of self-reordering.
-///          Intended for the Zia runtime, which cannot register C callbacks.
+///          This compatibility operation selects LEGACY_INTO when enabled and
+///          DISABLED otherwise.
 /// @param tree    Tree view widget.
 /// @param enabled true to enable the poll model.
 void vg_treeview_set_app_directed_dnd(vg_treeview_t *tree, bool enabled);
+
+/// @brief Select an application-directed drag-and-drop mode.
+/// @details Mode changes cancel active and latched drops. Values outside the
+///          vg_treeview_app_dnd_mode_t range are ignored.
+/// @param tree Tree view widget.
+/// @param mode Disabled, legacy container-only INTO, or row-aware mode.
+void vg_treeview_set_app_directed_dnd_mode(vg_treeview_t *tree, int mode);
 
 /// @brief True when a completed drop is waiting to be consumed.
 bool vg_treeview_has_pending_drop(const vg_treeview_t *tree);

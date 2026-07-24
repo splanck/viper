@@ -1,0 +1,878 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/ui/scene_component_palette.zia
+// Purpose: Present and structurally author project scene-component templates.
+// Key invariants:
+//   - This presentation object never mutates scene or document state.
+//   - The application picker is target-filtered; schema authoring remains
+//     unfiltered so either scene editor can maintain the complete project file.
+//   - All apply, field-edit, reload, and authoring events are controller intent.
+// Ownership/Lifetime: A scene editor owns one palette; GUI owns its widgets.
+// Links: zannastudio/src/ui/scene_component_schema.zia,
+//        zannastudio/src/ui/scene_component_authoring.zia,
+//        zannastudio/src/ui/scene_component_authoring_controller.zia,
+//        zannastudio/src/ui/scene_editor_2d.zia,
+//        zannastudio/src/ui/scene_editor_3d.zia
+//
+//===----------------------------------------------------------------------===//
+
+module scene_component_palette;
+
+bind "scene_component_schema";
+
+bind GUI = Zanna.GUI;
+
+final AUTHOR_TARGET_2D: Integer = 0;
+final AUTHOR_TARGET_3D: Integer = 1;
+final AUTHOR_TARGET_BOTH: Integer = 2;
+final AUTHOR_KIND_STRING: Integer = 0;
+final AUTHOR_KIND_INT: Integer = 1;
+final AUTHOR_KIND_FLOAT: Integer = 2;
+final AUTHOR_KIND_BOOL: Integer = 3;
+final AUTHOR_KIND_NULL: Integer = 4;
+
+/// @brief Presentation-only component picker shared by both scene inspectors.
+class SceneComponentPalette {
+    expose GUI.GroupBox group;
+    expose GUI.Label status;
+    expose GUI.Dropdown componentDropdown;
+    expose GUI.ListBox fieldList;
+    expose GUI.Button applyButton;
+    expose GUI.Button editFieldButton;
+    expose GUI.Button reloadButton;
+    expose GUI.Button schemaToggleButton;
+    expose GUI.GroupBox schemaEditorGroup;
+    expose GUI.Label schemaPathLabel;
+    expose GUI.Label authoringStatus;
+    expose GUI.Dropdown authoringComponentDropdown;
+    expose GUI.ListBox authoringFieldList;
+    expose GUI.Button schemaUndoButton;
+    expose GUI.Button schemaRedoButton;
+    expose GUI.Button newComponentButton;
+    expose GUI.Button componentEarlierButton;
+    expose GUI.Button componentLaterButton;
+    expose GUI.TextInput componentNameInput;
+    expose GUI.TextInput componentLabelInput;
+    expose GUI.Dropdown componentTargetDropdown;
+    expose GUI.TextInput componentDescriptionInput;
+    expose GUI.Button saveComponentButton;
+    expose GUI.Button deleteComponentButton;
+    expose GUI.Button newFieldButton;
+    expose GUI.Button fieldEarlierButton;
+    expose GUI.Button fieldLaterButton;
+    expose GUI.TextInput fieldKeyInput;
+    expose GUI.TextInput fieldLabelInput;
+    expose GUI.Dropdown fieldTypeDropdown;
+    expose GUI.TextInput fieldDefaultInput;
+    expose GUI.TextInput fieldDescriptionInput;
+    expose GUI.Button saveFieldButton;
+    expose GUI.Button deleteFieldButton;
+    expose scene_component_schema.SceneComponentSchema schema;
+    expose List[scene_component_schema.SceneComponentDefinition] components;
+    expose String target;
+    expose Boolean schemaEditorVisible;
+    hide Boolean contextEnabled;
+    hide Boolean authoringCanUndo;
+    hide Boolean authoringCanRedo;
+    hide String authoringMessage;
+
+    expose func init() {
+        group = null;
+        status = null;
+        componentDropdown = null;
+        fieldList = null;
+        applyButton = null;
+        editFieldButton = null;
+        reloadButton = null;
+        schemaToggleButton = null;
+        schemaEditorGroup = null;
+        schemaPathLabel = null;
+        authoringStatus = null;
+        authoringComponentDropdown = null;
+        authoringFieldList = null;
+        schemaUndoButton = null;
+        schemaRedoButton = null;
+        newComponentButton = null;
+        componentEarlierButton = null;
+        componentLaterButton = null;
+        componentNameInput = null;
+        componentLabelInput = null;
+        componentTargetDropdown = null;
+        componentDescriptionInput = null;
+        saveComponentButton = null;
+        deleteComponentButton = null;
+        newFieldButton = null;
+        fieldEarlierButton = null;
+        fieldLaterButton = null;
+        fieldKeyInput = null;
+        fieldLabelInput = null;
+        fieldTypeDropdown = null;
+        fieldDefaultInput = null;
+        fieldDescriptionInput = null;
+        saveFieldButton = null;
+        deleteFieldButton = null;
+        schema = new scene_component_schema.SceneComponentSchema();
+        components = [];
+        target = "";
+        schemaEditorVisible = false;
+        contextEnabled = false;
+        authoringCanUndo = false;
+        authoringCanRedo = false;
+        authoringMessage = "";
+    }
+
+    /// @brief Build a bounded component picker under one scene inspector.
+    expose func Setup(parent: GUI.VBox,
+                      title: String,
+                      accessibleName: String) {
+        group = GUI.GroupBox.New(parent, title);
+        status = GUI.Label.New(
+            group,
+            "No project component schema is loaded.");
+        status.SetWordWrap(true);
+
+        componentDropdown = GUI.Dropdown.New(group);
+        componentDropdown.SetAccessibleName(accessibleName);
+        componentDropdown.SetPlaceholder("Choose a component");
+
+        fieldList = GUI.ListBox.New(group);
+        fieldList.SetAccessibleName(accessibleName + " fields");
+        fieldList.SetPreferredSize(0.0, 96.0);
+
+        var actions = GUI.HBox.New();
+        actions.SetSpacing(4.0);
+        group.AddChild(actions);
+        applyButton = GUI.Button.New(actions, "Add Missing");
+        applyButton.SetTooltip(
+            "Add missing typed defaults without overwriting existing values");
+        editFieldButton = GUI.Button.New(actions, "Edit Field");
+        editFieldButton.SetTooltip(
+            "Copy the selected schema field into the raw property editor");
+        var schemaActions = GUI.HBox.New();
+        schemaActions.SetSpacing(4.0);
+        group.AddChild(schemaActions);
+        schemaToggleButton =
+            GUI.Button.New(schemaActions, "Edit Schema");
+        schemaToggleButton.SetTooltip(
+            "Show structured project component-schema authoring");
+        reloadButton = GUI.Button.New(schemaActions, "Reload");
+        reloadButton.SetTooltip(
+            "Reload scene-components.json from this document's project root");
+
+        SetupSchemaEditor();
+        SetSchema(schema, "");
+    }
+
+    /// @brief Build the initially hidden structured schema authoring form.
+    hide func SetupSchemaEditor() {
+        schemaEditorGroup =
+            GUI.GroupBox.New(group, "Schema authoring");
+        schemaPathLabel = GUI.Label.New(
+            schemaEditorGroup, "No workspace schema path");
+        schemaPathLabel.SetWordWrap(true);
+        authoringStatus = GUI.Label.New(schemaEditorGroup, "");
+        authoringStatus.SetWordWrap(true);
+        authoringComponentDropdown =
+            GUI.Dropdown.New(schemaEditorGroup);
+        authoringComponentDropdown.SetAccessibleName(
+            "Project schema component definition");
+        authoringComponentDropdown.SetPlaceholder(
+            "Choose any schema component");
+        authoringFieldList = GUI.ListBox.New(schemaEditorGroup);
+        authoringFieldList.SetAccessibleName(
+            "Project schema component fields");
+        authoringFieldList.SetPreferredSize(0.0, 90.0);
+
+        var historyRow = GUI.HBox.New();
+        historyRow.SetSpacing(4.0);
+        schemaEditorGroup.AddChild(historyRow);
+        schemaUndoButton = GUI.Button.New(historyRow, "Undo Schema");
+        schemaUndoButton.SetTooltip(
+            "Restore the preceding exact schema file state");
+        schemaRedoButton = GUI.Button.New(historyRow, "Redo Schema");
+        schemaRedoButton.SetTooltip(
+            "Reapply the next exact schema file state");
+
+        GUI.Label.New(schemaEditorGroup, "Component definition");
+        var componentOrderRow = GUI.HBox.New();
+        componentOrderRow.SetSpacing(4.0);
+        schemaEditorGroup.AddChild(componentOrderRow);
+        newComponentButton =
+            GUI.Button.New(componentOrderRow, "New Component");
+        newComponentButton.SetTooltip(
+            "Create a valid starter component and field");
+        componentEarlierButton =
+            GUI.Button.New(componentOrderRow, "Earlier");
+        componentLaterButton =
+            GUI.Button.New(componentOrderRow, "Later");
+        componentNameInput = GUI.TextInput.New(schemaEditorGroup);
+        componentNameInput.SetPlaceholder("Stable component name");
+        componentLabelInput = GUI.TextInput.New(schemaEditorGroup);
+        componentLabelInput.SetPlaceholder("Component label");
+        componentTargetDropdown =
+            GUI.Dropdown.New(schemaEditorGroup);
+        componentTargetDropdown.AddItem("2D object");
+        componentTargetDropdown.AddItem("3D node");
+        componentTargetDropdown.AddItem("Both editors");
+        componentTargetDropdown.SetSelected(AUTHOR_TARGET_BOTH);
+        componentDescriptionInput =
+            GUI.TextInput.New(schemaEditorGroup);
+        componentDescriptionInput.SetPlaceholder(
+            "Component description (optional)");
+        var componentSaveRow = GUI.HBox.New();
+        componentSaveRow.SetSpacing(4.0);
+        schemaEditorGroup.AddChild(componentSaveRow);
+        saveComponentButton =
+            GUI.Button.New(componentSaveRow, "Save Component");
+        deleteComponentButton =
+            GUI.Button.New(componentSaveRow, "Delete Component");
+        deleteComponentButton.SetTooltip(
+            "Remove this template; authored scene values are retained");
+
+        GUI.Label.New(schemaEditorGroup, "Field definition");
+        var fieldOrderRow = GUI.HBox.New();
+        fieldOrderRow.SetSpacing(4.0);
+        schemaEditorGroup.AddChild(fieldOrderRow);
+        newFieldButton = GUI.Button.New(fieldOrderRow, "New Field");
+        newFieldButton.SetTooltip(
+            "Append one valid starter string field");
+        fieldEarlierButton = GUI.Button.New(fieldOrderRow, "Earlier");
+        fieldLaterButton = GUI.Button.New(fieldOrderRow, "Later");
+        fieldKeyInput = GUI.TextInput.New(schemaEditorGroup);
+        fieldKeyInput.SetPlaceholder("Stable field key");
+        fieldLabelInput = GUI.TextInput.New(schemaEditorGroup);
+        fieldLabelInput.SetPlaceholder("Field label");
+        var fieldValueRow = GUI.HBox.New();
+        fieldValueRow.SetSpacing(4.0);
+        schemaEditorGroup.AddChild(fieldValueRow);
+        fieldTypeDropdown = GUI.Dropdown.New(fieldValueRow);
+        fieldTypeDropdown.AddItem("String");
+        fieldTypeDropdown.AddItem("Integer");
+        fieldTypeDropdown.AddItem("Float");
+        fieldTypeDropdown.AddItem("Boolean");
+        fieldTypeDropdown.AddItem("Null");
+        fieldTypeDropdown.SetSelected(AUTHOR_KIND_STRING);
+        fieldDefaultInput = GUI.TextInput.New(fieldValueRow);
+        fieldDefaultInput.SetPlaceholder("Typed default");
+        fieldDefaultInput.SetFlex(1.0);
+        fieldDescriptionInput = GUI.TextInput.New(schemaEditorGroup);
+        fieldDescriptionInput.SetPlaceholder(
+            "Field description (optional)");
+        var fieldSaveRow = GUI.HBox.New();
+        fieldSaveRow.SetSpacing(4.0);
+        schemaEditorGroup.AddChild(fieldSaveRow);
+        saveFieldButton = GUI.Button.New(fieldSaveRow, "Save Field");
+        deleteFieldButton = GUI.Button.New(fieldSaveRow, "Delete Field");
+        deleteFieldButton.SetTooltip(
+            "Remove this field from the template, not from existing scenes");
+
+        schemaEditorGroup.SetVisible(false);
+        SetAuthoringState(false, false, false, "");
+    }
+
+    /// @brief Replace the compatible definitions while preserving stable choice.
+    expose func SetSchema(
+        nextSchema: scene_component_schema.SceneComponentSchema,
+        nextTarget: String) {
+        var selectedName = "";
+        var selectedFieldKey = "";
+        var authoredName = "";
+        var authoredFieldKey = "";
+        var old = SelectedComponent();
+        if old != null { selectedName = old.name; }
+        var oldField = SelectedField();
+        if oldField != null { selectedFieldKey = oldField.key; }
+        var oldAuthored = SelectedAuthoredComponent();
+        if oldAuthored != null { authoredName = oldAuthored.name; }
+        var oldAuthoredField = SelectedAuthoredField();
+        if oldAuthoredField != null {
+            authoredFieldKey = oldAuthoredField.key;
+        }
+
+        if nextSchema == null {
+            schema = new scene_component_schema.SceneComponentSchema();
+        } else {
+            schema = nextSchema;
+        }
+        target = nextTarget;
+        components = [];
+        componentDropdown.Clear();
+        fieldList.Clear();
+        authoringComponentDropdown.Clear();
+        authoringFieldList.Clear();
+
+        if schema.valid {
+            var index = 0;
+            while index < schema.components.count() {
+                var component = schema.components.get(index);
+                if component != null {
+                    authoringComponentDropdown.AddItem(
+                        component.label + "  [" + component.target + "]");
+                }
+                if component != null and component.SupportsTarget(target) {
+                    components.add(component);
+                    componentDropdown.AddItem(component.label);
+                }
+                index = index + 1;
+            }
+        }
+
+        var selected = -1;
+        var candidate = 0;
+        while candidate < components.count() {
+            if components.get(candidate).name == selectedName {
+                selected = candidate;
+                break;
+            }
+            candidate = candidate + 1;
+        }
+        if selected < 0 and components.count() > 0 { selected = 0; }
+        componentDropdown.SetSelected(selected);
+        RefreshFields();
+        if selectedFieldKey != "" { SelectField(selectedFieldKey); }
+
+        var authoredSelected = -1;
+        candidate = 0;
+        while candidate < schema.components.count() {
+            if schema.components.get(candidate).name == authoredName {
+                authoredSelected = candidate;
+                break;
+            }
+            candidate = candidate + 1;
+        }
+        if authoredSelected < 0 and schema.components.count() > 0 {
+            authoredSelected = 0;
+        }
+        authoringComponentDropdown.SetSelected(authoredSelected);
+        RefreshAuthoringFields();
+        if authoredFieldKey != "" {
+            SelectAuthoredField(authoredFieldKey);
+        }
+        RefreshAuthoringDrafts();
+        SetContext(false, 0, 0, 0);
+    }
+
+    /// @brief Update availability and current component coverage text.
+    expose func SetContext(enabled: Boolean,
+                           present: Integer,
+                           missing: Integer,
+                           conflicts: Integer) {
+        contextEnabled = enabled;
+        var component = SelectedComponent();
+        var hasComponents = schema != null and schema.valid
+            and components.count() > 0;
+        componentDropdown.SetEnabled(hasComponents);
+        fieldList.SetEnabled(hasComponents);
+        reloadButton.SetEnabled(schema != null and schema.sourcePath != "");
+        schemaToggleButton.SetEnabled(
+            schema != null and schema.sourcePath != "");
+        applyButton.SetEnabled(enabled and component != null);
+        editFieldButton.SetEnabled(enabled and SelectedField() != null);
+        RefreshAuthoringAvailability();
+
+        if schema == null or schema.found == false {
+            status.SetText(
+                "No scene-components.json in this project. Raw typed "
+                + "properties remain available.");
+            return;
+        }
+        if schema.valid == false {
+            status.SetText("Component schema error: " + schema.error);
+            return;
+        }
+        if components.count() == 0 {
+            status.SetText(
+                "The project schema has no components for this editor.");
+            return;
+        }
+        if component == null {
+            status.SetText("Choose a project component.");
+            return;
+        }
+        if enabled == false {
+            status.SetText(
+                component.label + " · select scene content to inspect or add");
+            return;
+        }
+
+        var summary = component.label + " · " + present + " present";
+        if missing > 0 { summary = summary + ", " + missing + " missing"; }
+        if conflicts > 0 {
+            summary = summary + ", " + conflicts + " type conflict(s)";
+        }
+        if component.description != "" {
+            summary = summary + "\n" + component.description;
+        }
+        status.SetText(summary);
+    }
+
+    /// @brief Further constrain raw-field editing without changing apply state.
+    /// @details The 3D raw metadata editor accepts one node while component
+    ///          application accepts a multi-selection.
+    expose func SetEditEnabled(enabled: Boolean) {
+        editFieldButton.SetEnabled(
+            enabled and contextEnabled and SelectedField() != null);
+    }
+
+    /// @brief Consume selection changes and keep field rows synchronized.
+    /// @return True when component or field selection changed.
+    expose func Pump() -> Boolean {
+        var changed = false;
+        if schemaToggleButton.WasClicked() {
+            SetSchemaEditorVisible(schemaEditorVisible == false);
+            changed = true;
+        }
+        if componentDropdown.WasChanged() {
+            RefreshFields();
+            RefreshAuthoringDrafts();
+            changed = true;
+        }
+        if fieldList.WasSelectionChanged() {
+            changed = true;
+        }
+        if authoringComponentDropdown.WasChanged() {
+            RefreshAuthoringFields();
+            RefreshAuthoringDrafts();
+            changed = true;
+        }
+        if authoringFieldList.WasSelectionChanged() {
+            RefreshFieldDraft();
+            RefreshAuthoringAvailability();
+            changed = true;
+        }
+        if fieldTypeDropdown.WasChanged() {
+            UpdateAuthoringDefaultControl();
+            changed = true;
+        }
+        return changed;
+    }
+
+    /// @brief Show or hide the structured schema form without changing data.
+    expose func SetSchemaEditorVisible(visible: Boolean) {
+        schemaEditorVisible = visible;
+        schemaEditorGroup.SetVisible(schemaEditorVisible);
+        schemaToggleButton.SetText("Edit Schema");
+        if schemaEditorVisible {
+            schemaToggleButton.SetText("Hide Schema");
+            RefreshAuthoringDrafts();
+        }
+    }
+
+    /// @brief Current compatible component, or null without a valid selection.
+    expose func SelectedComponent()
+        -> scene_component_schema.SceneComponentDefinition {
+        var index = componentDropdown.Selected;
+        if index < 0 or index >= components.count() { return null; }
+        return components.get(index);
+    }
+
+    /// @brief Current component field, or null without a field selection.
+    expose func SelectedField()
+        -> scene_component_schema.SceneComponentField {
+        var component = SelectedComponent();
+        if component == null { return null; }
+        var index = fieldList.SelectedIndex;
+        if index < 0 or index >= component.fields.count() { return null; }
+        return component.fields.get(index);
+    }
+
+    /// @brief Selected definition from the unfiltered schema-authoring list.
+    expose func SelectedAuthoredComponent()
+        -> scene_component_schema.SceneComponentDefinition {
+        if schema == null { return null; }
+        var index = authoringComponentDropdown.Selected;
+        if index < 0 or index >= schema.components.count() {
+            return null;
+        }
+        return schema.components.get(index);
+    }
+
+    /// @brief Selected field from the unfiltered schema-authoring list.
+    expose func SelectedAuthoredField()
+        -> scene_component_schema.SceneComponentField {
+        var component = SelectedAuthoredComponent();
+        if component == null { return null; }
+        var index = authoringFieldList.SelectedIndex;
+        if index < 0 or index >= component.fields.count() {
+            return null;
+        }
+        return component.fields.get(index);
+    }
+
+    /// @brief Select a compatible component by its stable schema name.
+    expose func SelectComponent(name: String) {
+        var index = 0;
+        while index < components.count() {
+            if components.get(index).name == name {
+                componentDropdown.SetSelected(index);
+                RefreshFields();
+                RefreshAuthoringDrafts();
+                return;
+            }
+            index = index + 1;
+        }
+    }
+
+    /// @brief Select one field by exact metadata key.
+    expose func SelectField(key: String) {
+        var component = SelectedComponent();
+        if component == null { return; }
+        var index = 0;
+        while index < component.fields.count() {
+            if component.fields.get(index).key == key {
+                fieldList.SelectIndex(index);
+                RefreshFieldDraft();
+                RefreshAuthoringAvailability();
+                return;
+            }
+            index = index + 1;
+        }
+    }
+
+    /// @brief Select any schema definition, independent of editor target.
+    expose func SelectAuthoredComponent(name: String) {
+        if schema == null { return; }
+        var index = 0;
+        while index < schema.components.count() {
+            if schema.components.get(index).name == name {
+                authoringComponentDropdown.SetSelected(index);
+                RefreshAuthoringFields();
+                RefreshAuthoringDrafts();
+                return;
+            }
+            index = index + 1;
+        }
+    }
+
+    /// @brief Select one field in the unfiltered authoring definition.
+    expose func SelectAuthoredField(key: String) {
+        var component = SelectedAuthoredComponent();
+        if component == null { return; }
+        var index = 0;
+        while index < component.fields.count() {
+            if component.fields.get(index).key == key {
+                authoringFieldList.SelectIndex(index);
+                RefreshFieldDraft();
+                RefreshAuthoringAvailability();
+                return;
+            }
+            index = index + 1;
+        }
+    }
+
+    expose func TakeApplyRequested() -> Boolean {
+        return applyButton.WasClicked();
+    }
+
+    expose func TakeEditFieldRequested() -> Boolean {
+        return editFieldButton.WasClicked();
+    }
+
+    expose func TakeReloadRequested() -> Boolean {
+        return reloadButton.WasClicked();
+    }
+
+    expose func TakeSchemaUndoRequested() -> Boolean {
+        return schemaUndoButton.WasClicked();
+    }
+
+    expose func TakeSchemaRedoRequested() -> Boolean {
+        return schemaRedoButton.WasClicked();
+    }
+
+    expose func TakeNewComponentRequested() -> Boolean {
+        return newComponentButton.WasClicked();
+    }
+
+    expose func TakeSaveComponentRequested() -> Boolean {
+        return saveComponentButton.WasClicked()
+            or componentNameInput.WasSubmitted()
+            or componentLabelInput.WasSubmitted()
+            or componentDescriptionInput.WasSubmitted();
+    }
+
+    expose func TakeDeleteComponentRequested() -> Boolean {
+        return deleteComponentButton.WasClicked();
+    }
+
+    expose func TakeMoveComponentEarlierRequested() -> Boolean {
+        return componentEarlierButton.WasClicked();
+    }
+
+    expose func TakeMoveComponentLaterRequested() -> Boolean {
+        return componentLaterButton.WasClicked();
+    }
+
+    expose func TakeNewFieldRequested() -> Boolean {
+        return newFieldButton.WasClicked();
+    }
+
+    expose func TakeSaveFieldRequested() -> Boolean {
+        return saveFieldButton.WasClicked()
+            or fieldKeyInput.WasSubmitted()
+            or fieldLabelInput.WasSubmitted()
+            or fieldDefaultInput.WasSubmitted()
+            or fieldDescriptionInput.WasSubmitted();
+    }
+
+    expose func TakeDeleteFieldRequested() -> Boolean {
+        return deleteFieldButton.WasClicked();
+    }
+
+    expose func TakeMoveFieldEarlierRequested() -> Boolean {
+        return fieldEarlierButton.WasClicked();
+    }
+
+    expose func TakeMoveFieldLaterRequested() -> Boolean {
+        return fieldLaterButton.WasClicked();
+    }
+
+    expose func DraftComponentTarget() -> String {
+        if componentTargetDropdown.Selected == AUTHOR_TARGET_2D {
+            return scene_component_schema.TARGET_2D_OBJECT;
+        }
+        if componentTargetDropdown.Selected == AUTHOR_TARGET_3D {
+            return scene_component_schema.TARGET_3D_NODE;
+        }
+        return scene_component_schema.TARGET_BOTH;
+    }
+
+    expose func DraftFieldKind() -> String {
+        if fieldTypeDropdown.Selected == AUTHOR_KIND_INT {
+            return "int";
+        }
+        if fieldTypeDropdown.Selected == AUTHOR_KIND_FLOAT {
+            return "float";
+        }
+        if fieldTypeDropdown.Selected == AUTHOR_KIND_BOOL {
+            return "bool";
+        }
+        if fieldTypeDropdown.Selected == AUTHOR_KIND_NULL {
+            return "null";
+        }
+        return "string";
+    }
+
+    /// @brief Publish file-history state and contextual authoring feedback.
+    expose func SetAuthoringState(canEdit: Boolean,
+                                  canUndo: Boolean,
+                                  canRedo: Boolean,
+                                  message: String) {
+        authoringCanUndo = canUndo;
+        authoringCanRedo = canRedo;
+        authoringMessage = message;
+        schemaUndoButton.SetEnabled(canEdit and canUndo);
+        schemaRedoButton.SetEnabled(canEdit and canRedo);
+        RefreshAuthoringAvailability();
+    }
+
+    /// @brief Update status after a structured edit without rebuilding drafts.
+    expose func SetAuthoringMessage(message: String) {
+        authoringMessage = message;
+        RefreshAuthoringAvailability();
+    }
+
+    /// @brief Refill component and field drafts from the selected schema rows.
+    expose func RefreshAuthoringDrafts() {
+        var component = SelectedAuthoredComponent();
+        if component == null {
+            componentNameInput.SetText("");
+            componentLabelInput.SetText("");
+            componentTargetDropdown.SetSelected(AUTHOR_TARGET_BOTH);
+            componentDescriptionInput.SetText("");
+        } else {
+            componentNameInput.SetText(component.name);
+            componentLabelInput.SetText(component.label);
+            SelectAuthoringTarget(component.target);
+            componentDescriptionInput.SetText(component.description);
+        }
+        RefreshFieldDraft();
+        RefreshAuthoringAvailability();
+    }
+
+    hide func RefreshFieldDraft() {
+        var field = SelectedAuthoredField();
+        if field == null {
+            fieldKeyInput.SetText("");
+            fieldLabelInput.SetText("");
+            fieldTypeDropdown.SetSelected(AUTHOR_KIND_STRING);
+            fieldDefaultInput.SetText("");
+            fieldDescriptionInput.SetText("");
+        } else {
+            fieldKeyInput.SetText(field.key);
+            fieldLabelInput.SetText(field.label);
+            SelectAuthoringKind(field.kind);
+            fieldDefaultInput.SetText(field.defaultText);
+            fieldDescriptionInput.SetText(field.description);
+        }
+        UpdateAuthoringDefaultControl();
+    }
+
+    hide func SelectAuthoringTarget(nextTarget: String) {
+        var selected = AUTHOR_TARGET_BOTH;
+        if nextTarget == scene_component_schema.TARGET_2D_OBJECT {
+            selected = AUTHOR_TARGET_2D;
+        } else if nextTarget
+                  == scene_component_schema.TARGET_3D_NODE {
+            selected = AUTHOR_TARGET_3D;
+        }
+        componentTargetDropdown.SetSelected(selected);
+    }
+
+    hide func SelectAuthoringKind(kind: String) {
+        var selected = AUTHOR_KIND_STRING;
+        if kind == "int" { selected = AUTHOR_KIND_INT; }
+        if kind == "float" { selected = AUTHOR_KIND_FLOAT; }
+        if kind == "bool" { selected = AUTHOR_KIND_BOOL; }
+        if kind == "null" { selected = AUTHOR_KIND_NULL; }
+        fieldTypeDropdown.SetSelected(selected);
+    }
+
+    hide func UpdateAuthoringDefaultControl() {
+        var isNull = DraftFieldKind() == "null";
+        fieldDefaultInput.SetEnabled(isNull == false);
+        if isNull {
+            fieldDefaultInput.SetText("");
+            fieldDefaultInput.SetPlaceholder("Null has no default text");
+        } else {
+            fieldDefaultInput.SetPlaceholder("Typed default");
+        }
+    }
+
+    hide func RefreshAuthoringAvailability() {
+        if schemaEditorGroup == null { return; }
+        var canEdit = schema != null
+            and schema.sourcePath != ""
+            and schema.valid;
+        var component = SelectedAuthoredComponent();
+        var field = SelectedAuthoredField();
+        var componentIndex = authoringComponentDropdown.Selected;
+        var fieldIndex = authoringFieldList.SelectedIndex;
+
+        schemaPathLabel.SetText("File: ");
+        if schema != null and schema.sourcePath != "" {
+            schemaPathLabel.SetText("File: " + schema.sourcePath);
+        } else {
+            schemaPathLabel.SetText(
+                "No unambiguous workspace schema path is available.");
+        }
+        schemaUndoButton.SetEnabled(canEdit and authoringCanUndo);
+        schemaRedoButton.SetEnabled(canEdit and authoringCanRedo);
+        authoringComponentDropdown.SetEnabled(
+            canEdit and schema.components.count() > 0);
+        authoringFieldList.SetEnabled(
+            canEdit and component != null);
+        newComponentButton.SetEnabled(
+            canEdit and schema.components.count()
+                < scene_component_schema.MAX_COMPONENTS);
+        componentEarlierButton.SetEnabled(
+            canEdit and component != null and componentIndex > 0);
+        componentLaterButton.SetEnabled(
+            canEdit and component != null
+            and componentIndex + 1 < schema.components.count());
+        componentNameInput.SetEnabled(canEdit and component != null);
+        componentLabelInput.SetEnabled(canEdit and component != null);
+        componentTargetDropdown.SetEnabled(canEdit and component != null);
+        componentDescriptionInput.SetEnabled(canEdit and component != null);
+        saveComponentButton.SetEnabled(canEdit and component != null);
+        deleteComponentButton.SetEnabled(canEdit and component != null);
+        newFieldButton.SetEnabled(
+            canEdit and component != null
+            and component.fields.count()
+                < scene_component_schema.MAX_FIELDS_PER_COMPONENT);
+        fieldEarlierButton.SetEnabled(
+            canEdit and field != null and fieldIndex > 0);
+        fieldLaterButton.SetEnabled(
+            canEdit and field != null
+            and component != null
+            and fieldIndex + 1 < component.fields.count());
+        fieldKeyInput.SetEnabled(canEdit and field != null);
+        fieldLabelInput.SetEnabled(canEdit and field != null);
+        fieldTypeDropdown.SetEnabled(canEdit and field != null);
+        fieldDescriptionInput.SetEnabled(canEdit and field != null);
+        saveFieldButton.SetEnabled(canEdit and field != null);
+        deleteFieldButton.SetEnabled(
+            canEdit and field != null
+            and component != null and component.fields.count() > 1);
+        if field != null {
+            UpdateAuthoringDefaultControl();
+            if canEdit == false { fieldDefaultInput.SetEnabled(false); }
+        } else {
+            fieldDefaultInput.SetEnabled(false);
+        }
+
+        var statusText = authoringMessage;
+        if statusText == "" {
+            if schema == null or schema.sourcePath == "" {
+                statusText =
+                    "Open one workspace root to author a project schema.";
+            } else if schema.valid == false {
+                statusText =
+                    "Fix the invalid JSON externally, then Reload.";
+            } else if schema.found == false {
+                statusText =
+                    "New Component will create scene-components.json "
+                    + "atomically.";
+            } else {
+                statusText =
+                    "Structured edits preserve unknown version-1 members.";
+            }
+        }
+        authoringStatus.SetText(statusText);
+    }
+
+    /// @brief Rebuild unfiltered field rows for structured schema authoring.
+    hide func RefreshAuthoringFields() {
+        authoringFieldList.Clear();
+        var component = SelectedAuthoredComponent();
+        if component == null {
+            authoringFieldList.SelectIndex(-1);
+            RefreshAuthoringAvailability();
+            return;
+        }
+        var index = 0;
+        while index < component.fields.count() {
+            var field = component.fields.get(index);
+            var preview = field.defaultText;
+            if field.kind == "string" {
+                preview = "\"" + preview + "\"";
+            }
+            if field.kind == "null" { preview = "null"; }
+            authoringFieldList.AddItem(
+                field.label + "  [" + field.kind + "] = " + preview);
+            index = index + 1;
+        }
+        if component.fields.count() > 0 {
+            authoringFieldList.SelectIndex(0);
+        }
+        RefreshAuthoringAvailability();
+    }
+
+    /// @brief Rebuild field rows for the selected component.
+    hide func RefreshFields() {
+        fieldList.Clear();
+        var component = SelectedComponent();
+        if component == null {
+            fieldList.SelectIndex(-1);
+            RefreshAuthoringAvailability();
+            return;
+        }
+        var index = 0;
+        while index < component.fields.count() {
+            var field = component.fields.get(index);
+            var preview = field.defaultText;
+            if field.kind == "string" { preview = "\"" + preview + "\""; }
+            if field.kind == "null" { preview = "null"; }
+            fieldList.AddItem(
+                field.label + "  [" + field.kind + "] = " + preview);
+            index = index + 1;
+        }
+        if component.fields.count() > 0 { fieldList.SelectIndex(0); }
+        RefreshAuthoringAvailability();
+    }
+}

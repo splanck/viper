@@ -68,6 +68,7 @@ Constructor: `Zanna.Graphics3D.Canvas3D.New`
 
 | Property | Type | Access |
 |---|---|---|
+| <a id="zanna-graphics3d-canvas3d-isoffscreen"></a>`IsOffscreen` | `i1` | read-only |
 | <a id="zanna-graphics3d-canvas3d-shouldclose"></a>`ShouldClose` | `i1` | read-only |
 | <a id="zanna-graphics3d-canvas3d-width"></a>`Width` | `i64` | read-only |
 | <a id="zanna-graphics3d-canvas3d-height"></a>`Height` | `i64` | read-only |
@@ -141,6 +142,7 @@ Constructor: `Zanna.Graphics3D.Canvas3D.New`
 |---|---|---|
 | <a id="zanna-graphics3d-canvas3d-isavailable"></a>`IsAvailable` | `i1()` | `Zanna.Graphics3D.Canvas3D.IsAvailable` |
 | <a id="zanna-graphics3d-canvas3d-newfullscreen"></a>`NewFullscreen` | `obj(str)` | `Zanna.Graphics3D.Canvas3D.NewFullscreen` |
+| <a id="zanna-graphics3d-canvas3d-newoffscreen"></a>`NewOffscreen` | `obj(obj<Zanna.Graphics3D.RenderTarget3D>)` | `Zanna.Graphics3D.Canvas3D.NewOffscreen` |
 | <a id="zanna-graphics3d-canvas3d-setforcecpuskinning"></a>`SetForceCpuSkinning` | `void(i1)` | `Zanna.Graphics3D.Canvas3D.SetForceCpuSkinning` |
 | <a id="zanna-graphics3d-canvas3d-resetsubmissiondiagnostics"></a>`ResetSubmissionDiagnostics` | `void()` | `Zanna.Graphics3D.Canvas3D.ResetSubmissionDiagnostics` |
 | <a id="zanna-graphics3d-canvas3d-setshadowbudget"></a>`SetShadowBudget` | `void(i64)` | `Zanna.Graphics3D.Canvas3D.SetShadowBudget` |
@@ -558,7 +560,8 @@ Provides Scene Node functionality for 3D rendering and scene applications.
 Create `Zanna.Graphics3D.SceneNode` values through its registered constructor and use the
 returned object with the instance members below. Its public surface exposes properties such as
 `Position`, `Rotation`, `Scale` and operations including `SetPosition`, `SetScale`,
-`SetTransform`, `AddChild`.
+`SetTransform`, exact world-matrix assignment, `AddChild`, exact preserve-world reparenting,
+stable sibling reordering, and bounded typed gameplay metadata accessors.
 
 Constructor: `Zanna.Graphics3D.SceneNode.New`
 
@@ -595,11 +598,27 @@ Constructor: `Zanna.Graphics3D.SceneNode.New`
 | <a id="zanna-graphics3d-scenenode-setposition"></a>`SetPosition` | `void(f64,f64,f64)` | `Zanna.Graphics3D.SceneNode.SetPosition` |
 | <a id="zanna-graphics3d-scenenode-setscale"></a>`SetScale` | `void(f64,f64,f64)` | `Zanna.Graphics3D.SceneNode.SetScale` |
 | <a id="zanna-graphics3d-scenenode-settransform"></a>`SetTransform` | `void(f64,f64,f64,f64,f64,f64,f64,f64,f64,f64)` | `Zanna.Graphics3D.SceneNode.SetTransform` |
+| <a id="zanna-graphics3d-scenenode-trysetworldmatrix"></a>`TrySetWorldMatrix` | `i1(obj<Zanna.Math.Mat4>)` | `Zanna.Graphics3D.SceneNode.TrySetWorldMatrix` |
 | <a id="zanna-graphics3d-scenenode-addchild"></a>`AddChild` | `void(obj)` | `Zanna.Graphics3D.SceneNode.AddChild` |
 | <a id="zanna-graphics3d-scenenode-tryaddchild"></a>`TryAddChild` | `i1(obj)` | `Zanna.Graphics3D.SceneNode.TryAddChild` |
+| <a id="zanna-graphics3d-scenenode-tryaddchildpreserveworld"></a>`TryAddChildPreserveWorld` | `i1(obj)` | `Zanna.Graphics3D.SceneNode.TryAddChildPreserveWorld` |
+| <a id="zanna-graphics3d-scenenode-trymovechild"></a>`TryMoveChild` | `i1(obj,i64)` | `Zanna.Graphics3D.SceneNode.TryMoveChild` |
 | <a id="zanna-graphics3d-scenenode-removechild"></a>`RemoveChild` | `void(obj)` | `Zanna.Graphics3D.SceneNode.RemoveChild` |
 | <a id="zanna-graphics3d-scenenode-getchild"></a>`GetChild` | `obj<Zanna.Graphics3D.SceneNode>(i64)` | `Zanna.Graphics3D.SceneNode.GetChild` |
 | <a id="zanna-graphics3d-scenenode-find"></a>`Find` | `obj<Zanna.Option>(str)` | `Zanna.Graphics3D.SceneNode.Find` |
+| <a id="zanna-graphics3d-scenenode-metadatakeys"></a>`MetadataKeys` | `obj<Zanna.Collections.Seq>()` | `Zanna.Graphics3D.SceneNode.MetadataKeys` |
+| <a id="zanna-graphics3d-scenenode-metadatakind"></a>`MetadataKind` | `str(str)` | `Zanna.Graphics3D.SceneNode.MetadataKind` |
+| <a id="zanna-graphics3d-scenenode-metadatahas"></a>`MetadataHas` | `i1(str)` | `Zanna.Graphics3D.SceneNode.MetadataHas` |
+| <a id="zanna-graphics3d-scenenode-metadatagetint"></a>`MetadataGetInt` | `i64(str,i64)` | `Zanna.Graphics3D.SceneNode.MetadataGetInt` |
+| <a id="zanna-graphics3d-scenenode-metadatagetfloat"></a>`MetadataGetFloat` | `f64(str,f64)` | `Zanna.Graphics3D.SceneNode.MetadataGetFloat` |
+| <a id="zanna-graphics3d-scenenode-metadatagetbool"></a>`MetadataGetBool` | `i1(str,i1)` | `Zanna.Graphics3D.SceneNode.MetadataGetBool` |
+| <a id="zanna-graphics3d-scenenode-metadatagetstring"></a>`MetadataGetString` | `str(str,str)` | `Zanna.Graphics3D.SceneNode.MetadataGetString` |
+| <a id="zanna-graphics3d-scenenode-metadatasetnull"></a>`MetadataSetNull` | `i1(str)` | `Zanna.Graphics3D.SceneNode.MetadataSetNull` |
+| <a id="zanna-graphics3d-scenenode-metadatasetint"></a>`MetadataSetInt` | `i1(str,i64)` | `Zanna.Graphics3D.SceneNode.MetadataSetInt` |
+| <a id="zanna-graphics3d-scenenode-metadatasetfloat"></a>`MetadataSetFloat` | `i1(str,f64)` | `Zanna.Graphics3D.SceneNode.MetadataSetFloat` |
+| <a id="zanna-graphics3d-scenenode-metadatasetbool"></a>`MetadataSetBool` | `i1(str,i1)` | `Zanna.Graphics3D.SceneNode.MetadataSetBool` |
+| <a id="zanna-graphics3d-scenenode-metadatasetstring"></a>`MetadataSetString` | `i1(str,str)` | `Zanna.Graphics3D.SceneNode.MetadataSetString` |
+| <a id="zanna-graphics3d-scenenode-metadataremove"></a>`MetadataRemove` | `i1(str)` | `Zanna.Graphics3D.SceneNode.MetadataRemove` |
 | <a id="zanna-graphics3d-scenenode-bindbody"></a>`BindBody` | `void(obj)` | `Zanna.Graphics3D.SceneNode.BindBody` |
 | <a id="zanna-graphics3d-scenenode-clearbodybinding"></a>`ClearBodyBinding` | `void()` | `Zanna.Graphics3D.SceneNode.ClearBodyBinding` |
 | <a id="zanna-graphics3d-scenenode-bindanimator"></a>`BindAnimator` | `void(obj)` | `Zanna.Graphics3D.SceneNode.BindAnimator` |
@@ -861,8 +880,9 @@ Provides Scene Asset functionality for 3D rendering and scene applications.
 
 `Zanna.Graphics3D.SceneAsset` exposes a registry-backed runtime surface without requiring
 callers to construct the class directly. Its public surface exposes resource counts,
-mesh-aligned morph access, complete VSCN v5 persistence through `Save`, and operations
-including `LoadResult`, `LoadWithOptions`, `LoadWithOptionsEx`, `LoadResultWithOptions`.
+mesh-aligned morph access, complete VSCN v5/v6 persistence through `Save`, deep-copied
+typed node metadata on instances, and operations including `LoadResult`, `LoadWithOptions`,
+`LoadWithOptionsEx`, and `LoadResultWithOptions`.
 
 #### Properties
 
@@ -2392,6 +2412,8 @@ Constructor: `Zanna.Graphics3D.TextureAtlas3D.New`
 | `Zanna.Graphics3D.Canvas3D.IsAvailable` | `i1()` | `rt_canvas3d_is_available` |
 | `Zanna.Graphics3D.Canvas3D.New` | `obj(str,i64,i64)` | `rt_canvas3d_new` |
 | `Zanna.Graphics3D.Canvas3D.NewFullscreen` | `obj(str)` | `rt_canvas3d_new_fullscreen` |
+| `Zanna.Graphics3D.Canvas3D.NewOffscreen` | `obj(obj<Zanna.Graphics3D.RenderTarget3D>)` | `rt_canvas3d_new_offscreen` |
+| <a id="zanna-graphics3d-canvas3d-get-isoffscreen"></a>`Zanna.Graphics3D.Canvas3D.get_IsOffscreen` | `i1(obj)` | `rt_canvas3d_get_is_offscreen` |
 | `Zanna.Graphics3D.Canvas3D.Resize` | `void(obj,i64,i64)` | `rt_canvas3d_resize` |
 | `Zanna.Graphics3D.Canvas3D.Clear` | `void(obj,f64,f64,f64)` | `rt_canvas3d_clear` |
 | `Zanna.Graphics3D.Canvas3D.Begin` | `void(obj,obj)` | `rt_canvas3d_begin` |
@@ -2732,6 +2754,7 @@ Constructor: `Zanna.Graphics3D.TextureAtlas3D.New`
 | `Zanna.Graphics3D.SceneGraph.SetNodeTransforms` | `void(obj,obj,obj)` | `rt_scene3d_set_node_transforms` |
 | <a id="zanna-graphics3d-scenenode-get-scale"></a>`Zanna.Graphics3D.SceneNode.get_Scale` | `obj<Zanna.Math.Vec3>(obj)` | `rt_scene_node3d_get_scale` |
 | <a id="zanna-graphics3d-scenenode-get-worldmatrix"></a>`Zanna.Graphics3D.SceneNode.get_WorldMatrix` | `obj<Zanna.Math.Mat4>(obj)` | `rt_scene_node3d_get_world_matrix` |
+| `Zanna.Graphics3D.SceneNode.TrySetWorldMatrix` | `i1(obj,obj<Zanna.Math.Mat4>)` | `rt_scene_node3d_try_set_world_matrix` |
 | <a id="zanna-graphics3d-scenenode-get-worldposition"></a>`Zanna.Graphics3D.SceneNode.get_WorldPosition` | `obj<Zanna.Math.Vec3>(obj)` | `rt_scene_node3d_get_world_position` |
 | <a id="zanna-graphics3d-scenenode-get-worldrotation"></a>`Zanna.Graphics3D.SceneNode.get_WorldRotation` | `obj<Zanna.Math.Quat>(obj)` | `rt_scene_node3d_get_world_rotation` |
 | <a id="zanna-graphics3d-scenenode-get-worldscale"></a>`Zanna.Graphics3D.SceneNode.get_WorldScale` | `obj<Zanna.Math.Vec3>(obj)` | `rt_scene_node3d_get_world_scale` |
@@ -2743,6 +2766,8 @@ Constructor: `Zanna.Graphics3D.TextureAtlas3D.New`
 | <a id="zanna-graphics3d-scenenode-get-camera"></a>`Zanna.Graphics3D.SceneNode.get_Camera` | `obj<Zanna.Graphics3D.Camera3D>(obj)` | `rt_scene_node3d_get_camera` |
 | `Zanna.Graphics3D.SceneNode.AddChild` | `void(obj,obj)` | `rt_scene_node3d_add_child` |
 | `Zanna.Graphics3D.SceneNode.TryAddChild` | `i1(obj,obj)` | `rt_scene_node3d_try_add_child` |
+| `Zanna.Graphics3D.SceneNode.TryAddChildPreserveWorld` | `i1(obj,obj)` | `rt_scene_node3d_try_add_child_preserve_world` |
+| `Zanna.Graphics3D.SceneNode.TryMoveChild` | `i1(obj,obj,i64)` | `rt_scene_node3d_try_move_child` |
 | `Zanna.Graphics3D.SceneNode.RemoveChild` | `void(obj,obj)` | `rt_scene_node3d_remove_child` |
 | <a id="zanna-graphics3d-scenenode-get-childcount"></a>`Zanna.Graphics3D.SceneNode.get_ChildCount` | `i64(obj)` | `rt_scene_node3d_child_count` |
 | `Zanna.Graphics3D.SceneNode.GetChild` | `obj<Zanna.Graphics3D.SceneNode>(obj,i64)` | `rt_scene_node3d_get_child` |
@@ -2752,6 +2777,19 @@ Constructor: `Zanna.Graphics3D.TextureAtlas3D.New`
 | <a id="zanna-graphics3d-scenenode-get-visible"></a>`Zanna.Graphics3D.SceneNode.get_Visible` | `i1(obj)` | `rt_scene_node3d_get_visible` |
 | <a id="zanna-graphics3d-scenenode-set-name"></a>`Zanna.Graphics3D.SceneNode.set_Name` | `void(obj,str)` | `rt_scene_node3d_set_name` |
 | <a id="zanna-graphics3d-scenenode-get-name"></a>`Zanna.Graphics3D.SceneNode.get_Name` | `str(obj)` | `rt_scene_node3d_get_name` |
+| `Zanna.Graphics3D.SceneNode.MetadataKeys` | `obj<Zanna.Collections.Seq>(obj)` | `rt_scene_node3d_metadata_keys` |
+| `Zanna.Graphics3D.SceneNode.MetadataKind` | `str(obj,str)` | `rt_scene_node3d_metadata_kind` |
+| `Zanna.Graphics3D.SceneNode.MetadataHas` | `i1(obj,str)` | `rt_scene_node3d_metadata_has` |
+| `Zanna.Graphics3D.SceneNode.MetadataGetInt` | `i64(obj,str,i64)` | `rt_scene_node3d_metadata_get_int` |
+| `Zanna.Graphics3D.SceneNode.MetadataGetFloat` | `f64(obj,str,f64)` | `rt_scene_node3d_metadata_get_float` |
+| `Zanna.Graphics3D.SceneNode.MetadataGetBool` | `i1(obj,str,i1)` | `rt_scene_node3d_metadata_get_bool` |
+| `Zanna.Graphics3D.SceneNode.MetadataGetString` | `str(obj,str,str)` | `rt_scene_node3d_metadata_get_string` |
+| `Zanna.Graphics3D.SceneNode.MetadataSetNull` | `i1(obj,str)` | `rt_scene_node3d_metadata_set_null` |
+| `Zanna.Graphics3D.SceneNode.MetadataSetInt` | `i1(obj,str,i64)` | `rt_scene_node3d_metadata_set_int` |
+| `Zanna.Graphics3D.SceneNode.MetadataSetFloat` | `i1(obj,str,f64)` | `rt_scene_node3d_metadata_set_float` |
+| `Zanna.Graphics3D.SceneNode.MetadataSetBool` | `i1(obj,str,i1)` | `rt_scene_node3d_metadata_set_bool` |
+| `Zanna.Graphics3D.SceneNode.MetadataSetString` | `i1(obj,str,str)` | `rt_scene_node3d_metadata_set_string` |
+| `Zanna.Graphics3D.SceneNode.MetadataRemove` | `i1(obj,str)` | `rt_scene_node3d_metadata_remove` |
 | <a id="zanna-graphics3d-scenenode-get-boundsmin"></a>`Zanna.Graphics3D.SceneNode.get_BoundsMin` | `obj<Zanna.Math.Vec3>(obj)` | `rt_scene_node3d_get_aabb_min` |
 | <a id="zanna-graphics3d-scenenode-get-boundsmax"></a>`Zanna.Graphics3D.SceneNode.get_BoundsMax` | `obj<Zanna.Math.Vec3>(obj)` | `rt_scene_node3d_get_aabb_max` |
 | `Zanna.Graphics3D.SceneNode.BindBody` | `void(obj,obj)` | `rt_scene_node3d_bind_body` |

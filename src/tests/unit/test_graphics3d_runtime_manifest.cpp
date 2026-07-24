@@ -14,7 +14,12 @@
 // Ownership/Lifetime:
 //   - Reads immutable process-lifetime runtime registries without retaining data.
 // Links: docs/adr/0102-graphics3d-runtime-boundary-and-contract-manifest.md,
-//        docs/adr/0157-material-texture-pixel-inspection.md
+//        docs/adr/0157-material-texture-pixel-inspection.md,
+//        docs/adr/0159-typed-scenenode-metadata-and-vscn-v6.md,
+//        docs/adr/0161-stable-scenenode-sibling-reordering.md,
+//        docs/adr/0162-exact-preserve-world-scenenode-reparenting.md,
+//        docs/adr/0166-exact-scenenode-world-matrix-assignment.md,
+//        docs/adr/0168-windowless-canvas3d-rendering.md
 //
 //===----------------------------------------------------------------------===//
 
@@ -28,10 +33,10 @@
 
 namespace {
 
-constexpr std::size_t kExpectedFunctionCount = 2009;
+constexpr std::size_t kExpectedFunctionCount = 2027;
 constexpr std::size_t kExpectedClassCount = 125;
-constexpr std::size_t kExpectedPropertyCount = 675;
-constexpr std::size_t kExpectedMethodCount = 1111;
+constexpr std::size_t kExpectedPropertyCount = 676;
+constexpr std::size_t kExpectedMethodCount = 1128;
 
 bool is3DName(std::string_view name) {
     return name.starts_with("Zanna.Graphics3D.") || name.starts_with("Zanna.Game3D.");
@@ -125,6 +130,15 @@ int main() {
                      "reviewed material texture inspection getter is missing") &&
              ok;
     }
+    ok = require(functionNames.contains("Zanna.Graphics3D.SceneNode.TrySetWorldMatrix"),
+                 "reviewed exact SceneNode world-matrix assignment is missing") &&
+         ok;
+    ok = require(functionNames.contains("Zanna.Graphics3D.Canvas3D.NewOffscreen"),
+                 "reviewed windowless Canvas3D constructor is missing") &&
+         ok;
+    ok = require(functionNames.contains("Zanna.Graphics3D.Canvas3D.get_IsOffscreen"),
+                 "reviewed Canvas3D offscreen query is missing") &&
+         ok;
 
     std::size_t classCount = 0;
     std::size_t propertyCount = 0;
@@ -189,7 +203,7 @@ int main() {
 
     // Filled from the canonical registry after deliberate ABI review. This one value
     // covers every function name/signature/C symbol and every class member binding.
-    constexpr std::uint64_t kExpectedManifestHash = UINT64_C(0x99bbc96c9e878348);
+    constexpr std::uint64_t kExpectedManifestHash = UINT64_C(0x0eabbefacc0ef8e4);
     if (hash.value() != kExpectedManifestHash) {
         std::cerr << "FAIL: 3D ABI manifest changed; reviewed hash is 0x" << std::hex
                   << hash.value() << '\n';

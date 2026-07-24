@@ -114,6 +114,8 @@ Its public surface exposes properties such as `Unknown`, `A`, `B`.
 | <a id="zanna-input-key-rightcontrol"></a>`RightControl` | `i64` | read-only |
 | <a id="zanna-input-key-leftalt"></a>`LeftAlt` | `i64` | read-only |
 | <a id="zanna-input-key-rightalt"></a>`RightAlt` | `i64` | read-only |
+| <a id="zanna-input-key-leftsuper"></a>`LeftSuper` | `i64` | read-only |
+| <a id="zanna-input-key-rightsuper"></a>`RightSuper` | `i64` | read-only |
 | <a id="zanna-input-key-minus"></a>`Minus` | `i64` | read-only |
 | <a id="zanna-input-key-equals"></a>`Equals` | `i64` | read-only |
 | <a id="zanna-input-key-leftbracket"></a>`LeftBracket` | `i64` | read-only |
@@ -467,6 +469,8 @@ Constructor: `Zanna.Input.KeyChord.New`
 | <a id="zanna-input-key-get-rightcontrol"></a>`Zanna.Input.Key.get_RightControl` | `i64()` | `rt_keyboard_key_rctrl` |
 | <a id="zanna-input-key-get-leftalt"></a>`Zanna.Input.Key.get_LeftAlt` | `i64()` | `rt_keyboard_key_lalt` |
 | <a id="zanna-input-key-get-rightalt"></a>`Zanna.Input.Key.get_RightAlt` | `i64()` | `rt_keyboard_key_ralt` |
+| <a id="zanna-input-key-get-leftsuper"></a>`Zanna.Input.Key.get_LeftSuper` | `i64()` | `rt_keyboard_key_lsuper` |
+| <a id="zanna-input-key-get-rightsuper"></a>`Zanna.Input.Key.get_RightSuper` | `i64()` | `rt_keyboard_key_rsuper` |
 | <a id="zanna-input-key-get-minus"></a>`Zanna.Input.Key.get_Minus` | `i64()` | `rt_keyboard_key_minus` |
 | <a id="zanna-input-key-get-equals"></a>`Zanna.Input.Key.get_Equals` | `i64()` | `rt_keyboard_key_equals` |
 | <a id="zanna-input-key-get-leftbracket"></a>`Zanna.Input.Key.get_LeftBracket` | `i64()` | `rt_keyboard_key_lbracket` |

@@ -25,7 +25,9 @@
 // Ownership/Lifetime:
 //   - Stub entry points allocate no graphics resources and retain no handles.
 //
-// Links: src/runtime/graphics/common/rt_graphics_stubs_internal.h
+// Links: src/runtime/graphics/common/rt_graphics_stubs_internal.h,
+//   docs/adr/0159-typed-scenenode-metadata-and-vscn-v6.md,
+//   docs/adr/0161-stable-scenenode-sibling-reordering.md
 //
 //===----------------------------------------------------------------------===//
 
@@ -506,6 +508,16 @@ void rt_scene_node3d_remove_child(void *n, void *c) {
     (void)c;
 }
 
+/// @brief Stub for `SceneNode3D.TryMoveChild` in graphics-disabled builds.
+///
+/// @return Always `0`; no hierarchy exists without graphics support.
+int8_t rt_scene_node3d_try_move_child(void *n, void *c, int64_t index) {
+    (void)n;
+    (void)c;
+    (void)index;
+    return 0;
+}
+
 /// @brief Stub for `SceneNode3D.ChildCount` — number of direct children
 ///        (not recursive).
 ///
@@ -687,6 +699,87 @@ void rt_scene_node3d_set_name(void *n, rt_string s) {
 rt_string rt_scene_node3d_get_name(void *n) {
     (void)n;
     return rt_const_cstr("");
+}
+
+void *rt_scene_node3d_metadata_keys(void *n) {
+    (void)n;
+    return NULL;
+}
+
+rt_string rt_scene_node3d_metadata_kind(void *n, rt_string key) {
+    (void)n;
+    (void)key;
+    return rt_const_cstr("");
+}
+
+int8_t rt_scene_node3d_metadata_has(void *n, rt_string key) {
+    (void)n;
+    (void)key;
+    return 0;
+}
+
+int64_t rt_scene_node3d_metadata_get_int(void *n, rt_string key, int64_t def) {
+    (void)n;
+    (void)key;
+    return def;
+}
+
+double rt_scene_node3d_metadata_get_float(void *n, rt_string key, double def) {
+    (void)n;
+    (void)key;
+    return def;
+}
+
+int8_t rt_scene_node3d_metadata_get_bool(void *n, rt_string key, int8_t def) {
+    (void)n;
+    (void)key;
+    return def ? 1 : 0;
+}
+
+rt_string rt_scene_node3d_metadata_get_string(void *n, rt_string key, rt_string def) {
+    (void)n;
+    (void)key;
+    return def && rt_string_is_handle(def) ? rt_string_ref(def) : rt_const_cstr("");
+}
+
+int8_t rt_scene_node3d_metadata_set_null(void *n, rt_string key) {
+    (void)n;
+    (void)key;
+    return 0;
+}
+
+int8_t rt_scene_node3d_metadata_set_int(void *n, rt_string key, int64_t value) {
+    (void)n;
+    (void)key;
+    (void)value;
+    return 0;
+}
+
+int8_t rt_scene_node3d_metadata_set_float(void *n, rt_string key, double value) {
+    (void)n;
+    (void)key;
+    (void)value;
+    return 0;
+}
+
+int8_t rt_scene_node3d_metadata_set_bool(void *n, rt_string key, int8_t value) {
+    (void)n;
+    (void)key;
+    (void)value;
+    return 0;
+}
+
+int8_t rt_scene_node3d_metadata_set_string(void *n, rt_string key, rt_string value) {
+    (void)n;
+    (void)key;
+    (void)value;
+    return 0;
+}
+
+int8_t rt_scene_node3d_metadata_remove(void *n, rt_string key) {
+    (void)n;
+    (void)key;
+    return 0;
 }
 
 /// @brief Stub for `SceneNode3D.BoundsMin` — get the min corner of the

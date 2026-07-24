@@ -17,6 +17,8 @@
 //   - Split panes own distinct documents and pane focus drives tab selection.
 //   - User-authored bottom-panel sizing is persisted only after drag input settles.
 //   - Persistent activity views emit intent through their focused controllers.
+//   - Edit chrome and command routing follow the active source or visual-scene
+//     surface, including hierarchy-owned Find.
 // Ownership/Lifetime:
 //   - main owns every application controller until the frame loop exits.
 //   - Cleanup drains process, worker, watcher, persistence, and GUI ownership.
@@ -1037,9 +1039,11 @@ func main() {
         var canSelectAllSurface = textEditorContextAvailable;
         var canDuplicateSurface = textEditorContextAvailable;
         var canDeleteSceneSurface = false;
+        var canFindSurface = textEditorContextAvailable;
         if textEditorContextAvailable == false and activeVisualDoc != null
            and activeVisualDoc!.kind == file_utils.DOC_KIND_SCENE_2D {
             visualSceneEditorAvailable = true;
+            canFindSurface = true;
             canCutSurface = scene2DEditor.HasSceneObjectSelection();
             canCopySurface = canCutSurface;
             canPasteSurface = scene2DEditor.CanPasteSceneObjects();
@@ -1052,6 +1056,7 @@ func main() {
                   and activeVisualDoc!.kind
                       == file_utils.DOC_KIND_SCENE_3D {
             visualSceneEditorAvailable = true;
+            canFindSurface = true;
             canCutSurface = scene3DEditor.HasSceneNodeSelection();
             canCopySurface = canCutSurface;
             canPasteSurface = scene3DEditor.CanPasteSceneNodes();
@@ -1063,7 +1068,8 @@ func main() {
         shell.SetSurfaceEditActionsAvailable(
             canCutSurface, canCopySurface,
             canPasteSurface, canSelectAllSurface,
-            canDuplicateSurface, canDeleteSceneSurface);
+            canDuplicateSurface, canDeleteSceneSurface,
+            canFindSurface);
         commandRegistry.SetVisualSceneEditorAvailable(
             visualSceneEditorAvailable);
         commandRegistry.SetSplitEditorContext(

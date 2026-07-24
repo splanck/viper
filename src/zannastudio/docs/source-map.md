@@ -819,12 +819,27 @@ button/scroll sizing. It has no build-system or debug-session dependency.
 
 Document-backed 2D layer/tile/object authoring surface. It owns responsive
 canvas coordination, layer selection and asset assignment, gap-free
-paint/erase strokes, stable multi-object selection, transactional group
-drag/duplicate/delete, focus-scoped pixel/tile nudging, primary-axis
-alignment, deterministic distribution, typed object properties, Tiled import,
-external-image reload, and process-local canonical history. Real atlas
-decoding/rendering, project-asset discovery, selection normalization,
-precision-layout rules, and palette presentation live in smaller leaf modules.
+paint/erase strokes, modifier-aware point selection and inclusive authored-cell
+marquees with pointer capture/Escape cancelation, a bounded retained object
+hierarchy with preserved expansion, stable multi-object selection,
+non-destructive bounded hierarchy Find, transactional before/into/after
+subtree drops, one-step root/child creation, bounded cycle-safe explicit parent
+selection for subtree groups, hierarchy-preserving duplicate/paste, group
+drag/delete, focus-scoped pixel/tile nudging, primary-axis alignment,
+deterministic distribution, typed scene-wide and object properties, atomic
+multi-object component application, Tiled import, external-image reload, and
+process-local canonical history. Canvas selection state and feedback never
+enter canonical scene history. Real atlas decoding/rendering, project-asset
+discovery, selection normalization, precision-layout rules, hierarchy
+matching, and palette presentation live in smaller leaf modules.
+
+### `ui/scene_property_inspector_2d.zia`
+
+Presentation-only scene-wide metadata inspector. It realizes at most 512
+deterministically ordered typed properties, preserves exact scalar kinds, and
+returns selection and Set/Remove intent to `SceneEditor2D`. The controller owns
+validation, canonical mutation, history, dirty state, and per-document
+selection persistence.
 
 ### `ui/scene_layout_2d.zia`
 
@@ -840,12 +855,53 @@ and byte-exact canonical source content into the platform text clipboard. Its
 decoder rejects malformed, duplicate, oversized, or unsupported identities
 before either controller can reconstruct selected 2D objects or 3D subtrees.
 
+### `ui/scene_component_schema.zia`
+
+Document-independent, fail-closed loader for project-root
+`scene-components.json`. It validates version, target, identifiers, limits,
+scalar kinds, and exact defaults into value-only component/field records. It
+does not own widgets, scenes, project state, or document mutation.
+
+### `ui/scene_component_authoring.zia`
+
+Pure structured component/field mutations plus one bounded, conflict-aware
+project-file session. Known-member changes operate on the raw JSON tree,
+preserve unknown version-1 members, reparse every candidate through
+`scene_component_schema`, and use atomic create/rooted replace operations.
+Twenty exact file-presence/text snapshots provide schema-only undo/redo.
+
+### `ui/scene_component_authoring_controller.zia`
+
+Shared coordinator between either scene editor and the schema form. It consumes
+one authoring intent per pump, owns external-change polling and reload, publishes
+the complete cross-target schema, and keeps project-file history separate from
+scene content, revision, dirty state, and history.
+
+### `ui/scene_component_palette.zia`
+
+Shared presentation-only component picker and structured schema form for both
+scene inspectors. Its Add Missing picker filters definitions by
+2D-object/3D-node target, while its independent authoring dropdown exposes the
+complete schema. It renders bounded fields, coverage, typed drafts, ordering,
+and file-history controls, then returns intent without mutating disk or scenes.
+`SceneEditor2D` and `SceneEditor3D` own root resolution and scene transactions;
+`scene_component_authoring_controller` owns project-file transactions.
+
 ### `ui/scene_selection.zia`
 
-Shared document-independent selection boundary for the retained hierarchy
-ListBoxes. It converts byte-exact `GetSelectedData()` values into bounded,
-deduplicated model indices, preserves an explicit primary row, and never parses
-display labels. The runtime contract is recorded by ADR 0156.
+Shared document-independent selection boundary for retained scene TreeViews
+and other data-bearing row controls. It converts byte-exact
+`GetSelectedData()` values into bounded, deduplicated model indices, preserves
+an explicit primary row, and never parses display labels. TreeView behavior is
+recorded by ADR 0163; ADR 0156 covers the ListBox counterpart.
+
+### `ui/scene_hierarchy_search.zia`
+
+Pure shared case-insensitive hierarchy Find semantics. It trims and normalizes
+queries, matches a primary and optional secondary row identity, and advances a
+previous/next cursor with deterministic wrapping. Scene controllers own bounded
+match lists, retained TreeView selection/reveal, inspector focus, and all scene
+state; this helper cannot filter widgets or mutate documents.
 
 ### `ui/scene_asset_browser.zia`
 
@@ -872,14 +928,35 @@ pointer intent while `SceneEditor2D` owns document mutation and history.
 
 ### `ui/scene_editor_3d.zia`
 
-Document-backed VSCN hierarchy and wireframe viewport. It owns import and
-primitive creation, camera navigation, responsive hierarchy/inspector state,
-stable multi-node selection, parent-aware group Move/Rotate/Scale handles,
+Document-backed VSCN hierarchy and runtime-backed shaded/triangle-wireframe
+viewport. It retains one windowless Canvas3D, RenderTarget3D, and exactly
+matched orthographic camera, then draws deterministic editor overlays on the
+readback. The same camera unprojects pointer rays for closest-visible-mesh
+bounds picking before a meshless origin-marker fallback. It owns
+replace/add/toggle/blank selection policy, camera-plane pan, import and
+primitive creation, camera navigation,
+responsive hierarchy/inspector state,
+true retained parent/child rows with preserved expansion, stable multi-node
+selection, non-destructive bounded hierarchy Find, transactional
+before/into/after hierarchy drops, parent-aware group Move/Rotate/Scale handles,
+conditioned XY/XZ/YZ Move/Scale-plane picking and transactional two-axis
+dragging,
 subtree-aware batch duplicate/delete, pointer capture and Escape rollback,
 focus-scoped W/E/R and Duplicate/Delete selection commands, live single-node
 transforms, relative multi-node numeric transform batches, compact PBR
-material component coordination, cycle-safe existing-node reparenting, bounded
-native texture selection, and canonical one-step edit history.
+material component coordination, cycle-safe exact preserve-world reparenting
+with preserve-local opt-out, mixed-state batch visibility, bounded native
+texture selection, stable contiguous sibling-block ordering, typed
+gameplay-metadata transactions, atomic multi-node component application, and
+canonical one-step edit history.
+
+### `ui/scene_metadata_inspector_3d.zia`
+
+Presentation-only bounded Gameplay metadata inspector. It realizes at most 256
+deterministically ordered `SceneNode` values, preserves null/Boolean/integer/
+float/string kinds, and returns selection plus Set/Remove intent to
+`SceneEditor3D`. The controller owns canonical VSCN mutation, validation,
+history, rollback, dirty state, and document-local selection persistence.
 
 ### `ui/scene_hierarchy_3d.zia`
 
@@ -890,23 +967,27 @@ GUI, document, or SceneGraph ownership.
 ### `ui/scene_transform_3d.zia`
 
 Stateless helper for transform-mode labels, mode-aware snap increments, target
-quantization, safe scale bounds, and projected pointer-drag math. It has no GUI,
-document, or SceneGraph ownership.
+quantization, safe scale bounds, single-axis projection, conditioned two-axis
+Move/Scale plane solves, projected rotation-ring inversion, wrap-safe angular
+deltas, and projected pointer-drag math. It has no GUI, document, or SceneGraph
+ownership.
 
 ### `ui/scene_material_3d.zia`
 
-Material value/file-loading helper for compact PBR draft normalization, no-op
-matching, ColorPicker conversion, editable map-slot selection, common-image and
-strict KTX2 decoding, retained-map summaries, canonical bounded thumbnail
-creation, and clone-safe material creation. It preserves hidden imported
-material state and has no GUI, document, or SceneGraph ownership.
+Material value/file-loading helper for compact PBR draft normalization, sparse
+group-patch no-op matching/application, ColorPicker conversion, editable
+map-slot selection, common-image and strict KTX2 decoding, retained-map
+summaries, canonical bounded thumbnail creation, and clone-safe material
+creation. It preserves hidden imported material state and every unresolved
+per-node PBR field and has no GUI, document, or SceneGraph ownership.
 
 ### `ui/scene_material_inspector_3d.zia`
 
 Presentation-only compact PBR and texture-map inspector. It owns accessible
-widgets, selected-slot summaries, a cached 128-pixel canonical map thumbnail,
-and truthful action enablement, while `SceneEditor3D` retains selection,
-mutation, and history ownership.
+common/mixed widgets, sparse-patch intent, selected-slot coverage summaries, a
+cached 128-pixel canonical map thumbnail, and truthful group-action enablement,
+while `SceneEditor3D` retains selection, mutation, rollback, and history
+ownership.
 
 ### `ui/explorer_actions.zia`
 
@@ -1060,11 +1141,34 @@ Important probe groups:
   state labels, real pointer controls, versioned breakpoint publication,
   filtered exact removal/persistence, and high-zoom scroll reachability.
 - `scene_editor_2d_probe.zia` and `scene_editor_3d_probe.zia`: stable hierarchy
-  multi-selection; exact one-transaction group transform, duplicate, delete,
+  multi-selection; case-insensitive wrapping hierarchy Find, standard-command
+  routing, hidden-inspector descendant reveal, and exact no-history/camera
+  mutation; exact one-transaction group transform, duplicate, delete,
   cut, same-kind cross-document paste, selection restoration, malformed or
   wrong-kind rejection, focus-safe pixel/tile nudging, deterministic 2D
-  alignment/distribution, cycle/no-op-safe 3D reparenting, post-move selection
+  alignment/distribution, typed scene-wide and 3D node gameplay metadata with
+  tab-local selection,
+  cycle/no-op-safe exact preserve-world 3D reparenting with singular/shear
+  rollback and preserve-local opt-out, stable contiguous sibling-block
+  ordering, truthful mixed-state batch visibility, post-move selection
   remapping, and rollback behavior.
+- `scene_canvas_selection_probe.zia`: public 2D point replace/add/toggle/group
+  preservation policy, reverse inclusive cell queries, marquee
+  replace/union/toggle/empty behavior, real captured blank-space dragging,
+  visible overlay, exactly-once release, Escape cancelation, and canonical
+  content/history isolation.
+- `scene_rotation_ring_probe.zia`: conditioned X/Y/Z projected-ring picking,
+  seam-safe angular math, real hover/down/move/up input, stable viewport
+  geometry during status changes, one-step snapped rotation history, and exact
+  undo.
+- `scene_shaded_viewport_probe.zia`: retained windowless Canvas3D/RenderTarget
+  identity, exact runtime-camera/editor-overlay projection, authored shaded and
+  triangle-wireframe pixel differences, accessible real-pointer mode
+  switching, per-document preference, and canonical-history isolation.
+- `scene_viewport_picking_probe.zia`: off-origin nearest-depth mesh-bounds
+  selection, shaded/wireframe parity, meshless marker fallback, additive and
+  primary-modifier selection policy, blank clear/preserve behavior, exact
+  camera-plane pan, public Super key constants, and VSCN/history isolation.
 - `terminal_*`: PTY terminal behavior and rendering.
 - `scm_probe.zia`: Git Source Control behavior.
 - `scm_view_probe.zia`: real-Git responsive panel, pointer staging,
@@ -1114,16 +1218,23 @@ Use this practical decision table:
 | Run and Debug activity presentation | `ui/run_debug_view.zia` |
 | Shared scene project-asset search/preview | `ui/scene_asset_browser.zia` |
 | Shared typed scene clipboard envelope | `ui/scene_clipboard.zia` |
+| Shared project scene-component schema | `ui/scene_component_schema.zia` |
+| Shared project scene-component structured edits/file history | `ui/scene_component_authoring.zia` |
+| Shared project scene-component authoring coordination | `ui/scene_component_authoring_controller.zia` |
+| Shared project scene-component presentation | `ui/scene_component_palette.zia` |
 | Shared retained-row scene selection | `ui/scene_selection.zia` |
+| Shared scene hierarchy Find semantics | `ui/scene_hierarchy_search.zia` |
 | 2D visual scene authoring | `ui/scene_editor_2d.zia` |
+| 2D scene-wide property presentation | `ui/scene_property_inspector_2d.zia` |
 | 2D precision layout rules | `ui/scene_layout_2d.zia` |
 | 2D tileset decode/palette rendering | `ui/scene_tileset_2d.zia` |
 | 2D tileset inspector presentation | `ui/scene_tileset_inspector_2d.zia` |
 | 3D visual scene authoring | `ui/scene_editor_3d.zia` |
+| 3D node gameplay-metadata presentation | `ui/scene_metadata_inspector_3d.zia` |
 | 3D hierarchy reparent rules | `ui/scene_hierarchy_3d.zia` |
-| 3D transform gizmo math | `ui/scene_transform_3d.zia` |
-| 3D material copy-on-edit rules | `ui/scene_material_3d.zia` |
-| 3D material inspector presentation | `ui/scene_material_inspector_3d.zia` |
+| 3D transform mode/space and gizmo math | `ui/scene_transform_3d.zia` |
+| 3D material sparse-patch/copy-on-edit rules | `ui/scene_material_3d.zia` |
+| 3D material common/mixed inspector presentation | `ui/scene_material_inspector_3d.zia` |
 | Terminal PTY wrapper | `terminal/terminal_session.zia` |
 | Terminal UI behavior | `terminal/terminal_controller.zia` |
 | Git command execution | `scm/scm_git.zia` |

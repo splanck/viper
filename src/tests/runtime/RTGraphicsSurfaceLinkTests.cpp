@@ -14,7 +14,8 @@
 //   - Additive runtime symbols never displace an established export.
 // Ownership/Lifetime:
 //   - The test owns no runtime objects; it validates function addresses only.
-// Links: src/il/runtime/defs/graphics3d, src/runtime/graphics/common
+// Links: src/il/runtime/defs/graphics3d, src/runtime/graphics/common,
+//        docs/adr/0168-windowless-canvas3d-rendering.md
 //
 //===----------------------------------------------------------------------===//
 
@@ -84,6 +85,8 @@ int main() {
     volatile std::uintptr_t surface[] = {
         fn_bits(&rt_canvas_is_available),
         fn_bits(&rt_audio_is_available),
+        fn_bits(&rt_canvas3d_new_offscreen),
+        fn_bits(&rt_canvas3d_get_is_offscreen),
         fn_bits(&rt_canvas3d_get_draw_count),
         fn_bits(&rt_canvas3d_get_occluded_draw_count),
         fn_bits(&rt_mesh3d_clear),

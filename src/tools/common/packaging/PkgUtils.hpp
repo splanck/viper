@@ -12,6 +12,7 @@
 // Key invariants:
 //   - readFile() throws std::runtime_error on I/O failure.
 //   - Name normalizers produce lowercase ASCII with no spaces.
+//   - Reproducible-build epochs are nonnegative signed 64-bit values.
 //
 // Ownership/Lifetime:
 //   - Pure functions, no state.
@@ -61,6 +62,28 @@
 namespace zanna::pkg {
 
 inline constexpr uint64_t kMaxPackageFileBytes = 0xFFFFFFFFull;
+
+/// @brief Parse a reproducible-build Unix epoch without accepting partial input.
+/// @param text Decimal SOURCE_DATE_EPOCH text.
+/// @param fieldName Human-readable field name used in diagnostics.
+/// @return Parsed nonnegative epoch in the signed 64-bit range.
+/// @throws std::runtime_error if @p text is empty, malformed, or out of range.
+inline uint64_t parseSourceDateEpoch(std::string_view text,
+                                     const char *fieldName = "SOURCE_DATE_EPOCH") {
+    if (text.empty())
+        throw std::runtime_error(std::string(fieldName) + " must be a non-negative integer");
+    uint64_t value = 0;
+    constexpr uint64_t kMaxEpoch = static_cast<uint64_t>(std::numeric_limits<int64_t>::max());
+    for (char c : text) {
+        if (c < '0' || c > '9')
+            throw std::runtime_error(std::string(fieldName) + " must be a non-negative integer");
+        const uint64_t digit = static_cast<uint64_t>(c - '0');
+        if (value > (kMaxEpoch - digit) / UINT64_C(10))
+            throw std::runtime_error(std::string(fieldName) + " is out of range");
+        value = value * UINT64_C(10) + digit;
+    }
+    return value;
+}
 
 /// @brief Add @p value to @p total, throwing if the result would overflow size_t.
 /// @details Package writers commonly pre-compute buffer capacities before serializing archives.

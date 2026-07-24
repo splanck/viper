@@ -13,12 +13,16 @@
 #   SLOC = source lines of code (excluding blank lines and comment-only lines)
 #
 # Comment detection:
-#   C/C++/ObjC/.inc:  lines matching ^\s*$ (blank) or ^\s*// (line comment)
-#                Block comments (/* ... */) are NOT filtered (complex to parse
-#                without a real lexer; treating them as code is the conservative
-#                choice and matches cloc/sloccount behavior for mixed lines).
-#   Zia:         same as C/C++ (// comments). The Zanna Studio application is
-#                counted separately from src/zannastudio/src/ (not lumped with demos).
+#   C/C++/ObjC/.inc:  blank lines, // line comments, and /* ... */ block
+#                comments (including multi-line blocks) are excluded. A small
+#                stateful awk pass tracks whether it is inside a block comment
+#                and skips string/char literals, so a "/*" or "//" appearing
+#                inside a literal is not mistaken for a comment (matching
+#                cloc/sloccount). A line keeps a count if any code survives
+#                comment stripping.
+#   Zia:         same as C/C++ (// and /* ... */ comments). The Zanna Studio
+#                application is counted separately from src/zannastudio/src/
+#                (not lumped with demos).
 #   BASIC:       blank lines, or lines starting with REM or '
 #   Shell:       blank lines, or lines starting with #
 #   CMake:       blank lines, or lines starting with #
@@ -39,9 +43,66 @@ NC='\033[0m'
 
 # ─── Counting helpers ────────────────────────────────────────────────────────
 
-# SLOC for C-style files (C/C++/ObjC/.inc/Zia): exclude blank + // comment-only lines
+# SLOC for C-style files (C/C++/ObjC/.inc/Zia): exclude blank lines, // line
+# comments, and /* ... */ block comments (including multi-line blocks). String
+# and char literals are tracked so a "/*" or "//" inside a literal is not
+# mistaken for a comment.
 sloc_c() {
-    xargs cat 2>/dev/null | grep -cv '^\s*$\|^\s*//' 2>/dev/null || echo 0
+    xargs cat 2>/dev/null | awk '
+    BEGIN { sq = sprintf("%c", 39); bs = sprintf("%c", 92) }
+    {
+        line = $0
+        n = length(line)
+        i = 1
+        hascode = 0
+        while (i <= n) {
+            if (inblock) {
+                rest = substr(line, i)
+                p = index(rest, "*/")
+                if (p == 0) { i = n + 1 }
+                else { inblock = 0; i = i + p + 1 }
+                continue
+            }
+            rest = substr(line, i)
+            plc = index(rest, "//")
+            pbc = index(rest, "/*")
+            pdq = index(rest, "\"")
+            psq = index(rest, sq)
+            m = 0
+            if (plc > 0)                        m = plc
+            if (pbc > 0 && (m == 0 || pbc < m)) m = pbc
+            if (pdq > 0 && (m == 0 || pdq < m)) m = pdq
+            if (psq > 0 && (m == 0 || psq < m)) m = psq
+            if (m == 0) {
+                if (rest ~ /[^ \t\r]/) hascode = 1
+                i = n + 1
+                continue
+            }
+            if (m > 1 && substr(rest, 1, m - 1) ~ /[^ \t\r]/) hascode = 1
+            tokpos = i + m - 1
+            tok = substr(line, tokpos, 2)
+            onech = substr(line, tokpos, 1)
+            if (tok == "//") {
+                i = n + 1
+            } else if (tok == "/*") {
+                inblock = 1
+                i = tokpos + 2
+            } else {
+                hascode = 1
+                j = tokpos + 1
+                while (j <= n) {
+                    cj = substr(line, j, 1)
+                    if (cj == bs) { j = j + 2; continue }
+                    if (cj == onech) { j = j + 1; break }
+                    j = j + 1
+                }
+                i = j
+            }
+        }
+        if (hascode) count++
+    }
+    END { print count + 0 }
+    ' 2>/dev/null || echo 0
 }
 
 # LOC for any files: total line count

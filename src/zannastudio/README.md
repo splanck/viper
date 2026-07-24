@@ -53,24 +53,70 @@ Zanna BASIC. It includes:
 
 The app includes built-in visual authoring surfaces for `.scene`/`.level` and
 `.vscn` documents. The 2D editor covers layers, real atlas rendering, a tile
-palette, paint/erase, placed objects, typed properties, stable multi-object
-selection, focus-safe pixel/tile nudging, primary-axis alignment, deterministic
-distribution, batch drag/duplicate/delete and typed-property set/remove, Tiled
-import, and document history. The
-3D editor covers hierarchy, primitive/model import, camera framing,
-multi-node Move/Rotate/Scale, relative numeric batch transforms, subtree-aware
-batch duplicate/delete, cycle-safe existing-node reparenting, compact PBR
-materials, embedded texture maps, and history. Both can search supported assets
-from the open multi-root workspace without leaving the inspector, while native
-file pickers remain available. Standard Cut, Copy, Paste, and Select All
-commands follow the active visual editor. Duplicate Selection
+palette, paint/erase, placed objects, scene-wide and per-object typed
+properties, point and inclusive cell-marquee selection with
+replace/Shift-add/Ctrl-or-Command-toggle behavior, stable multi-object
+selection, focus-safe pixel/tile nudging, primary-axis alignment,
+deterministic distribution, a true expandable multi-selection object
+TreeView, transactional before/into/after subtree drops, one-step **Add
+Root**/**Add Child** creation, an explicit cycle-safe Parent chooser for
+selected subtree groups, hierarchy-preserving duplicate/paste, batch
+drag/delete and typed-property set/remove, Tiled import, and document history.
+Pressing an already-selected canvas object preserves the complete group for
+dragging. Canvas selection and its visible box remain workspace-only state;
+they do not dirty or rewrite the scene. Object positions remain absolute while
+organizational parent and sibling order round-trip through canonical version-1
+scenes.
+Scene-wide metadata selection is retained independently per tab and session.
+The 3D editor covers hierarchy, primitive/model import, camera framing,
+multi-node Move/Rotate/Scale with per-scene Local/World axes, exact
+parent-relative world-matrix conversion and complete-group rollback,
+filled Move-plane and crossed Scale-plane XY/XZ/YZ handles with conditioned
+two-axis dragging, relative numeric batch transforms, projected X/Y/Z rotation
+rings with wrap-safe angular dragging, subtree-aware batch duplicate/delete,
+cycle-safe
+exact preserve-world reparenting with a preserve-local opt-out, a true
+expandable multi-selection TreeView with
+transactional before/into/after drag reparenting and sibling ordering,
+mixed-state batch visibility, truthful mixed-value batch PBR materials,
+batch embedded texture maps,
+typed per-node gameplay metadata, and history. Node roles, IDs, trigger/spawn settings, and
+component parameters can be authored as null, Boolean, integer, float, or
+string values without encoding them in display names; metadata selection stays
+with its scene tab and session.
+An optional project-root `scene-components.json` supplies reusable typed
+templates to both editors. **Add Missing** applies one component across the
+selection as a single history action, preserves same-kind authored overrides,
+and aborts the whole batch on a type conflict. **Edit Field** transfers a
+schema field into the raw property or metadata editor. **Edit Schema** opens a
+shared structured form for creating, updating, deleting, and ordering complete
+component and field definitions. Its writes are parser-validated, atomic,
+conflict-aware, independently undoable, and never dirty the active scene.
+Both editors can search supported assets from the open multi-root workspace
+without leaving the inspector, while native file pickers remain available.
+`Ctrl`/`Cmd`+`F` follows the active surface: in a scene it reveals and focuses
+the hierarchy query, then Enter or the Previous/Next buttons wrap through
+case-insensitive matches. The 2D query searches object IDs and types; the 3D
+query searches node names. Matching selects and reveals a row without filtering
+away the rest of the hierarchy or changing scene content, history, dirty state,
+or camera state.
+Standard Cut, Copy, Paste, and Select All commands follow the active visual
+editor. Duplicate Selection
 (`Ctrl`/`Cmd`+`Shift`+`D`) and Delete also target a scene selection while its
 hierarchy or viewport owns focus, without escaping inspector text fields. A
 typed, bounded clipboard envelope
 supports same-kind cross-document object or subtree transfer with one-step
 history and exact rollback. These are practical v1 scene editors, not yet
-replacements for the advanced animation, collision/metadata, component,
-lighting, and gizmo tooling of a mature game engine.
+replacements for automatic scene-data/schema migration, generalized runtime
+components, or the advanced animation, collision, tileset-metadata, lighting,
+lightmap, and asset-library tooling of a mature game engine. The 3D viewport
+does render the live SceneGraph's authored meshes and PBR materials through a
+windowless runtime Canvas3D, with a per-scene triangle-wireframe mode and
+editor grid, hierarchy, selection, and transform overlays. Viewport clicks
+select the nearest visible mesh bounds before falling back to node-origin
+markers; Shift adds, Ctrl/Command toggles, and an unmodified blank click clears
+the selection. Shift plus middle- or right-drag pans in the camera plane, while
+an unmodified auxiliary drag continues to orbit.
 
 ## Reading The Documentation
 
@@ -83,6 +129,10 @@ Use [docs/workflows.md](docs/workflows.md) when you are using the app or trying
 to reproduce a user-visible workflow. It explains how project opening, editing,
 search, build/run, debugging, terminal, Source Control, settings, and recovery
 behave from the user's point of view.
+
+Use [docs/scene-components.md](docs/scene-components.md) for the exact
+`scene-components.json` format, structured authoring and file-history rules,
+limits, multi-root ownership, and runtime consumption rules.
 
 Use [docs/architecture.md](docs/architecture.md) for the high-level ownership
 model and [docs/source-map.md](docs/source-map.md) for the practical module
@@ -216,6 +266,10 @@ zannastudio --version
 Zanna Studio reads a small `zanna.project` manifest for project metadata, file
 associations, build/run overrides, and ignore rules. The IDE's own manifest is
 `zannastudio/zanna.project`.
+
+Visual scene projects may also define reusable typed 2D-object and 3D-node
+templates in `scene-components.json`; see
+[Project Scene Components](docs/scene-components.md).
 
 Supported build/run override keys:
 

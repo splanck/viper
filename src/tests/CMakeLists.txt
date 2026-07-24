@@ -1327,19 +1327,67 @@ set_tests_properties(zia_zannastudio_scene_editor_2d PROPERTIES
         # the host. Keep bounded headroom above the observed serial runtime.
         TIMEOUT 120)
 
+add_test(NAME zia_zannastudio_scene_canvas_selection
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes/scene_canvas_selection_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes")
+set_tests_properties(zia_zannastudio_scene_canvas_selection PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;zannastudio;scene;requires_display"
+        TIMEOUT 60)
+
 add_test(NAME zia_zannastudio_scene_editor_3d
         COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes/scene_editor_3d_probe.zia"
         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes")
 set_tests_properties(zia_zannastudio_scene_editor_3d PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
         LABELS "zia;zannastudio;scene;requires_display"
-        TIMEOUT 120)
+        TIMEOUT 150)
 if (WIN32)
     # The 3D fixture compiles a large Studio graph and drives hidden native
     # rendering. On Windows it can exceed twice its isolated runtime when
     # unrelated compiler probes saturate the host, so reserve the runner.
     set_property(TEST zia_zannastudio_scene_editor_3d PROPERTY RUN_SERIAL TRUE)
 endif ()
+
+add_test(NAME zia_zannastudio_scene_rotation_ring
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes/scene_rotation_ring_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes")
+set_tests_properties(zia_zannastudio_scene_rotation_ring PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;zannastudio;scene;requires_display"
+        TIMEOUT 150)
+
+add_test(NAME zia_zannastudio_scene_scale_plane
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes/scene_scale_plane_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes")
+set_tests_properties(zia_zannastudio_scene_scale_plane PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;zannastudio;scene;requires_display"
+        TIMEOUT 150)
+
+add_test(NAME zia_zannastudio_scene_material_batch
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes/scene_material_batch_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes")
+set_tests_properties(zia_zannastudio_scene_material_batch PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;zannastudio;scene;requires_display"
+        TIMEOUT 150)
+
+add_test(NAME zia_zannastudio_scene_shaded_viewport
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes/scene_shaded_viewport_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes")
+set_tests_properties(zia_zannastudio_scene_shaded_viewport PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;zannastudio;scene;requires_display"
+        TIMEOUT 150)
+
+add_test(NAME zia_zannastudio_scene_viewport_picking
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes/scene_viewport_picking_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes")
+set_tests_properties(zia_zannastudio_scene_viewport_picking PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;zannastudio;scene;requires_display"
+        TIMEOUT 150)
 
 add_test(NAME zia_zannastudio_scene_workspace_state
         COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes/scene_workspace_state_probe.zia"
@@ -1348,6 +1396,22 @@ set_tests_properties(zia_zannastudio_scene_workspace_state PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
         LABELS "zia;zannastudio;scene;persistence"
         TIMEOUT 60)
+
+add_test(NAME zia_zannastudio_scene_component_schema
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes/scene_component_schema_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes")
+set_tests_properties(zia_zannastudio_scene_component_schema PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;zannastudio;scene"
+        TIMEOUT 30)
+
+add_test(NAME zia_zannastudio_scene_component_authoring
+        COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes/scene_component_authoring_probe.zia"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes")
+set_tests_properties(zia_zannastudio_scene_component_authoring PROPERTIES
+        PASS_REGULAR_EXPRESSION "RESULT: ok"
+        LABELS "zia;zannastudio;scene"
+        TIMEOUT 30)
 
 add_test(NAME zia_zannastudio_navigation_safety
         COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes/navigation_safety_probe.zia"
@@ -2353,7 +2417,13 @@ set(ZANNA_DISPLAY_TESTS
         zia_zannastudio_bottom_panel
         zia_zannastudio_tool_panel_toolbar
         zia_zannastudio_scene_editor_2d
+        zia_zannastudio_scene_canvas_selection
         zia_zannastudio_scene_editor_3d
+        zia_zannastudio_scene_rotation_ring
+        zia_zannastudio_scene_scale_plane
+        zia_zannastudio_scene_material_batch
+        zia_zannastudio_scene_shaded_viewport
+        zia_zannastudio_scene_viewport_picking
         zia_zannastudio_debug_watch_toolbar
         zia_zannastudio_debug_tool_surfaces
         zia_zannastudio_run_debug_view
@@ -2451,6 +2521,14 @@ set_tests_properties(${ZANNA_BASEBALL_DATA_TESTS} PROPERTIES
         RESOURCE_LOCK zanna_baseball_data)
 
 if (ZANNA_BASH_EXECUTABLE)
+    add_test(NAME platform_policy_lint_strict
+            COMMAND ${ZANNA_BASH_COMMAND} "scripts/lint_platform_policy.sh" --strict)
+    set_tests_properties(platform_policy_lint_strict PROPERTIES
+            PASS_REGULAR_EXPRESSION "Platform policy lint: clean"
+            LABELS "tools;smoke;requires_posix_shell"
+            WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+            TIMEOUT 30)
+
     add_test(NAME platform_policy_lint_empty_candidates
             COMMAND ${ZANNA_BASH_COMMAND} "src/tests/e2e/test_platform_policy_lint_empty_candidates.sh"
             "${CMAKE_SOURCE_DIR}")
@@ -2459,6 +2537,28 @@ if (ZANNA_BASH_EXECUTABLE)
             LABELS "tools;smoke;requires_posix_shell"
             WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
             TIMEOUT 30)
+
+    if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        add_test(NAME linux_ctest_label_policy
+                COMMAND "${CMAKE_COMMAND}"
+                "-DZANNA_CTEST_COMMAND=${CMAKE_CTEST_COMMAND}"
+                "-DZANNA_BUILD_DIR=${CMAKE_BINARY_DIR}"
+                -P "${CMAKE_SOURCE_DIR}/src/tests/cmake/CheckLinuxCTestLabels.cmake")
+        set_tests_properties(linux_ctest_label_policy PROPERTIES
+                PASS_REGULAR_EXPRESSION "Linux CTest label policy: clean"
+                LABELS "tools;unit;requires_linux"
+                TIMEOUT 30)
+
+        add_test(NAME linux_build_wrapper_symlink
+                COMMAND ${ZANNA_BASH_COMMAND}
+                "src/tests/e2e/test_linux_build_wrapper_symlink.sh"
+                "${CMAKE_SOURCE_DIR}")
+        set_tests_properties(linux_build_wrapper_symlink PROPERTIES
+                PASS_REGULAR_EXPRESSION "PASS"
+                LABELS "tools;unit;requires_linux;requires_posix_shell"
+                WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+                TIMEOUT 30)
+    endif ()
 endif ()
 
 set(VEC3_MUTATORS_PROBE "${CMAKE_SOURCE_DIR}/src/tests/e2e/vec3_mutators_probe.zia")

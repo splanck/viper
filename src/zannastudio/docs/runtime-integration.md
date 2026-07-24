@@ -55,9 +55,20 @@ Retained ListBox rows may attach byte-exact string identities with
 `ItemSetData`. `GetSelectedData()` returns a fresh `Seq[String]` containing one
 entry per selected retained row in row order, including an empty entry when a
 selected row has no data. It returns an empty sequence for invalid handles,
-empty selection, and virtual mode. Scene hierarchies use this contract instead
-of parsing labels so Ctrl/Command and Shift multi-selection remains safe across
-duplicate or renamed rows. ADR 0156 defines the ABI and ownership behavior.
+empty selection, and virtual mode. List-oriented Studio surfaces use this
+contract instead of parsing labels. ADR 0156 defines the ABI and ownership
+behavior; both scene hierarchies now use the retained TreeView counterpart in
+ADR 0163.
+
+### ScrollView
+
+`ScrollView.ScrollTo(widget)` reveals any live descendant without changing
+focus or widget ownership. The runtime validates both handles and treats null,
+stale, wrong-type, foreign, and non-descendant targets as no-ops. The toolkit
+owns nested geometry, scrollbar-reduced viewport size, axis-specific offsets,
+and clamping. A live-ID-guarded request survives the next layout pass, so a
+controller may restore a collapsed split pane and request descendant reveal in
+the same command. ADR 0165 defines the additive C/runtime contract.
 
 ### OutputPane
 
@@ -237,7 +248,20 @@ same editor command surface as Zia.
 `Zanna.Game2D.SceneDocument` exists in the runtime and is covered by IDE-facing
 probes for scene data behavior. Relevant scene runtime capabilities include loading,
 saving, JSON round-trip, diagnostics, scene-owned mutators, properties, and
-tilemap render-copy creation.
+tilemap render-copy creation. ADR 0158 adds deterministic `Keys()`, exact
+`PropertyKind(key)`, and explicit `SetNull(key)` operations for scene-level
+metadata. These mirror the object-property authoring surface so Studio can
+render and edit typed level configuration without parsing canonical JSON or
+coercing null/Boolean/numeric values through strings.
+
+ADR 0164 adds `ObjectParent(index)` and
+`TrySetObjectParent(index, parent)` as the formal 2D organizational hierarchy.
+The runtime rejects invalid links and cycles, keeps parent indices correct
+through move/remove/duplicate operations, and stores non-root links in the
+reserved typed version-1 property `zanna.hierarchy.parentIndex`. Generic object
+property APIs hide and protect that key. Studio therefore composes row drops
+against runtime-owned invariants while keeping object positions absolute and
+retaining compatibility with older version-1 readers.
 
 ## Debug Adapter Protocol
 
@@ -303,26 +327,127 @@ scene document kinds. They retain per-document workspace state and history,
 provide hierarchy/layer and property editing, render interactive
 canvas/viewport previews, search bounded project assets, and serialize through
 the runtime scene document surface. Standard Edit commands route to the active
-scene controller. A versioned, typed text envelope carries canonical source plus
+scene controller. Standard Find uses the shared bounded hierarchy matcher and
+`ScrollView.ScrollTo` to reveal the query or selected row without mutating scene
+data. A versioned, typed text envelope carries canonical source plus
 stable selection identities; controllers validate it before reconstructing
 selected 2D objects or 3D subtrees as a single history transaction. Richer
-component composition and mixed-value scalar/material authoring, advanced
-tileset metadata and animation, local/world transform switching, plane/ring
-gizmos, and play-in-editor remain product gaps. Existing batch inspector
-operations stay controller-side: 2D typed property set/remove uses
+runtime component composition, advanced tileset metadata and animation, and
+play-in-editor remain product gaps. Projected rotation-ring and
+Move/Scale-plane geometry and input remain
+controller-side because they operate on already-exposed camera projection and
+transform surfaces. Existing batch
+inspector operations stay controller-side: 2D typed property set/remove uses
 `SceneDocument` property APIs, while 3D relative transforms mutate selected
 `SceneNode` local values before one canonical serialization.
+
+ADR 0168 adds `Canvas3D.NewOffscreen(RenderTarget3D)` and read-only
+`IsOffscreen`. `SceneEditor3D` retains one software canvas, explicit target,
+and orthographic camera sized to the embedded GUI image. The camera half-height
+is `viewportHeight / (2 * pixelsPerUnit)`, and its orbit matches Studio's
+marker/gizmo projection exactly. `SceneGraph.Draw` therefore supplies the
+authored hierarchy, visibility, transforms, meshes, PBR materials, maps, and
+scene lights for both shaded and triangle-wireframe modes. Studio reads the
+target back only when scene or camera state is dirty, then draws the editor
+grid, hierarchy links, node markers, selection, and gizmos on that copy. A
+target/readback allocation failure retains a deterministic marker fallback and
+never changes VSCN content.
+
+ADR 0169 adds canonical `Zanna.Input.Key.LeftSuper` and `RightSuper` constants
+for Command/Windows-key state without exposing backend-private key codes.
+Studio treats either Control or Super side as the primary selection modifier.
+The same ADR keeps viewport picking on runtime geometry: `Camera3D`
+unprojection supplies the ray and `SceneGraph.RaycastNodes` supplies the
+closest visible transformed mesh-bounds hit. Studio owns selection policy,
+meshless marker fallback, and camera-plane pan because those are editor
+workspace interactions; none mutate the runtime scene or canonical VSCN.
+
+ADR 0166 adds `SceneNode.TrySetWorldMatrix(Mat4)`. Studio's World transform
+space constructs a complete translated, rotated, single-axis-scaled, or
+two-axis-scaled matrix around each selected node's own pivot and asks this
+runtime boundary for an exact parent-relative TRS. Invalid Mat4 handles,
+singular parents, degenerate or projective bases, shear, and decomposition
+drift reject before mutation.
+Studio captures every selected local TRS first and restores the complete group
+if any member rejects, so a world command or live drag is one canonical
+transaction rather than a sequence of partial component writes.
 
 ADR 0157 adds read-only decoded `*MapPixels` properties to `Material3D`.
 Studio uses those managed borrowed views for bounded assigned-map thumbnails,
 so the inspector follows the canonical material after load, undo/redo, import,
 clone, and VSCN round trips without parsing scene text or caching picker paths.
 
+ADR 0167 adds `Spinner.SetIndeterminate(Boolean)` and
+`Spinner.IsIndeterminate()`. A mixed spinner retains the primary node's bounded
+numeric value only as an editing seed and displays `Mixed`; concrete assignment
+or user input resolves it. The 3D material inspector combines that state with
+checkbox indeterminate values and Dropdown's no-selection placeholder to build
+a sparse material patch. `SceneEditor3D` stages every required clone before
+mutation, reuses one staged clone for selected nodes sharing a source material,
+preserves unresolved PBR fields/maps per node, and commits the complete batch
+once. Batch map assignment decodes one bounded source and follows the same
+stage-before-mutate rule.
+
 `SceneNode.Name` follows the runtime's owned string-return convention. The
 native getter retains the node's stored name and the graphics-disabled stub
 returns an owned empty string; native callers must balance the result with
 `rt_string_unref`. This keeps repeated Studio hierarchy and inspector refreshes
 from consuming the node-owned name reference.
+
+ADR 0159 adds bounded typed gameplay metadata directly to `SceneNode`.
+`MetadataKeys`, `MetadataKind`, `MetadataHas`, typed getters/setters, explicit
+null, and removal let Studio render and transact against the live scene model
+without parsing VSCN. Keys are deterministically ordered; setters report bound
+or validation rejection. A metadata-bearing graph serializes as VSCN v6 with
+tagged scalar values and decimal-string integers, preserving complete `i64`
+values and the distinction between an integer and an integral-looking float.
+Studio's presentation-only metadata inspector returns intent to
+`SceneEditor3D`; that controller owns validation, one-step history, rollback,
+dirty state, and per-document selection persistence.
+
+ADR 0160 layers project-defined `scene-components.json` templates over those
+existing typed runtime APIs without adding another runtime or scene-format
+surface. Studio parses the bounded root-local schema, preflights a complete
+selection, writes only missing values through `SceneDocument.ObjectSet*` or
+`SceneNode.MetadataSet*`, verifies their exact kinds, and serializes once.
+Same-kind authored values remain untouched; one conflict or rejected write
+aborts the complete component action. Games consume ordinary persisted scene
+data and remain responsible for mapping stable keys to gameplay systems.
+Structured schema authoring stays entirely on the Studio project-file side:
+raw version-1 JSON edits are reparsed, atomically persisted with optimistic
+conflict checks, and kept in a separate bounded file history. It adds no runtime
+component surface and cannot dirty or revise the active scene.
+
+ADR 0161 adds allocation-free `SceneNode.TryMoveChild(child, index)` for stable
+direct-sibling ordering. It requires an existing direct child and a strict
+index, validates the complete native child table before mutation, and leaves
+parent links, ownership, and retained references unchanged. Studio's
+Earlier/Later controls use it only after proving the current selection is one
+contiguous same-parent block. A complete block move is then serialized once;
+any runtime or serialization rejection restores the prior canonical graph and
+selection.
+
+ADR 0162 adds
+`SceneNode.TryAddChildPreserveWorld(child)` as the exact hierarchy-conversion
+primitive. It computes the prospective local matrix from the inverse
+destination world matrix, accepts only finite non-degenerate orthogonal TRS,
+and verifies that recomposition reproduces the child's complete prior world
+matrix. Reflections retain a signed scale; singular destinations and required
+shear return false before mutation. Studio enables this path by default in the
+Parent chooser, offers `TryAddChild` as the explicit preserve-local mode, and
+restores canonical VSCN plus selection if any root in a group or the final
+serialization fails.
+
+ADR 0163 completes the shared retained `TreeView` contract needed by scene
+outliners. `SetMultiSelect` adds Ctrl/Command toggle, visible Shift ranges, and
+additive programmatic restoration while `GetSelectedData` returns byte-exact
+node data in complete retained preorder. `SetDragDropMode(2)` latches
+row-aware before/into/after targets (`0/1/2`) without mutating the widget;
+mode 1 and `SetDragDropEnabled(true)` retain the Explorer's container-only
+into behavior. Studio maps each 2D and 3D row to its current scene identity.
+The 2D controller turns one latch into a stable subtree order/parent
+transaction; the 3D controller turns it into a validated preserve-world
+reparent/order transaction.
 
 ## Cross-Platform Rules
 

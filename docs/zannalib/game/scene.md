@@ -9,10 +9,11 @@ last-verified: 2026-07-23
 
 **Part of [Game Utilities](README.md)**
 
-`Zanna.Game2D.SceneDocument` is an editable scene document. It owns tile layers, placed
-objects, typed scalar properties, asset references, diagnostics, and canonical
-JSON save/load. It does not instantiate game classes by string name; game code
-loads a scene and maps objects/properties into game-owned entities.
+`Zanna.Game2D.SceneDocument` is an editable scene document. It owns tile layers,
+placed-object hierarchy and draw order, typed scalar properties, asset
+references, diagnostics, and canonical JSON save/load. It does not instantiate
+game classes by string name; game code loads a scene and maps
+objects/properties into game-owned entities.
 
 ## Construction And I/O
 
@@ -34,16 +35,18 @@ unversioned JSON with `layers[].data` and LevelData-shaped scalar properties for
 import compatibility.
 
 Zanna Studio opens `.scene` and `.level` files in its built-in 2D authoring
-surface. A layer image reference can point to a PNG, JPEG, BMP, or GIF atlas;
-relative paths resolve beside a saved scene. Studio shows the first 512 frames
-in a clickable palette and renders real atlas frames across visible layers.
-These references remain external and are not embedded in scene JSON. Replacing
-or clearing a reference is one undoable document edit, while Reload Image
-refreshes external pixels without dirtying the scene. Studio limits a source to
-16 MB, a decoded image to 4,194,304 pixels, and aggregate decoded/cached scene
-imagery to 8,388,608 pixels. Advanced Tiled margin/spacing, image-collection,
-animation, collision, and tile-metadata authoring remain outside this v1
-surface.
+surface. Its Scene properties group creates, renames, updates, and removes
+scene-wide null, Boolean, integer, floating-point, and string metadata as
+undoable edits. A layer image reference can point to a PNG, JPEG, BMP, or GIF
+atlas; relative paths resolve beside a saved scene. Studio shows the first 512
+frames in a clickable palette and renders real atlas frames across visible
+layers. These references remain external and are not embedded in scene JSON.
+Replacing or clearing a reference is one undoable document edit, while Reload
+Image refreshes external pixels without dirtying the scene. Studio limits a
+source to 16 MB, a decoded image to 4,194,304 pixels, and aggregate
+decoded/cached scene imagery to 8,388,608 pixels. Advanced Tiled
+margin/spacing, image-collection, animation, collision, and tile-metadata
+authoring remain outside this v1 surface.
 
 ## Tiled JSON And TMX Import
 
@@ -164,8 +167,9 @@ identify a rewrite.
 
 ## Objects And Properties
 
-Objects have reserved metadata fields: `type`, `id`, `x`, and `y`. Custom data
-lives in typed scalar properties: `null`, bool, int, float, or string.
+Objects have reserved metadata fields: `type`, `id`, `x`, and `y`, plus an
+organizational parent managed by the hierarchy APIs. Custom data lives in typed
+scalar properties: `null`, bool, int, float, or string.
 
 | Method | Description |
 |---|---|
@@ -174,13 +178,35 @@ lives in typed scalar properties: `null`, bool, int, float, or string.
 | `ObjectType(index)` / `ObjectId(index)` | Read object metadata. |
 | `SetObjectMetadata(index, type, id)` | Update the reserved type and ID together. |
 | `ObjectX(index)` / `ObjectY(index)` / `SetObjectPosition(index, x, y)` | Read or update position. |
-| `DuplicateObject(index, id)` | Deep-copy an object and its typed properties immediately after the source, replacing the copied ID. Returns the new index or `-1`. |
+| `ObjectParent(index)` | Return the organizational parent index, or `-1` for a root or invalid index. |
+| `TrySetObjectParent(index, parent)` | Set a parent or make the object a root with `-1`. Invalid indices, self-parenting, and cycles return false without mutation. |
+| `DuplicateObject(index, id)` | Deep-copy an object, its parent, and its typed properties immediately after the source, replacing the copied ID. Descendants are not copied. Returns the new index or `-1`. |
 | `ObjectGetInt/Str/Float/Bool(index, key, default)` | Typed property reads; incompatible kinds return the supplied default. |
 | `ObjectPropertyKind(index, key)` | Return `null`, `bool`, `int`, `float`, or `string`; return an empty string when absent. |
 | `ObjectSetNull(index, key)` / `ObjectSetInt/Str/Float/Bool(index, key, value)` | Typed property writes. |
 | `ObjectHas(index, key)` / `ObjectKeys(index)` / `ObjectRemove(index, key)` | Inspect or remove object properties. |
 | `CountOfType(type)` / `ObjectOfType(type, n)` / `FindObjectOption(id)` | Search helpers returning counts, indexes, or `Option[Integer]`. |
-| `MoveObject(from, to)` | Reorder objects. |
+| `MoveObject(from, to)` | Reorder objects while remapping every structural parent index. |
+
+Hierarchy is organizational: `x` and `y` remain absolute scene-space
+coordinates and do not inherit a parent transform. The object array remains
+the global draw order; array order among objects with the same parent is their
+sibling order. Removing an object promotes its direct children to the removed
+object's parent. Adding an object creates a root.
+
+Canonical version-1 JSON stores a non-root parent in the reserved integer
+property `zanna.hierarchy.parentIndex`. Older runtimes preserve that typed
+property even though they do not interpret it. Current runtimes hide it from
+generic `ObjectHas`, `ObjectKeys`, `ObjectPropertyKind`, and typed property
+access, and generic setters/removers cannot alter it. Malformed types,
+out-of-range links, self-parenting, and cycles produce load diagnostics and are
+normalized to roots. The reserved entry counts toward the 256-property
+serialized limit, leaving 255 public properties on a non-root object. Parenting
+a root already holding 256 public properties is rejected. At child capacity,
+existing public properties may still be replaced or removed, but a new key is
+rejected; making the object a root frees the reserved slot. See
+[ADR 0164](../../adr/0164-backward-compatible-2d-scene-object-hierarchy.md)
+for the compatibility and index-remapping contract.
 
 Compatibility methods `SetObjectProperty`, `GetObjectProperty`, and
 `DeleteObjectProperty` remain string wrappers over typed object properties.
@@ -190,11 +216,15 @@ Scene-level typed properties use the same scalar rules:
 | Method | Description |
 |---|---|
 | `GetInt/Str/Float/Bool(key, default)` | Typed scene property reads. |
-| `SetInt/Str/Float/Bool(key, value)` | Typed scene property writes. |
+| `PropertyKind(key)` | Return `null`, `bool`, `int`, `float`, or `string`; return an empty string when absent. |
+| `SetNull(key)` / `SetInt/Str/Float/Bool(key, value)` | Typed scene property writes. |
+| `Keys()` | Return all scene property keys in deterministic lexicographic order. |
 | `Has(key)` / `Remove(key)` | Inspect or remove scene properties. |
 
 Compatibility methods `SetProperty`, `GetProperty`, and `DeleteProperty` remain
-available for string-oriented callers.
+available for string-oriented callers. See
+[ADR 0158](../../adr/0158-scene-level-property-authoring.md) for the
+enumeration, exact-kind, and explicit-null authoring contract.
 
 ## Assets And Tilemap Copies
 

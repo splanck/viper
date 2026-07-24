@@ -65,6 +65,8 @@ Constructor: `Zanna.Game2D.SceneDocument.New`
 | <a id="zanna-game2d-scenedocument-objectid"></a>`ObjectId` | `str(i64)` | `Zanna.Game2D.SceneDocument.ObjectId` |
 | <a id="zanna-game2d-scenedocument-objectx"></a>`ObjectX` | `i64(i64)` | `Zanna.Game2D.SceneDocument.ObjectX` |
 | <a id="zanna-game2d-scenedocument-objecty"></a>`ObjectY` | `i64(i64)` | `Zanna.Game2D.SceneDocument.ObjectY` |
+| <a id="zanna-game2d-scenedocument-objectparent"></a>`ObjectParent` | `i64(i64)` | `Zanna.Game2D.SceneDocument.ObjectParent` |
+| <a id="zanna-game2d-scenedocument-trysetobjectparent"></a>`TrySetObjectParent` | `i1(i64,i64)` | `Zanna.Game2D.SceneDocument.TrySetObjectParent` |
 | <a id="zanna-game2d-scenedocument-setobjectmetadata"></a>`SetObjectMetadata` | `void(i64,str,str)` | `Zanna.Game2D.SceneDocument.SetObjectMetadata` |
 | <a id="zanna-game2d-scenedocument-setobjectposition"></a>`SetObjectPosition` | `void(i64,i64,i64)` | `Zanna.Game2D.SceneDocument.SetObjectPosition` |
 | <a id="zanna-game2d-scenedocument-duplicateobject"></a>`DuplicateObject` | `i64(i64,str)` | `Zanna.Game2D.SceneDocument.DuplicateObject` |
@@ -105,6 +107,9 @@ Constructor: `Zanna.Game2D.SceneDocument.New`
 | <a id="zanna-game2d-scenedocument-assetdescriptors"></a>`AssetDescriptors` | `obj<Zanna.Collections.Seq>()` | `Zanna.Game2D.SceneDocument.AssetDescriptors` |
 | <a id="zanna-game2d-scenedocument-buildtilemap"></a>`BuildTilemap` | `obj<Zanna.Graphics2D.Tilemap>()` | `Zanna.Game2D.SceneDocument.BuildTilemap` |
 | <a id="zanna-game2d-scenedocument-new"></a>`New` | `obj<Zanna.Game2D.SceneDocument>(i64,i64,i64,i64)` | `Zanna.Game2D.SceneDocument.New` |
+| <a id="zanna-game2d-scenedocument-propertykind"></a>`PropertyKind` | `str(obj,str)` | `Zanna.Game2D.SceneDocument.PropertyKind` |
+| <a id="zanna-game2d-scenedocument-keys"></a>`Keys` | `obj<Zanna.Collections.Seq>(obj)` | `Zanna.Game2D.SceneDocument.Keys` |
+| <a id="zanna-game2d-scenedocument-setnull"></a>`SetNull` | `void(obj,str)` | `Zanna.Game2D.SceneDocument.SetNull` |
 
 ## Functions
 
@@ -159,6 +164,8 @@ Constructor: `Zanna.Game2D.SceneDocument.New`
 | `Zanna.Game2D.SceneDocument.ObjectId` | `str(obj,i64)` | `rt_game_scene_object_id` |
 | `Zanna.Game2D.SceneDocument.ObjectX` | `i64(obj,i64)` | `rt_game_scene_object_x` |
 | `Zanna.Game2D.SceneDocument.ObjectY` | `i64(obj,i64)` | `rt_game_scene_object_y` |
+| `Zanna.Game2D.SceneDocument.ObjectParent` | `i64(obj,i64)` | `rt_game_scene_object_parent` |
+| `Zanna.Game2D.SceneDocument.TrySetObjectParent` | `i1(obj,i64,i64)` | `rt_game_scene_try_set_object_parent` |
 | `Zanna.Game2D.SceneDocument.SetObjectMetadata` | `void(obj,i64,str,str)` | `rt_game_scene_set_object_metadata` |
 | `Zanna.Game2D.SceneDocument.SetObjectPosition` | `void(obj,i64,i64,i64)` | `rt_game_scene_set_object_position` |
 | `Zanna.Game2D.SceneDocument.DuplicateObject` | `i64(obj,i64,str)` | `rt_game_scene_duplicate_object` |
@@ -190,6 +197,9 @@ Constructor: `Zanna.Game2D.SceneDocument.New`
 | `Zanna.Game2D.SceneDocument.GetFloat` | `f64(obj,str,f64)` | `rt_game_scene_get_float` |
 | `Zanna.Game2D.SceneDocument.GetBool` | `i1(obj,str,i1)` | `rt_game_scene_get_bool` |
 | `Zanna.Game2D.SceneDocument.Has` | `i1(obj,str)` | `rt_game_scene_has` |
+| `Zanna.Game2D.SceneDocument.PropertyKind` | `str(obj,str)` | `rt_game_scene_property_kind` |
+| `Zanna.Game2D.SceneDocument.Keys` | `obj<Zanna.Collections.Seq>(obj)` | `rt_game_scene_keys` |
+| `Zanna.Game2D.SceneDocument.SetNull` | `void(obj,str)` | `rt_game_scene_set_null` |
 | `Zanna.Game2D.SceneDocument.SetInt` | `void(obj,str,i64)` | `rt_game_scene_set_int` |
 | `Zanna.Game2D.SceneDocument.SetStr` | `void(obj,str,str)` | `rt_game_scene_set_str` |
 | `Zanna.Game2D.SceneDocument.SetFloat` | `void(obj,str,f64)` | `rt_game_scene_set_float` |

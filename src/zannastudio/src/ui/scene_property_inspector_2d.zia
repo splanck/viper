@@ -1,0 +1,334 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/ui/scene_property_inspector_2d.zia
+// Purpose: Present bounded typed scene-level metadata controls for Studio's 2D
+//          scene inspector.
+// Key invariants:
+//   - This presentation object never mutates SceneDocument or Document state.
+//   - Property rows preserve exact keys and scalar kinds from SceneDocument.
+//   - Button and submission events return intent to SceneEditor2D for history.
+// Ownership/Lifetime: SceneEditor2D owns one inspector; GUI owns its widgets.
+// Links: zannastudio/src/ui/scene_editor_2d.zia,
+//        docs/adr/0158-scene-level-property-authoring.md
+//
+//===----------------------------------------------------------------------===//
+
+module scene_property_inspector_2d;
+
+bind GUI = Zanna.GUI;
+bind SceneDocument = Zanna.Game2D.SceneDocument;
+bind Seq = Zanna.Collections.Seq;
+bind Fmt = Zanna.Text.Fmt;
+bind Str = Zanna.String;
+
+// ============================================================================
+// MODULE: scene_property_inspector_2d
+// PURPOSE: Keep scene-wide metadata widgets and draft presentation outside the
+//          already-large SceneEditor2D document coordinator.
+//
+// WHERE-THIS-FITS: SceneDocument owns typed property truth. SceneEditor2D owns
+//          validation, mutation, dirty state, and canonical history.
+//
+// TEACHING-NOTE: Widget text is only a draft. Refresh always reconstructs rows
+//          and selected values from the live runtime scene model.
+// ============================================================================
+
+final SCENE_PROPERTY_TYPE_STRING: Integer = 0;
+final SCENE_PROPERTY_TYPE_INT: Integer = 1;
+final SCENE_PROPERTY_TYPE_FLOAT: Integer = 2;
+final SCENE_PROPERTY_TYPE_BOOL: Integer = 3;
+final SCENE_PROPERTY_TYPE_NULL: Integer = 4;
+final MAX_VISIBLE_SCENE_PROPERTIES: Integer = 512;
+
+/// @brief Presentation-only scene metadata editor embedded in the 2D inspector.
+class ScenePropertyInspector2D {
+    expose GUI.GroupBox group;
+    expose GUI.Label summary;
+    expose GUI.ListBox list;
+    expose GUI.TextInput keyInput;
+    expose GUI.Dropdown typeDropdown;
+    expose GUI.TextInput valueInput;
+    expose GUI.Button newButton;
+    expose GUI.Button setButton;
+    expose GUI.Button removeButton;
+    expose List[String] keys;
+    expose Integer selectedProperty;
+    hide Boolean editorEnabled;
+
+    expose func init() {
+        group = null;
+        summary = null;
+        list = null;
+        keyInput = null;
+        typeDropdown = null;
+        valueInput = null;
+        newButton = null;
+        setButton = null;
+        removeButton = null;
+        keys = [];
+        selectedProperty = -1;
+        editorEnabled = false;
+    }
+
+    /// @brief Build the bounded scene-wide property surface.
+    expose func Setup(parent: GUI.VBox) {
+        group = GUI.GroupBox.New(parent, "Scene properties");
+        summary = GUI.Label.New(
+            group,
+            "Level-wide typed metadata for game adapters and scene settings.");
+        summary.SetWordWrap(true);
+
+        list = GUI.ListBox.New(group);
+        list.SetAccessibleName("Scene properties");
+        list.SetPreferredSize(0.0, 112.0);
+
+        keyInput = GUI.TextInput.New(group);
+        keyInput.SetAccessibleName("Scene property key");
+        keyInput.SetPlaceholder("Property key");
+
+        var valueRow = GUI.HBox.New();
+        valueRow.SetSpacing(4.0);
+        group.AddChild(valueRow);
+        typeDropdown = GUI.Dropdown.New(valueRow);
+        typeDropdown.SetAccessibleName("Scene property type");
+        typeDropdown.AddItem("String");
+        typeDropdown.AddItem("Integer");
+        typeDropdown.AddItem("Float");
+        typeDropdown.AddItem("Boolean");
+        typeDropdown.AddItem("Null");
+        typeDropdown.SetSelected(SCENE_PROPERTY_TYPE_STRING);
+        valueInput = GUI.TextInput.New(valueRow);
+        valueInput.SetAccessibleName("Scene property value");
+        valueInput.SetPlaceholder("Property value");
+        valueInput.SetFlex(1.0);
+
+        var actions = GUI.HBox.New();
+        actions.SetSpacing(4.0);
+        group.AddChild(actions);
+        newButton = GUI.Button.New(actions, "New");
+        newButton.SetTooltip("Clear the fields to add a scene property");
+        setButton = GUI.Button.New(actions, "Set");
+        setButton.SetTooltip(
+            "Create or update one typed scene property as one undoable edit");
+        removeButton = GUI.Button.New(actions, "Remove");
+        removeButton.SetTooltip(
+            "Remove the selected scene property as one undoable edit");
+
+        SetEnabled(false);
+    }
+
+    /// @brief Rebuild bounded rows and values from canonical runtime state.
+    expose func Refresh(scene: SceneDocument,
+                        enabled: Boolean,
+                        selectedIndex: Integer) {
+        list.Clear();
+        keys = [];
+        selectedProperty = -1;
+        editorEnabled = enabled and scene != null;
+        if scene == null {
+            summary.SetText("No valid scene metadata is available.");
+            RefreshFields(scene);
+            return;
+        }
+
+        var sceneKeys = scene.Keys();
+        var total = Seq.get_Count(sceneKeys);
+        var visible = total;
+        if visible > MAX_VISIBLE_SCENE_PROPERTIES {
+            visible = MAX_VISIBLE_SCENE_PROPERTIES;
+        }
+        var index = 0;
+        while index < visible {
+            var key = Seq.GetStr(sceneKeys, index);
+            var kind = scene.PropertyKind(key);
+            keys.add(key);
+            list.AddItem(
+                key + "  [" + kind + "] = "
+                + PropertyPreview(ValueText(scene, key, kind), kind));
+            index = index + 1;
+        }
+        if total > visible {
+            list.AddItem(
+                "… " + (total - visible) + " more properties not shown");
+        }
+
+        if total == 0 {
+            summary.SetText(
+                "No scene properties. Add level-wide metadata for game adapters.");
+        } else if total == 1 {
+            summary.SetText("1 scene property");
+        } else {
+            summary.SetText(total + " scene properties");
+        }
+        if selectedIndex >= 0 and selectedIndex < keys.count() {
+            selectedProperty = selectedIndex;
+            list.SelectIndex(selectedIndex);
+        }
+        RefreshFields(scene);
+    }
+
+    /// @brief Consume presentation-only selection, New, and type changes.
+    expose func Pump(scene: SceneDocument) {
+        if scene == null { return; }
+        if list.WasSelectionChanged() {
+            var selected = list.SelectedIndex;
+            if selected >= 0 and selected < keys.count() {
+                selectedProperty = selected;
+            } else {
+                selectedProperty = -1;
+            }
+            RefreshFields(scene);
+        }
+        if newButton.WasClicked() {
+            selectedProperty = -1;
+            list.SelectIndex(-1);
+            RefreshFields(scene);
+            keyInput.Focus();
+        }
+        if typeDropdown.WasChanged() { UpdateValueControl(); }
+    }
+
+    /// @brief Consume Set button or field-submit intent.
+    expose func TakeSetRequested() -> Boolean {
+        var requested = setButton.WasClicked();
+        if keyInput.WasSubmitted() { requested = true; }
+        if valueInput.WasSubmitted() { requested = true; }
+        return requested;
+    }
+
+    /// @brief Consume Remove button intent.
+    expose func TakeRemoveRequested() -> Boolean {
+        return removeButton.WasClicked();
+    }
+
+    /// @brief Return the exact selected key, or empty without a property row.
+    expose func SelectedKey() -> String {
+        if selectedProperty < 0 or selectedProperty >= keys.count() {
+            return "";
+        }
+        return keys.get(selectedProperty);
+    }
+
+    /// @brief Return the scalar kind selected by the draft dropdown.
+    expose func SelectedKind() -> String {
+        if typeDropdown.Selected == SCENE_PROPERTY_TYPE_INT { return "int"; }
+        if typeDropdown.Selected == SCENE_PROPERTY_TYPE_FLOAT { return "float"; }
+        if typeDropdown.Selected == SCENE_PROPERTY_TYPE_BOOL { return "bool"; }
+        if typeDropdown.Selected == SCENE_PROPERTY_TYPE_NULL { return "null"; }
+        return "string";
+    }
+
+    /// @brief Select one live property by exact key and refresh its draft.
+    expose func SelectByKey(scene: SceneDocument, key: String) {
+        selectedProperty = -1;
+        if key != "" {
+            var index = 0;
+            while index < keys.count() {
+                if keys.get(index) == key {
+                    selectedProperty = index;
+                    list.SelectIndex(index);
+                    RefreshFields(scene);
+                    return;
+                }
+                index = index + 1;
+            }
+        }
+        list.SelectIndex(-1);
+        RefreshFields(scene);
+    }
+
+    /// @brief Reconcile all controls with scene validity.
+    expose func SetEnabled(enabled: Boolean) {
+        editorEnabled = enabled;
+        if list == null { return; }
+        list.SetEnabled(enabled);
+        keyInput.SetEnabled(enabled);
+        typeDropdown.SetEnabled(enabled);
+        valueInput.SetEnabled(enabled);
+        newButton.SetEnabled(enabled);
+        setButton.SetEnabled(enabled);
+        removeButton.SetEnabled(false);
+        UpdateValueControl();
+    }
+
+    /// @brief Refresh selected or empty draft fields from the live model.
+    hide func RefreshFields(scene: SceneDocument) {
+        var hasProperty = editorEnabled and scene != null
+            and selectedProperty >= 0
+            and selectedProperty < keys.count();
+        list.SetEnabled(editorEnabled);
+        keyInput.SetEnabled(editorEnabled);
+        typeDropdown.SetEnabled(editorEnabled);
+        newButton.SetEnabled(editorEnabled);
+        setButton.SetEnabled(editorEnabled);
+        removeButton.SetEnabled(hasProperty);
+        if hasProperty == false {
+            keyInput.SetText("");
+            typeDropdown.SetSelected(SCENE_PROPERTY_TYPE_STRING);
+            valueInput.SetText("");
+            valueInput.SetPlaceholder("Property value");
+            UpdateValueControl();
+            return;
+        }
+
+        var key = keys.get(selectedProperty);
+        var kind = scene.PropertyKind(key);
+        keyInput.SetText(key);
+        SelectPropertyType(kind);
+        valueInput.SetText(ValueText(scene, key, kind));
+        UpdateValueControl();
+    }
+
+    /// @brief Select the dropdown row for one stable scalar-kind token.
+    hide func SelectPropertyType(kind: String) {
+        var selected = SCENE_PROPERTY_TYPE_STRING;
+        if kind == "int" { selected = SCENE_PROPERTY_TYPE_INT; }
+        if kind == "float" { selected = SCENE_PROPERTY_TYPE_FLOAT; }
+        if kind == "bool" { selected = SCENE_PROPERTY_TYPE_BOOL; }
+        if kind == "null" { selected = SCENE_PROPERTY_TYPE_NULL; }
+        typeDropdown.SetSelected(selected);
+    }
+
+    /// @brief Keep the value field truthful for null and disabled drafts.
+    hide func UpdateValueControl() {
+        if valueInput == null or typeDropdown == null { return; }
+        var isNull = SelectedKind() == "null";
+        valueInput.SetEnabled(editorEnabled and isNull == false);
+        if isNull {
+            valueInput.SetText("");
+            valueInput.SetPlaceholder("Null has no value");
+        } else {
+            valueInput.SetPlaceholder("Property value");
+        }
+    }
+
+    /// @brief Format one live scalar value without changing its kind.
+    hide func ValueText(scene: SceneDocument,
+                        key: String,
+                        kind: String) -> String {
+        if kind == "string" { return scene.GetStr(key, ""); }
+        if kind == "int" { return Fmt.Int(scene.GetInt(key, 0)); }
+        if kind == "float" {
+            return Fmt.Num(scene.GetFloat(key, 0.0));
+        }
+        if kind == "bool" { return Fmt.Bool(scene.GetBool(key, false)); }
+        return "";
+    }
+
+    /// @brief Bound and escape one scalar for a compact inspector row.
+    hide func PropertyPreview(value: String, kind: String) -> String {
+        if kind == "null" { return "null"; }
+        var preview = Str.Replace(
+            Str.Replace(value, "\r", "\\r"), "\n", "\\n");
+        if Str.get_Length(preview) > 72 {
+            preview = Str.Left(preview, 69) + "...";
+        }
+        if kind == "string" { return "\"" + preview + "\""; }
+        return preview;
+    }
+}

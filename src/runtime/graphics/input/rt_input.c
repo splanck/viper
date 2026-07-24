@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// File: src/runtime/graphics/rt_input.c
+// File: src/runtime/graphics/input/rt_input.c
 // Purpose: Keyboard and mouse input state manager for Zanna games. Buffers the
 //   platform window's raw key/mouse events between frames and exposes a
 //   snapshot API (IsDown, WasPressed, WasReleased, WasClicked) that is stable
@@ -34,8 +34,9 @@
 //   - Input context objects are GC-managed (rt_obj_new_i64). They are created
 //     by rt_graphics.c alongside the Canvas and freed by the GC finalizer.
 //
-// Links: src/runtime/graphics/rt_input.h (public API),
-//        src/runtime/graphics/rt_graphics.c (Canvas event pump integration)
+// Links: src/runtime/graphics/input/rt_input.h (public API),
+//        src/runtime/graphics/common/rt_graphics.c (Canvas event pump integration),
+//        docs/adr/0169-super-modifier-keys-and-studio-viewport-picking.md
 //
 //===----------------------------------------------------------------------===//
 
@@ -51,11 +52,11 @@
 #include <windows.h>
 #elif RT_PLATFORM_MACOS
 #include <ApplicationServices/ApplicationServices.h>
-#elif RT_PLATFORM_LINUX && defined(ZANNA_ENABLE_GRAPHICS) && !defined(ZANNA_GRAPHICS_HEADLESS) &&   \
+#elif RT_PLATFORM_LINUX && defined(ZANNA_ENABLE_GRAPHICS) && !defined(ZANNA_GRAPHICS_HEADLESS) &&  \
     !defined(ZANNA_GRAPHICS_WAYLAND)
+#include "vgfx.h"
 #include <X11/XKBlib.h>
 #include <X11/Xlib.h>
-#include "vgfx.h"
 #endif
 
 #include <limits.h>
@@ -338,7 +339,7 @@ static int32_t rt_input_query_caps_lock_platform(void) {
 #elif RT_PLATFORM_MACOS
     CGEventFlags flags = CGEventSourceFlagsState(kCGEventSourceStateCombinedSessionState);
     return (flags & kCGEventFlagMaskAlphaShift) ? 1 : 0;
-#elif RT_PLATFORM_LINUX && defined(ZANNA_ENABLE_GRAPHICS) && !defined(ZANNA_GRAPHICS_HEADLESS) &&   \
+#elif RT_PLATFORM_LINUX && defined(ZANNA_ENABLE_GRAPHICS) && !defined(ZANNA_GRAPHICS_HEADLESS) &&  \
     !defined(ZANNA_GRAPHICS_WAYLAND)
     Display *display = NULL;
     int opened_display = 0;
@@ -374,8 +375,7 @@ static int32_t rt_input_query_caps_lock_platform(void) {
 }
 
 #if defined(ZANNA_ENABLE_GRAPHICS)
-#if !(RT_PLATFORM_LINUX && !defined(ZANNA_GRAPHICS_WAYLAND) &&                              \
-      !defined(ZANNA_GRAPHICS_HEADLESS))
+#if !(RT_PLATFORM_LINUX && !defined(ZANNA_GRAPHICS_WAYLAND) && !defined(ZANNA_GRAPHICS_HEADLESS))
 extern void vgfx_warp_cursor(void *window, int32_t x, int32_t y);
 #endif
 #endif
@@ -773,6 +773,8 @@ rt_string rt_keyboard_key_name(int64_t key) {
         {ZANNA_KEY_RCTRL, "Right Ctrl"},
         {ZANNA_KEY_LALT, "Left Alt"},
         {ZANNA_KEY_RALT, "Right Alt"},
+        {ZANNA_KEY_LSUPER, "Left Super"},
+        {ZANNA_KEY_RSUPER, "Right Super"},
         {ZANNA_KEY_MINUS, "Minus"},
         {ZANNA_KEY_EQUALS, "Equals"},
         {ZANNA_KEY_LBRACKET, "Left Bracket"},
@@ -1178,6 +1180,18 @@ int64_t rt_keyboard_key_lalt(void) {
 ///        on European layouts).
 int64_t rt_keyboard_key_ralt(void) {
     return ZANNA_KEY_RALT;
+}
+
+/// @brief Key-code constant for the Left Super modifier (Command on macOS,
+///        Windows key on Windows).
+int64_t rt_keyboard_key_lsuper(void) {
+    return ZANNA_KEY_LSUPER;
+}
+
+/// @brief Key-code constant for the Right Super modifier (Command on macOS,
+///        Windows key on Windows).
+int64_t rt_keyboard_key_rsuper(void) {
+    return ZANNA_KEY_RSUPER;
 }
 
 /// @brief Key-code constant for the Minus / Hyphen punctuation key.

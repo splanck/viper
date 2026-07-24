@@ -33,16 +33,19 @@
 //
 // Links: src/runtime/graphics/rt_gui_internal.h (internal types/globals),
 //        src/lib/gui/include/vg.h (ZannaGUI C API),
-//        src/runtime/graphics/rt_gui_app.c (default font, s_current_app)
+//        src/runtime/graphics/rt_gui_app.c (default font, s_current_app),
+//        docs/adr/0163-stable-multiselect-and-row-aware-treeview-editing.md,
+//        docs/adr/0165-scrollview-descendant-reveal.md
 //
 //===----------------------------------------------------------------------===//
 
-#include "rt_gui_font_platform.h"
 #include "rt_gui_accessibility_platform.h"
+#include "rt_gui_font_platform.h"
 #include "rt_gui_internal.h"
 #include "rt_option.h"
 #include "rt_platform.h"
 #include "rt_result.h"
+#include "rt_seq.h"
 
 #include "fonts/embedded_font.h"
 
@@ -1898,6 +1901,23 @@ void rt_scrollview_set_content_size(void *scroll, double width, double height) {
         rt_gui_sanitize_nonnegative_float(height, RT_GUI_MAX_LAYOUT_VALUE));
 }
 
+/// @brief Scroll until one live descendant widget is fully visible.
+/// @details The lower toolkit owns descendant geometry, scrollbar viewport
+///          reduction, axis-specific adjustment, final clamping, and one
+///          live-ID-guarded resolution after the next layout pass. Foreign,
+///          stale, null, and wrong-type handles are inert.
+/// @param scroll Scroll view widget handle.
+/// @param widget Descendant widget handle to reveal.
+void rt_scrollview_scroll_to(void *scroll, void *widget) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_scrollview_t *sv =
+        (vg_scrollview_t *)rt_gui_widget_handle_checked_type(scroll, VG_WIDGET_SCROLLVIEW);
+    vg_widget_t *descendant = rt_gui_widget_handle_checked(widget);
+    if (!sv || !descendant)
+        return;
+    vg_scrollview_scroll_to_widget(sv, descendant);
+}
+
 /// @brief Get the current horizontal scroll offset.
 double rt_scrollview_get_scroll_x(void *scroll) {
     RT_ASSERT_MAIN_THREAD();
@@ -2052,6 +2072,15 @@ void rt_treeview_select(void *tree, void *node) {
     vg_treeview_select(tv, n);
 }
 
+/// @brief Enable or disable retained-node Ctrl/Command and Shift multi-selection.
+void rt_treeview_set_multi_select(void *tree, int64_t enabled) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_treeview_t *tv =
+        (vg_treeview_t *)rt_gui_widget_handle_checked_type(tree, VG_WIDGET_TREEVIEW);
+    if (tv)
+        vg_treeview_set_multi_select(tv, enabled != 0);
+}
+
 /// @brief Bring a live node owned by the supplied TreeView into view.
 /// @param tree TreeView widget handle.
 /// @param node Tree node handle owned by @p tree.
@@ -2105,6 +2134,38 @@ static rt_string rt_treeview_node_data_string(vg_tree_node_t *n) {
     return rt_gui_string_data_to_rt_string(n->user_data);
 }
 
+/// @brief Return byte-exact data for every selected retained node in complete preorder.
+void *rt_treeview_get_selected_data(void *tree) {
+    RT_ASSERT_MAIN_THREAD();
+    void *result = rt_seq_new_owned();
+    if (!result)
+        return NULL;
+
+    vg_treeview_t *tv =
+        (vg_treeview_t *)rt_gui_widget_handle_checked_type(tree, VG_WIDGET_TREEVIEW);
+    if (!tv || tv->virtual_mode || !tv->root)
+        return result;
+
+    vg_tree_node_t *node = tv->root->first_child;
+    while (node) {
+        if (node->selected) {
+            rt_string data = rt_treeview_node_data_string(node);
+            rt_seq_push(result, data);
+            rt_str_release_maybe(data);
+        }
+        if (node->first_child) {
+            node = node->first_child;
+            continue;
+        }
+        while (node && node != tv->root && !node->next_sibling)
+            node = node->parent;
+        if (!node || node == tv->root)
+            break;
+        node = node->next_sibling;
+    }
+    return result;
+}
+
 /// @brief `TreeView.SetDragDropEnabled` — enable poll-model drag-and-drop.
 void rt_treeview_set_drag_drop_enabled(void *tree, int64_t enabled) {
     RT_ASSERT_MAIN_THREAD();
@@ -2113,6 +2174,17 @@ void rt_treeview_set_drag_drop_enabled(void *tree, int64_t enabled) {
     if (!tv)
         return;
     vg_treeview_set_app_directed_dnd(tv, enabled != 0);
+}
+
+/// @brief Select disabled, legacy container-only, or row-aware poll-model drag-and-drop.
+void rt_treeview_set_drag_drop_mode(void *tree, int64_t mode) {
+    RT_ASSERT_MAIN_THREAD();
+    vg_treeview_t *tv =
+        (vg_treeview_t *)rt_gui_widget_handle_checked_type(tree, VG_WIDGET_TREEVIEW);
+    if (!tv || mode < (int64_t)VG_TREEVIEW_APP_DND_DISABLED ||
+        mode > (int64_t)VG_TREEVIEW_APP_DND_ROW_AWARE)
+        return;
+    vg_treeview_set_app_directed_dnd_mode(tv, (int)mode);
 }
 
 /// @brief `TreeView.WasDropReceived` — true while a completed drop is pending.
@@ -3294,6 +3366,12 @@ void rt_scrollview_set_content_size(void *scroll, double width, double height) {
     (void)height;
 }
 
+/// @brief Stub: no descendant can be revealed when graphics is disabled.
+void rt_scrollview_scroll_to(void *scroll, void *widget) {
+    (void)scroll;
+    (void)widget;
+}
+
 /// @brief Get the scroll x of the scrollview.
 double rt_scrollview_get_scroll_x(void *scroll) {
     (void)scroll;
@@ -3360,6 +3438,12 @@ void rt_treeview_select(void *tree, void *node) {
     (void)node;
 }
 
+/// @brief Stub: retained TreeView multi-selection is unavailable without graphics.
+void rt_treeview_set_multi_select(void *tree, int64_t enabled) {
+    (void)tree;
+    (void)enabled;
+}
+
 /// @brief Stub: ignore TreeView scrolling without graphics.
 void rt_treeview_scroll_to(void *tree, void *node) {
     (void)tree;
@@ -3387,10 +3471,22 @@ void *rt_treeview_get_node_at(void *tree, int64_t x, int64_t y) {
     return NULL;
 }
 
+/// @brief Stub: no retained TreeView selection data exists without graphics.
+void *rt_treeview_get_selected_data(void *tree) {
+    (void)tree;
+    return rt_seq_new_owned();
+}
+
 /// @brief Stub: poll-model drag-and-drop is a no-op without graphics.
 void rt_treeview_set_drag_drop_enabled(void *tree, int64_t enabled) {
     (void)tree;
     (void)enabled;
+}
+
+/// @brief Stub: poll-model TreeView drag-and-drop is unavailable without graphics.
+void rt_treeview_set_drag_drop_mode(void *tree, int64_t mode) {
+    (void)tree;
+    (void)mode;
 }
 
 int64_t rt_treeview_was_drop_received(void *tree) {

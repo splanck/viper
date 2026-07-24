@@ -18,7 +18,10 @@
 //   - Each test owns its fake app/widget tree and releases returned runtime
 //     strings/objects when the corresponding API transfers ownership.
 // Links: runtime/graphics/gui/rt_gui.h,
-//        runtime/graphics/gui/rt_gui_internal.h
+//        runtime/graphics/gui/rt_gui_internal.h,
+//        docs/adr/0163-stable-multiselect-and-row-aware-treeview-editing.md,
+//        docs/adr/0165-scrollview-descendant-reveal.md,
+//        docs/adr/0167-spinner-mixed-value-state.md
 // Cross-platform touchpoints: Temporary-file cleanup uses the runtime platform
 //                             vocabulary to select the POSIX-only declaration.
 //
@@ -1325,6 +1328,46 @@ static void test_platform_scroll_events_keep_screen_coordinates_separate(void) {
     printf("test_platform_scroll_events_keep_screen_coordinates_separate: PASSED\n");
 }
 
+static void test_scrollview_runtime_reveals_only_live_descendants(void) {
+    vg_scrollview_t *scroll = vg_scrollview_create(NULL);
+    assert(scroll);
+    scroll->base.width = 120.0f;
+    scroll->base.height = 90.0f;
+    vg_scrollview_set_content_size(scroll, 120.0f, 500.0f);
+
+    vg_widget_t *section = vg_widget_create(VG_WIDGET_CONTAINER);
+    vg_widget_t *target = vg_widget_create(VG_WIDGET_CONTAINER);
+    vg_widget_t *foreign = vg_widget_create(VG_WIDGET_CONTAINER);
+    assert(section && target && foreign);
+    section->y = 220.0f;
+    section->height = 180.0f;
+    target->y = 80.0f;
+    target->height = 24.0f;
+    vg_widget_add_child(&scroll->base, section);
+    vg_widget_add_child(section, target);
+
+    rt_scrollview_scroll_to(scroll, target);
+    float viewport_height =
+        scroll->base.height - (scroll->show_h_scrollbar ? scroll->scrollbar_width : 0.0f);
+    float target_top = section->y + target->y;
+    assert(scroll->scroll_y > 0.0f);
+    assert(scroll->scroll_y <= target_top);
+    assert(scroll->scroll_y + viewport_height >= target_top + target->height);
+    assert(scroll->base.needs_layout);
+    assert(scroll->base.needs_paint);
+
+    vg_scrollview_set_scroll(scroll, 0.0f, 0.0f);
+    rt_scrollview_scroll_to(scroll, foreign);
+    assert(scroll->scroll_x == 0.0f);
+    assert(scroll->scroll_y == 0.0f);
+    rt_scrollview_scroll_to(target, target);
+    assert(scroll->scroll_y == 0.0f);
+
+    vg_widget_destroy(foreign);
+    vg_widget_destroy(&scroll->base);
+    printf("test_scrollview_runtime_reveals_only_live_descendants: PASSED\n");
+}
+
 static void test_app_handles_resolve_to_root_widgets_for_overlays(void) {
     rt_gui_app_t app;
     reset_fake_app(&app);
@@ -2376,6 +2419,125 @@ static void test_treeview_selection_changed_reports_removal_and_clear(void) {
 
     vg_widget_destroy(&tree->base);
     printf("test_treeview_selection_changed_reports_removal_and_clear: PASSED\n");
+}
+
+static bool treeview_selected_data_virtual_provider(vg_treeview_t *tree,
+                                                    size_t index,
+                                                    vg_treeview_virtual_row_t *out_row,
+                                                    void *user_data) {
+    (void)tree;
+    (void)user_data;
+    if (!out_row || index != 0)
+        return false;
+    out_row->text = "virtual";
+    out_row->depth = 0;
+    out_row->expanded = false;
+    out_row->has_children = false;
+    out_row->loading = false;
+    return true;
+}
+
+static void test_runtime_treeview_selected_data_preserves_hierarchy_and_bytes(void) {
+    vg_treeview_t *tree = vg_treeview_create(NULL);
+    assert(tree);
+    void *first = rt_treeview_add_node(tree, NULL, rt_const_cstr("duplicate label"));
+    void *hidden_child = rt_treeview_add_node(tree, first, rt_const_cstr("duplicate label"));
+    void *last = rt_treeview_add_node(tree, NULL, rt_const_cstr("last"));
+    assert(first && hidden_child && last);
+
+    rt_string first_data = rt_string_from_bytes("alpha\none", 9);
+    rt_string last_data = rt_string_from_bytes("x\0y", 3);
+    assert(first_data && last_data);
+    rt_treeview_node_set_data(first, first_data);
+    rt_treeview_node_set_data(last, last_data);
+    rt_str_release_maybe(first_data);
+    rt_str_release_maybe(last_data);
+
+    rt_treeview_set_multi_select(tree, 1);
+    rt_treeview_select(tree, last);
+    rt_treeview_select(tree, hidden_child);
+    rt_treeview_select(tree, first);
+    assert(rt_treeview_get_selected(tree) == first);
+
+    void *selected = rt_treeview_get_selected_data(tree);
+    assert(selected && rt_seq_len(selected) == 3);
+    rt_string value = rt_seq_get_str(selected, 0);
+    assert(value && rt_str_len(value) == 9 && memcmp(rt_string_cstr(value), "alpha\none", 9) == 0);
+    rt_str_release_maybe(value);
+    value = rt_seq_get_str(selected, 1);
+    assert(value && rt_str_len(value) == 0);
+    rt_str_release_maybe(value);
+    value = rt_seq_get_str(selected, 2);
+    assert(value && rt_str_len(value) == 3 && memcmp(rt_string_cstr(value), "x\0y", 3) == 0);
+    rt_str_release_maybe(value);
+    release_test_runtime_object(selected);
+
+    (void)rt_treeview_was_selection_changed(tree);
+    rt_treeview_set_multi_select(tree, 0);
+    assert(rt_treeview_was_selection_changed(tree) == 1);
+    assert(rt_treeview_was_selection_changed(tree) == 0);
+    selected = rt_treeview_get_selected_data(tree);
+    assert(selected && rt_seq_len(selected) == 1);
+    release_test_runtime_object(selected);
+
+    assert(vg_treeview_bind_virtual_model(
+        tree, 1, treeview_selected_data_virtual_provider, NULL, NULL, NULL));
+    selected = rt_treeview_get_selected_data(tree);
+    assert(selected && rt_seq_len(selected) == 0);
+    release_test_runtime_object(selected);
+
+    selected = rt_treeview_get_selected_data(NULL);
+    assert(selected && rt_seq_len(selected) == 0);
+    release_test_runtime_object(selected);
+
+    vg_widget_destroy(&tree->base);
+    printf("test_runtime_treeview_selected_data_preserves_hierarchy_and_bytes: PASSED\n");
+}
+
+static void test_treeview_removing_nonprimary_selection_reports_one_edge(void) {
+    vg_treeview_t *tree = vg_treeview_create(NULL);
+    assert(tree);
+    vg_tree_node_t *survivor = vg_treeview_add_node(tree, NULL, "survivor");
+    vg_tree_node_t *parent = vg_treeview_add_node(tree, NULL, "parent");
+    vg_tree_node_t *selected_child = vg_treeview_add_node(tree, parent, "selected child");
+    assert(survivor && parent && selected_child);
+    void *survivor_handle = rt_gui_wrap_tree_node(survivor);
+    void *child_handle = rt_gui_wrap_tree_node(selected_child);
+
+    rt_treeview_set_multi_select(tree, 1);
+    rt_treeview_select(tree, child_handle);
+    rt_treeview_select(tree, survivor_handle);
+    assert(tree->selected == survivor);
+    assert(survivor->selected && selected_child->selected);
+    (void)rt_treeview_was_selection_changed(tree);
+
+    vg_treeview_remove_node(tree, parent);
+    assert(tree->selected == survivor && survivor->selected);
+    assert(rt_treeview_was_selection_changed(tree) == 1);
+    assert(rt_treeview_was_selection_changed(tree) == 0);
+
+    vg_widget_destroy(&tree->base);
+    printf("test_treeview_removing_nonprimary_selection_reports_one_edge: PASSED\n");
+}
+
+static void test_runtime_treeview_drag_drop_modes_are_validated(void) {
+    vg_treeview_t *tree = vg_treeview_create(NULL);
+    assert(tree);
+
+    rt_treeview_set_drag_drop_mode(tree, 2);
+    assert(tree->app_directed_dnd_mode == VG_TREEVIEW_APP_DND_ROW_AWARE);
+    assert(tree->drag_enabled);
+    rt_treeview_set_drag_drop_mode(tree, INT64_MAX);
+    assert(tree->app_directed_dnd_mode == VG_TREEVIEW_APP_DND_ROW_AWARE);
+
+    rt_treeview_set_drag_drop_enabled(tree, 1);
+    assert(tree->app_directed_dnd_mode == VG_TREEVIEW_APP_DND_LEGACY_INTO);
+    rt_treeview_set_drag_drop_enabled(tree, 0);
+    assert(tree->app_directed_dnd_mode == VG_TREEVIEW_APP_DND_DISABLED);
+    assert(!tree->drag_enabled);
+
+    vg_widget_destroy(&tree->base);
+    printf("test_runtime_treeview_drag_drop_modes_are_validated: PASSED\n");
 }
 
 static void test_removed_listbox_and_treeview_handles_are_inert(void) {
@@ -4647,6 +4809,19 @@ static void test_uniform_control_events_and_revisions(void) {
     assert(rt_spinner_get_revision(spinner) > revision);
     assert(rt_spinner_was_changed(spinner) == 1);
     assert(rt_spinner_was_changed(spinner) == 0);
+    revision = rt_spinner_get_revision(spinner);
+    rt_spinner_set_indeterminate(spinner, 1);
+    assert(rt_spinner_is_indeterminate(spinner) == 1);
+    assert(rt_spinner_get_value(spinner) == 4.0);
+    assert(rt_spinner_get_revision(spinner) > revision);
+    assert(rt_spinner_was_changed(spinner) == 1);
+    assert(rt_spinner_was_changed(spinner) == 0);
+    revision = rt_spinner_get_revision(spinner);
+    rt_spinner_set_indeterminate(spinner, 1);
+    assert(rt_spinner_get_revision(spinner) == revision);
+    rt_spinner_set_value(spinner, 4.0);
+    assert(rt_spinner_is_indeterminate(spinner) == 0);
+    assert(rt_spinner_was_changed(spinner) == 1);
     vg_event_t digit = vg_event_key(VG_EVENT_KEY_CHAR, VG_KEY_UNKNOWN, '4', VG_MOD_NONE);
     vg_event_t enter = vg_event_key(VG_EVENT_KEY_DOWN, VG_KEY_ENTER, 0, VG_MOD_NONE);
     assert(vg_event_send(&spinner->base, &digit));
@@ -4726,6 +4901,8 @@ static void test_uniform_control_events_and_revisions(void) {
     assert(rt_dropdown_was_changed(checkbox) == 0);
     assert(rt_slider_get_revision(dropdown) == 0);
     assert(rt_spinner_was_submitted(tree) == 0);
+    rt_spinner_set_indeterminate(tree, 1);
+    assert(rt_spinner_is_indeterminate(tree) == 0);
     assert(rt_listbox_was_activated(tabbar) == 0);
     assert(rt_treeview_get_revision(grid) == 0);
     assert(rt_tabbar_get_revision(radio) == 0);
@@ -5043,13 +5220,17 @@ static void test_accessibility_snapshot_and_widget_semantics(void) {
     vg_widget_set_accessible_name(app.root, "Snapshot App");
     vg_label_t *label = vg_label_create(app.root, "User name");
     vg_textinput_t *input = vg_textinput_create(app.root);
+    vg_spinner_t *mixed_spinner = vg_spinner_create(app.root);
     vg_label_t *hidden = vg_label_create(app.root, "Hidden decoration");
-    assert(label && input && hidden);
+    assert(label && input && mixed_spinner && hidden);
     vg_textinput_set_text(input, "Ada");
+    vg_spinner_set_value(mixed_spinner, 0.65);
+    vg_spinner_set_indeterminate(mixed_spinner, true);
     vg_widget_set_visible(&hidden->base, false);
     vg_widget_arrange(app.root, 0.0f, 0.0f, 400.0f, 200.0f);
     vg_widget_arrange(&label->base, 20.0f, 30.0f, 100.0f, 24.0f);
     vg_widget_arrange(&input->base, 140.0f, 30.0f, 200.0f, 32.0f);
+    vg_widget_arrange(&mixed_spinner->base, 140.0f, 70.0f, 120.0f, 32.0f);
 
     rt_widget_set_accessible_description(&input->base, rt_const_cstr("Account display name"));
     rt_widget_set_accessible_label_for(&label->base, &input->base);
@@ -5073,14 +5254,17 @@ static void test_accessibility_snapshot_and_widget_semantics(void) {
 
     void *children = rt_map_get(snapshot, rt_const_cstr("children"));
     assert(children);
-    assert(rt_seq_len(children) == 2);
+    assert(rt_seq_len(children) == 3);
     void *label_node = rt_seq_get(children, 0);
     void *input_node = rt_seq_get(children, 1);
-    assert(label_node && input_node);
+    void *spinner_node = rt_seq_get(children, 2);
+    assert(label_node && input_node && spinner_node);
     assert(strcmp(rt_string_cstr(rt_map_get_str(label_node, rt_const_cstr("name"))), "User name") ==
            0);
     assert(rt_map_get_int(label_node, rt_const_cstr("labelForId")) == (int64_t)input->base.id);
     assert(strcmp(rt_string_cstr(rt_map_get_str(input_node, rt_const_cstr("value"))), "Ada") == 0);
+    assert(strcmp(rt_string_cstr(rt_map_get_str(spinner_node, rt_const_cstr("value"))), "mixed") ==
+           0);
     assert(rt_map_get_float(input_node, rt_const_cstr("logicalX")) == 70.0);
     assert(rt_map_get_float(input_node, rt_const_cstr("logicalWidth")) == 100.0);
     release_test_runtime_object(snapshot);
@@ -5289,6 +5473,7 @@ int main(void) {
     test_command_palette_placeholder_and_utf8_input();
     test_platform_text_events_translate_to_gui_text();
     test_platform_scroll_events_keep_screen_coordinates_separate();
+    test_scrollview_runtime_reveals_only_live_descendants();
     test_app_handles_resolve_to_root_widgets_for_overlays();
     test_codeeditor_runtime_supports_multicursor_editing();
     test_codeeditor_consolidated_perf_stats_schema();
@@ -5322,6 +5507,9 @@ int main(void) {
     test_runtime_listbox_selected_data_preserves_rows_and_bytes();
     test_runtime_listbox_item_text_color_override();
     test_treeview_selection_changed_reports_removal_and_clear();
+    test_runtime_treeview_selected_data_preserves_hierarchy_and_bytes();
+    test_treeview_removing_nonprimary_selection_reports_one_edge();
+    test_runtime_treeview_drag_drop_modes_are_validated();
     test_removed_listbox_and_treeview_handles_are_inert();
     test_pruned_tree_and_tab_runtime_handles_are_inert();
     test_listbox_and_treeview_reject_foreign_child_handles();

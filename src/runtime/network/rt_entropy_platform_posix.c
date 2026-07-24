@@ -25,6 +25,7 @@
 
 #include <errno.h>
 #include <fcntl.h>
+#include <limits.h>
 #if RT_PLATFORM_LINUX
 #include <sys/random.h>
 #endif
@@ -41,8 +42,9 @@ extern void arc4random_buf(void *buf, size_t nbytes);
 
 /// @brief Fill a buffer from POSIX-style operating-system entropy sources.
 /// @details macOS uses arc4random_buf(); Linux first uses getrandom() and falls
-///          back to /dev/urandom only when the syscall is unavailable; generic
-///          POSIX platforms read /dev/urandom directly.
+///          back to /dev/urandom when the syscall is unavailable or blocked by
+///          a sandbox, preserving any bytes already produced. Generic POSIX
+///          platforms read /dev/urandom directly.
 /// @param buf Destination buffer. May be NULL only for zero-length requests.
 /// @param len Number of bytes to produce.
 /// @return 0 on success, -1 on invalid arguments or source failure.
@@ -52,28 +54,29 @@ int rt_entropy_platform_random_bytes(uint8_t *buf, size_t len) {
     if (len == 0)
         return 0;
 
+    size_t off = 0;
+
 #if RT_PLATFORM_MACOS
     arc4random_buf(buf, len);
     return 0;
 #elif RT_PLATFORM_LINUX
-    size_t got = 0;
-    while (got < len) {
-        size_t request = len - got;
+    while (off < len) {
+        size_t request = len - off;
         if (request > RT_ENTROPY_GETRANDOM_CHUNK)
             request = RT_ENTROPY_GETRANDOM_CHUNK;
-        ssize_t n = getrandom(buf + got, request, 0);
+        ssize_t n = getrandom(buf + off, request, 0);
         if (n < 0) {
             if (errno == EINTR)
                 continue;
-            if (errno == ENOSYS)
+            if (errno == ENOSYS || errno == EPERM || errno == EACCES)
                 break;
             return -1;
         }
         if (n == 0)
             return -1;
-        got += (size_t)n;
+        off += (size_t)n;
     }
-    if (got == len)
+    if (off == len)
         return 0;
 #endif
 
@@ -85,22 +88,39 @@ int rt_entropy_platform_random_bytes(uint8_t *buf, size_t len) {
     if (fd < 0)
         return -1;
 
-    size_t off = 0;
+#ifndef O_CLOEXEC
+    int descriptor_flags = fcntl(fd, F_GETFD);
+    if (descriptor_flags < 0 || fcntl(fd, F_SETFD, descriptor_flags | FD_CLOEXEC) < 0) {
+        int saved_errno = errno;
+        (void)close(fd);
+        errno = saved_errno;
+        return -1;
+    }
+#endif
+
     while (off < len) {
-        ssize_t n = read(fd, buf + off, len - off);
+        size_t request = len - off;
+        if (request > (size_t)SSIZE_MAX)
+            request = (size_t)SSIZE_MAX;
+        ssize_t n = read(fd, buf + off, request);
         if (n < 0) {
             if (errno == EINTR)
                 continue;
-            close(fd);
+            int saved_errno = errno;
+            (void)close(fd);
+            errno = saved_errno;
             return -1;
         }
         if (n == 0) {
-            close(fd);
+            int saved_errno = EIO;
+            (void)close(fd);
+            errno = saved_errno;
             return -1;
         }
         off += (size_t)n;
     }
-    close(fd);
+    if (close(fd) < 0)
+        return -1;
     return 0;
 }
 

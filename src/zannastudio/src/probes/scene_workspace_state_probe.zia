@@ -10,12 +10,17 @@
 // Key invariants:
 //   - Named 2D and 3D scenes restore independent, versioned workspace state.
 //   - Hostile scalar fields clamp before a scene controller can consume them.
+//   - Local/world 3D transform space follows named and recovery scene tabs.
+//   - Shaded/wireframe viewport preference follows the same bounded ownership.
+//   - Typed property selections restore only within their owning scene tab.
 //   - Wide inspector preference and compact master/detail pane restore exactly.
 //   - Dirty untitled scenes recover as visual tabs, never as source documents.
 // Ownership/Lifetime:
 //   - The probe owns and removes one isolated temporary directory.
 // Links: zannastudio/src/core/session.zia,
-//        zannastudio/src/core/document.zia
+//        zannastudio/src/core/document.zia,
+//        docs/adr/0166-exact-scenenode-world-matrix-assignment.md,
+//        docs/adr/0168-windowless-canvas3d-rendering.md
 //
 //===----------------------------------------------------------------------===//
 
@@ -82,6 +87,7 @@ func main() {
     source2D.scene2DWorkspace.activeLayer = 7;
     source2D.scene2DWorkspace.selectedObject = 12;
     source2D.scene2DWorkspace.selectedObjectProperty = 3;
+    source2D.scene2DWorkspace.selectedSceneProperty = 4;
     source2D.scene2DWorkspace.selectedCellX = 21;
     source2D.scene2DWorkspace.selectedCellY = 9;
     source2D.scene2DWorkspace.tileId = 44;
@@ -95,11 +101,14 @@ func main() {
     var source3D = sourceDocs.OpenFile(scene3DPath);
     source3D.scene3DWorkspace.initialized = true;
     source3D.scene3DWorkspace.selectedIndex = 9;
+    source3D.scene3DWorkspace.selectedNodeMetadata = 5;
     source3D.scene3DWorkspace.transformMode = 2;
+    source3D.scene3DWorkspace.transformSpace = 1;
     source3D.scene3DWorkspace.transformSnapEnabled = true;
     source3D.scene3DWorkspace.viewYawDegrees = -70;
     source3D.scene3DWorkspace.viewPitchDegrees = 35;
     source3D.scene3DWorkspace.viewScale = 52;
+    source3D.scene3DWorkspace.viewportMode = 1;
     source3D.scene3DWorkspace.viewTargetX = 1.25;
     source3D.scene3DWorkspace.viewTargetY = -2.5;
     source3D.scene3DWorkspace.viewTargetZ = 3.75;
@@ -120,9 +129,15 @@ func main() {
        or Ini.Get(savedIni, "session.file.0", "scene2dSplit") != "6250"
        or Ini.Get(savedIni, "session.file.0", "scene2dInspectorVisible") != "0"
        or Ini.Get(savedIni, "session.file.0", "scene2dCompactInspector") != "1"
+       or Ini.Get(
+              savedIni, "session.file.0", "scene2dSceneProperty") != "4"
        or Ini.Get(savedIni, "session.file.1", "scene3dVersion") != "1"
+       or Ini.Get(
+              savedIni, "session.file.1", "scene3dMetadataProperty") != "5"
        or Ini.Get(savedIni, "session.file.1", "scene3dTransformMode") != "2"
+       or Ini.Get(savedIni, "session.file.1", "scene3dTransformSpace") != "1"
        or Ini.Get(savedIni, "session.file.1", "scene3dTransformSnap") != "1"
+       or Ini.Get(savedIni, "session.file.1", "scene3dViewportMode") != "1"
        or Ini.Get(savedIni, "session.file.1", "scene3dTargetY") != "-2500"
        or Ini.Get(savedIni, "session.file.1", "scene3dInspectorVisible") != "1"
        or Ini.Get(savedIni, "session.file.1", "scene3dCompactInspector") != "0" {
@@ -151,6 +166,7 @@ func main() {
        or restored2D.scene2DWorkspace.mode != 2
        or restored2D.scene2DWorkspace.zoomPercent != 375
        or restored2D.scene2DWorkspace.tileId != 44
+       or restored2D.scene2DWorkspace.selectedSceneProperty != 4
        or near(restored2D.scene2DWorkspace.splitPosition, 0.625) == false
        or near(restored2D.scene2DWorkspace.canvasScrollX, 128.0) == false
        or restored2D.scene2DWorkspace.inspectorRequestedVisible
@@ -158,11 +174,14 @@ func main() {
        or restored3D.kind != file_utils.DOC_KIND_SCENE_3D
        or restored3D.scene3DWorkspace.initialized == false
        or restored3D.scene3DWorkspace.selectedIndex != 9
+       or restored3D.scene3DWorkspace.selectedNodeMetadata != 5
        or restored3D.scene3DWorkspace.transformMode != 2
+       or restored3D.scene3DWorkspace.transformSpace != 1
        or restored3D.scene3DWorkspace.transformSnapEnabled == false
        or restored3D.scene3DWorkspace.viewYawDegrees != -70
        or restored3D.scene3DWorkspace.viewPitchDegrees != 35
        or restored3D.scene3DWorkspace.viewScale != 52
+       or restored3D.scene3DWorkspace.viewportMode != 1
        or near(restored3D.scene3DWorkspace.viewTargetX, 1.25) == false
        or near(restored3D.scene3DWorkspace.viewTargetY, -2.5) == false
        or near(restored3D.scene3DWorkspace.viewTargetZ, 3.75) == false
@@ -176,14 +195,20 @@ func main() {
     Ini.Set(savedIni, "session.file.0", "scene2dZoom", "999999");
     Ini.Set(savedIni, "session.file.0", "scene2dSplit", "-20");
     Ini.Set(savedIni, "session.file.0", "scene2dScrollX", "2000000");
+    Ini.Set(
+        savedIni, "session.file.0", "scene2dSceneProperty", "999999");
     Ini.Set(savedIni, "session.file.0", "scene2dInspectorVisible", "99");
     Ini.Set(savedIni, "session.file.0", "scene2dCompactInspector", "-5");
     Ini.Set(savedIni, "session.file.1", "scene3dSelection", "999999");
+    Ini.Set(
+        savedIni, "session.file.1", "scene3dMetadataProperty", "999999");
     Ini.Set(savedIni, "session.file.1", "scene3dTransformMode", "-99");
+    Ini.Set(savedIni, "session.file.1", "scene3dTransformSpace", "99");
     Ini.Set(savedIni, "session.file.1", "scene3dTransformSnap", "50");
     Ini.Set(savedIni, "session.file.1", "scene3dYaw", "-999");
     Ini.Set(savedIni, "session.file.1", "scene3dPitch", "999");
     Ini.Set(savedIni, "session.file.1", "scene3dScale", "0");
+    Ini.Set(savedIni, "session.file.1", "scene3dViewportMode", "999");
     Ini.Set(savedIni, "session.file.1", "scene3dTargetX", "2000000000");
     Ini.Set(savedIni, "session.file.1", "scene3dInspectorVisible", "-9");
     Ini.Set(savedIni, "session.file.1", "scene3dCompactInspector", "50");
@@ -204,14 +229,18 @@ func main() {
        or bounded2D.scene2DWorkspace.zoomPercent != 1600
        or near(bounded2D.scene2DWorkspace.splitPosition, 0.20) == false
        or near(bounded2D.scene2DWorkspace.canvasScrollX, 1000000.0) == false
+       or bounded2D.scene2DWorkspace.selectedSceneProperty != 511
        or bounded2D.scene2DWorkspace.inspectorRequestedVisible == false
        or bounded2D.scene2DWorkspace.compactInspectorShown
        or bounded3D.scene3DWorkspace.selectedIndex != 1023
+       or bounded3D.scene3DWorkspace.selectedNodeMetadata != 255
        or bounded3D.scene3DWorkspace.transformMode != 0
+       or bounded3D.scene3DWorkspace.transformSpace != 1
        or bounded3D.scene3DWorkspace.transformSnapEnabled == false
        or bounded3D.scene3DWorkspace.viewYawDegrees != -180
        or bounded3D.scene3DWorkspace.viewPitchDegrees != 80
        or bounded3D.scene3DWorkspace.viewScale != 4
+       or bounded3D.scene3DWorkspace.viewportMode != 1
        or near(bounded3D.scene3DWorkspace.viewTargetX, 1000000.0) == false
        or bounded3D.scene3DWorkspace.inspectorRequestedVisible
        or bounded3D.scene3DWorkspace.compactInspectorShown == false {
@@ -231,8 +260,10 @@ func main() {
     recovery3D.isModified = true;
     recovery3D.scene3DWorkspace.initialized = true;
     recovery3D.scene3DWorkspace.transformMode = 1;
+    recovery3D.scene3DWorkspace.transformSpace = 1;
     recovery3D.scene3DWorkspace.transformSnapEnabled = true;
     recovery3D.scene3DWorkspace.viewScale = 64;
+    recovery3D.scene3DWorkspace.viewportMode = 1;
     var recoveryWriter = new session.SessionManager();
     recoveryWriter.Setup(recoveryPath);
     if recoveryWriter.Save(
@@ -254,9 +285,11 @@ func main() {
            != file_utils.DOC_KIND_SCENE_3D
        or recoveredDocs.documents.get(1).language != "scene3d"
        or recoveredDocs.documents.get(1).scene3DWorkspace.transformMode != 1
+       or recoveredDocs.documents.get(1).scene3DWorkspace.transformSpace != 1
        or recoveredDocs.documents.get(1).scene3DWorkspace.transformSnapEnabled
            == false
-       or recoveredDocs.documents.get(1).scene3DWorkspace.viewScale != 64 {
+       or recoveredDocs.documents.get(1).scene3DWorkspace.viewScale != 64
+       or recoveredDocs.documents.get(1).scene3DWorkspace.viewportMode != 1 {
         fail(root, "dirty untitled scenes did not recover as visual tabs");
         return;
     }

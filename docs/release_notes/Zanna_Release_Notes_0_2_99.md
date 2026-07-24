@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-07-22
+last-verified: 2026-07-23
 ---
 
 # Zanna Compiler Platform — Release Notes
@@ -46,14 +46,14 @@ Zanna Studio and the GUI toolkit were both rebuilt underneath. Packaging picked 
 
 | Metric | v0.2.7 | v0.2.99 | Delta |
 |---|---|---|---|
-| Commits | — | 149 | +149 |
+| Commits | — | 156 | +156 |
 | Source files | 3,402 | 3,636 | +234 |
-| Production SLOC | 762K | 938K | +176K |
-| Test SLOC | 304K | 357K | +53K |
-| Zanna Studio SLOC | 28K | 56K | +28K |
-| Demo SLOC | 197K | 240K | +43K |
+| Production SLOC | 659K | 823K | +164K |
+| Test SLOC | 254K | 302K | +48K |
+| Zanna Studio SLOC | 26K | 75K | +49K |
+| Demo SLOC | 144K | 209K | +65K |
 
-Counts via `scripts/count_sloc.sh` (production 938,180 / test 357,369 / demo 239,797 / zannastudio 55,934 / source files 3,636); commits since the `v0.2.7-dev` tag (2026-06-30). Much of the raw diff is checked-in text-glTF character and model assets, which these SLOC figures leave out.
+Counts via `scripts/count_sloc.sh`, which excludes blank lines and comments — line and block (production 823,201 / test 301,941 / demo 209,457 / zannastudio 74,682 / source files 3,636); the v0.2.7 column is restated on the same basis so the deltas reflect real growth. Commits since the `v0.2.7-dev` tag (2026-06-30). Much of the raw diff is checked-in text-glTF character and model assets, which these SLOC figures leave out.
 
 ---
 

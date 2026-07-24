@@ -19,14 +19,16 @@
 //     reused across many nodes only has one retain.
 //   - `model_count_subtree` includes the template root; user-visible counts
 //     subtract 1.
+//   - Instancing deep-copies typed node metadata while sharing immutable assets.
 //
 // Ownership/Lifetime:
 //   - Model3D is GC-managed; finalizer releases the template root and every
 //     entry of the reference arrays.
 //   - Cloning a node retains the source's mesh/material; only morph-enabled
-//     meshes are deep-cloned for per-instance blend-shape state.
+//     meshes and typed metadata are deep-cloned for per-instance mutable state.
 //
-// Links: rt_model3d.h, rt_scene3d.h, rt_fbx_loader.h, rt_gltf.h, rt_asset.h
+// Links: rt_model3d.h, rt_scene3d.h, rt_fbx_loader.h, rt_gltf.h, rt_asset.h,
+//   docs/adr/0159-typed-scenenode-metadata-and-vscn-v6.md
 //
 //===----------------------------------------------------------------------===//
 

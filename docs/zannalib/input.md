@@ -1,7 +1,7 @@
 ---
 status: active
 audience: public
-last-verified: 2026-07-14
+last-verified: 2026-07-23
 ---
 
 # Input
@@ -43,7 +43,7 @@ state/query behavior.
 | Arrows | `Up`, `Down`, `Left`, `Right` |
 | Navigation | `Home`, `End`, `PageUp`, `PageDown`, `Insert`, `Delete` |
 | Editing | `Backspace`, `Tab`, `Enter`, `Space`, `Escape` |
-| Modifiers | `LeftShift`, `RightShift`, `LeftControl`, `RightControl`, `LeftAlt`, `RightAlt` |
+| Modifiers | `LeftShift`, `RightShift`, `LeftControl`, `RightControl`, `LeftAlt`, `RightAlt`, `LeftSuper`, `RightSuper` |
 | Punctuation | `Minus`, `Equals`, `LeftBracket`, `RightBracket`, `Backslash`, `Semicolon`, `Quote`, `Grave`, `Comma`, `Period`, `Slash` |
 | Numpad | `Numpad0`-`Numpad9`, `NumpadAdd`, `NumpadSubtract`, `NumpadMultiply`, `NumpadDivide`, `NumpadEnter`, `NumpadDecimal` |
 
@@ -169,6 +169,11 @@ properties below remain as compatibility aliases for existing programs.
 | `KeyLeftShift`   | 340   | `KeyRightShift`  | 344   |
 | `KeyLeftControl`    | 341   | `KeyRightControl`   | 345   |
 | `KeyLeftAlt`     | 342   | `KeyRightAlt`    | 346   |
+
+The canonical `Key.LeftSuper` and `Key.RightSuper` values are 343 and 347.
+They identify Command on macOS and the Windows/Super key on Windows and Linux.
+For a platform-neutral primary-selection shortcut, test either Control key or
+either Super key with `Keyboard.IsDown`.
 
 #### Punctuation
 

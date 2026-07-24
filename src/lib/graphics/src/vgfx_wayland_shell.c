@@ -56,6 +56,7 @@ typedef struct vgfx_zxdg_toplevel_decoration_listener {
 enum {
     VGFX_XDG_TOPLEVEL_STATE_MAXIMIZED = 1,
     VGFX_XDG_TOPLEVEL_STATE_FULLSCREEN = 2,
+    VGFX_XDG_TOPLEVEL_STATE_RESIZING = 3,
     VGFX_XDG_TOPLEVEL_STATE_ACTIVATED = 4,
     VGFX_ZXDG_DECORATION_MANAGER_GET_TOPLEVEL_DECORATION = 1,
     VGFX_ZXDG_TOPLEVEL_DECORATION_DESTROY = 0,
@@ -115,6 +116,7 @@ static void vgfx_wayland_xdg_toplevel_configure(void *data,
         shell->height = height;
     shell->maximized = 0;
     shell->fullscreen = 0;
+    shell->resizing = 0;
     shell->activated = 0;
     if (!states || !states->data)
         return;
@@ -125,6 +127,8 @@ static void vgfx_wayland_xdg_toplevel_configure(void *data,
             shell->maximized = 1;
         else if (state[i] == VGFX_XDG_TOPLEVEL_STATE_FULLSCREEN)
             shell->fullscreen = 1;
+        else if (state[i] == VGFX_XDG_TOPLEVEL_STATE_RESIZING)
+            shell->resizing = 1;
         else if (state[i] == VGFX_XDG_TOPLEVEL_STATE_ACTIVATED)
             shell->activated = 1;
     }

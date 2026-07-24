@@ -1,0 +1,268 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/probes/scene_shaded_viewport_probe.zia
+// Purpose: Verify Studio's runtime-backed shaded and wireframe 3D viewport.
+// Key invariants:
+//   - Shaded is the default per-document mode and creates no platform window.
+//   - The retained orthographic camera matches editor marker projection.
+//   - Authored mesh/material pixels differ truthfully from wireframe output.
+//   - Switching modes changes workspace state, never canonical VSCN history.
+// Ownership/Lifetime:
+//   - The probe owns one hidden AppShell, editor, document, and input harness.
+// Links: zannastudio/src/ui/scene_editor_3d.zia,
+//        zannastudio/src/core/document.zia,
+//        docs/adr/0168-windowless-canvas3d-rendering.md
+//
+//===----------------------------------------------------------------------===//
+
+module scene_shaded_viewport_probe;
+
+// ============================================================================
+// MODULE: scene_shaded_viewport_probe
+// PURPOSE: Keep embedded 3D rasterization and view-mode coverage focused.
+//
+// WHERE-THIS-FITS: The broad SceneEditor3D probe owns editing transactions.
+//          This probe owns the windowless Canvas3D presentation boundary.
+//
+// TEACHING-NOTE: A mesh submission counter alone is not a visual assertion.
+//          The probe also compares bounded pixels from the two production modes.
+// ============================================================================
+
+bind "../core/document_manager";
+bind "../services/file_utils";
+bind "../ui/app_shell";
+bind "../ui/scene_editor_3d";
+
+bind Convert = Zanna.Core.Convert;
+bind GUI = Zanna.GUI;
+bind Vec3 = Zanna.Math.Vec3;
+bind Terminal = Zanna.Terminal;
+
+func Near(actual: Number,
+          expected: Number,
+          tolerance: Number) -> Boolean {
+    var difference = actual - expected;
+    if difference < 0.0 { difference = 0.0 - difference; }
+    return difference <= tolerance;
+}
+
+func HarnessCoordinate(shell: app_shell.AppShell,
+                       logical: Number) -> Integer {
+    var scale = shell.app.GetEffectiveScale();
+    if scale <= 0.0 { scale = 1.0; }
+    return Convert.NumToInt(logical * scale);
+}
+
+func Click(shell: app_shell.AppShell,
+           harness: GUI.TestHarness,
+           widget: GUI.Widget) {
+    var x = HarnessCoordinate(
+        shell, widget.GetScreenX() + widget.GetScreenWidth() / 2.0);
+    var y = HarnessCoordinate(
+        shell, widget.GetScreenY() + widget.GetScreenHeight() / 2.0);
+    harness.SendMouse("move", x, y, 0);
+    harness.SendMouse("down", x, y, 0);
+    harness.SendMouse("up", x, y, 0);
+    harness.DispatchPending();
+}
+
+func PixelDifference(first: Zanna.Graphics.Pixels,
+                     second: Zanna.Graphics.Pixels,
+                     centerX: Integer,
+                     centerY: Integer) -> Integer {
+    if first == null or second == null { return 0; }
+    var left = centerX - 48;
+    var top = centerY - 48;
+    var right = centerX + 48;
+    var bottom = centerY + 48;
+    if left < 0 { left = 0; }
+    if top < 0 { top = 0; }
+    if right >= first.Width { right = first.Width - 1; }
+    if bottom >= first.Height { bottom = first.Height - 1; }
+    var changed = 0;
+    var y = top;
+    while y <= bottom {
+        var x = left;
+        while x <= right {
+            if first.GetRgba(x, y) != second.GetRgba(x, y) {
+                changed = changed + 1;
+            }
+            x = x + 1;
+        }
+        y = y + 1;
+    }
+    return changed;
+}
+
+func Fail(shell: app_shell.AppShell,
+          harness: GUI.TestHarness,
+          reason: String) {
+    if harness != null { harness.UnbindApp(); }
+    if shell != null { shell.Destroy(); }
+    Terminal.Say("RESULT: fail " + reason);
+}
+
+func main() {
+    var shell = new app_shell.AppShell();
+    shell.Build("Zanna Studio Shaded Viewport Probe", 1120, 760);
+
+    var editor = new scene_editor_3d.SceneEditor3D();
+    editor.Setup(shell.workbench.scene3DHost, shell.app);
+    var documents = new document_manager.DocumentManager();
+    var sceneDoc = documents.NewScene3DDocument();
+    shell.SelectSurface(file_utils.DOC_KIND_SCENE_3D);
+    editor.Activate(sceneDoc);
+    editor.Pump(sceneDoc);
+    shell.Poll();
+    shell.Render();
+    editor.Pump(sceneDoc);
+    shell.Render();
+
+    var harness = GUI.TestHarness.New();
+    if harness.BindApp(shell.app) == false {
+        Fail(shell, harness, "automation app binding");
+        return;
+    }
+    if editor.viewportMode != scene_editor_3d.VIEWPORT_MODE_SHADED
+       or editor.viewportModeButton.GetAccessibleName()
+            != "3D viewport mode: Shaded" {
+        Fail(shell, harness, "shaded mode was not the accessible default");
+        return;
+    }
+
+    Click(shell, harness, editor.addBoxButton);
+    if editor.Pump(sceneDoc) == false {
+        Fail(shell, harness, "the production Add Box action was not accepted");
+        return;
+    }
+    shell.Render();
+    shell.Poll();
+    if editor.SetNodeTransform(
+           0, 1.25, 0.75, -2.0, 1.0, 1.0, 1.0) == false {
+        Fail(shell, harness,
+             "the off-center camera-alignment fixture was not accepted");
+        return;
+    }
+    editor.Pump(sceneDoc);
+    shell.Render();
+
+    if editor.flatNodes.count() != 1
+       or editor.viewportRenderCanvas == null
+       or editor.viewportRenderTarget == null
+       or editor.viewportRenderCamera == null
+       or editor.viewportPixels == null {
+        Fail(shell, harness,
+             "shaded mode did not retain its renderer objects: nodes="
+             + editor.flatNodes.count()
+             + " canvasNull=" + (editor.viewportRenderCanvas == null)
+             + " targetNull=" + (editor.viewportRenderTarget == null)
+             + " cameraNull=" + (editor.viewportRenderCamera == null)
+             + " pixelsNull=" + (editor.viewportPixels == null));
+        return;
+    }
+    if editor.viewportRenderCanvas.IsOffscreen == false
+       or editor.viewportRenderCanvas.Backend != "software"
+       or editor.viewportRenderCanvas.Width != editor.renderedViewportWidth
+       or editor.viewportRenderCanvas.Height != editor.renderedViewportHeight {
+        Fail(shell, harness,
+             "embedded canvas identity or active dimensions were incorrect: "
+             + "offscreen=" + editor.viewportRenderCanvas.IsOffscreen
+             + " backend=" + editor.viewportRenderCanvas.Backend
+             + " canvas=" + editor.viewportRenderCanvas.Width
+             + "x" + editor.viewportRenderCanvas.Height
+             + " expected=" + editor.renderedViewportWidth
+             + "x" + editor.renderedViewportHeight);
+        return;
+    }
+    if editor.viewportRenderTarget.Width != editor.renderedViewportWidth
+       or editor.viewportRenderTarget.Height != editor.renderedViewportHeight
+       or editor.viewportPixels.Width != editor.renderedViewportWidth
+       or editor.viewportPixels.Height != editor.renderedViewportHeight {
+        Fail(shell, harness,
+             "render target/readback dimensions diverged from the viewport");
+        return;
+    }
+    if editor.viewportRenderCamera.IsOrtho == false
+       or Near(
+              editor.viewportRenderCamera.OrthoSize,
+              editor.renderedViewportHeight / (2.0 * editor.viewScale),
+              0.000001) == false {
+        Fail(shell, harness,
+             "orthographic camera scale did not match editor projection");
+        return;
+    }
+    if editor.viewportRenderCanvas.DrawCount < 1 {
+        Fail(shell, harness,
+             "scene graph submitted no mesh draws to the embedded canvas");
+        return;
+    }
+
+    var world = editor.flatNodes.get(0).WorldPosition;
+    var runtimePoint = editor.viewportRenderCamera.WorldToScreen(
+        Vec3.New(world.X, world.Y, world.Z),
+        editor.renderedViewportWidth,
+        editor.renderedViewportHeight) as Vec3;
+    if editor.projectedX.count() != 1
+       or editor.projectedY.count() != 1
+       or runtimePoint.Z < 0.5
+       or Near(runtimePoint.X, editor.projectedX.get(0), 1.0) == false
+       or Near(runtimePoint.Y, editor.projectedY.get(0), 1.0) == false {
+        Fail(shell, harness,
+             "runtime camera projection diverged from editor overlays: runtime="
+             + runtimePoint.X + "," + runtimePoint.Y
+             + " editor=" + editor.projectedX.get(0)
+             + "," + editor.projectedY.get(0));
+        return;
+    }
+
+    var shadedPixels = editor.viewportPixels.Clone();
+    var canonical = sceneDoc.content;
+    var revision = editor.GetRevision();
+    Click(shell, harness, editor.viewportModeButton);
+    if editor.Pump(sceneDoc)
+       or editor.viewportMode != scene_editor_3d.VIEWPORT_MODE_WIREFRAME
+       or editor.viewportModeButton.GetAccessibleName()
+            != "3D viewport mode: Wireframe"
+       or sceneDoc.content != canonical
+       or editor.GetRevision() != revision
+       or sceneDoc.scene3DWorkspace.viewportMode
+            != scene_editor_3d.VIEWPORT_MODE_WIREFRAME {
+        Fail(shell, harness,
+             "wireframe selection changed content or lost workspace state");
+        return;
+    }
+    shell.Render();
+    if editor.viewportRenderCanvas.DrawCount < 1
+       or PixelDifference(
+              shadedPixels,
+              editor.viewportPixels,
+              editor.projectedX.get(0),
+              editor.projectedY.get(0)) < 24 {
+        Fail(shell, harness,
+             "shaded and wireframe modes did not produce distinct mesh pixels");
+        return;
+    }
+
+    Click(shell, harness, editor.viewportModeButton);
+    if editor.Pump(sceneDoc)
+       or editor.viewportMode != scene_editor_3d.VIEWPORT_MODE_SHADED
+       or editor.viewportModeButton.GetAccessibleName()
+            != "3D viewport mode: Shaded"
+       or sceneDoc.content != canonical
+       or editor.GetRevision() != revision
+       or sceneDoc.scene3DWorkspace.viewportMode
+            != scene_editor_3d.VIEWPORT_MODE_SHADED {
+        Fail(shell, harness,
+             "returning to shaded mode was not a workspace-only action");
+        return;
+    }
+
+    harness.UnbindApp();
+    shell.Destroy();
+    Terminal.Say("RESULT: ok");
+}

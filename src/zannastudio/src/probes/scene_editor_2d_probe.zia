@@ -13,9 +13,12 @@
 //   - Tile/object edits immediately update the shared dirty Document JSON.
 //   - Tiny scenes fit above 400%, canvases center, and strokes commit once.
 //   - Compact windows wrap actions and show canvas or inspector at full width.
-//   - Metadata edits, typed-property duplication, transactional batch property
-//     edits, precision nudging, selection arrangement, and draw ordering round
-//     trip.
+//   - Scene metadata, object metadata, typed-property duplication,
+//     transactional batch property edits, precision nudging, selection
+//     arrangement, reusable project components, retained hierarchy, and draw
+//     ordering round trip.
+//   - Bounded hierarchy search matches object ids/types case-insensitively,
+//     wraps in both directions, reveals nested rows, and never edits history.
 //   - Scene selection command focus never escapes inspector inputs.
 //   - Standard clipboard actions preserve typed multi-object data across tabs.
 //   - Relative layer images render source-over tiles, drive a visual palette,
@@ -30,7 +33,10 @@
 //        zannastudio/src/ui/scene_clipboard.zia,
 //        zannastudio/src/ui/scene_tileset_2d.zia,
 //        zannastudio/src/core/document_manager.zia,
-//        docs/adr/0155-scene-object-authoring-metadata-and-duplication.md
+//        docs/adr/0155-scene-object-authoring-metadata-and-duplication.md,
+//        docs/adr/0158-scene-level-property-authoring.md,
+//        docs/adr/0160-project-scene-component-schemas.md,
+//        docs/adr/0164-backward-compatible-2d-scene-object-hierarchy.md
 //
 //===----------------------------------------------------------------------===//
 
@@ -40,12 +46,16 @@ bind "../core/document";
 bind "../core/document_manager";
 bind "../core/project_manager";
 bind "../core/recovery_store";
+bind "../commands/command_context";
 bind "../commands/file_commands";
+bind "../commands/main_command_dispatcher";
 bind "../editor/editor_engine";
 bind "../services/file_utils";
 bind "../ui/app_shell";
 bind "../ui/scene_asset_browser";
 bind "../ui/scene_clipboard";
+bind "../ui/scene_component_authoring";
+bind "../ui/scene_component_schema";
 bind "../ui/scene_editor_2d";
 bind "../ui/scene_tileset_2d";
 
@@ -408,6 +418,79 @@ func main() {
         return;
     }
 
+    var scenePropertyRevision = editor.GetRevision();
+    if editor.SetSceneProperty("", "theme", "string", "descent") == false
+       or editor.SetSceneProperty("", "worldSeed", "int", "42") == false
+       or editor.SetSceneProperty("", "gravityScale", "float", "0.75") == false
+       or editor.SetSceneProperty("", "dark", "bool", "yes") == false
+       or editor.SetSceneProperty("", "nextObjective", "null", "") == false
+       or editor.SetSceneProperty(
+              "theme", "biome", "string", "descent") == false
+       or editor.SetSceneProperty(
+              "biome", "worldSeed", "string", "collision")
+       or editor.SetSceneProperty(
+              "worldSeed", "worldSeed", "int", "not-a-number")
+       or editor.SetSceneProperty(
+              "worldSeed", "worldSeed", "int", "42")
+       or editor.scene.Has("theme")
+       or editor.scene.GetStr("biome", "") != "descent"
+       or editor.scene.GetInt("worldSeed", -1) != 42
+       or near(editor.scene.GetFloat("gravityScale", 0.0), 0.75) == false
+       or editor.scene.GetBool("dark", false) == false
+       or editor.scene.PropertyKind("nextObjective") != "null"
+       or editor.GetRevision() != scenePropertyRevision + 6
+       or editor.sceneProperties.list.Count != 5
+       or editor.sceneProperties.keyInput.IsEnabled() == false
+       or editor.sceneProperties.typeDropdown.IsEnabled() == false
+       or editor.sceneProperties.setButton.IsEnabled() == false {
+        fail(shell, "typed scene-property inspector did not commit exact metadata");
+        return;
+    }
+    var scenePropertyContent = sceneDoc.content;
+    if editor.RemoveSceneProperty("nextObjective") == false
+       or editor.scene.Has("nextObjective")
+       or editor.GetRevision() != scenePropertyRevision + 7
+       or editor.Undo() == false
+       or sceneDoc.content != scenePropertyContent
+       or editor.scene.PropertyKind("nextObjective") != "null"
+       or editor.Redo() == false
+       or editor.scene.Has("nextObjective")
+       or editor.Undo() == false
+       or sceneDoc.content != scenePropertyContent {
+        fail(shell, "scene-property removal was not one exact history action");
+        return;
+    }
+    var scenePropertyResult = SceneDocument.LoadJsonResult(sceneDoc.content);
+    if scenePropertyResult.IsOk == false {
+        fail(shell, "authored scene-property JSON did not parse");
+        return;
+    }
+    var propertyScene = scenePropertyResult.Unwrap() as SceneDocument;
+    if propertyScene.GetStr("biome", "") != "descent"
+       or propertyScene.GetInt("worldSeed", -1) != 42
+       or propertyScene.PropertyKind("nextObjective") != "null" {
+        fail(shell, "typed scene properties did not survive canonical round trip");
+        return;
+    }
+    editor.sceneProperties.SelectByKey(editor.scene, "worldSeed");
+    editor.Pump(sceneDoc);
+    if editor.selectedSceneProperty < 0
+       or editor.sceneProperties.SelectedKey() != "worldSeed" {
+        fail(shell, "scene-property selection was not captured for its tab");
+        return;
+    }
+    editor.Pump(otherSceneDoc);
+    if editor.selectedSceneProperty != -1
+       or editor.sceneProperties.SelectedKey() != "" {
+        fail(shell, "scene-property selection leaked into another 2D tab");
+        return;
+    }
+    editor.Pump(sceneDoc);
+    if editor.sceneProperties.SelectedKey() != "worldSeed" {
+        fail(shell, "scene-property selection was not restored with its tab");
+        return;
+    }
+
     var authoringRevision = editor.GetRevision();
     if editor.SetSceneObjectProperty(0, "", "hp", "int", "25") == false
        or editor.SetSceneObjectProperty(0, "", "label", "string",
@@ -475,6 +558,200 @@ func main() {
     var groupSelection: List[Integer] = [];
     groupSelection.add(0);
     groupSelection.add(1);
+
+    // A project-root schema turns recurring gameplay metadata into a bounded,
+    // typed component action while retaining the raw property editor.
+    var componentDir =
+        TempFile.CreateDirWithPrefix("zannastudio_scene2d_components_");
+    var componentPath = Path.Join(componentDir, "scene-components.json");
+    var componentScenePath = Path.Join(componentDir, "level.scene");
+    var componentSchemaText =
+        "{"
+        + "\"version\":1,"
+        + "\"components\":["
+        + "{"
+        + "\"name\":\"enemy-spawn\","
+        + "\"label\":\"Enemy Spawn\","
+        + "\"target\":\"both\","
+        + "\"description\":\"Reusable enemy placement data.\","
+        + "\"fields\":["
+        + "{\"key\":\"hp\",\"type\":\"int\",\"default\":100},"
+        + "{\"key\":\"enemy.archetype\",\"type\":\"string\","
+        + "\"default\":\"grunt\"},"
+        + "{\"key\":\"enemy.level\",\"type\":\"int\",\"default\":3},"
+        + "{\"key\":\"enemy.radius\",\"type\":\"float\",\"default\":4.5},"
+        + "{\"key\":\"enemy.active\",\"type\":\"bool\",\"default\":true},"
+        + "{\"key\":\"enemy.target\",\"type\":\"null\"}"
+        + "]"
+        + "},"
+        + "{"
+        + "\"name\":\"conflicting-spawn\","
+        + "\"target\":\"2d-object\","
+        + "\"fields\":["
+        + "{\"key\":\"would.add\",\"type\":\"string\",\"default\":\"no\"},"
+        + "{\"key\":\"hp\",\"type\":\"string\",\"default\":\"wrong\"}"
+        + "]"
+        + "}"
+        + "]"
+        + "}";
+    var componentProject = new project_manager.ProjectManager();
+    componentProject.Setup(null);
+    File.WriteAllText(componentPath, componentSchemaText);
+    var previousComponentScenePath = sceneDoc.filePath;
+    sceneDoc.filePath = componentScenePath;
+    if componentDir == "" or File.Exists(componentPath) == false
+       or componentProject.OpenFolder(componentDir) == false {
+        sceneDoc.filePath = previousComponentScenePath;
+        removeTempDir(componentDir);
+        fail(shell, "could not create the 2D project component fixture");
+        return;
+    }
+    editor.SetWorkspaceContext(componentProject);
+    editor.componentPalette.SetSchemaEditorVisible(true);
+    editor.componentPalette.SelectAuthoredComponent("enemy-spawn");
+    var schemaSceneBaseline = sceneDoc.content;
+    var schemaSceneRevision = editor.GetRevision();
+    var schemaFileBaseline = File.ReadAllText(componentPath);
+    if editor.componentPalette.schemaToggleButton.IsEnabled() == false
+       or editor.componentPalette.schemaEditorGroup.IsVisible() == false
+       or editor.componentPalette.SelectedAuthoredComponent() == null
+       or editor.componentPalette.componentNameInput.Text != "enemy-spawn"
+       or editor.componentPalette.componentTargetDropdown.IsEnabled() == false
+       or editor.componentPalette.newComponentButton.IsEnabled() == false
+       or editor.componentPalette.schemaUndoButton.IsEnabled() {
+        sceneDoc.filePath = previousComponentScenePath;
+        componentProject.CloseProject();
+        editor.SetWorkspaceContext(null);
+        removeTempDir(componentDir);
+        fail(shell, "2D structured component-schema controls were not usable");
+        return;
+    }
+    var authoredFieldEdit = scene_component_authoring.AddStarterField(
+        editor.componentAuthoring.session.currentText, "enemy-spawn");
+    if editor.componentAuthoring.ApplyStructuredEdit(
+           authoredFieldEdit,
+           editor.componentPalette,
+           "Added probe component field.") == false
+       or File.ReadAllText(componentPath) == schemaFileBaseline
+       or editor.componentAuthoring.schema.Find(
+              "enemy-spawn",
+              scene_component_schema.TARGET_2D_OBJECT).fields.count() != 7
+       or editor.componentPalette.SelectedAuthoredField() == null
+       or editor.componentPalette.SelectedAuthoredField().key
+          != authoredFieldEdit.fieldKey
+       or editor.componentPalette.schemaUndoButton.IsEnabled() == false
+       or sceneDoc.content != schemaSceneBaseline
+       or editor.GetRevision() != schemaSceneRevision
+       or editor.componentAuthoring.Undo(
+              editor.componentPalette) == false
+       or File.ReadAllText(componentPath) != schemaFileBaseline
+       or editor.componentAuthoring.Redo(
+              editor.componentPalette) == false
+       or editor.componentAuthoring.schema.Find(
+              "enemy-spawn",
+              scene_component_schema.TARGET_2D_OBJECT).fields.count() != 7
+       or editor.componentAuthoring.Undo(
+              editor.componentPalette) == false
+       or File.ReadAllText(componentPath) != schemaFileBaseline
+       or sceneDoc.content != schemaSceneBaseline
+       or editor.GetRevision() != schemaSceneRevision {
+        sceneDoc.filePath = previousComponentScenePath;
+        componentProject.CloseProject();
+        editor.SetWorkspaceContext(null);
+        removeTempDir(componentDir);
+        fail(shell, "2D structured schema edit/history dirtied the scene or drifted");
+        return;
+    }
+    editor.componentPalette.SelectComponent("enemy-spawn");
+    editor.SelectSceneObjects(groupSelection, 1);
+    var enemyComponent = editor.componentPalette.SelectedComponent();
+    var componentRevision = editor.GetRevision();
+    if editor.componentSchema.found == false
+       or editor.componentSchema.valid == false
+       or editor.componentPalette.components.count() != 2
+       or enemyComponent == null
+       or editor.componentPalette.applyButton.IsEnabled() == false
+       or editor.ApplySelectedComponent(enemyComponent) == false
+       or editor.GetRevision() != componentRevision + 1
+       or editor.scene.ObjectGetInt(0, "hp", -1) != 25
+       or editor.scene.ObjectGetInt(1, "hp", -1) != 25
+       or editor.scene.ObjectGetStr(0, "enemy.archetype", "") != "grunt"
+       or editor.scene.ObjectGetStr(1, "enemy.archetype", "") != "grunt"
+       or editor.scene.ObjectGetInt(0, "enemy.level", -1) != 3
+       or near(editor.scene.ObjectGetFloat(
+                 1, "enemy.radius", 0.0), 4.5) == false
+       or editor.scene.ObjectGetBool(0, "enemy.active", false) == false
+       or editor.scene.ObjectPropertyKind(1, "enemy.target") != "null" {
+        sceneDoc.filePath = previousComponentScenePath;
+        componentProject.CloseProject();
+        editor.SetWorkspaceContext(null);
+        removeTempDir(componentDir);
+        fail(shell, "2D project component did not add exact missing defaults");
+        return;
+    }
+    var componentContent = sceneDoc.content;
+    var componentResult = SceneDocument.LoadJsonResult(componentContent);
+    if componentResult.IsOk == false
+       or (componentResult.Unwrap() as SceneDocument)
+              .ObjectPropertyKind(0, "enemy.target") != "null"
+       or editor.ApplySelectedComponent(enemyComponent)
+       or editor.GetRevision() != componentRevision + 1
+       or editor.Undo() == false
+       or sceneDoc.content != authoredContent
+       or editor.Redo() == false
+       or sceneDoc.content != componentContent
+       or editor.Undo() == false
+       or sceneDoc.content != authoredContent {
+        sceneDoc.filePath = previousComponentScenePath;
+        componentProject.CloseProject();
+        editor.SetWorkspaceContext(null);
+        removeTempDir(componentDir);
+        fail(shell, "2D component round trip, no-op, or history was not exact");
+        return;
+    }
+
+    editor.SelectSceneObjects(groupSelection, 1);
+    editor.componentPalette.SelectComponent("conflicting-spawn");
+    editor.SelectSceneObjects(groupSelection, 1);
+    var conflictRevision = editor.GetRevision();
+    if editor.ApplySelectedComponent(
+           editor.componentPalette.SelectedComponent())
+       or editor.GetRevision() != conflictRevision
+       or sceneDoc.content != authoredContent
+       or editor.scene.ObjectHas(0, "would.add")
+       or editor.scene.ObjectHas(1, "would.add") {
+        sceneDoc.filePath = previousComponentScenePath;
+        componentProject.CloseProject();
+        editor.SetWorkspaceContext(null);
+        removeTempDir(componentDir);
+        fail(shell, "2D component type conflict was not fail-closed");
+        return;
+    }
+
+    var singleComponentSelection: List[Integer] = [];
+    singleComponentSelection.add(0);
+    editor.componentPalette.SelectComponent("enemy-spawn");
+    editor.componentPalette.SelectField("hp");
+    editor.SelectSceneObjects(singleComponentSelection, 0);
+    editor.componentPalette.SelectField("hp");
+    if editor.EditSelectedComponentField() == false
+       or editor.objectPropertyKeyInput.Text != "hp"
+       or editor.objectPropertyTypeDropdown.Selected
+          != scene_editor_2d.PROPERTY_TYPE_INT
+       or editor.objectPropertyValueInput.Text != "25"
+       or sceneDoc.content != authoredContent {
+        sceneDoc.filePath = previousComponentScenePath;
+        componentProject.CloseProject();
+        editor.SetWorkspaceContext(null);
+        removeTempDir(componentDir);
+        fail(shell, "2D schema field did not populate the raw typed editor");
+        return;
+    }
+    sceneDoc.filePath = previousComponentScenePath;
+    componentProject.CloseProject();
+    editor.SetWorkspaceContext(null);
+    removeTempDir(componentDir);
+
     if editor.SelectSceneObjects(groupSelection, 1) == false
        or editor.selectedObjects.count() != 2
        or editor.applyObjectButton.IsEnabled()
@@ -497,8 +774,8 @@ func main() {
         fail(shell, "2D scene selection shortcuts escaped a property input");
         return;
     }
-    editor.objectList.Focus();
-    if editor.objectList.IsFocused() == false
+    editor.objectTree.Focus();
+    if editor.objectTree.IsFocused() == false
        or editor.SceneSelectionCommandsOwnFocus() == false {
         fail(shell, "2D hierarchy focus did not own scene selection shortcuts");
         return;
@@ -758,6 +1035,351 @@ func main() {
         return;
     }
     GUI.ClipboardText.Clear();
+
+    // The object inspector is a retained hierarchy. Row drops move complete
+    // subtrees, keep absolute coordinates, reject cycles without history, and
+    // preserve internal parent links through duplicate and cross-scene paste.
+    var hierarchyDoc = new document.Document();
+    hierarchyDoc.fileName = "hierarchy.scene";
+    hierarchyDoc.language = "scene";
+    hierarchyDoc.kind = file_utils.DOC_KIND_SCENE_2D;
+    hierarchyDoc.content = otherBaseline;
+    editor.Pump(hierarchyDoc);
+    if editor.AddSceneObject("group", "hierarchy-a", 10, 20) != 0
+       or editor.AddSceneObject("group", "hierarchy-b", 30, 40) != 1
+       or editor.AddSceneObject("actor", "hierarchy-c", 50, 60) != 2
+       or editor.AddSceneObject("actor", "hierarchy-d", 70, 80) != 3 {
+        fail(shell, "2D hierarchy fixture could not add stable objects");
+        return;
+    }
+    var oneObject: List[Integer] = [];
+    oneObject.add(1);
+    editor.SelectSceneObjects(oneObject, 1);
+    if editor.ApplyObjectHierarchyDrop(
+           1, 0, 1) == false {
+        fail(shell, "2D hierarchy could not parent its first child");
+        return;
+    }
+    oneObject = [];
+    oneObject.add(2);
+    editor.SelectSceneObjects(oneObject, 2);
+    if editor.ApplyObjectHierarchyDrop(
+           2, 1, 1) == false
+       or editor.scene.ObjectParent(1) != 0
+       or editor.scene.ObjectParent(2) != 1
+       or editor.scene.ObjectX(1) != 30
+       or editor.scene.ObjectY(2) != 60
+       or editor.objectTreeNodes.count() != 4 {
+        fail(shell, "2D retained hierarchy changed positions or lost rows");
+        return;
+    }
+
+    // Find keeps the complete hierarchy visible and merely selects/reveals a
+    // bounded match. It must never create scene history, dirty the document,
+    // or flatten a nested object into a filtered presentation.
+    editor.objectTree.Collapse(editor.objectTreeNodes.get(0));
+    var hierarchySearchContent = hierarchyDoc.content;
+    var hierarchySearchRevision = editor.GetRevision();
+    var hierarchySearchUndoCount = editor.undoStack.count();
+    var hierarchySearchRedoCount = editor.redoStack.count();
+    if editor.FindHierarchy("ACTOR", 1) == false
+       or editor.hierarchySearchMatches.count() != 2
+       or editor.hierarchySearchCursor != 0
+       or editor.selectedObject != 2
+       or GUI.TreeView.Node.IsExpanded(editor.objectTreeNodes.get(0)) == false
+       or GUI.TreeView.Node.IsExpanded(editor.objectTreeNodes.get(1)) == false
+       or editor.FindHierarchy("ACTOR", 1) == false
+       or editor.hierarchySearchCursor != 1
+       or editor.selectedObject != 3
+       or editor.FindHierarchy("ACTOR", 1) == false
+       or editor.hierarchySearchCursor != 0
+       or editor.selectedObject != 2
+       or editor.FindHierarchy("ACTOR", -1) == false
+       or editor.hierarchySearchCursor != 1
+       or editor.selectedObject != 3
+       or editor.FindHierarchy("HIERARCHY-B", 1) == false
+       or editor.hierarchySearchMatches.count() != 1
+       or editor.selectedObject != 1
+       or hierarchyDoc.content != hierarchySearchContent
+       or editor.GetRevision() != hierarchySearchRevision
+       or editor.undoStack.count() != hierarchySearchUndoCount
+       or editor.redoStack.count() != hierarchySearchRedoCount {
+        fail(shell, "2D hierarchy find did not wrap, reveal, or stay read-only");
+        return;
+    }
+    var findContext2D = new command_context.CommandContext();
+    findContext2D.shell = shell;
+    findContext2D.docMgr = documents;
+    findContext2D.scene2DEditor = editor;
+    if editor.compactLayout == false
+       and editor.inspectorRequestedVisible {
+        editor.ToggleInspectorPane();
+        shell.Render();
+    }
+    if main_command_dispatcher.HandleSurfaceFind(findContext2D) == false
+       or editor.hierarchySearchInput.IsFocused() == false
+       or editor.SceneSelectionCommandsOwnFocus()
+       or hierarchyDoc.content != hierarchySearchContent
+       or editor.GetRevision() != hierarchySearchRevision {
+        fail(shell, "standard Find did not focus the 2D hierarchy safely");
+        return;
+    }
+    shell.Render();
+    var hierarchySearchTop =
+        editor.hierarchySearchInput.GetScreenY();
+    var hierarchySearchBottom = hierarchySearchTop
+        + editor.hierarchySearchInput.GetScreenHeight();
+    if editor.bodySplit.GetCollapsedSide() != 0
+       or hierarchySearchTop < editor.inspectorScroll.GetScreenY() - 1.0
+       or hierarchySearchBottom
+          > editor.inspectorScroll.GetScreenY()
+            + editor.inspectorScroll.GetScreenHeight() + 1.0 {
+        fail(shell, "2D Find did not reveal its hidden inspector query");
+        return;
+    }
+    if editor.FindHierarchy("", 1)
+       or editor.hierarchySearchMatches.count() != 0 {
+        fail(shell, "empty 2D hierarchy search produced a match");
+        return;
+    }
+
+    editor.objectTree.Collapse(editor.objectTreeNodes.get(0));
+    if editor.AddSceneObject("group", "hierarchy-e", 90, 100) != 4
+       or GUI.TreeView.Node.IsExpanded(editor.objectTreeNodes.get(0)) {
+        fail(shell, "2D hierarchy collapse state did not survive refresh");
+        return;
+    }
+
+    oneObject = [];
+    oneObject.add(0);
+    editor.SelectSceneObjects(oneObject, 0);
+    var rejectedHierarchyContent = hierarchyDoc.content;
+    var rejectedHierarchyRevision = editor.GetRevision();
+    if editor.ApplyObjectHierarchyDrop(
+           0, 2, 1)
+       or hierarchyDoc.content != rejectedHierarchyContent
+       or editor.GetRevision() != rejectedHierarchyRevision
+       or editor.scene.ObjectParent(0) != -1 {
+        fail(shell, "2D hierarchy cycle rejection changed scene history");
+        return;
+    }
+
+    oneObject = [];
+    oneObject.add(3);
+    editor.SelectSceneObjects(oneObject, 3);
+    if editor.ApplyObjectHierarchyDrop(
+           3, 1, 0) == false
+       or editor.scene.ObjectId(0) != "hierarchy-a"
+       or editor.scene.ObjectId(1) != "hierarchy-d"
+       or editor.scene.ObjectId(2) != "hierarchy-b"
+       or editor.scene.ObjectId(3) != "hierarchy-c"
+       or editor.scene.ObjectParent(1) != 0
+       or editor.scene.ObjectParent(2) != 0
+       or editor.scene.ObjectParent(3) != 2 {
+        fail(shell, "2D BEFORE drop did not establish subtree sibling order");
+        return;
+    }
+
+    var hierarchyRoots: List[Integer] = [];
+    hierarchyRoots.add(1);
+    hierarchyRoots.add(2);
+    editor.SelectSceneObjects(hierarchyRoots, 2);
+    var hierarchyGroupBaseline = hierarchyDoc.content;
+    var hierarchyGroupRevision = editor.GetRevision();
+    if editor.ApplyObjectHierarchyDrop(
+           2, 4, 1) == false
+       or editor.GetRevision() != hierarchyGroupRevision + 1
+       or editor.scene.ObjectId(0) != "hierarchy-a"
+       or editor.scene.ObjectId(1) != "hierarchy-e"
+       or editor.scene.ObjectId(2) != "hierarchy-d"
+       or editor.scene.ObjectId(3) != "hierarchy-b"
+       or editor.scene.ObjectId(4) != "hierarchy-c"
+       or editor.scene.ObjectParent(2) != 1
+       or editor.scene.ObjectParent(3) != 1
+       or editor.scene.ObjectParent(4) != 3
+       or editor.selectedObjects.count() != 2
+       or editor.selectedObject != 3 {
+        fail(shell, "2D multi-root INTO drop was not one exact subtree edit");
+        return;
+    }
+    var hierarchyGroupAccepted = hierarchyDoc.content;
+    var hierarchyNoOpRevision = editor.GetRevision();
+    if editor.ApplyObjectHierarchyDrop(
+           3, 1, 1)
+       or editor.GetRevision() != hierarchyNoOpRevision
+       or hierarchyDoc.content != hierarchyGroupAccepted
+       or editor.Undo() == false
+       or hierarchyDoc.content != hierarchyGroupBaseline
+       or editor.Redo() == false
+       or hierarchyDoc.content != hierarchyGroupAccepted {
+        fail(shell, "2D hierarchy no-op, undo, or redo was not exact");
+        return;
+    }
+
+    var hierarchyBranch: List[Integer] = [];
+    hierarchyBranch.add(3);
+    hierarchyBranch.add(4);
+    editor.SelectSceneObjects(hierarchyBranch, 3);
+    var hierarchyDuplicateRevision = editor.GetRevision();
+    if editor.DuplicateSelectedSceneObjects() != 2
+       or editor.GetRevision() != hierarchyDuplicateRevision + 1
+       or editor.scene.ObjectCount() != 7
+       or editor.scene.ObjectId(4) != "hierarchy-b-copy"
+       or editor.scene.ObjectId(6) != "hierarchy-c-copy"
+       or editor.scene.ObjectParent(4) != 1
+       or editor.scene.ObjectParent(6) != 4
+       or editor.Undo() == false
+       or hierarchyDoc.content != hierarchyGroupAccepted {
+        fail(shell, "2D hierarchy duplication did not preserve internal parents");
+        return;
+    }
+
+    editor.SelectSceneObjects(hierarchyBranch, 3);
+    if editor.CopySelectedSceneObjects() == false {
+        fail(shell, "2D hierarchy branch was not copied");
+        return;
+    }
+    var hierarchyPasteDoc = new document.Document();
+    hierarchyPasteDoc.fileName = "hierarchy-paste.scene";
+    hierarchyPasteDoc.language = "scene";
+    hierarchyPasteDoc.kind = file_utils.DOC_KIND_SCENE_2D;
+    hierarchyPasteDoc.content = otherBaseline;
+    editor.Pump(hierarchyPasteDoc);
+    var hierarchyPasteRevision = editor.GetRevision();
+    if editor.PasteSceneObjectsFromClipboard() == false
+       or editor.GetRevision() != hierarchyPasteRevision + 1
+       or editor.scene.ObjectCount() != 2
+       or editor.scene.ObjectParent(0) != -1
+       or editor.scene.ObjectParent(1) != 0
+       or editor.Undo() == false
+       or editor.scene.ObjectCount() != 0 {
+        fail(shell, "2D hierarchy paste flattened an internal parent link");
+        return;
+    }
+    GUI.ClipboardText.Clear();
+
+    // Child creation and explicit parent selection must make hierarchy
+    // authoring accessible without a precise row drop. Each accepted command
+    // is one history entry and absolute authored positions never change.
+    var hierarchyAuthoringDoc = new document.Document();
+    hierarchyAuthoringDoc.fileName = "hierarchy-authoring.scene";
+    hierarchyAuthoringDoc.language = "scene";
+    hierarchyAuthoringDoc.kind = file_utils.DOC_KIND_SCENE_2D;
+    hierarchyAuthoringDoc.content = otherBaseline;
+    editor.Pump(hierarchyAuthoringDoc);
+    if editor.AddSceneObject("group", "authoring-root", 10, 20) != 0 {
+        fail(shell, "2D hierarchy authoring fixture could not add its root");
+        return;
+    }
+    var addChildBaseline = hierarchyAuthoringDoc.content;
+    var addChildRevision = editor.GetRevision();
+    if editor.AddSceneChildObject(
+           0, "actor", "authoring-child", 30, 40) != 1
+       or editor.GetRevision() != addChildRevision + 1
+       or editor.scene.ObjectParent(1) != 0
+       or editor.scene.ObjectX(1) != 30
+       or editor.scene.ObjectY(1) != 40
+       or editor.Undo() == false
+       or hierarchyAuthoringDoc.content != addChildBaseline
+       or editor.scene.ObjectCount() != 1
+       or editor.Redo() == false
+       or editor.scene.ObjectParent(1) != 0 {
+        fail(shell, "2D Add Child was not one exact hierarchy transaction");
+        return;
+    }
+    if editor.AddSceneChildObject(
+           1, "actor", "authoring-grandchild", 50, 60) != 2
+       or editor.AddSceneObject(
+              "group", "authoring-target", 70, 80) != 3 {
+        fail(shell, "2D hierarchy authoring fixture could not add descendants");
+        return;
+    }
+
+    oneObject = [];
+    oneObject.add(1);
+    editor.SelectSceneObjects(oneObject, 1);
+    var explicitParentBaseline = hierarchyAuthoringDoc.content;
+    var explicitParentRevision = editor.GetRevision();
+    if editor.addChildObjectButton.IsEnabled() == false
+       or editor.objectParentDropdown.IsEnabled() == false
+       or editor.reparentObjectButton.IsEnabled()
+       or editor.SelectObjectParentTarget(3) == false
+       or editor.reparentObjectButton.IsEnabled() == false
+       or editor.ReparentSelectedSceneObjects(3) == false
+       or editor.GetRevision() != explicitParentRevision + 1
+       or editor.scene.ObjectId(0) != "authoring-root"
+       or editor.scene.ObjectId(1) != "authoring-target"
+       or editor.scene.ObjectId(2) != "authoring-child"
+       or editor.scene.ObjectId(3) != "authoring-grandchild"
+       or editor.scene.ObjectParent(2) != 1
+       or editor.scene.ObjectParent(3) != 2
+       or editor.scene.ObjectX(2) != 30
+       or editor.scene.ObjectY(3) != 60
+       or editor.selectedObject != 2
+       or editor.Undo() == false
+       or hierarchyAuthoringDoc.content != explicitParentBaseline
+       or editor.Redo() == false
+       or editor.scene.ObjectParent(2) != 1 {
+        fail(shell, "2D explicit parent selection was not exact or reversible");
+        return;
+    }
+
+    oneObject = [];
+    oneObject.add(2);
+    editor.SelectSceneObjects(oneObject, 2);
+    var rootParentRevision = editor.GetRevision();
+    if editor.ReparentSelectedSceneObjects(-1) == false
+       or editor.GetRevision() != rootParentRevision + 1
+       or editor.scene.ObjectParent(2) != -1
+       or editor.scene.ObjectParent(3) != 2
+       or editor.scene.ObjectX(2) != 30
+       or editor.scene.ObjectY(3) != 60
+       or editor.Undo() == false
+       or editor.scene.ObjectParent(2) != 1 {
+        fail(shell, "2D reparent-to-root changed positions or history shape");
+        return;
+    }
+
+    oneObject = [];
+    oneObject.add(1);
+    editor.SelectSceneObjects(oneObject, 1);
+    var explicitCycleContent = hierarchyAuthoringDoc.content;
+    var explicitCycleRevision = editor.GetRevision();
+    if editor.ReparentSelectedSceneObjects(3)
+       or editor.GetRevision() != explicitCycleRevision
+       or hierarchyAuthoringDoc.content != explicitCycleContent
+       or editor.scene.ObjectParent(1) != -1 {
+       fail(shell, "2D explicit parent chooser accepted a descendant cycle");
+        return;
+    }
+
+    var explicitRoots: List[Integer] = [];
+    explicitRoots.add(0);
+    explicitRoots.add(2);
+    editor.SelectSceneObjects(explicitRoots, 2);
+    var explicitGroupBaseline = hierarchyAuthoringDoc.content;
+    var explicitGroupRevision = editor.GetRevision();
+    if editor.addChildObjectButton.IsEnabled()
+       or editor.SelectObjectParentTarget(1) == false
+       or editor.reparentObjectButton.IsEnabled() == false
+       or editor.ReparentSelectedSceneObjects(1) == false
+       or editor.GetRevision() != explicitGroupRevision + 1
+       or editor.scene.ObjectId(0) != "authoring-target"
+       or editor.scene.ObjectId(1) != "authoring-root"
+       or editor.scene.ObjectId(2) != "authoring-child"
+       or editor.scene.ObjectId(3) != "authoring-grandchild"
+       or editor.scene.ObjectParent(1) != 0
+       or editor.scene.ObjectParent(2) != 0
+       or editor.scene.ObjectParent(3) != 2
+       or editor.selectedObjects.count() != 2
+       or editor.selectedObject != 2
+       or editor.Undo() == false
+       or hierarchyAuthoringDoc.content != explicitGroupBaseline {
+        fail(shell, "2D explicit parent chooser lost its multi-root transaction");
+        return;
+    }
+
+    editor.Pump(sceneDoc);
 
     // Layer assets now drive real canvas pixels and a bounded tile palette
     // instead of acting as an inert path field beside colored placeholders.

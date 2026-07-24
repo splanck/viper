@@ -1,12 +1,12 @@
 ---
 status: active
 audience: public
-last-verified: 2026-07-14
+last-verified: 2026-07-23
 ---
 
 # Platform Behavioral Differences
 
-This document describes the intentional and incidental behavioral differences in the Zanna compiler and runtime across **Windows (x86-64)**, **macOS (x86-64 and ARM64)**, and **Linux (x86-64)**. It is intended for developers and advanced users who need to understand what Zanna does differently per platform at runtime.
+This document describes the intentional and incidental behavioral differences in the Zanna compiler and runtime across **Windows (x86-64)**, **macOS (x86-64 and ARM64)**, and **Linux (x86-64 and AArch64)**. It is intended for developers and advanced users who need to understand what Zanna does differently per platform at runtime.
 
 For a contributor-oriented checklist of which source files to modify when adding platform-sensitive code, see [platform-checklist.md](platform-checklist.md).
 
@@ -72,15 +72,19 @@ The `Zanna.System.Machine` module returns platform-specific values for several q
 | `Machine.User` | `GetUserNameA()` with SID fallback | `getpwuid(getuid())` | `getpwuid()` with `$USER` env fallback |
 | `Machine.Home` | `%USERPROFILE%` (e.g. `C:\Users\alice`) | `$HOME` or `/var/root` | `$HOME` or `getpwuid()` fallback |
 | `Machine.Temp` | `GetTempPathA()` (e.g. `C:\Users\alice\AppData\Local\Temp`) | `$TMPDIR` or `/tmp` | `$TMPDIR` or `/tmp` |
-| `Machine.Cores` | `GetSystemInfo().dwNumberOfProcessors` | `sysctlbyname("hw.logicalcpu")` | `sysconf(_SC_NPROCESSORS_ONLN)` |
-| `Machine.MemTotal` | `GlobalMemoryStatusEx()` | `sysctl(HW_MEMSIZE)` | `/proc/meminfo` MemTotal |
-| `Machine.MemFree` | `GlobalMemoryStatusEx().ullAvailPhys` | `host_statistics64()` free + inactive pages | `sysinfo().freeram` |
+| `Machine.Cores` | Processor-group-aware Win32 query | `sysctlbyname("hw.logicalcpu")` | Online CPUs constrained by active cgroup v1/v2 quota and cpuset |
+| `Machine.MemTotal` | `GlobalMemoryStatusEx()` | `sysctl(HW_MEMSIZE)` | `sysinfo()` total constrained by the active cgroup memory limit |
+| `Machine.MemFree` | `GlobalMemoryStatusEx().ullAvailPhys` | `host_statistics64()` free + inactive pages | `/proc/meminfo` `MemAvailable`, constrained by active cgroup usage |
 
 **User-visible differences:**
 
 - `OsVer` format varies significantly between platforms. Do not parse the string for version comparison — use `Machine.Os` for platform detection.
 - `Home` uses `%USERPROFILE%` on Windows (typically `C:\Users\<name>`) vs `$HOME` on Unix (typically `/home/<name>` or `/Users/<name>`). The path separator in the returned string matches the platform convention.
 - `Temp` returns a platform-native path. On Windows this often includes the user's AppData directory; on Unix it is typically `/tmp` unless `$TMPDIR` is set.
+- Linux resolves cgroup mounts through `/proc/self/mountinfo` and combines their
+  mount roots with `/proc/self/cgroup`. Relocated cgroup v2 hierarchies, nested
+  container memberships, and hybrid v1 cpu/cpuset/memory mounts are therefore
+  reflected in `Cores`, `MemTotal`, and `MemFree`.
 
 ### 1.3 File Watching
 
@@ -101,8 +105,8 @@ All backends expose the same 64-event bounded queue and overflow contract. Nativ
 
 | Aspect | Windows | macOS / Linux |
 |--------|---------|---------------|
-| Random bytes | `CryptAcquireContext()` + `CryptGenRandom()` | `/dev/urandom` via `open()` + `read()` |
-| Fallback entropy | `GetTickCount64()` XOR'd with stack address | `getpid()` XOR'd with stack address |
+| Random bytes | `BCryptGenRandom()` | macOS: `arc4random_buf()`; Linux: `getrandom()` |
+| Fallback entropy | None | Linux/generic POSIX: close-on-exec `/dev/urandom` |
 | Temp directory | `GetTempPathA()` with trailing `\` stripped | `$TMPDIR` or `/tmp` with trailing `/` stripped |
 
 Both paths produce cryptographically unpredictable temp filenames. The fallback entropy path is only used if the primary source fails (extremely rare).
@@ -159,13 +163,16 @@ All three backends validate server certificates against a trusted root source. W
 
 | Aspect | Windows | macOS | Linux |
 |--------|---------|-------|-------|
-| Backend | Win32 GDI (DIB sections + `BitBlt`) | Cocoa (`NSWindow` + `NSView` + `CGImage`) | X11 Xlib (`XCreateWindow` + `XPutImage`) |
+| Backend | Win32 GDI (DIB sections + `BitBlt`) | Cocoa (`NSWindow` + `NSView` + `CGImage`) | Native Wayland with runtime X11 fallback when available |
 | Pixel format | BGRA via DIB section | BGRA via `CGBitmapContextCreate` | BGRA buffer → XImage |
 | Keyboard input | `VK_*` virtual key codes | `NSEvent` key codes | `XLookupKeysym()` |
 | Timer source | `QueryPerformanceCounter` | `mach_absolute_time` | `clock_gettime(CLOCK_MONOTONIC)` |
-| Build dependency | Built-in (`user32`, `gdi32`) | Built-in (`-framework Cocoa`) | Requires `libx11-dev` at build time |
+| Build dependency | Built-in (`user32`, `gdi32`) | Built-in (`-framework Cocoa`) | Wayland loaded dynamically; optional X11 fallback uses development headers |
 
-**User-visible difference:** On Linux, if X11 development headers are not installed at build time, the graphics library is silently omitted. Programs that call `Zanna.Canvas.*` functions will fail at link time (native codegen) or trap at runtime (VM) on such builds.
+**User-visible difference:** Linux AUTO builds prefer a non-empty
+`WAYLAND_DISPLAY`, then fall back to a non-empty `DISPLAY` when the X11 adapter
+was built. If neither display is usable, window creation reports a platform
+error rather than selecting a backend implicitly.
 
 ### 1.9 Audio
 

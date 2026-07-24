@@ -98,24 +98,62 @@ For a game developer, `.scene`/`.level` and `.vscn` documents mount built-in
 2D and 3D authoring surfaces. They cover a useful first hierarchy, viewport,
 property, undo/redo, save, and import workflow. The 2D editor resolves layer
 tileset images, renders their real frames in the canvas, and exposes a bounded
-clickable palette. Both inspectors expose bounded, searchable project-asset
-choosers backed by the existing multi-root workspace index. The 3D inspector
-authors a compact PBR material component and
-embeds common albedo, normal, metallic/roughness, ambient-occlusion, and
-emissive maps without mutating shared imported materials. Both hierarchy lists
-support Ctrl/Command-click and Shift-click multi-selection with stable,
-non-display row identities. Batch drag/transform, duplicate, and delete actions
-commit as one undoable transaction. The 2D inspector can set/remove one typed
-property across the selection, and the 3D numeric inspector applies explicit
-relative position/rotation/scale batches. The 2D Select tool also owns
+clickable palette. Its canvas supports replace, Shift-add, and
+Control-or-Command-toggle point selection plus an inclusive authored-cell
+marquee; selection feedback and canceled gestures remain workspace-only. Both
+inspectors expose bounded, searchable project-asset choosers backed by the
+existing multi-root workspace index. The 3D inspector authors compact PBR
+material components with truthful mixed-value batch fields and embeds or
+clears common albedo, normal, metallic/roughness, ambient-occlusion, and
+emissive maps across a selection without mutating unselected users of shared
+imported materials. The 3D viewport renders the live SceneGraph's authored
+meshes and PBR materials through a windowless software Canvas3D. Shaded and
+triangle-wireframe modes retain exact alignment with the editor grid,
+hierarchy links, markers, selection, and transform gizmos; mode is per-scene
+session state and never edits VSCN. The 3D viewport selects the nearest visible
+transformed mesh bounds, falls back to bounded origin markers for meshless
+nodes, supports replace/Shift-add/Control-or-Command-toggle/blank-clear
+selection, and pans in the camera plane with Shift plus middle/right drag.
+These interactions update workspace state only. Both hierarchies are
+real expandable TreeViews with stable non-display row identities,
+Ctrl/Command-click and Shift-click multi-selection, collapse retention, and
+transactional above/onto/below row drops. `Ctrl`/`Cmd`+`F` reveals a
+case-insensitive hierarchy query; Previous/Next wraps, expands ancestors, and
+selects a represented match without filtering or scene mutation. The 2D
+outliner moves complete object
+subtrees while preserving absolute positions; the 3D outliner preserves
+complete world transforms by default. Batch drag/transform, duplicate, and delete actions
+commit as one undoable transaction. The 3D visibility checkbox shows a native
+mixed state and resolves the complete node selection in one transaction. The
+2D inspector can create, rename, update, and remove scene-wide typed metadata,
+as well as set/remove one typed property across the object selection.
+Scene-metadata selection is tab-local and survives session restore. The 3D
+numeric inspector applies explicit relative position/rotation/scale batches.
+The 2D Select tool also owns
 focus-safe one-pixel or one-tile keyboard nudging plus primary-axis alignment
 and stable distribution commands. The 3D Parent chooser reparents selected
-top-level subtrees in one cycle-safe transaction while preserving their local
-transforms and remapping selection after hierarchy order changes. A full asset
+top-level subtrees in one cycle-safe transaction, preserving complete world
+transforms by default and rejecting singular/sheared conversions with exact
+rollback. A preserve-local opt-out supports intentionally parent-relative
+authoring, and selection is remapped after hierarchy order changes.
+Earlier/Later moves one contiguous same-parent selection as a stable sibling
+block with exact VSCN history and selection preservation; direct row drops use
+the same runtime primitives, preserve complete world transforms by default,
+and roll back the whole group on failure. Its Gameplay metadata group
+creates, renames, updates, and removes bounded null, Boolean, integer, float,
+and string values on one node. Exact scalar kinds round-trip through VSCN v6,
+one accepted action is one history transaction, and the selected metadata row
+remains local to its scene tab/session. Both editors load bounded project-root
+`scene-components.json` templates and atomically add missing typed fields
+across a selection without overwriting authored same-kind values. Their shared
+structured schema form maintains every cross-target definition with validated
+atomic writes, unknown-member preservation, external-conflict detection, and
+independent 20-step file undo/redo without dirtying a scene. A full asset
 library with tagging/import settings and advanced tileset metadata/animation
 tools is still missing. Persistent assigned-map thumbnails are present, but
-shaded material previews, generalized components, and advanced cubemap/lightmap
-workflows remain well short of a mature game-engine editor.
+automatic schema/scene-data migration, generalized runtime components,
+material-library/thumbnail workflows, and advanced cubemap/lightmap authoring
+remain well short of a mature game-engine editor.
 
 The standard Edit menu and keybindings are surface-aware: Cut, Copy, Paste,
 Select All, and Duplicate Selection operate on scene objects or hierarchy
@@ -142,8 +180,9 @@ scene authoring, and panel virtualization for very large result sets.
 | Zia IntelliSense | Implemented with limits | Completion, diagnostics, hover, signature help, symbols, definition, references, rename, workspace symbols. |
 | BASIC IntelliSense | Implemented with limits | Completion, diagnostics, hover, document symbols, scanner-backed definition, references, rename, workspace symbols, call hierarchy, and signature help. |
 | Plain text | Implemented | Opens unknown/text-like files as text without semantic features. |
-| Scene files | Implemented with limits | `.scene`/`.level` mount the 2D scene editor and `.vscn` mounts the 3D editor. Both retain per-document selection/camera/history state, participate in save/session flows, and provide hierarchy, viewport, properties, creation, deletion, undo/redo, and import-oriented tools. Their retained hierarchy rows expose stable item data for Ctrl/Command and Shift multi-selection; group drag/transform, duplicate, and delete actions are one-step history transactions. The 2D inspector batch-sets/removes typed properties, while its Select surface supports focus-scoped one-pixel/one-tile nudging, primary-axis alignment, and deterministic distribution; the 3D inspector batch-adds local position/rotation and multiplies local scale, and its Parent chooser reparents selected top-level subtrees without cycles or local-transform changes. Searchable project-asset choosers reuse Studio's bounded multi-root file index for Tiled maps, layer images, 3D models, and texture maps; native file pickers remain available. The 2D viewport supports grid object dragging plus real PNG/JPEG/BMP/GIF layer-atlas rendering and a clickable first-512-frame palette; relative image paths resolve beside a saved scene and externally changed images refresh quietly without dirtying history. The 3D viewport provides parent-aware Move, Rotate, and Scale axis tools with optional 0.5-unit, 15-degree, and 0.1-scale snapping. Its material component inspector edits base color, alpha, metallic, roughness, ambient occlusion, alpha mode, double-sided, and unlit state, and embeds selectable albedo, normal, metallic/roughness, ambient-occlusion, and emissive maps from PNG, JPEG, BMP, GIF, or strict KTX2 sources up to 16 MB; decoded raster maps are capped at 16,777,216 pixels. Scalar edits and map replacement/clearing are clone-safe one-step VSCN history transactions. Focus-scoped W/E/R and scene Duplicate/Delete shortcuts do not intercept typing elsewhere in the workbench or material controls. |
-| Scene clipboard | Implemented with limits | Standard Cut/Copy/Paste/Select All commands follow the active visual editor. A versioned, typed text envelope supports same-kind cross-tab transfer of up to 1,024 selected identities and 64 MB total, preserving typed 2D properties or serializable 3D subtrees. Cut and paste are one-step history transactions with exact rollback. Mixed 2D/3D paste and interchange with other editors are intentionally rejected. |
+| Scene files | Implemented with limits | `.scene`/`.level` mount the 2D editor and `.vscn` mounts the 3D editor. Both retain per-document workspace/history state and provide real expandable multi-select hierarchies, transactional before/into/after row drops, group edits, typed gameplay data, searchable project assets, hierarchy-preserving clipboard transfer, undo/redo, and safe save/import flows. The 2D surface includes a runtime-backed organizational hierarchy with absolute positions, one-step root/child creation, explicit cycle-safe multi-root reparenting, stable subtree/sibling ordering, real bounded atlas rendering/palettes, modifier-aware point and inclusive authored-cell marquee selection, object dragging, scene/object properties, nudging, alignment, and distribution. The 3D surface includes a runtime-backed shaded/triangle-wireframe viewport with exact editor-overlay alignment, exact preserve-world chooser/direct reparenting with preserve-local opt-out, stable sibling ordering, mixed-state batch visibility, switchable Local/World Move/Rotate/Scale with snapping and atomic exact-or-reject world conversion, filled Move-plane and crossed Scale-plane XY/XZ/YZ handles, projected X/Y/Z rotation rings with wrap-safe angular dragging, truthful mixed-value batch PBR materials, and batch embedded texture maps. Both load compatible definitions from bounded root-local `scene-components.json`; Add Missing preserves same-kind values, rejects any type conflict before mutation, and commits the complete selection once. A shared structured form maintains the complete cross-target schema through parser-validated atomic writes, external-conflict detection, and separate bounded file undo/redo. Automatic schema/scene-data migration, enums, asset-reference fields, generalized runtime components, advanced tileset metadata/animation/collision, material-library/thumbnail workflows, and cubemap/lightmap authoring are not yet present. |
+| 3D node gameplay metadata | Implemented with limits | One selected `SceneNode` exposes deterministically ordered null, Boolean, integer, float, and string values for roles, IDs, spawn/trigger data, and component parameters. Create, rename, update, and remove validate bounds/no-ops before one canonical VSCN history transaction; values round-trip through VSCN v6 and row selection stays with its tab/session. Project schemas can batch-add missing metadata to multiple nodes, while arbitrary raw metadata editing remains single-node. |
+| Scene clipboard | Implemented with limits | Standard Cut/Copy/Paste/Select All commands follow the active visual editor. A versioned, typed text envelope supports same-kind cross-tab transfer of up to 1,024 selected identities and 64 MB total, preserving typed 2D properties and internal parent links or serializable 3D subtrees. Cut and paste are one-step history transactions with exact rollback. Mixed 2D/3D paste and interchange with other editors are intentionally rejected. |
 | Project explorer | Implemented with limits | Demand-loaded, scrollable tree; multi-root support; Quick Open cache; file actions; ignores. Rename/move preserve live editor buffers and undo state, while delete releases any removed split-pane owner. |
 | Search | Implemented | Docked project/folder search panel with a compact-window minimum results viewport, runtime-paged file discovery, per-frame file/byte budgets, literal/regex, case/word filters, include/exclude filters, grouped results, and generation-scoped frame-sliced Replace All with bounded atomic closed-file writes. Search/Replace completion remains in the panel and status bar instead of interrupting later work with a popup. |
 | Build/run | Implemented | Argument-vector jobs, project manifest overrides, streamed bounded output, JSON diagnostics, and durable completion in Output/Problems/status without duplicate background toasts. |
@@ -249,12 +288,34 @@ camera controls, property editing, object creation/deletion/duplication,
 history, and import/export-oriented file workflows. A 2D object drag and a 3D
 transform drag each become one undo entry.
 
-The object and node lists support Ctrl/Command-click for additive selection and
-Shift-click for ranges. Selection is recovered from byte-exact row data rather
-than display labels, so duplicate or renamed labels do not redirect a batch
-operation. In 2D, dragging any selected object moves the group while preserving
-offsets; duplicate and remove apply to the complete selection and preserve
-typed properties. While the Select button owns keyboard focus, Arrow keys move
+The 2D canvas provides the same replace, Shift-add, and
+Control-or-Command-toggle selection vocabulary as the hierarchy. Pressing an
+already-selected object without a modifier preserves the full selection for a
+group drag. Press-dragging from blank space draws an inclusive authored-cell
+marquee: plain replaces, Shift unions, and Control/Command toggles. A plain
+empty marquee clears while a modified empty marquee preserves the current
+selection. Escape cancels an active captured marquee. The test is against each
+object's authored point cell, not sprite or collider bounds, and every point or
+marquee selection result remains workspace-only with no scene-content,
+revision, history, or dirty-state change.
+
+The object and node TreeViews support Ctrl/Command-click for additive selection
+and Shift-click for visible ranges. Selection is recovered from byte-exact node
+data rather than display labels, so duplicate or renamed labels do not redirect
+a batch operation. Standard Find searches 2D object ID/type or 3D node name
+across bounded represented rows, wraps in either direction, and restores a
+hidden inspector/query and collapsed ancestors without changing canonical
+bytes, history, dirty state, or camera state. In 2D, row drops move complete selected subtrees before,
+into, or after a target as one cycle/depth/no-op-safe history transaction.
+**Add Root** and **Add Child** create the intended structure directly in one
+history step. The adjacent Parent chooser offers Scene root and bounded
+cycle/depth-safe object destinations, reparents all selected top-level
+subtrees, and is usable without a precision pointer drop. Object positions
+remain absolute, and internal hierarchy links survive duplicate and
+cross-scene paste. Dragging any selected object on the canvas moves the group
+while preserving offsets; duplicate and remove apply to the complete selection
+and preserve typed properties. While the Select button owns keyboard focus,
+Arrow keys move
 the selection by one pixel and Shift+Arrow moves it by one tile; inspector and
 hierarchy controls keep their native arrow behavior. The layout row aligns X
 or Y to the primary object and distributes three or more objects by stable
@@ -266,10 +327,10 @@ a subtree is processed exactly once. Each accepted group action is one history
 entry with exact rollback. The Parent row applies the same selected-root
 collapse rule when moving existing nodes, filters cycle- and depth-invalid
 destinations, preserves each moved root's local transform, and remaps the
-complete selection after preorder indices change. Reserved 2D object
-identity/draw-order and 3D name/visibility/material controls remain
-single-selection; batch-capable property, transform, and parent controls state
-their group semantics explicitly.
+complete selection after preorder indices change. Reserved 2D object identity
+and 3D name/raw gameplay-metadata controls remain single-selection; visibility,
+material, property, transform, and parent controls state their batch semantics
+explicitly.
 
 Edit > Cut, Copy, Paste, and Select All and their standard keybindings target
 the active scene instead of the hidden text editor. The scene clipboard is an
@@ -300,18 +361,74 @@ deterministic placeholder and contextual inspector status.
 The 3D editor has distinct Move, Rotate, and Scale handles, mode-aware snapping,
 pointer capture, Escape cancelation, per-scene tool persistence, group framing,
 and W/E/R tool shortcuts that only activate while the viewport/tool owns
-keyboard focus. The primary selected row owns the visible gizmo; dragging it
-applies the resulting local-axis delta to every selected node and commits once.
+keyboard focus. Its Local/World control also follows the owning scene tab and
+bounded session state. Local mode projects the parent-relative basis used by
+the local TRS fields; World mode aligns the handles to the absolute axes and
+applies the resulting delta around each selected node's own pivot. The runtime
+must reproduce each
+requested world matrix as exact parent-relative TRS. A singular, degenerate, or
+shear-producing conversion restores every captured local transform and creates
+no history entry. Accepted command or pointer edits serialize the group once,
+and Escape restores the full pre-drag group.
+Move and Scale also present XY/XZ/YZ plane squares; Scale crosses each square
+so mode does not depend on color alone. Plane picking wins inside the visible
+square, overlapping candidates prefer the most face-on projection, and nearly
+edge-on planes are neither drawn nor pickable. Pointer motion is solved against
+both projected basis vectors together. Move retains scene-unit handle lengths;
+Scale maps one complete handle width to one scale unit on each axis. Snapping
+uses the immutable primary origin on both axes, additive group deltas are
+retained, and Local/World acceptance, rollback, history, and Escape rules match
+axis dragging.
 The Parent chooser moves selected top-level roots under Scene Root or one valid
 existing node. Destinations inside any moved subtree and destinations that
-would exceed the scene depth limit are omitted; accepted moves preserve local
-transforms, serialize once, and restore the same node selection at its new
-preorder rows. It is an explicit chooser rather than drag-to-reparent and does
-not yet offer sibling ordering or preserve-world conversion.
+would exceed the scene depth limit are omitted. Keep world transform is enabled
+by default and uses the runtime's exact conversion: new local TRS must
+recompose to the complete prior world matrix, while singular or
+shear-producing requests restore the prior bytes and selection. Clearing the
+option preserves local TRS instead. Accepted moves serialize once and restore
+the same node selection at its new preorder rows. Earlier/Later moves one
+contiguous same-parent selection as a stable sibling block, preserving internal
+order, local transforms, and selection in one undoable VSCN transaction.
+Mixed-parent, gapped, and boundary requests are no-ops. The retained TreeView
+also accepts direct row drops: the top and bottom regions place the complete
+selected root block before or after the target, while the middle reparents it
+into the target. Every path uses the same cycle/depth checks, exact
+preserve-world default, selection remap, canonical rollback, and one-step
+history.
+The Gameplay metadata group edits one selected node independently of its
+display name and render components. Keys are deterministic and bounded to 128
+bytes; each node may contain 256 values, and string values are capped at 64
+KiB. The editor preserves explicit null, Boolean, integer, float, and string
+kinds, including integral-looking floats. Create, rename, update, and remove
+validate before mutation, reject duplicates and no-ops, and each commit exactly
+one canonical VSCN history snapshot. A metadata-bearing scene is VSCN v6; load,
+undo/redo, cross-document subtree operations, and ordinary Save use the same
+runtime representation. The selected metadata row follows the owning scene tab
+and bounded session state.
+The shared Project components group loads compatible typed templates from the
+active scene's owning workspace-root `scene-components.json`. Add Missing
+preflights every selected object/node and field, preserves existing same-kind
+values, rejects the complete batch on any type conflict, then creates one
+canonical history entry. Already-complete components are no-ops and failed
+writes restore the prior scene. Edit Field copies a template field into the
+raw editor; 3D raw editing remains single-node even though component
+application is multi-node. Unsaved scenes use a schema only when one workspace
+root is open, avoiding an arbitrary choice in multi-root workspaces. The format
+and limits are documented in [scene-components.md](scene-components.md).
+Edit Schema opens the same complete, unfiltered definition list from either
+editor. Component and field create/update/delete/reorder operations preserve
+unknown version-1 members, revalidate the complete result, and commit one atomic
+project-file transition. Schema Undo/Redo owns 20 exact file snapshots, rejects
+external conflicts, and never changes scene content, revision, dirty state, or
+scene history. Definition renames and removals deliberately leave existing
+scene values untouched; automatic data migration is not implemented.
 Its Material component edits base RGB, alpha, metallic, roughness, ambient
-occlusion, opaque/mask/blend mode, double-sided, and unlit state. Applying an
-edit clones the selected material first, so imported nodes that share a material
-remain independent and unexposed maps/custom data are retained. The map
+occlusion, opaque/mask/blend mode, double-sided, and unlit state. Multiple
+selected nodes expose native mixed numeric, color, enum, and Boolean states;
+applying resolves only concrete fields and preserves every unresolved field per
+node. All clones are staged before assignment and selected sharing groups reuse
+one staged clone, so unselected users of an imported shared material remain
+unchanged and unexposed maps/custom data are retained. The map
 controls assign or clear albedo, normal, metallic/roughness, ambient-occlusion,
 and emissive slots from PNG, JPEG, BMP, GIF, or strictly validated KTX2 sources
 up to 16 MB. Decoded raster maps are capped at 16,777,216 pixels. The hierarchy
@@ -320,16 +437,15 @@ bounded multi-root project index and preview supported images before use.
 Map replacement also clones shared materials, and the image data is embedded in
 VSCN. The selected assigned slot shows a bounded thumbnail from the canonical
 live material, so load, history, import, clone, and round trips cannot leave a
-stale picker-path preview behind. Scalar apply/remove and map replace/clear each
-create one history transaction and round-trip through VSCN. They are
+stale picker-path preview behind. Scalar apply/remove and map replace/clear
+operate across the complete selection, retain it, and each create one history
+transaction that round-trips through VSCN. They are
 intentionally v1: a full tagged asset library/import-settings workflow,
-generalized component composition, advanced Tiled atlas
+automatic component-schema/scene-data migration, generalized runtime component
+composition, advanced Tiled atlas
 metadata/image-collection editing, tile
-animation/collision/metadata editing, cubemap/lightmap authoring,
-mixed-value scalar/material editing, batch component composition,
-local/world switching, hierarchy drag-to-reparent, explicit sibling ordering,
-preserve-world reparenting, and
-production-grade ring/plane gizmos still need depth.
+animation/collision/metadata editing, and cubemap/lightmap authoring still need
+depth.
 
 ## Workbench Status
 
@@ -601,13 +717,11 @@ These gaps are current documentation, not a plan commitment:
 - Add boxed struct-payload expansion in the debugger.
 - Deepen Source Control with merge/rebase orchestration, ours/theirs review,
   merge-abort, and multi-file conflict recovery.
-- Deepen the 2D/3D scene editors with richer asset/component workflows,
+- Deepen the 2D/3D scene editors with automatic schema/scene-data migration and
+  richer asset/runtime-component workflows,
   asset tagging/import settings, advanced tileset animation/collision/metadata
-  editing, shaded material previews, cubemap/lightmap authoring,
-  mixed-value scalar/material editing, batch component composition,
-  local/world switching, hierarchy drag-to-reparent, sibling ordering,
-  preserve-world reparenting, and
-  ring/plane transform handles.
+  editing, material-library/thumbnail workflows, and cubemap/lightmap
+  authoring.
 - Split oversized coordinator modules.
 - Expand platform and display test coverage.
 

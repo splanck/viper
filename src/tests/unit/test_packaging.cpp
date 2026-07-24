@@ -2967,6 +2967,18 @@ TEST(PackageUtils, ValidatesDebianVersionGrammar) {
     EXPECT_THROWS(validateDebVersion("1.0-", "version"), std::runtime_error);
 }
 
+TEST(PackageUtils, ParsesSourceDateEpochStrictly) {
+    EXPECT_EQ(UINT64_C(0), parseSourceDateEpoch("0"));
+    EXPECT_EQ(UINT64_C(1700000000), parseSourceDateEpoch("1700000000"));
+    EXPECT_EQ(static_cast<uint64_t>(std::numeric_limits<int64_t>::max()),
+              parseSourceDateEpoch("9223372036854775807"));
+    EXPECT_THROWS(parseSourceDateEpoch(""), std::runtime_error);
+    EXPECT_THROWS(parseSourceDateEpoch("-1"), std::runtime_error);
+    EXPECT_THROWS(parseSourceDateEpoch("1x"), std::runtime_error);
+    EXPECT_THROWS(parseSourceDateEpoch("9223372036854775808"), std::runtime_error);
+    EXPECT_THROWS(parseSourceDateEpoch("184467440737095516160"), std::runtime_error);
+}
+
 TEST(PackageUtils, ValidatesTargetSpecificIdentifiers) {
     EXPECT_NO_THROW(validateMacOSBundleIdentifier("org.zanna.test-app"));
     EXPECT_THROWS(validateMacOSBundleIdentifier("org.zanna.test_app"), std::runtime_error);

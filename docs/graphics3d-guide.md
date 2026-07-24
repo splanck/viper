@@ -21,10 +21,30 @@ library.
 Zanna Studio opens `.vscn` files in its built-in visual scene editor. The
 viewport provides stable hierarchy multi-selection, primitive and asset import,
 orbit/group-frame controls, numeric local transforms, and parent-aware Move,
-Rotate, and Scale axis tools. The primary row owns the visible gizmo; dragging
-applies its local-axis delta to every selected node. Optional snapping uses
-0.5-unit, 15-degree, and 0.1-scale steps; one completed group drag creates one
-undo entry and Escape restores every origin. Duplicate and delete operate once
+Rotate, and Scale axis tools. A per-scene **Local / World** control switches
+between the parent-relative axes used by local TRS fields and the absolute
+world axes. The
+primary row owns the visible gizmo; each selected node applies the same axis
+delta around its own pivot. World-space edits ask the runtime to reproduce each
+complete requested world matrix as exact parent-relative TRS. If one parent is
+singular or the conversion would introduce shear, the whole group edit is
+restored without a history entry. Optional snapping uses 0.5-unit, 15-degree,
+and 0.1-scale steps; one completed group drag creates one undo entry and Escape
+restores every origin. Move and Scale also draw XY/XZ/YZ plane squares; Scale
+adds crossed diagonals so the operation does not depend on color. Dragging one
+solves pointer motion against both projected axes and snaps from the immutable
+primary origin. Move preserves group spacing in scene units, while one complete
+handle width adds one scale unit on each Scale axis. Nearly edge-on planes are
+hidden and cannot capture input. World plane transforms retain the same
+exact-or-restore runtime contract and parent-before-child ordering as axis
+transforms.
+Rotate draws projected X/Y/Z rings in the active Local or World basis. Ring
+input inverts the complete projected ellipse rather than treating angular
+motion as movement along a line, and unwraps motion across the ±180-degree
+seam. Nearly edge-on rings are hidden and cannot capture input. With snapping
+enabled, the accumulated angle resolves to 15-degree steps; release commits the
+group once and Escape restores every original transform.
+Duplicate and delete operate once
 per selected top-level subtree, even when a descendant is also selected. W/E/R
 select Move/Rotate/Scale while the viewport or transform toolbar owns focus,
 without intercepting text entry in other Studio surfaces. The primary selected
@@ -35,19 +55,37 @@ apply. Duplicate Selection (`Ctrl`/`Cmd`+`Shift`+`D`) and Delete are likewise
 limited to hierarchy/viewport focus; inspector inputs keep their native keys.
 The Parent chooser moves the selected top-level roots under Scene Root or a
 valid existing node in one undoable transaction. It omits destinations inside
-the moved subtrees or beyond the scene depth limit, preserves local transforms,
-and restores the complete selection after hierarchy preorder changes.
-Drag-to-reparent, explicit sibling ordering, and preserve-world conversion are
-not yet provided.
-The primary selected
-node's Material component can create, edit, or remove base RGB, alpha,
+the moved subtrees or beyond the scene depth limit and restores the complete
+selection after hierarchy preorder changes. **Keep world transform** is enabled
+by default: Studio derives new local TRS through the runtime and rejects
+singular or shear-producing conversions without changing the document. Clear
+the option when intentionally keeping parent-relative local transforms.
+The adjacent Earlier/Later controls move one contiguous same-parent selection
+as a stable sibling block. They preserve its internal order, parent, local
+transforms, and node-identity selection in one undoable VSCN transaction;
+mixed-parent, gapped, and boundary requests are no-ops. The hierarchy itself
+is a retained expandable TreeView. Dragging onto a row reparents the selected
+roots; dragging into its top or bottom region combines reparenting with stable
+placement before or after that row. These gestures use the same exact
+preserve-world default, cycle/depth validation, one-step VSCN commit, selection
+remapping, and canonical rollback as the explicit controls.
+The primary selected node also exposes bounded Gameplay metadata for durable
+roles, IDs, triggers, spawns, and component parameters. Null, Boolean, integer,
+float, and string kinds survive VSCN exactly; create, rename, update, and remove
+each use canonical one-step history. The selected nodes' Material components
+can create, edit, or remove base RGB, alpha,
 metallic, roughness, ambient occlusion, opaque/mask/blend, double-sided, and
-unlit state. Studio clones an existing material before editing it, so shared
-imported siblings are unaffected and unexposed maps/custom values survive.
+unlit state. Multi-selection presents differing scalar, color, enum, and
+Boolean values as Mixed. Applying resolves only concrete fields and preserves
+each still-mixed value independently. Studio stages clones before assigning
+nodes, so the batch is one undo step, shared imported siblings outside the
+selection are unaffected, and unexposed maps/custom values survive.
 The inspector also assigns or clears albedo, normal, metallic/roughness,
 ambient-occlusion, and emissive maps from PNG, JPEG, BMP, GIF, or strictly
 validated KTX2 files up to 16 MB; decoded raster maps are capped at 16,777,216
-pixels. The model-import and texture-map sections can search supported assets
+pixels. One chosen map can be assigned across the complete node selection and
+cleared from every selected material that owns the slot. The model-import and
+texture-map sections can search supported assets
 from every open workspace root with bounded results and common-image previews,
 while native file pickers remain available. Map replacement is clone-safe, each
 accepted replace or clear creates one undo entry, and the image data is embedded
@@ -208,12 +246,15 @@ LOOP
 
 ## Canvas3D
 
-The rendering surface. Creates a window and manages the render loop.
+The rendering surface. It can own a platform window for an interactive render
+loop or run windowless against an explicit `RenderTarget3D` for embedded tools,
+thumbnails, tests, and offline previews.
 
 ### Properties
 
 | Property | Type | Access | Description |
 |----------|------|--------|-------------|
+| `IsOffscreen` | Boolean | read | True when created windowless with `NewOffscreen` |
 | `ShouldClose` | Boolean | read | True when user closes window |
 | `Width` | Integer | read | Active output width in pixels (window, or current RenderTarget3D when bound) |
 | `Height` | Integer | read | Active output height in pixels (window, or current RenderTarget3D when bound) |
@@ -248,13 +289,15 @@ The rendering surface. Creates a window and manages the render loop.
 |-------------|-------------|
 | `IsAvailable()` | Return `true` when the Graphics3D Canvas runtime is compiled in |
 | `New(title, w, h)` | Create canvas window (1-16384 pixels per dimension) |
+| `NewFullscreen(title)` | Create a fullscreen canvas at desktop resolution without a windowed flash |
+| `NewOffscreen(target)` | Create a windowless deterministic software canvas bound to a `RenderTarget3D` |
 
 ### Core Methods
 
 | Method | Signature | Description |
 |--------|-----------|-------------|
 | `Clear(r, g, b)` | `void(f64, f64, f64)` | Clear framebuffer and depth buffer (0.0-1.0 per channel) |
-| `Resize(w, h)` | `void(i64, i64)` | Resize the canvas and active backend output targets |
+| `Resize(w, h)` | `void(i64, i64)` | Resize a windowed canvas; offscreen callers replace their explicit render target instead |
 | `Begin(camera)` | `void(obj)` | Start 3D frame — must be called before DrawMesh |
 | `Begin2D()` | `void()` | Start 2D overlay mode for the active output (closed by `End()`) |
 | `BeginOverlay()` | `void()` | Start recording a final overlay pass composited after post-FX |
@@ -265,8 +308,8 @@ The rendering surface. Creates a window and manages the render loop.
 | `ScreenshotFinal()` | `obj()` | Finalize if needed, then capture the final frame as `Pixels` |
 | `TryCopyScreenshotTo(pixels)` | `i1(obj)` | Copy the active output into a same-size reusable `Pixels`; return false on invalid size/handle or failed readback |
 | `TryCopyScreenshotFinalTo(pixels)` | `i1(obj)` | Finalize if needed, then copy the final frame into a same-size reusable `Pixels` |
-| `Flip()` | `void()` | Finalize if needed, present frame to screen, compute DeltaTime |
-| `Poll()` | `i64()` | Process window events and update `Keyboard`/`Mouse`/actions; returns `1` while open, `0` when closed/unavailable |
+| `Flip()` | `void()` | Finalize if needed, present a windowed frame, and compute DeltaTime; inert for offscreen canvases |
+| `Poll()` | `i64()` | Process window events and update `Keyboard`/`Mouse`/actions; returns `1` while open and `0` when closed, unavailable, or windowless |
 | `PollEvent()` | `i64()` | Dequeue the next raw canvas event type, or `0` when none are pending |
 | `BackendSupports(capability)` | `i1(str)` | Test a named backend capability such as `shadows`, `skybox`, `render_target`, `window_readback`, `hardware_instancing`, `postfx`, `gpu_postfx`, `postfx-overlay`, `final-screenshot`, `gpu-postfx-overlay`, `bc1`, `bc3`, `bc4`, `bc5`, or `bc7`; `runtime-fallback`, `backend-fallback`, and `software-fallback` report `BackendFallback` |
 
@@ -317,8 +360,8 @@ The rendering surface. Creates a window and manages the render loop.
 | `SetClockSource(mode)` | `void(i64)` | Select clock source: `0` live wall clock, `1` fixed synthetic dt |
 | `SetSyntheticDeltaTimeSec(dt)` | `void(f64)` | Set fixed synthetic delta time in seconds |
 | `AdvanceSyntheticFrame()` | `void()` | Advance one deterministic input/timing frame without pumping platform events |
-| `SetRenderTarget(target)` | `void(obj)` | Redirect rendering to offscreen RenderTarget3D |
-| `ResetRenderTarget()` | `void()` | Return to window rendering |
+| `SetRenderTarget(target)` | `void(obj)` | Redirect rendering to an explicit offscreen RenderTarget3D |
+| `ResetRenderTarget()` | `void()` | Return a windowed canvas to window rendering; rejected for a windowless canvas because it has no fallback output |
 | `SetPostFX(fx)` | `void(obj)` | Set PostFX3D chain applied during frame finalization to the window or active render target; SSAO/DOF/motion blur require GPU window postfx |
 | `SetFrustumCulling(enabled)` | `void(i1)` | Toggle coarse CPU frustum rejection plus front-to-back opaque ordering |
 | `SetOcclusionCulling(enabled)` | `void(i1)` | Toggle frustum rejection plus conservative CPU occlusion skips; SceneGraph feeds the grid from BVH candidates before Canvas3D sorting |
@@ -1042,6 +1085,35 @@ func start() {
 }
 ```
 
+### Windowless rendering
+
+Use `Canvas3D.NewOffscreen(target)` when rendering should remain inside an
+existing application window or no display server is available:
+
+```zia
+bind Zanna.Graphics3D.Canvas3D;
+bind Zanna.Graphics3D.RenderTarget3D;
+bind Zanna.Graphics3D.Camera3D;
+bind Zanna.Graphics3D.SceneGraph;
+
+var target = RenderTarget3D.New(640, 360);
+var canvas = Canvas3D.NewOffscreen(target);
+var camera = Camera3D.NewOrtho(10.0, 640.0 / 360.0, 0.1, 1000.0);
+var scene = SceneGraph.New();
+
+canvas.Clear(0.08, 0.10, 0.14);
+scene.Draw(canvas, camera);
+var pixels = target.AsPixels();
+```
+
+The constructor retains the target, always selects the portable software
+backend, and creates no platform window or input state. `Width`/`Height` report
+the active target while `WindowWidth`/`WindowHeight` are zero. Replace the
+target with `SetRenderTarget` to resize; `Resize`, `ResetRenderTarget`,
+`SetRenderTarget(null)`, live `Poll`, and presentation do not have windowless
+equivalents. `Screenshot()` and `ScreenshotFinal()` read the same target when a
+separate `AsPixels()` handle is not convenient.
+
 **Note:** `AsPixels()` returns a fresh copy each call. The render target's CPU-side color/depth buffers are allocated lazily on first CPU access (or when the software backend binds the target), so GPU-only RTT passes do not pay the host-memory cost up front.
 HDR targets created with `NewHdr()` keep their GPU color attachment in `RGBA16F`, but `AsPixels()` still returns standard `Pixels`. GPU readback keeps both a tonemapped RGBA8 mirror and a linear RGBA32F CPU mirror; render-target postfx consumes the linear HDR mirror for Bloom, Tonemap, FXAA, ColorGrade, and Vignette before final 8-bit conversion so highlights are not clamped before the chain runs.
 When a render target is bound, `Canvas3D.Width`, `Canvas3D.Height`, `ActiveOutputWidth`, `ActiveOutputHeight`, `Begin2D()`, debug overlays, and `Screenshot()` all operate in that target's pixel space instead of the window's. Use `WindowWidth` / `WindowHeight` when gameplay or HUD layout must track the backing window regardless of the active render target.
@@ -1130,7 +1202,8 @@ Hierarchical scene graph with frustum culling and LOD support.
 | `QuerySphere(center, radius)` | `obj(obj, f64)` | Return visible mesh nodes whose world AABB intersects the query sphere |
 | `RaycastNodes(origin, dir, maxDist)` | `obj(obj, obj, f64)` | Return the closest visible mesh node hit by a ray |
 | `Clear()` | `void()` | Remove all children from root |
-| `Save(path)` | `i64(str)` | Write JSON scene snapshot (returns 0 on success) |
+| `Save(path)` | `i64(str)` | Write a VSCN scene snapshot (returns 1 on success) |
+| `Load(path)` | `obj(str)` | Load and validate a VSCN scene, or return null on failure |
 | `SyncBindings(dt)` | `void(f64)` | Apply scene-node body / animator bindings before draw |
 
 ---
@@ -1176,11 +1249,27 @@ Individual node in a SceneGraph tree with transform, mesh, material, and child h
 | `SetPosition(x, y, z)` | `void(f64, f64, f64)` | Set local position |
 | `SetScale(x, y, z)` | `void(f64, f64, f64)` | Set local scale |
 | `SetTransform(px,py,pz, qx,qy,qz,qw, sx,sy,sz)` | `void(f64 ×10)` | Set position, rotation (quaternion components), and scale in one call — the allocation-free hot-loop form |
+| `TrySetWorldMatrix(worldMatrix)` | `i1(obj<Zanna.Math.Mat4>)` | Assign a complete world matrix only when it has an exact finite parent-relative TRS representation; reject invalid handles, singular parents, projective/degenerate matrices, shear, or decomposition drift before mutation |
 | `AddChild(child)` | `void(obj)` | Attach child (auto-detaches from previous parent) |
 | `TryAddChild(child)` | `i1(obj)` | Attach child and return whether the parent-child link was accepted |
+| `TryAddChildPreserveWorld(child)` | `i1(obj)` | Attach child only when exact local TRS can preserve its complete world matrix; reject singular or shear-producing conversions before mutation |
+| `TryMoveChild(child, index)` | `i1(obj, i64)` | Move an existing direct child to a strict zero-based sibling index while preserving every other sibling's relative order |
 | `RemoveChild(child)` | `void(obj)` | Detach child node |
 | `GetChild(index)` | `obj(i64)` | Get child by index |
 | `Find(name)` | `obj(str)` | Recursive name search in subtree |
+| `MetadataKeys()` | `obj()` | Return every gameplay-metadata key in deterministic lexicographic order |
+| `MetadataKind(key)` | `str(str)` | Return `null`, `bool`, `int`, `float`, `string`, or empty when absent |
+| `MetadataHas(key)` | `i1(str)` | Test whether an explicit metadata value exists |
+| `MetadataGetInt(key, default)` | `i64(str, i64)` | Read integer metadata or the default |
+| `MetadataGetFloat(key, default)` | `f64(str, f64)` | Read float metadata, promote an integer, or return the default |
+| `MetadataGetBool(key, default)` | `i1(str, i1)` | Read Boolean metadata or the default |
+| `MetadataGetString(key, default)` | `str(str, str)` | Read string metadata or the default |
+| `MetadataSetNull(key)` | `i1(str)` | Create/replace explicit null metadata; false on rejected input |
+| `MetadataSetInt(key, value)` | `i1(str, i64)` | Create/replace integer metadata; false on rejected input |
+| `MetadataSetFloat(key, value)` | `i1(str, f64)` | Create/replace finite float metadata; false on rejected input |
+| `MetadataSetBool(key, value)` | `i1(str, i1)` | Create/replace Boolean metadata; false on rejected input |
+| `MetadataSetString(key, value)` | `i1(str, str)` | Create/replace bounded string metadata; false on rejected input |
+| `MetadataRemove(key)` | `i1(str)` | Remove a value and report whether the key existed |
 | `BindBody(body)` | `void(obj)` | Attach a `Physics3DBody` for transform sync |
 | `ClearBodyBinding()` | `void()` | Remove the current body binding |
 | `BindAnimator(controller)` | `void(obj)` | Attach an `AnimController3D` for root motion and animated draw submission |
@@ -1194,6 +1283,23 @@ Individual node in a SceneGraph tree with transform, mesh, material, and child h
 | `SetLodResident(index, resident)` | `void(i64, i1)` | Mark the LOD mesh payload resident/nonresident |
 | `GetLodResident(index)` | `i1(i64)` | Return whether the LOD mesh payload is resident |
 | `GetLodResidentBytes(index)` | `i64(i64)` | Return resident bytes for the LOD mesh payload |
+
+Gameplay metadata is limited to 256 values per node, 128 bytes per non-empty
+key, and 64 KiB per string value. Float setters reject non-finite values. VSCN
+integer payloads use canonical decimal text (`0`, no leading plus or zeroes,
+and no `-0`) so the complete signed 64-bit range remains exact. Use
+`MetadataKind` before a typed getter when the distinction between an integer
+and an integral-looking float matters. These values are independent of `Name`,
+transforms, and rendering components.
+
+`TrySetWorldMatrix` is the transactional counterpart to the read-only
+`WorldMatrix` property. It computes `inverse(parent.WorldMatrix) *
+worldMatrix`, decomposes that prospective local matrix, and proves the
+recomposed local and world matrices before publishing position, rotation, and
+scale together. An already-satisfied matrix succeeds. A false result leaves
+every local transform lane unchanged, so importers and authoring tools can
+roll back a multi-node operation without accepting a closest-TRS
+approximation.
 
 ### Zia Example
 
@@ -1225,6 +1331,9 @@ func start() {
     var branch = SceneNode.New();
     SceneNode.set_Name(branch, "branch");
     SceneNode.SetPosition(branch, 0.0, 2.5, 0.0);
+    SceneNode.MetadataSetString(branch, "game.role", "harvestable");
+    SceneNode.MetadataSetInt(branch, "resource.amount", 3);
+    SceneNode.MetadataSetBool(branch, "respawns", true);
     SceneNode.set_Mesh(branch, Mesh3D.Sphere(1.5, 12));
     SceneNode.set_Material(branch, Material3D.FromColor(0.1, 0.6, 0.1));
 
@@ -1247,7 +1356,58 @@ func start() {
 }
 ```
 
-Transform order: `world = parent_world * Translate * Rotate * Scale`. Dirty transform state is lazy: local changes dirty the node, and descendants refresh automatically when their cached parent world revision changes. LOD thresholds are kept sorted; adding the same threshold replaces that mesh, and drawing uses the highest resident threshold that does not exceed camera distance, falling back to the base mesh when the selected LOD has been demoted. `SceneGraph.Draw`, `QueryAABB`, `QuerySphere`, and `RaycastNodes` use the internal SceneGraph BVH spatial index, with an exact flat-walk fallback kept for parity. Transform-only changes refit the BVH; hierarchy, visibility, mesh, LOD, and impostor changes rebuild it lazily. `SceneGraph.AddVisibilityZone(name, min, max)` and `AddVisibilityPortal(from, to, bidirectional)` author an interior portal/PVS graph; during `Draw`, nodes inside zones unreachable from the camera zone are skipped, while unzoned nodes stay visible. `PvsCulledCount`, `VisibilityZoneCount`, and `VisibilityPortalCount` expose that state and clamp malformed counters to the live zone/portal allocations before traversal or append. The normal runtime tests include a generated 10k drawable-node grid to guard BVH shape, isolated-query reduction, frame-cull candidate reduction, indexed CPU-occlusion candidate reduction, portal/PVS room culling, and parity with the flat path. The open-world slice's `visibility_dense_probe.zia` adds a named dense city/forest PVS fixture and records 169 authored drawables reduced to 49 submitted draws with matching final-frame pixels on the local software Release lane. Finite zero scale is preserved on `Transform3D` and `SceneNode`; only non-finite scale components are replaced. An attached `Camera` follows the node hierarchy and is cloned with the node, while each mutable scene instance receives an independent camera. `SceneGraph.Save` writes VSCN v5 with embedded meshes, materials, exact source texture containers or canonical RGBA fallbacks, cubemaps, cameras, native lights, animation, and node hierarchy using round-trip float precision. `SceneGraph.Load` validates JSON, base64 payloads, mesh indices, asset references, and child nodes before returning a scene; invalid partial assets fail the load instead of being skipped.
+Transform order is
+`world = parent_world * Translate * Rotate * Scale`. Dirty transform state is
+lazy: local changes dirty the node, and descendants refresh automatically when
+their cached parent world revision changes.
+`TryAddChildPreserveWorld` evaluates
+`inverse(new_parent_world) * child_world` before mutation and succeeds only when
+that matrix decomposes and recomposes as exact finite non-degenerate local TRS.
+It preserves reflected transforms, rejects singular destinations or required
+shear, and leaves hierarchy and transforms unchanged on ordinary rejection.
+`TryMoveChild` accepts only an existing direct child and an index in
+`0..ChildCount-1`; it performs a stable move without detaching the child and
+rejects invalid or corrupt hierarchy state before mutation.
+
+LOD thresholds are kept sorted; adding the same threshold replaces that mesh,
+and drawing uses the highest resident threshold that does not exceed camera
+distance, falling back to the base mesh when the selected LOD has been demoted.
+`SceneGraph.Draw`, `QueryAABB`, `QuerySphere`, and `RaycastNodes` use the
+internal SceneGraph BVH spatial index, with an exact flat-walk fallback kept for
+parity. Transform-only changes refit the BVH; hierarchy, visibility, mesh, LOD,
+and impostor changes rebuild it lazily.
+`SceneGraph.AddVisibilityZone(name, min, max)` and
+`AddVisibilityPortal(from, to, bidirectional)` author an interior portal/PVS
+graph; during `Draw`, nodes inside zones unreachable from the camera zone are
+skipped, while unzoned nodes stay visible. `PvsCulledCount`,
+`VisibilityZoneCount`, and `VisibilityPortalCount` expose that state and clamp
+malformed counters to the live zone/portal allocations before traversal or
+append. The normal runtime tests include a generated 10k drawable-node grid to
+guard BVH shape, isolated-query reduction, frame-cull candidate reduction,
+indexed CPU-occlusion candidate reduction, portal/PVS room culling, and parity
+with the flat path. The open-world slice's `visibility_dense_probe.zia` adds a
+named dense city/forest PVS fixture and records 169 authored drawables reduced
+to 49 submitted draws with matching final-frame pixels on the local software
+Release lane.
+
+Finite zero scale is preserved on `Transform3D` and `SceneNode`; only
+non-finite scale components are replaced. An attached `Camera` follows the node
+hierarchy and is cloned with the node, while each mutable scene instance
+receives an independent camera. `SceneGraph.Save` keeps the established VSCN
+v2/v3/v5 selection for scenes without gameplay metadata. A scene with node
+metadata writes VSCN v6, whose tagged values preserve
+null/Boolean/integer/float/string kinds and encode integers as decimal strings
+for exact `i64` round trips. Embedded meshes, materials, exact source texture
+containers or canonical RGBA fallbacks, cubemaps, cameras, native lights,
+animation, and node hierarchy retain round-trip precision. `SceneGraph.Load`
+accepts VSCN v1-v6 and validates JSON, tagged metadata, bounds, base64 payloads,
+mesh indices, asset references, and child nodes before returning a scene;
+invalid partial assets fail the complete load instead of being skipped. See
+[ADR 0159](adr/0159-typed-scenenode-metadata-and-vscn-v6.md) for the format
+contract, [ADR 0161](adr/0161-stable-scenenode-sibling-reordering.md) for
+sibling-order semantics, and
+[ADR 0162](adr/0162-exact-preserve-world-scenenode-reparenting.md) for exact
+reparent conversion and rejection.
 
 ### Binding Sync
 
@@ -1318,7 +1478,7 @@ Current scope:
 
 - Imported meshes, materials, skeletons, and animations are shared across instances.
 - OBJ-backed models preserve `mtllib`/`usemtl` material groups as synthesized template nodes with matching `Material3D` handles when the referenced `.mtl` is available; missing materials fall back to a default white material. Multiple `mtllib` entries on one line are supported, and common MTL maps such as `map_Kd`, `map_Ks`, `map_Ke`, and `map_Bump` / `bump` are resolved safely relative to the MTL file.
-- `Instantiate()` clones nodes, transforms, and attached cameras. The returned node is a synthetic root group that owns the imported top-level nodes; meshes, materials, lights, skeletons, and animation resources remain shared.
+- `Instantiate()` clones nodes, transforms, attached cameras, and typed gameplay metadata. The returned node is a synthetic root group that owns the imported top-level nodes; meshes, materials, lights, skeletons, and animation resources remain shared. Metadata tables are deep copies, so changing an instance cannot change the template or another instance.
 - Prefer `LoadResult()` / `LoadAssetResult()` for new code. `Load()` and `LoadAsset()` remain available for compatibility with existing `null` checks.
 - Prefer `FindNodeOption()` for new code. `FindNode()` remains available for compatibility with existing `null` checks.
 - Mutating an instantiated node does not mutate the template returned by `FindNode` / `FindNodeOption`.
@@ -1368,7 +1528,7 @@ Format note:
 - glTF node hierarchies are rejected if they contain invalid child references, duplicate parents, or cycles; valid meshes/materials still remain available to the asset container.
 - Triangle-list, triangle-strip, and triangle-fan glTF primitives are triangulated on import. Points and line modes are skipped because the current renderer has no line/point primitive surface.
 - Materialless glTF primitives receive a shared default white PBR material so valid assets render through `SceneGraph` / `SceneAsset` without manual material assignment.
-- Complete `SceneAsset.Save` writes VSCN v5. It round-trips the current `vgfx3d_vertex_le_v2` vertex layout, every immutable scene, camera-node attachments and scalar camera animation, native light state, morph/animation/variant inventories, per-slot material metadata, lightmaps, and high-precision node transforms while loading VSCN versions 1–4 and older `vgfx3d_vertex_le_v1` scenes. Texture entries retain exact KTX2/PNG/JPEG/GIF/BMP bytes and native KTX2 mips when available, otherwise canonical RGBA8. The loader rejects malformed JSON/Base64, invalid source-image magic or decoding, invalid mesh indexes, broken table/node references, and partial child subtrees transactionally.
+- Complete `SceneAsset.Save` writes VSCN v5 when no node metadata exists and promotes metadata-bearing assets to VSCN v6. It round-trips the current `vgfx3d_vertex_le_v2` vertex layout, every immutable scene, camera-node attachments and scalar camera animation, native light state, typed node metadata, morph/animation/variant inventories, per-slot material metadata, lightmaps, and high-precision node transforms while loading VSCN versions 1–6 and older `vgfx3d_vertex_le_v1` scenes. Texture entries retain exact KTX2/PNG/JPEG/GIF/BMP bytes and native KTX2 mips when available, otherwise canonical RGBA8. The loader rejects malformed JSON/Base64, invalid metadata tags or bounds, invalid source-image magic or decoding, invalid mesh indexes, broken table/node references, and partial child subtrees transactionally.
 - `.glb` files are validated as GLB 2.0 containers before JSON parse. External `.gltf` buffers and images are URI-decoded and resolved relative to the asset path; `./` relative paths are accepted, while absolute paths, URI schemes, `..` traversal, and NUL-containing references are rejected before opening files. In `LoadAsset`, those external dependencies are loaded through `Zanna.IO.Assets` first and missing-dependency diagnostics name both the parent model and dependency path.
 - glTF matrix-authored node transforms are decomposed to runtime TRS. Reflections preserve negative scale sign, while unsupported shear is reduced to an orthonormal rotation basis instead of leaking into unstable quaternions.
 - glTF `extensionsRequired` is enforced. Required `KHR_texture_transform`, `KHR_materials_emissive_strength`, `KHR_materials_unlit`, `KHR_materials_specular`, `KHR_lights_punctual`, `KHR_materials_variants`, `KHR_mesh_quantization`, `EXT_meshopt_compression`, `KHR_draco_mesh_compression`, and `KHR_texture_basisu` are accepted by their complete parser paths. Optional factor-level clearcoat, transmission, IOR, sheen, anisotropy, and volume features remain best-effort and are rejected when listed as required unless their full required semantics are representable. Required WebP, DDS, or unknown extensions fail load rather than rendering an incomplete fallback.

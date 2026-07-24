@@ -6,17 +6,20 @@
 //===----------------------------------------------------------------------===//
 //
 // File: zannastudio/src/ui/scene_selection.zia
-// Purpose: Validate and normalize stable row identities from scene ListBoxes.
+// Purpose: Validate and normalize stable row identities from retained scene
+//          ListBox and TreeView controls.
 // Key invariants:
 //   - Selection identities are model indices stored in item data, never labels.
 //   - Invalid and duplicate indices are discarded without changing row order.
 //   - A valid primary row remains represented even during programmatic restore.
 // Ownership/Lifetime:
 //   - Returned Lists are fresh values owned by the caller.
-//   - Runtime Seq values returned by ListBox are borrowed only for conversion.
+//   - Runtime Seq values returned by retained controls are borrowed only for
+//     conversion.
 // Links: zannastudio/src/ui/scene_editor_2d.zia,
 //        zannastudio/src/ui/scene_editor_3d.zia,
-//        docs/adr/0156-listbox-selected-row-data.md
+//        docs/adr/0156-listbox-selected-row-data.md,
+//        docs/adr/0163-stable-multiselect-and-row-aware-treeview-editing.md
 //
 //===----------------------------------------------------------------------===//
 
@@ -30,7 +33,8 @@ bind Seq = Zanna.Collections.Seq;
 // PURPOSE: Keep GUI row selection separate from mutable scene presentation.
 //
 // WHERE-THIS-FITS: Scene editors attach the current flattened model index to
-//          each retained ListBox row and use these helpers at the GUI boundary.
+//          each retained ListBox or TreeView row and use these helpers at the
+//          GUI boundary.
 //
 // TEACHING-NOTE: Display labels are user-facing and may be duplicated or
 //          renamed. Item data is the deliberate identity channel.
@@ -68,7 +72,7 @@ expose func Normalize(indices: List[Integer],
     return normalized;
 }
 
-/// @brief Convert byte-exact ListBox item data to validated model indices.
+/// @brief Convert byte-exact retained row data to validated model indices.
 expose func FromData(rowData: Any,
                      itemCount: Integer,
                      primary: Integer) -> List[Integer] {

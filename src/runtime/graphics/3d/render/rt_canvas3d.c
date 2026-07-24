@@ -13,12 +13,15 @@
 // Key invariants:
 //   - Begin/End must bracket DrawMesh calls (no nesting)
 //   - All rendering dispatches through backend->submit_draw
-//   - Canvas3D owns the backend context (created in New, freed in finalizer)
+//   - Canvas3D owns its backend context and either an optional window or a
+//     retained explicit RenderTarget3D
 //
 // Ownership/Lifetime:
-//   - Canvas3D is GC-managed; finalizer destroys backend ctx + window
+//   - Canvas3D is GC-managed; its finalizer destroys the backend context and
+//     any present window, then releases retained render resources
 //
-// Links: vgfx3d_backend.h, rt_canvas3d_internal.h
+// Links: vgfx3d_backend.h, rt_canvas3d_internal.h,
+//        docs/adr/0168-windowless-canvas3d-rendering.md
 //
 //===----------------------------------------------------------------------===//
 
@@ -1289,7 +1292,13 @@ static void canvas3d_record_event_type(rt_canvas3d *c, int64_t type) {
 /// @brief Public resize entry point mirroring window resize events.
 void rt_canvas3d_resize(void *obj, int64_t w, int64_t h) {
     rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
-    if (!c || w <= 0 || h <= 0 || w > CANVAS3D_MAX_DIMENSION || h > CANVAS3D_MAX_DIMENSION)
+    if (!c)
+        return;
+    if (c->offscreen) {
+        rt_trap("Canvas3D.Resize: an offscreen canvas must replace its render target");
+        return;
+    }
+    if (w <= 0 || h <= 0 || w > CANVAS3D_MAX_DIMENSION || h > CANVAS3D_MAX_DIMENSION)
         return;
     if (c->gfx_win)
         vgfx_set_window_size(c->gfx_win, (int32_t)w, (int32_t)h);
@@ -1688,10 +1697,15 @@ static void canvas3d_apply_window_pacing(rt_canvas3d *c) {
 /// @param w     Window width in pixels (1–CANVAS3D_MAX_DIMENSION).
 /// @param h     Window height in pixels (1–CANVAS3D_MAX_DIMENSION).
 /// @return Opaque canvas handle, or NULL on failure.
-static void *canvas3d_new_impl(rt_string title, int64_t w, int64_t h, int32_t fullscreen) {
+static void *canvas3d_new_impl(rt_string title,
+                               int64_t w,
+                               int64_t h,
+                               int32_t fullscreen,
+                               rt_rendertarget3d *offscreen_target) {
     vgfx_framebuffer_t fb;
+    const int32_t offscreen = offscreen_target != NULL;
 
-    if (fullscreen) {
+    if (fullscreen && !offscreen) {
         /* Fullscreen creation sizes the window to the desktop; the requested
          * dimensions are ignored (vgfx resolves the display size). */
         int32_t disp_w = 0;
@@ -1701,7 +1715,8 @@ static void *canvas3d_new_impl(rt_string title, int64_t w, int64_t h, int32_t fu
         h = disp_h > 0 ? disp_h : 720;
     }
     if (w <= 0 || h <= 0 || w > CANVAS3D_MAX_DIMENSION || h > CANVAS3D_MAX_DIMENSION) {
-        rt_trap("Canvas3D.New: dimensions must be 1-16384");
+        rt_trap(offscreen ? "Canvas3D.NewOffscreen: target dimensions must be 1-16384"
+                          : "Canvas3D.New: dimensions must be 1-16384");
         return NULL;
     }
     /* ADR 0065: make the Game.UI widgets canvas-polymorphic by registering the
@@ -1719,49 +1734,54 @@ static void *canvas3d_new_impl(rt_string title, int64_t w, int64_t h, int32_t fu
         return NULL;
     }
     memset(c, 0, sizeof(rt_canvas3d));
-    c->vsync_enabled = 1;
+    c->offscreen = offscreen ? 1 : 0;
+    c->vsync_enabled = offscreen ? 0 : 1;
     rt_obj_set_finalizer(c, rt_canvas3d_finalize);
 
-    /* Create window */
-    vgfx_window_params_t params = vgfx_window_params_default();
-    params.width = (int32_t)w;
-    params.height = (int32_t)h;
-    params.fullscreen = fullscreen;
-    if (title)
-        params.title = rt_string_cstr(title);
+    if (!offscreen) {
+        /* Create the platform window only for the established windowed/fullscreen constructors. */
+        vgfx_window_params_t params = vgfx_window_params_default();
+        params.width = (int32_t)w;
+        params.height = (int32_t)h;
+        params.fullscreen = fullscreen;
+        if (title)
+            params.title = rt_string_cstr(title);
 
-    c->gfx_win = vgfx_create_window(&params);
-    if (!c->gfx_win) {
-        if (rt_obj_release_check0(c))
-            rt_obj_free(c);
-        rt_trap("Canvas3D.New: failed to create window (display server unavailable?)");
-        return NULL;
-    }
-    c->software_frame_limit = vgfx_get_fps(c->gfx_win);
+        c->gfx_win = vgfx_create_window(&params);
+        if (!c->gfx_win) {
+            if (rt_obj_release_check0(c))
+                rt_obj_free(c);
+            rt_trap("Canvas3D.New: failed to create window (display server unavailable?)");
+            return NULL;
+        }
+        c->software_frame_limit = vgfx_get_fps(c->gfx_win);
 
-    vgfx_set_coord_scale(c->gfx_win, vgfx_window_get_scale(c->gfx_win));
-    if (vgfx_get_framebuffer(c->gfx_win, &fb) && fb.width > 0 && fb.height > 0) {
-        initial_framebuffer_width = fb.width;
-        initial_framebuffer_height = fb.height;
-    }
-    if (fullscreen) {
-        /* The window may have settled at a different logical size than the
-         * display query suggested (menu bars, WM policy) — trust the window. */
-        int32_t actual_w = 0;
-        int32_t actual_h = 0;
-        if (vgfx_get_size(c->gfx_win, &actual_w, &actual_h) && actual_w > 0 && actual_h > 0) {
-            initial_width = actual_w;
-            initial_height = actual_h;
+        vgfx_set_coord_scale(c->gfx_win, vgfx_window_get_scale(c->gfx_win));
+        if (vgfx_get_framebuffer(c->gfx_win, &fb) && fb.width > 0 && fb.height > 0) {
+            initial_framebuffer_width = fb.width;
+            initial_framebuffer_height = fb.height;
+        }
+        if (fullscreen) {
+            /* The window may have settled at a different logical size than the
+             * display query suggested (menu bars, WM policy) — trust the window. */
+            int32_t actual_w = 0;
+            int32_t actual_h = 0;
+            if (vgfx_get_size(c->gfx_win, &actual_w, &actual_h) && actual_w > 0 &&
+                actual_h > 0) {
+                initial_width = actual_w;
+                initial_height = actual_h;
+            }
         }
     }
 
-    c->width = initial_width;
-    c->height = initial_height;
-    c->framebuffer_width = initial_framebuffer_width;
-    c->framebuffer_height = initial_framebuffer_height;
+    c->width = offscreen ? 0 : initial_width;
+    c->height = offscreen ? 0 : initial_height;
+    c->framebuffer_width = offscreen ? 0 : initial_framebuffer_width;
+    c->framebuffer_height = offscreen ? 0 : initial_framebuffer_height;
 
-    /* Select and initialize the platform-default backend, with software fallback. */
-    c->backend = vgfx3d_select_backend();
+    /* Offscreen canvases deliberately use the deterministic software backend. Windowed canvases
+     * retain platform-default selection with software fallback. */
+    c->backend = offscreen ? &vgfx3d_software_backend : vgfx3d_select_backend();
     c->backend_requested_name = (c->backend && c->backend->name) ? c->backend->name : "unknown";
     c->backend_fallback = 0;
     c->backend_fallback_reason = CANVAS3D_FALLBACK_REASON_NONE;
@@ -1777,7 +1797,8 @@ static void *canvas3d_new_impl(rt_string title, int64_t w, int64_t h, int32_t fu
     if (!c->backend || !c->backend->create_ctx) {
         if (rt_obj_release_check0(c))
             rt_obj_free(c);
-        rt_trap("Canvas3D.New: no 3D backend is available");
+        rt_trap(offscreen ? "Canvas3D.NewOffscreen: software backend is unavailable"
+                          : "Canvas3D.New: no 3D backend is available");
         return NULL;
     }
     c->backend_ctx =
@@ -1793,7 +1814,8 @@ static void *canvas3d_new_impl(rt_string title, int64_t w, int64_t h, int32_t fu
         if (!c->backend_ctx) {
             if (rt_obj_release_check0(c))
                 rt_obj_free(c);
-            rt_trap("Canvas3D.New: backend initialization failed");
+            rt_trap(offscreen ? "Canvas3D.NewOffscreen: software backend initialization failed"
+                              : "Canvas3D.New: backend initialization failed");
             return NULL;
         }
         if (failed_backend != &vgfx3d_software_backend &&
@@ -1804,7 +1826,8 @@ static void *canvas3d_new_impl(rt_string title, int64_t w, int64_t h, int32_t fu
             canvas3d_emit_backend_fallback_notice_once(failed_backend_name, c->backend->name);
         }
     }
-    vgfx_set_gpu_present(c->gfx_win, c->backend != &vgfx3d_software_backend);
+    if (c->gfx_win)
+        vgfx_set_gpu_present(c->gfx_win, c->backend != &vgfx3d_software_backend);
     if (c->backend && c->backend->set_vsync && c->backend_ctx)
         c->backend->set_vsync(c->backend_ctx, c->vsync_enabled);
     canvas3d_apply_window_pacing(c);
@@ -1819,7 +1842,8 @@ static void *canvas3d_new_impl(rt_string title, int64_t w, int64_t h, int32_t fu
             c->clustered_lighting = 1;
     }
 
-    vgfx_set_resize_callback(c->gfx_win, rt_canvas3d_on_resize, c);
+    if (c->gfx_win)
+        vgfx_set_resize_callback(c->gfx_win, rt_canvas3d_on_resize, c);
 
     c->ambient[0] = 0.1f;
     c->ambient[1] = 0.1f;
@@ -1923,9 +1947,19 @@ static void *canvas3d_new_impl(rt_string title, int64_t w, int64_t h, int32_t fu
     c->clock_source = 0;
     c->synthetic_dt_us = CANVAS3D_SYNTHETIC_DT_DEFAULT_US;
 
-    rt_keyboard_set_canvas(c->gfx_win);
-    rt_mouse_set_canvas(c->gfx_win);
-    rt_pad_init();
+    if (offscreen) {
+        rt_canvas3d_set_render_target(c, offscreen_target);
+        if (c->render_target_owner != offscreen_target || !c->render_target) {
+            if (rt_obj_release_check0(c))
+                rt_obj_free(c);
+            rt_trap("Canvas3D.NewOffscreen: failed to bind render target");
+            return NULL;
+        }
+    } else {
+        rt_keyboard_set_canvas(c->gfx_win);
+        rt_mouse_set_canvas(c->gfx_win);
+        rt_pad_init();
+    }
 
     return c;
 }
@@ -1933,7 +1967,7 @@ static void *canvas3d_new_impl(rt_string title, int64_t w, int64_t h, int32_t fu
 /// @brief Create a new 3D rendering canvas (window + backend context).
 /// @details See canvas3d_new_impl — this is the windowed entry point.
 void *rt_canvas3d_new(rt_string title, int64_t w, int64_t h) {
-    return canvas3d_new_impl(title, w, h, 0);
+    return canvas3d_new_impl(title, w, h, 0, NULL);
 }
 
 /// @brief Create a fullscreen 3D canvas at desktop resolution.
@@ -1941,7 +1975,33 @@ void *rt_canvas3d_new(rt_string title, int64_t w, int64_t h) {
 ///          requested dimensions come from the primary display. Toggle back
 ///          to windowed at runtime via SetFullscreen/ToggleFullscreen.
 void *rt_canvas3d_new_fullscreen(rt_string title) {
-    return canvas3d_new_impl(title, 0, 0, 1);
+    return canvas3d_new_impl(title, 0, 0, 1, NULL);
+}
+
+/// @brief Create a deterministic windowless renderer bound to an explicit RenderTarget3D.
+/// @details The software backend accepts a NULL platform window and writes directly into the
+///          retained target. No global input canvas, resize callback, or presentation state is
+///          installed. The caller can replace the target later with SetRenderTarget.
+void *rt_canvas3d_new_offscreen(void *target) {
+    rt_rendertarget3d *rtd =
+        (rt_rendertarget3d *)rt_g3d_checked_or_null(target, RT_G3D_RENDERTARGET3D_CLASS_ID);
+    if (!rtd || !rtd->target || !vgfx3d_rendertarget_valid_pixels(rtd->target, NULL)) {
+        rt_trap("Canvas3D.NewOffscreen: target must be a live RenderTarget3D");
+        return NULL;
+    }
+    if (!vgfx3d_rendertarget_ensure_color(rtd->target) ||
+        !vgfx3d_rendertarget_ensure_depth(rtd->target)) {
+        rt_trap("Canvas3D.NewOffscreen: render-target buffer allocation failed");
+        return NULL;
+    }
+    return canvas3d_new_impl(
+        NULL, (int64_t)rtd->target->width, (int64_t)rtd->target->height, 0, rtd);
+}
+
+/// @brief Report whether a Canvas3D was created without a platform window.
+int8_t rt_canvas3d_get_is_offscreen(void *obj) {
+    rt_canvas3d *c = rt_canvas3d_checked_or_stack(obj);
+    return c && c->offscreen ? 1 : 0;
 }
 
 #include "rt_canvas3d_draw.inc"
@@ -1974,7 +2034,7 @@ static void canvas3d_replay_final_overlay(rt_canvas3d *c) {
 static void canvas3d_finalize_frame_impl(rt_canvas3d *c, int present_to_window) {
     if (!c)
         return;
-    if (!c->gfx_win)
+    if (!c->gfx_win && !c->render_target)
         return;
     if (c->frame_finalized)
         return;

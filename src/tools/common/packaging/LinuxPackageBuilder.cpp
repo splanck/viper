@@ -1293,11 +1293,7 @@ RunResult runRpmBuild(const fs::path &tmpRoot, const fs::path &specPath) {
                                      "_specdir " + (tmpRoot / "SPECS").string()};
     if (const char *epoch = std::getenv("SOURCE_DATE_EPOCH")) {
         const std::string epochText(epoch);
-        if (epochText.empty() || !std::all_of(epochText.begin(), epochText.end(), [](char c) {
-                return c >= '0' && c <= '9';
-            })) {
-            throw std::runtime_error("SOURCE_DATE_EPOCH must be a non-negative integer");
-        }
+        (void)parseSourceDateEpoch(epochText);
         args.insert(args.end(),
                     {"--define",
                      "_source_date_epoch " + epochText,

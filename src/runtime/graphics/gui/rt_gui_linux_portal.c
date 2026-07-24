@@ -18,6 +18,7 @@
 #include "rt_gui_linux_portal.h"
 
 #include <dlfcn.h>
+#include <sched.h>
 #include <stdint.h>
 #include <stdatomic.h>
 #include <stddef.h>
@@ -66,6 +67,7 @@ static int rt_gui_linux_portal_load(void) {
                                                  memory_order_acq_rel,
                                                  memory_order_acquire)) {
         while ((state = atomic_load_explicit(&g_rt_gui_gio_state, memory_order_acquire)) == 1) {
+            sched_yield();
         }
         return state == 2;
     }

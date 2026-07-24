@@ -13,7 +13,8 @@
 // Ownership/Lifetime:
 //   - One bridge owns its GIO connection, registrations, loop, worker, and copied metadata.
 //   - The process list is protected independently from each bridge's worker lifecycle.
-// Links: https://gnome.pages.gitlab.gnome.org/at-spi2-core/devel-docs/
+// Links: https://gnome.pages.gitlab.gnome.org/at-spi2-core/devel-docs/,
+//        docs/adr/0167-spinner-mixed-value-state.md
 //
 //===----------------------------------------------------------------------===//
 
@@ -200,6 +201,7 @@ typedef struct rt_gui_atspi_bridge {
     int ready;
     int started;
     int dirty;
+    int active_test_requests;
     int request_pending;
     int request_kind;
     int request_result;
@@ -459,6 +461,8 @@ static void rt_gui_atspi_snapshot_interfaces(rt_gui_atspi_node_t *node,
     }
     if (node->has_value)
         (void)snprintf(node->value_text, sizeof(node->value_text), "%.17g", node->value);
+    if (widget->type == VG_WIDGET_SPINNER && ((const vg_spinner_t *)widget)->indeterminate)
+        (void)snprintf(node->value_text, sizeof(node->value_text), "mixed");
 }
 
 static void rt_gui_atspi_snapshot_node(rt_gui_atspi_node_t *node,
@@ -913,8 +917,10 @@ enum {
     RT_GUI_ATSPI_REQUEST_VALUE = 3,
 };
 
-static int rt_gui_atspi_request(rt_gui_atspi_node_t *node, int kind, double value) {
-    rt_gui_atspi_bridge_t *bridge = node->bridge;
+static int rt_gui_atspi_request_values(rt_gui_atspi_bridge_t *bridge,
+                                       uint64_t widget_id,
+                                       int kind,
+                                       double value) {
     pthread_mutex_lock(&bridge->mutex);
     if (bridge->request_pending) {
         pthread_mutex_unlock(&bridge->mutex);
@@ -922,7 +928,7 @@ static int rt_gui_atspi_request(rt_gui_atspi_node_t *node, int kind, double valu
     }
     bridge->request_pending = 1;
     bridge->request_kind = kind;
-    bridge->request_widget_id = node->widget_id;
+    bridge->request_widget_id = widget_id;
     bridge->request_value = value;
     bridge->request_serial++;
     if (bridge->request_serial == 0)
@@ -943,6 +949,10 @@ static int rt_gui_atspi_request(rt_gui_atspi_node_t *node, int kind, double valu
     int result = bridge->completed_serial >= serial ? bridge->request_result : 0;
     pthread_mutex_unlock(&bridge->mutex);
     return result;
+}
+
+static int rt_gui_atspi_request(rt_gui_atspi_node_t *node, int kind, double value) {
+    return rt_gui_atspi_request_values(node->bridge, node->widget_id, kind, value);
 }
 
 static int32_t rt_gui_atspi_index_in_parent(const rt_gui_atspi_node_t *node) {
@@ -1710,6 +1720,16 @@ void rt_gui_atspi_linux_detach(vgfx_window_t window) {
     pthread_mutex_unlock(&g_rt_gui_atspi_list_mutex);
     if (!bridge)
         return;
+    pthread_mutex_lock(&bridge->mutex);
+    if (bridge->request_pending) {
+        bridge->request_result = 0;
+        bridge->request_pending = 0;
+        bridge->completed_serial = bridge->request_serial;
+        pthread_cond_broadcast(&bridge->condition);
+    }
+    while (bridge->active_test_requests > 0)
+        pthread_cond_wait(&bridge->condition, &bridge->mutex);
+    pthread_mutex_unlock(&bridge->mutex);
     g_rt_gui_atspi_api.main_loop_quit(bridge->loop);
     pthread_join(bridge->worker, NULL);
     pthread_cond_destroy(&bridge->condition);
@@ -1900,22 +1920,32 @@ int rt_gui_atspi_linux_test_request(vgfx_window_t window,
                                     uint64_t widget_id,
                                     int kind,
                                     double value) {
-    rt_gui_atspi_node_t *node = NULL;
+    if (kind < RT_GUI_ATSPI_REQUEST_ACTION || kind > RT_GUI_ATSPI_REQUEST_VALUE)
+        return 0;
+    rt_gui_atspi_bridge_t *matched = NULL;
     pthread_mutex_lock(&g_rt_gui_atspi_list_mutex);
-    for (rt_gui_atspi_bridge_t *bridge = g_rt_gui_atspi_bridges; bridge && !node;
+    for (rt_gui_atspi_bridge_t *bridge = g_rt_gui_atspi_bridges; bridge && !matched;
          bridge = bridge->next) {
         if (bridge->window != window)
             continue;
         for (size_t i = 0; i < bridge->node_count; ++i)
             if (bridge->nodes[i].widget_id == widget_id) {
-                node = &bridge->nodes[i];
+                pthread_mutex_lock(&bridge->mutex);
+                bridge->active_test_requests++;
+                pthread_mutex_unlock(&bridge->mutex);
+                matched = bridge;
                 break;
             }
     }
     pthread_mutex_unlock(&g_rt_gui_atspi_list_mutex);
-    if (!node || kind < RT_GUI_ATSPI_REQUEST_ACTION || kind > RT_GUI_ATSPI_REQUEST_VALUE)
+    if (!matched)
         return 0;
-    return rt_gui_atspi_request(node, kind, value);
+    int result = rt_gui_atspi_request_values(matched, widget_id, kind, value);
+    pthread_mutex_lock(&matched->mutex);
+    matched->active_test_requests--;
+    pthread_cond_broadcast(&matched->condition);
+    pthread_mutex_unlock(&matched->mutex);
+    return result;
 }
 
 void rt_gui_atspi_linux_announce(vgfx_window_t window,

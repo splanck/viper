@@ -22,7 +22,8 @@
 //   - Camera3D and Light3D contain scalar fields; Material3D retains texture/env references and
 //     releases them from its GC finalizer.
 //
-// Links: plans/3d/01-software-renderer.md, src/runtime/graphics/common/rt_graphics.h
+// Links: plans/3d/01-software-renderer.md, src/runtime/graphics/common/rt_graphics.h,
+//        docs/adr/0168-windowless-canvas3d-rendering.md
 //
 //===----------------------------------------------------------------------===//
 #pragma once
@@ -61,6 +62,10 @@ int8_t rt_canvas3d_is_available(void);
 void *rt_canvas3d_new(rt_string title, int64_t w, int64_t h);
 /// @brief Create a fullscreen 3D canvas at desktop resolution (no windowed flash).
 void *rt_canvas3d_new_fullscreen(rt_string title);
+/// @brief Create a windowless software Canvas3D bound to an explicit RenderTarget3D.
+void *rt_canvas3d_new_offscreen(void *target);
+/// @brief Report whether the canvas was created without a platform window.
+int8_t rt_canvas3d_get_is_offscreen(void *obj);
 /// @brief Resize the canvas and active backend output targets.
 void rt_canvas3d_resize(void *obj, int64_t w, int64_t h);
 /// @brief Clear the back buffer to the given RGB color (each channel 0.0–1.0).

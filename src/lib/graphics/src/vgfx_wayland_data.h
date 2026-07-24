@@ -35,6 +35,7 @@ typedef struct vgfx_wayland_transfer {
     int32_t fd;
     int32_t outbound;
     int32_t uri_list;
+    int32_t failed;
     char *bytes;
     size_t size;
     size_t capacity;

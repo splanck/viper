@@ -1,0 +1,151 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/probes/scene_component_schema_probe.zia
+// Purpose: Verify bounded project scene-component schema parsing and lookup.
+// Key invariants:
+//   - Scalar defaults retain their declared type and canonical editor text.
+//   - Target filtering is deterministic and accepts explicitly shared schemas.
+//   - Invalid versions, duplicate identities, and mismatched defaults fail
+//     closed without publishing a partial component list.
+// Ownership/Lifetime: The probe owns only in-memory schema fixtures.
+// Links: zannastudio/src/ui/scene_component_schema.zia,
+//        docs/adr/0160-project-scene-component-schemas.md
+//
+//===----------------------------------------------------------------------===//
+
+module scene_component_schema_probe;
+
+bind "../ui/scene_component_schema";
+
+bind Terminal = Zanna.Terminal;
+
+func fail(reason: String) {
+    Terminal.Say("RESULT: fail " + reason);
+}
+
+func main() {
+    var validText =
+        "{"
+        + "\"version\":1,"
+        + "\"components\":["
+        + "{"
+        + "\"name\":\"enemy-spawn\","
+        + "\"label\":\"Enemy Spawn\","
+        + "\"target\":\"both\","
+        + "\"description\":\"Reusable enemy placement data.\","
+        + "\"fields\":["
+        + "{\"key\":\"enemy.archetype\",\"label\":\"Archetype\","
+        + "\"type\":\"string\",\"default\":\"grunt\"},"
+        + "{\"key\":\"enemy.level\",\"type\":\"int\",\"default\":3},"
+        + "{\"key\":\"enemy.radius\",\"type\":\"float\",\"default\":4.0},"
+        + "{\"key\":\"enemy.active\",\"type\":\"bool\",\"default\":true},"
+        + "{\"key\":\"enemy.target\",\"type\":\"null\"}"
+        + "]"
+        + "},"
+        + "{"
+        + "\"name\":\"checkpoint\","
+        + "\"target\":\"3d-node\","
+        + "\"fields\":["
+        + "{\"key\":\"checkpoint.id\",\"type\":\"string\",\"default\":\"start\"}"
+        + "]"
+        + "}"
+        + "]"
+        + "}";
+    var schema = scene_component_schema.ParseText(validText, "memory");
+    if schema.found == false or schema.valid == false
+       or schema.error != "" or schema.components.count() != 2
+       or schema.CountForTarget(scene_component_schema.TARGET_2D_OBJECT) != 1
+       or schema.CountForTarget(scene_component_schema.TARGET_3D_NODE) != 2 {
+        fail("valid schema did not publish deterministic target components: "
+             + schema.error);
+        return;
+    }
+
+    var enemy = schema.Find(
+        "enemy-spawn", scene_component_schema.TARGET_2D_OBJECT);
+    if enemy == null or enemy.label != "Enemy Spawn"
+       or enemy.fields.count() != 5
+       or enemy.FieldNamed("enemy.archetype").defaultText != "grunt"
+       or enemy.FieldNamed("enemy.level").defaultText != "3"
+       or enemy.FieldNamed("enemy.radius").defaultText != "4"
+       or enemy.FieldNamed("enemy.active").defaultText != "true"
+       or enemy.FieldNamed("enemy.target").kind != "null"
+       or enemy.FieldNamed("enemy.target").defaultText != "" {
+        fail("typed defaults changed kind, lookup, or canonical text");
+        return;
+    }
+    if schema.Find(
+           "checkpoint", scene_component_schema.TARGET_2D_OBJECT) != null
+       or schema.Find(
+              "checkpoint", scene_component_schema.TARGET_3D_NODE) == null {
+        fail("component target filtering accepted an incompatible scope");
+        return;
+    }
+
+    var implicitDefaults = scene_component_schema.ParseText(
+        "{\"version\":1,\"components\":["
+        + "{\"name\":\"defaults\",\"target\":\"both\",\"fields\":["
+        + "{\"key\":\"s\",\"type\":\"string\"},"
+        + "{\"key\":\"i\",\"type\":\"int\"},"
+        + "{\"key\":\"f\",\"type\":\"float\"},"
+        + "{\"key\":\"b\",\"type\":\"bool\"},"
+        + "{\"key\":\"n\",\"type\":\"null\"}]}"
+        + "]}",
+        "implicit-defaults");
+    var defaults = implicitDefaults.Find(
+        "defaults", scene_component_schema.TARGET_2D_OBJECT);
+    if implicitDefaults.valid == false or defaults == null
+       or defaults.FieldNamed("s").defaultText != ""
+       or defaults.FieldNamed("i").defaultText != "0"
+       or defaults.FieldNamed("f").defaultText != "0"
+       or defaults.FieldNamed("b").defaultText != "false"
+       or defaults.FieldNamed("n").defaultText != "" {
+        fail("omitted scalar defaults were not canonical and applicable");
+        return;
+    }
+
+    var duplicateName = scene_component_schema.ParseText(
+        "{\"version\":1,\"components\":["
+        + "{\"name\":\"Enemy\",\"target\":\"2d-object\","
+        + "\"fields\":[{\"key\":\"a\",\"type\":\"int\"}]},"
+        + "{\"name\":\"enemy\",\"target\":\"3d-node\","
+        + "\"fields\":[{\"key\":\"b\",\"type\":\"int\"}]}"
+        + "]}",
+        "duplicate-name");
+    var duplicateKey = scene_component_schema.ParseText(
+        "{\"version\":1,\"components\":["
+        + "{\"name\":\"enemy\",\"target\":\"2d-object\",\"fields\":["
+        + "{\"key\":\"hp\",\"type\":\"int\"},"
+        + "{\"key\":\"hp\",\"type\":\"float\"}]}"
+        + "]}",
+        "duplicate-key");
+    var badDefault = scene_component_schema.ParseText(
+        "{\"version\":1,\"components\":["
+        + "{\"name\":\"enemy\",\"target\":\"2d-object\",\"fields\":["
+        + "{\"key\":\"hp\",\"type\":\"int\",\"default\":1.5}]}"
+        + "]}",
+        "bad-default");
+    var badVersion = scene_component_schema.ParseText(
+        "{\"version\":2,\"components\":[]}", "bad-version");
+    if duplicateName.valid or duplicateName.components.count() != 0
+       or duplicateKey.valid or duplicateKey.components.count() != 0
+       or badDefault.valid or badDefault.components.count() != 0
+       or badVersion.valid or badVersion.components.count() != 0 {
+        fail("invalid schema published partial component state");
+        return;
+    }
+
+    var absent = scene_component_schema.LoadPath("");
+    if absent.found or absent.valid == false
+       or absent.components.count() != 0 {
+        fail("absent schema was not a valid empty configuration");
+        return;
+    }
+
+    Terminal.Say("RESULT: ok");
+}

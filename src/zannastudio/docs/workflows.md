@@ -488,20 +488,77 @@ new content, and creates one undo entry. The envelope is capped at 64 MB and
 1,024 identities. Malformed, wrong-kind, stale, oversized, or partly
 unreconstructable data is rejected without changing the destination.
 
-The 2D toolbar switches among Select, Paint, Erase, and Object modes. Paint and
-erase interpolate missed cells during a fast pointer stroke. Select mode drags
-objects on the tile grid, and one complete stroke or object drag creates one
-undo entry. After the canvas has been clicked in Select mode, Arrow keys nudge
-the complete selection by one authored pixel and Shift+Arrow uses one tile on
-the relevant axis. Inspector fields and the Objects list keep their native
-arrow behavior. Middle-drag pans and the wheel zooms.
+Find also follows the active surface. In a 2D or 3D scene,
+`Ctrl`/`Cmd`+`F` restores the inspector when necessary, scrolls its hierarchy
+query into view, and focuses it. The 2D query matches object ID or type; the 3D
+query matches node name. Matching is case-insensitive. Press Enter or choose
+Next to advance, and choose Previous to move backward; both directions wrap.
 
-The Objects list supports Ctrl/Command-click to add or remove rows and
-Shift-click to select a range. Dragging any selected object in Select mode moves
-the complete group on the tile grid while preserving its offsets. Duplicate
-copies every selected object, including typed properties, and Remove deletes
-the selection; each batch is one undo entry and restores the exact prior
-content and selection on undo. Reserved object fields and draw-order buttons
+Hierarchy Find is a jump operation, not a filter. Every represented row remains
+visible, the target's ancestors expand, and the selected row scrolls into view.
+The status says when matching is limited to the editor's bounded represented
+hierarchy. Searching and jumping do not change canonical scene bytes, revision,
+undo/redo, dirty state, 2D coordinates, or the 3D camera.
+
+The 2D toolbar switches among Select, Paint, Erase, and Object modes. Paint and
+erase interpolate missed cells during a fast pointer stroke. In Select mode, a
+plain click on an unselected object replaces the selection; pressing an
+already-selected object preserves the complete selection so it can be dragged
+as a group. Shift-click adds an object, while Ctrl/Command-click toggles it
+without beginning a move.
+
+Press and drag from a blank canvas cell to draw an inclusive authored-cell
+selection box. A plain box replaces the selection, Shift unions its objects
+with the selection, and Ctrl/Command toggles every object it contains. A plain
+empty box clears the selection; a modified empty box preserves it. The box
+matches each object's authored point cell rather than sprite or collider
+bounds. The canvas captures the pointer until release, and Escape cancels the
+box without changing selection. Selection and box feedback are workspace-only:
+they do not change scene JSON, revision, dirty state, or history.
+
+Select mode drags objects on the tile grid, and one complete stroke or object
+drag creates one undo entry. After the canvas has been clicked in Select mode,
+Arrow keys nudge the complete selection by one authored pixel and Shift+Arrow
+uses one tile on the relevant axis. Inspector fields and the Objects TreeView
+keep their native arrow behavior. Middle-drag pans and the wheel zooms.
+
+The Scene properties group authors level-wide adapter metadata independently
+of placed objects. Select New or an existing row, enter a key, choose String,
+Integer, Float, Boolean, or Null, and select Set. Changing a selected key
+renames it; Remove deletes it. Each accepted change is one undo entry, exact
+no-ops and invalid values leave history untouched, and the selected row belongs
+to the active scene tab and session. The editor preserves scalar kinds in
+canonical scene JSON, but it does not yet validate keys against a
+project-defined scene-wide schema. Project components described below target
+placed objects and 3D nodes, not the scene-level table.
+
+The Objects TreeView presents real parent/child rows and retains collapse state
+through refreshes. Ctrl/Command-click adds or removes rows and Shift-click
+selects a visible range. Drag above or below a row to place the complete
+selected subtree block before or after that sibling; drag onto the middle to
+make the selected top-level roots the target's last children. Cycle, depth,
+detached-target, and exact no-op requests leave content and history untouched.
+Accepted drops preserve absolute object positions, remap selection, and create
+one undo entry. Up/Down performs the same operation against the previous or
+next sibling for a single selection.
+
+Use **Add Root** to create an independent object. With exactly one object
+selected, **Add Child** creates a child at the selected canvas cell (or the
+parent's position when no cell is active) and commits the object plus parent
+link together, so Undo never reveals an intermediate root. The Parent chooser
+is the keyboard-accessible reparent path: choose Scene root or a displayed
+object, then select **Reparent**. It omits the selected subtrees and
+depth-invalid destinations, supports several selected top-level roots, appends
+them at the destination, and preserves every absolute X/Y coordinate. The
+chooser follows the outliner's 4,096-row realization bound; hidden scene data
+remains preserved.
+
+Dragging any selected object in Select mode still moves the complete group on
+the tile grid while preserving offsets. Duplicate copies every selected
+object, its typed properties, and parent links whose endpoints are both in the
+selection; Remove deletes the selection and promotes unselected direct
+children through the runtime contract. Each batch is one undo entry and
+restores the exact prior content and selection on undo. Reserved object fields
 remain single-selection operations. With several objects selected, Object
 properties becomes a deliberate batch editor: Set writes one typed key/value
 to every row and Remove removes the entered key wherever present. The complete
@@ -515,8 +572,9 @@ intervals. Each accepted arrangement is one undo entry; choosing a layout the
 selection already satisfies is a history no-op.
 
 Cross-document 2D paste assigns unique object IDs, offsets each object by one
-destination tile, and preserves null, Boolean, integer, floating-point, and
-string properties.
+destination tile, preserves null, Boolean, integer, floating-point, and string
+properties, and restores parent links wholly inside the copied selection.
+Parents outside the clipboard selection become scene roots.
 
 Each layer can reference a PNG, JPEG, BMP, or GIF tileset image. Relative paths
 resolve beside a saved `.scene`; untitled-scene relative paths resolve from the
@@ -546,8 +604,27 @@ applies the same
 or out-of-range frames use a deterministic placeholder and report their state
 in the layer inspector.
 
-The 3D hierarchy also supports Ctrl/Command-click and Shift-click
-multi-selection. The primary row owns the visible Move, Rotate, or Scale
+The 3D viewport starts in **Shaded** mode. It renders the live scene hierarchy,
+visibility, meshes, PBR materials, assigned maps, and scene lights through the
+runtime's windowless software renderer inside the Studio window. Choose
+**Shaded** in the View row to switch to **Wireframe**, which renders authored
+triangle edges rather than replacing meshes with node boxes. The button label,
+status row, tooltip, and accessibility description report the active mode.
+Mode choice belongs to the scene tab and survives session restore without
+dirtying the VSCN or creating history. Grid lines, parent links, node markers,
+selection, and transform handles remain editor overlays in either mode. Studio
+rerenders when content, camera, selection, mode, or viewport dimensions change;
+an allocation/readback failure reports a fallback and preserves the
+deterministic marker view.
+
+Click anywhere inside a visible mesh's transformed bounds to select the nearest
+depth hit; if no mesh is hit, bounded node-origin markers keep empty
+organizational nodes selectable. A plain click replaces the selection,
+Shift-click adds, Ctrl/Command-click toggles, and a plain blank click clears.
+Gizmo handles have first priority, and shaded/wireframe modes use the same
+camera and geometry query. The hierarchy offers the same multi-selection
+modifiers and renders actual expandable parent/child rows. Collapse state
+survives ordinary edits and canonical reloads. The primary row owns the visible Move, Rotate, or Scale
 handles; they follow that node's parent-aware local transform projection.
 Dragging applies the same axis delta to each selected node's local transform,
 so relative local offsets are preserved for Move and each node rotates or
@@ -560,7 +637,20 @@ survive session restore. With the viewport or one of its transform-tool buttons
 focused, W selects Move, E selects Rotate, and R selects Scale. Those keys
 remain ordinary input while an inspector, editor, terminal, or other workbench
 control owns focus. Middle- or right-drag orbits; the wheel zooms; Frame All and
-Frame Selected reposition the view around the whole selection.
+Frame Selected reposition the view around the whole selection. Hold Shift
+while middle- or right-dragging to pan in the current camera plane; selection,
+orbit, pan, zoom, and framing change workspace state without adding VSCN
+history.
+
+Move adds filled, outlined **XY**, **XZ**, and **YZ** squares near the primary
+pivot. Drag inside a square to translate on both named axes; the status line
+names the handle so selection does not depend on color. A plane that is nearly
+edge-on is hidden and cannot capture input. Studio solves pointer motion against
+both projected axes together, snaps both values from the gesture origin, and
+preserves selection spacing. Local planes use parent-relative position axes.
+World planes use absolute axes and the runtime's exact matrix conversion in
+parent-before-child order. Release creates one history entry; Escape or any
+rejected member restores the complete group.
 
 For a multi-node selection, the numeric inspector fields switch to neutral
 relative values: position and rotation start at zero and are added to every
@@ -572,16 +662,44 @@ recreation. Its chooser omits every selected root and descendant, rejects moves
 that would exceed Studio's bounded hierarchy depth, and disables Reparent for
 the unchanged current parent. With several rows selected, selected descendants
 travel through their selected ancestor and independent top-level roots move
-together in one VSCN transaction. Local transforms remain unchanged, selection
-is remapped by live node identity after preorder changes, and undo restores the
-exact prior hierarchy.
+together in one VSCN transaction. **Keep world transform** is on by default.
+The runtime derives new local TRS only when it can reproduce each complete
+prior world matrix exactly; a singular destination or conversion requiring
+shear rejects and restores the whole canonical scene plus selection. Clear the
+option to keep local transforms intentionally. Selection is remapped by live
+node identity after preorder changes, and undo restores the exact prior
+hierarchy and transforms.
+
+The Sibling order row moves a selected node, or one contiguous selection of
+direct siblings, one position Earlier or Later. A block keeps its internal
+order, parent, local transforms, and complete multi-selection. Mixed-parent,
+ancestor/descendant, gapped, and boundary selections disable the unavailable
+actions and remain content/history no-ops. Each accepted block move uses the
+runtime's stable child-order primitive, serializes once, and round-trips through
+VSCN and undo/redo.
+
+You can perform the same structural work directly in the hierarchy. Drag a row
+onto the middle of a target to reparent the selected top-level roots beneath
+it; drag into the top or bottom region to place the complete root block before
+or after the target. Dragging an unselected row first makes it the sole
+selection. Direct drops use the **Keep world transform** setting, cycle/depth
+validation, stable sibling ordering, selection remapping, and one canonical
+undo transaction. Invalid, lossy, self, descendant, and already-satisfied drops
+leave document bytes and history unchanged.
+
+Visibility is group-aware. A uniform selection shows its shared checked state;
+a mixed visible/hidden selection shows the native indeterminate mark. Choosing
+a determined value sets every selected node, verifies the complete live graph,
+and commits one VSCN history entry. Undo restores the exact prior mixture and
+the complete node selection.
 
 Duplicate preserves each selected top-level node's complete serializable
 subtree, components, and original parent, gives the clone a unique Copy name,
 and offsets its local X position. Delete and Duplicate ignore a selected
 descendant when its ancestor is also selected, preventing double removal or
-duplicate nested clones. Both are one history transaction. Name, visibility,
-and material controls remain single-selection operations. Duplicate Selection
+duplicate nested clones. Both are one history transaction. Name and material
+controls remain single-selection operations, while visibility is group-aware.
+Duplicate Selection
 uses `Ctrl`/`Cmd`+`Shift`+`D`; Delete uses the platform Delete key. Both
 keyboard routes require hierarchy or viewport/tool focus, so Delete remains
 native in inspector text fields and neither command escapes material controls.
@@ -590,6 +708,63 @@ Cross-document 3D paste applies the same selected-ancestor collapse as
 Duplicate, places the pasted roots beside the primary destination node, assigns
 unique root names, offsets local X by one unit, and restores selection across
 the complete pasted hierarchy.
+
+The Gameplay metadata group authors durable node data separately from the
+display name and rendering components. Select one hierarchy node, choose
+String, Integer, Float, Boolean, or Null, enter a non-empty key, and use Set.
+Selecting a row loads its exact key, kind, and value for rename or update;
+Remove deletes that value. Common uses include `game.role`, stable IDs, spawn
+configuration, trigger targets, and component parameters.
+
+Keys are limited to 128 bytes, nodes to 256 values, and string values to 64
+KiB. Float values must be finite. Duplicate rename targets, stale selections,
+invalid values, rejected bounds, and already-equal edits leave content and
+history unchanged. Each accepted create, rename, update, or remove is one
+canonical undo entry. Scalar kinds remain exact through VSCN v6, so a float
+entered as `4.0` does not become an integer and complete `i64` values remain
+lossless. Metadata-row selection belongs to the scene tab and survives bounded
+session restore. Arbitrary raw metadata editing remains single-node.
+
+### Reusable Project Components
+
+Put `scene-components.json` at a workspace root to define reusable typed field
+groups for `2d-object`, `3d-node`, or `both`. The Project components inspector
+automatically uses the schema belonging to the saved scene's longest matching
+workspace root. An unsaved scene uses the only open root; Studio does not guess
+when several roots are open.
+
+Select one or more objects/nodes, choose a compatible component, and use Add
+Missing. Studio preflights every selected item and field. Missing values receive
+the schema default, existing values of the same type remain unchanged, and one
+wrong-type value rejects the complete action before mutation. Successful
+application serializes once and creates one undo entry; a complete component is
+a no-op and a failed write or serialization restores the prior scene.
+
+Edit Field copies the selected template field into the ordinary raw property or
+metadata controls. The 2D batch property controls can use that draft for a
+selection. The 3D raw editor still requires one node, so Edit Field is disabled
+for a node group even though Add Missing remains available.
+
+Use **Edit Schema** to expand the project-file authoring form. Its component
+dropdown is intentionally unfiltered: either editor can maintain 2D-only,
+3D-only, and shared definitions even though the Add Missing picker shows only
+compatible components. New/Save/Delete and Earlier/Later controls maintain
+component and field identity, labels, descriptions, targets, scalar kinds, and
+typed defaults. New Component creates a missing file with a valid starter field.
+
+Each accepted form action reparses and atomically replaces one complete schema
+state. Unknown version-1 members on retained JSON objects survive, invalid
+drafts leave disk unchanged, and another process's edit causes a conflict
+instead of an overwrite. **Undo Schema** and **Redo Schema** retain 20 exact
+project-file states independently of scene history; schema work never dirties
+the scene. External changes are checked periodically, or use **Reload** to
+accept them immediately and clear stale file history.
+
+The schema is a project vocabulary, not a runtime ECS or script attachment.
+Game code reads the resulting ordinary typed scene data. The complete JSON
+shape, default rules, limits, multi-root behavior, and runtime accessors are in
+[scene-components.md](scene-components.md). Renaming or deleting a definition
+does not migrate or remove values already stored in scenes.
 
 The 3D inspector's Material component edits base RGB, alpha, metallic,
 roughness, ambient occlusion, opaque/mask/blend mode, double-sided, and unlit
@@ -601,6 +776,17 @@ redoing are canonical VSCN transactions; unchanged values do not create a
 history entry. Keyboard input in the color picker or another inspector control
 does not activate W/E/R transform shortcuts.
 
+With several nodes selected, numeric fields use the runtime Spinner's `Mixed`
+state, base color and Boolean fields use indeterminate checkboxes, and alpha
+mode uses the Dropdown's `Mixed` placeholder. The primary value remains only
+as an editing seed. Applying resolves fields that show a concrete value and
+leaves every still-mixed field unchanged on each node. Missing materials start
+from documented white PBR defaults only when at least one resolved field is
+applied. Studio stages all clones before assigning any node, retains the full
+selection, and commits the group once; allocation or serialization failure
+restores canonical bytes. Removing materials likewise skips missing components
+and commits once.
+
 The Texture maps group selects Albedo, Normal, Metallic / Roughness, Ambient
 Occlusion, or Emissive independently. Choose Map accepts PNG, JPEG, BMP, GIF,
 or strictly validated KTX2 files up to 16 MB and embeds the selected source in
@@ -609,8 +795,12 @@ before they can be retained by scene history. Project Texture Maps searches the
 open multi-root workspace and previews supported images before Use Map; the
 hierarchy's Project 3D Imports browser does the same bounded search for VSCN,
 glTF, GLB, FBX, OBJ, and STL assets. Replacing or clearing a map first clones a
-shared material and creates exactly one undo entry; clearing an already-empty
-slot is a no-op. The map selector and buttons retain keyboard focus, so W/E/R
+shared material and creates exactly one undo entry. With multiple nodes
+selected, one decoded map is staged across the complete selection and Clear Map
+removes only that slot wherever present. Clearing an already-empty selection is
+a no-op. Map summaries report none/some/all coverage and show a thumbnail only
+when the selected nodes share one decoded source identity. The map selector and
+buttons retain keyboard focus, so W/E/R
 remain ordinary control input rather than changing the transform tool.
 
 The selected assigned slot shows a persistent bounded thumbnail and its source
@@ -622,13 +812,36 @@ material and decoded source identity are unchanged.
 Both editors retain invalid source bytes unchanged and explain the parse/load
 failure instead of replacing the document. Current authoring limits include no
 tagged asset library/import-settings pipeline, cubemap/lightmap picker,
-generalized component composition surface,
-mixed-value scalar/material editing and batch component composition, advanced
-Tiled margin/spacing or
-image-collection editing, tile animation/collision/metadata editing, or 3D
-local/world and plane/ring gizmo controls. Hierarchy reparenting currently uses
-the explicit Parent chooser and preserves local transforms; drag-to-reparent,
-sibling reordering, and an optional preserve-world mode are not yet present.
+automatic component-schema/scene-data migration, generalized runtime component
+composition, advanced Tiled margin/spacing or
+image-collection editing, or tile animation/collision/metadata editing. The 3D
+Local/World
+control follows the scene tab: Local uses the parent-relative basis of the
+local TRS fields, while World aligns to absolute axes and applies one snapped
+delta around each selected node's own pivot. World operations commit only when
+the runtime can reproduce every requested matrix as exact parent-relative TRS;
+any singular or shear-producing member restores the complete group. Hierarchy
+reparenting is available
+through both the explicit Parent chooser and direct before/into/after row
+dragging, with exact preserve-world behavior by default and a preserve-local
+opt-out.
+
+Move and Scale draw conditioned XY/XZ/YZ plane squares in the active Local or
+World basis. Scale squares add crossed diagonals so the active operation is
+visible without relying on color. A plane drag solves both projected axes
+together; one complete handle width means one scale unit per axis in Scale
+mode. Optional snapping resolves each target from the immutable primary origin
+at 0.1 steps. Every selected node receives the same additive two-axis delta.
+World scaling applies each delta around that node's own pivot in hierarchy
+order and commits only if every requested matrix remains exact parent-relative
+TRS; shear, singularity, Escape, or commit failure restores the complete group.
+
+Rotate draws projected X/Y/Z rings in the active Local or World basis. Dragging
+a ring decodes angular motion on its complete projected ellipse, including
+wrap-safe movement across the ±180-degree seam. Optional snapping quantizes the
+result to 15-degree steps. Nearly edge-on rings are omitted and cannot capture
+input; one accepted group gesture creates one undo entry, while Escape or an
+inexact World conversion restores the complete selection.
 
 ## Settings
 

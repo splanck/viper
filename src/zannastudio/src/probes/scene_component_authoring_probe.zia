@@ -1,0 +1,301 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/probes/scene_component_authoring_probe.zia
+// Purpose: Verify structured project component-schema edits and persistence.
+// Key invariants:
+//   - Every proposed edit is reparsed before it can replace schema text.
+//   - Unknown version-1 JSON members survive edits to known fields.
+//   - File writes are atomic, conflict-aware, and exactly undoable/redoable.
+// Ownership/Lifetime: The probe owns only temporary schema files and records.
+// Links: zannastudio/src/ui/scene_component_authoring.zia,
+//        zannastudio/src/ui/scene_component_schema.zia,
+//        docs/adr/0160-project-scene-component-schemas.md
+//
+//===----------------------------------------------------------------------===//
+
+module scene_component_authoring_probe;
+
+bind "../services/safe_io";
+bind "../ui/scene_component_authoring";
+bind "../ui/scene_component_schema";
+
+bind File = Zanna.IO.File;
+bind Path = Zanna.IO.Path;
+bind TempFile = Zanna.IO.TempFile;
+bind Str = Zanna.String;
+bind Terminal = Zanna.Terminal;
+
+func fail(tempDir: String, reason: String) {
+    safe_io.DeleteDirectoryTree(tempDir);
+    Terminal.Say("RESULT: fail " + reason);
+}
+
+func main() {
+    var empty = scene_component_authoring.EmptySchemaText();
+    var emptySchema =
+        scene_component_schema.ParseText(empty, "memory");
+    if emptySchema.valid == false
+       or emptySchema.components.count() != 0 {
+        fail("", "empty authoring schema was not valid");
+        return;
+    }
+
+    var added = scene_component_authoring.AddStarterComponent(
+        empty, scene_component_schema.TARGET_2D_OBJECT);
+    var addedSchema =
+        scene_component_schema.ParseText(added.content, "memory");
+    if added.ok == false or added.changed == false
+       or added.componentName != "component"
+       or addedSchema.valid == false
+       or addedSchema.components.count() != 1
+       or addedSchema.components.get(0).target
+          != scene_component_schema.TARGET_2D_OBJECT
+       or addedSchema.components.get(0).fields.count() != 1
+       or addedSchema.components.get(0).fields.get(0).key
+          != "component.enabled"
+       or addedSchema.components.get(0).fields.get(0).kind != "bool"
+       or addedSchema.components.get(0).fields.get(0).defaultText != "true" {
+        fail("", "starter component was not complete and deterministic");
+        return;
+    }
+
+    var renamed = scene_component_authoring.UpdateComponent(
+        added.content,
+        "component",
+        "enemy",
+        "Enemy",
+        scene_component_schema.TARGET_BOTH,
+        "Reusable enemy data.");
+    var enemySchema =
+        scene_component_schema.ParseText(renamed.content, "memory");
+    var enemy = enemySchema.Find(
+        "enemy", scene_component_schema.TARGET_2D_OBJECT);
+    if renamed.ok == false or renamed.changed == false
+       or renamed.componentName != "enemy"
+       or enemy == null or enemy.label != "Enemy"
+       or enemy.target != scene_component_schema.TARGET_BOTH
+       or enemy.description != "Reusable enemy data."
+       or enemy.fields.get(0).key != "component.enabled" {
+        fail("", "component update changed unrelated stable field keys");
+        return;
+    }
+
+    var fieldAdded = scene_component_authoring.AddStarterField(
+        renamed.content, "enemy");
+    if fieldAdded.ok == false or fieldAdded.fieldKey != "enemy.value" {
+        fail("", "starter field did not receive a unique portable key");
+        return;
+    }
+    var fieldUpdated = scene_component_authoring.UpdateField(
+        fieldAdded.content,
+        "enemy",
+        "enemy.value",
+        "enemy.hp",
+        "Hit points",
+        "int",
+        "25",
+        "Starting health.");
+    var fieldSchema =
+        scene_component_schema.ParseText(fieldUpdated.content, "memory");
+    enemy = fieldSchema.Find(
+        "enemy", scene_component_schema.TARGET_2D_OBJECT);
+    if fieldUpdated.ok == false or fieldUpdated.changed == false
+       or fieldUpdated.fieldKey != "enemy.hp"
+       or enemy == null or enemy.fields.count() != 2
+       or enemy.FieldNamed("enemy.hp") == null
+       or enemy.FieldNamed("enemy.hp").kind != "int"
+       or enemy.FieldNamed("enemy.hp").defaultText != "25"
+       or enemy.FieldNamed("enemy.hp").description != "Starting health." {
+        fail("", "typed field update did not round-trip exactly");
+        return;
+    }
+
+    var moved = scene_component_authoring.MoveField(
+        fieldUpdated.content, "enemy", "enemy.hp", -1);
+    var movedSchema =
+        scene_component_schema.ParseText(moved.content, "memory");
+    enemy = movedSchema.Find(
+        "enemy", scene_component_schema.TARGET_2D_OBJECT);
+    if moved.ok == false or moved.changed == false
+       or enemy.fields.get(0).key != "enemy.hp" {
+        fail("", "field ordering was not a stable structured edit");
+        return;
+    }
+
+    var duplicate = scene_component_authoring.UpdateField(
+        moved.content,
+        "enemy",
+        "enemy.hp",
+        "component.enabled",
+        "Duplicate",
+        "int",
+        "1",
+        "");
+    if duplicate.ok or duplicate.changed
+       or duplicate.content != moved.content {
+        fail("", "duplicate field edit did not fail closed");
+        return;
+    }
+
+    var removed = scene_component_authoring.RemoveField(
+        moved.content, "enemy", "component.enabled");
+    var rejectedLast = scene_component_authoring.RemoveField(
+        removed.content, "enemy", "enemy.hp");
+    if removed.ok == false or removed.changed == false
+       or rejectedLast.ok or rejectedLast.changed
+       or rejectedLast.content != removed.content {
+        fail("", "field removal violated the non-empty component contract");
+        return;
+    }
+
+    var second = scene_component_authoring.AddStarterComponent(
+        removed.content, scene_component_schema.TARGET_3D_NODE);
+    var secondMoved = scene_component_authoring.MoveComponent(
+        second.content, second.componentName, -1);
+    var secondSchema =
+        scene_component_schema.ParseText(secondMoved.content, "memory");
+    if second.ok == false or second.componentName != "component"
+       or secondMoved.ok == false or secondMoved.changed == false
+       or secondSchema.components.get(0).name != "component"
+       or secondSchema.components.get(1).name != "enemy" {
+        fail("", "component insertion or ordering was not deterministic");
+        return;
+    }
+
+    var unknownText =
+        "{\"version\":1,\"vendor\":{\"keep\":true},\"components\":["
+        + "{\"name\":\"enemy\",\"target\":\"both\",\"custom\":\"keep\","
+        + "\"fields\":[{\"key\":\"enemy.hp\",\"type\":\"int\","
+        + "\"default\":10,\"editorHint\":\"keep\"}]}]}";
+    var unknownEdit = scene_component_authoring.UpdateField(
+        unknownText,
+        "enemy",
+        "enemy.hp",
+        "enemy.hp",
+        "Hit points",
+        "int",
+        "12",
+        "");
+    if unknownEdit.ok == false
+       or Str.Contains(unknownEdit.content, "\"vendor\"") == false
+       or Str.Contains(unknownEdit.content, "\"custom\"") == false
+       or Str.Contains(unknownEdit.content, "\"editorHint\"") == false {
+        fail("", "structured edit discarded unknown version-1 members");
+        return;
+    }
+
+    var omittedDefaultText =
+        "{\"version\":1,\"components\":["
+        + "{\"name\":\"counter\",\"target\":\"both\",\"fields\":["
+        + "{\"key\":\"counter.value\",\"type\":\"int\"}]}]}";
+    var labelOnlyEdit = scene_component_authoring.UpdateField(
+        omittedDefaultText,
+        "counter",
+        "counter.value",
+        "counter.value",
+        "Counter value",
+        "int",
+        "0",
+        "");
+    if labelOnlyEdit.ok == false or labelOnlyEdit.changed == false
+       or Str.Contains(labelOnlyEdit.content, "\"label\"") == false
+       or Str.Contains(labelOnlyEdit.content, "\"default\"") {
+        fail("", "label-only edit materialized an omitted field default");
+        return;
+    }
+    var fieldDescriptionOnly = scene_component_authoring.UpdateField(
+        omittedDefaultText,
+        "counter",
+        "counter.value",
+        "counter.value",
+        "counter.value",
+        "int",
+        "0",
+        "Counts accepted events.");
+    if fieldDescriptionOnly.ok == false
+       or Str.Contains(fieldDescriptionOnly.content, "\"description\"")
+          == false
+       or Str.Contains(fieldDescriptionOnly.content, "\"label\"")
+       or Str.Contains(fieldDescriptionOnly.content, "\"default\"") {
+        fail("", "field edit materialized unchanged optional members");
+        return;
+    }
+    var componentDescriptionOnly =
+        scene_component_authoring.UpdateComponent(
+            omittedDefaultText,
+            "counter",
+            "counter",
+            "counter",
+            scene_component_schema.TARGET_BOTH,
+            "Shared counter data.");
+    if componentDescriptionOnly.ok == false
+       or Str.Contains(componentDescriptionOnly.content, "\"description\"")
+          == false
+       or Str.Contains(componentDescriptionOnly.content, "\"label\"") {
+        fail("", "component edit materialized an unchanged optional label");
+        return;
+    }
+
+    var tempDir =
+        TempFile.CreateDirWithPrefix("zannastudio_component_authoring_");
+    var schemaPath = Path.Join(
+        tempDir, scene_component_schema.SCHEMA_FILE_NAME);
+    if tempDir == "" {
+        fail(tempDir, "could not create schema authoring fixture");
+        return;
+    }
+    var session =
+        new scene_component_authoring.SceneComponentAuthoringSession();
+    if session.Load(schemaPath) == false or session.found
+       or session.currentText != empty
+       or session.CanUndo() or session.CanRedo()
+       or session.Apply(unknownEdit.content) == false
+       or session.found == false
+       or File.Exists(schemaPath) == false
+       or File.ReadAllText(schemaPath) != unknownEdit.content
+       or session.CanUndo() == false
+       or session.CanRedo() {
+        fail(tempDir, "schema session did not atomically create its file");
+        return;
+    }
+    if session.Undo() == false or File.Exists(schemaPath)
+       or session.found or session.currentText != empty
+       or session.CanRedo() == false
+       or session.Redo() == false
+       or File.ReadAllText(schemaPath) != unknownEdit.content
+       or session.found == false {
+        fail(tempDir, "schema file creation was not exactly undoable");
+        return;
+    }
+
+    var external = unknownEdit.content + "\n";
+    if safe_io.WriteAllTextAtomic(schemaPath, external) == false
+       or session.HasExternalChange() == false {
+        fail(tempDir, "schema session did not notice an external edit");
+        return;
+    }
+    var localEdit = scene_component_authoring.UpdateComponent(
+        session.currentText,
+        "enemy",
+        "enemy",
+        "Enemy changed locally",
+        scene_component_schema.TARGET_BOTH,
+        "");
+    if localEdit.ok == false or session.Apply(localEdit.content)
+       or File.ReadAllText(schemaPath) != external
+       or session.error == ""
+       or session.Reload() == false
+       or session.currentText != external
+       or session.CanUndo() or session.CanRedo() {
+        fail(tempDir, "external conflict was overwritten or retained stale history");
+        return;
+    }
+
+    safe_io.DeleteDirectoryTree(tempDir);
+    Terminal.Say("RESULT: ok");
+}

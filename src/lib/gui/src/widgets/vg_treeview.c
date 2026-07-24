@@ -24,13 +24,18 @@
 //   - drag-and-drop: drop position is classified as BEFORE/INTO/AFTER based on
 //     where in the target row's height (< 30% → BEFORE, > 70% → AFTER, else
 //     INTO); drops are vetoed by treeview_drop_is_valid.
+//   - Retained multi-selection stores one primary and one range anchor while
+//     every selected node carries its own flag; range traversal is iterative.
+//   - Application-directed DnD mode 1 preserves container-only INTO drops;
+//     mode 2 exposes row-aware BEFORE/INTO/AFTER latches.
 // Ownership/Lifetime:
 //   - vg_tree_node_t instances are allocated by vg_treeview_add_node and owned
 //     by the tree. Callers must not free nodes directly.
 //   - node->user_data is freed on retire only if owns_user_data is true.
 // Links: lib/gui/include/vg_ide_widgets.h,
 //        lib/gui/include/vg_theme.h,
-//        lib/gui/include/vg_event.h
+//        lib/gui/include/vg_event.h,
+//        docs/adr/0163-stable-multiselect-and-row-aware-treeview-editing.md
 //
 //===----------------------------------------------------------------------===//
 #include "../../../graphics/include/vgfx.h"
@@ -66,6 +71,16 @@ static int count_visible_nodes(vg_tree_node_t *node);
 static vg_tree_node_t *get_node_at_index(vg_tree_node_t *root, int index, int *current);
 static int get_node_index(vg_tree_node_t *root, vg_tree_node_t *target, int *current);
 static bool node_in_subtree(const vg_tree_node_t *root, const vg_tree_node_t *candidate);
+static vg_tree_node_t *treeview_next_retained(vg_tree_node_t *root,
+                                              vg_tree_node_t *node,
+                                              bool visible_only);
+static bool treeview_clear_retained_selection(vg_treeview_t *tree, vg_tree_node_t *keep);
+static vg_tree_node_t *treeview_first_selected(vg_treeview_t *tree);
+static bool treeview_subtree_has_selection(vg_tree_node_t *root);
+static void treeview_select_interactive(vg_treeview_t *tree,
+                                        vg_tree_node_t *node,
+                                        bool toggle,
+                                        bool range);
 static void treeview_clamp_scroll(vg_treeview_t *tree);
 static float treeview_content_height(const vg_treeview_t *tree);
 static float treeview_max_scroll(const vg_treeview_t *tree);
@@ -402,6 +417,149 @@ static bool node_in_subtree(const vg_tree_node_t *root, const vg_tree_node_t *ca
             return true;
     }
     return false;
+}
+
+/// @brief Advance through retained preorder, optionally skipping collapsed descendants.
+/// @details Parent links keep traversal iterative and allocation-free for arbitrarily deep trees.
+static vg_tree_node_t *treeview_next_retained(vg_tree_node_t *root,
+                                              vg_tree_node_t *node,
+                                              bool visible_only) {
+    if (!root || !node)
+        return NULL;
+    if (node->first_child && (!visible_only || node->expanded))
+        return node->first_child;
+    while (node && node != root) {
+        if (node->next_sibling)
+            return node->next_sibling;
+        node = node->parent;
+    }
+    return NULL;
+}
+
+/// @brief Clear all retained selection flags except an optional live node.
+static bool treeview_clear_retained_selection(vg_treeview_t *tree, vg_tree_node_t *keep) {
+    if (!tree || !tree->root)
+        return false;
+    bool changed = false;
+    for (vg_tree_node_t *node = tree->root->first_child; node;
+         node = treeview_next_retained(tree->root, node, false)) {
+        if (node != keep && node->selected) {
+            node->selected = false;
+            changed = true;
+        }
+    }
+    return changed;
+}
+
+/// @brief Return the first selected retained node in complete preorder.
+static vg_tree_node_t *treeview_first_selected(vg_treeview_t *tree) {
+    if (!tree || !tree->root)
+        return NULL;
+    for (vg_tree_node_t *node = tree->root->first_child; node;
+         node = treeview_next_retained(tree->root, node, false)) {
+        if (node->selected)
+            return node;
+    }
+    return NULL;
+}
+
+/// @brief Return whether a retained subtree contains at least one selected node.
+static bool treeview_subtree_has_selection(vg_tree_node_t *root) {
+    if (!root)
+        return false;
+    for (vg_tree_node_t *node = root; node; node = treeview_next_retained(root, node, false)) {
+        if (node->selected)
+            return true;
+    }
+    return false;
+}
+
+/// @brief Publish one retained selection transition and keep the primary visible when possible.
+static void treeview_publish_retained_selection(vg_treeview_t *tree, bool changed) {
+    if (!tree || !changed)
+        return;
+    treeview_note_selection_changed(tree);
+    if (tree->selected)
+        vg_treeview_scroll_to(tree, tree->selected);
+    else
+        treeview_clamp_scroll(tree);
+    tree->base.needs_paint = true;
+    if (tree->on_select && tree->selected)
+        tree->on_select(&tree->base, tree->selected, tree->on_select_data);
+}
+
+/// @brief Replace, toggle, or visibly range-select one retained node for user input.
+static void treeview_select_interactive(vg_treeview_t *tree,
+                                        vg_tree_node_t *node,
+                                        bool toggle,
+                                        bool range) {
+    if (!tree || !vg_tree_node_is_live(node) || node->owner != tree)
+        return;
+
+    vg_tree_node_t *old_primary = tree->selected;
+    bool changed = false;
+    if (!tree->multi_select || (!toggle && !range)) {
+        changed = treeview_clear_retained_selection(tree, node);
+        changed = changed || !node->selected || tree->selected != node;
+        node->selected = true;
+        tree->selected = node;
+        tree->anchor_selected = node;
+        treeview_publish_retained_selection(tree, changed);
+        return;
+    }
+
+    if (range) {
+        vg_tree_node_t *anchor = tree->anchor_selected &&
+                                         vg_tree_node_is_live(tree->anchor_selected) &&
+                                         tree->anchor_selected->owner == tree
+                                     ? tree->anchor_selected
+                                     : (tree->selected ? tree->selected : node);
+        int current = 0;
+        int anchor_index = get_node_index(tree->root, anchor, &current);
+        current = 0;
+        int target_index = get_node_index(tree->root, node, &current);
+        if (anchor_index < 0 || target_index < 0) {
+            changed = treeview_clear_retained_selection(tree, node);
+            changed = changed || !node->selected || tree->selected != node;
+            node->selected = true;
+            tree->selected = node;
+            tree->anchor_selected = node;
+            treeview_publish_retained_selection(tree, changed);
+            return;
+        }
+
+        changed = treeview_clear_retained_selection(tree, NULL);
+        int start = anchor_index < target_index ? anchor_index : target_index;
+        int end = anchor_index > target_index ? anchor_index : target_index;
+        int index = 0;
+        for (vg_tree_node_t *candidate = tree->root->first_child; candidate;
+             candidate = treeview_next_retained(tree->root, candidate, true), ++index) {
+            if (index >= start && index <= end) {
+                changed = changed || !candidate->selected;
+                candidate->selected = true;
+            }
+            if (index >= end)
+                break;
+        }
+        tree->selected = node;
+        changed = changed || old_primary != node;
+        treeview_publish_retained_selection(tree, changed);
+        return;
+    }
+
+    bool was_selected = node->selected;
+    node->selected = !node->selected;
+    if (node->selected) {
+        tree->selected = node;
+        tree->anchor_selected = node;
+    } else {
+        if (tree->selected == node)
+            tree->selected = treeview_first_selected(tree);
+        if (tree->anchor_selected == node)
+            tree->anchor_selected = tree->selected;
+    }
+    changed = was_selected != node->selected || old_primary != tree->selected;
+    treeview_publish_retained_selection(tree, changed);
 }
 
 /// @brief Return the flattened visible-row height without overflowing float arithmetic.
@@ -975,7 +1133,8 @@ static void paint_node(
                     ? theme->colors.bg_primary
                     : vg_color_blend(theme->colors.bg_primary, theme->colors.bg_secondary, 0.35f);
             uint32_t row_fg = tree->text_color;
-            bool row_sel = (child == tree->selected);
+            bool row_sel = child->selected;
+            bool row_primary = child == tree->selected;
             bool row_hov = (child == tree->hovered);
             if (row_sel)
                 row_fg = theme->colors.fg_primary;
@@ -1001,7 +1160,7 @@ static void paint_node(
                                         tree->row_height - 4.0f,
                                         theme->radius.lg,
                                         pill);
-                if (row_sel)
+                if (row_primary)
                     vg_draw_round_rect_fill((vgfx_window_t)canvas,
                                             tree->base.x + 11.0f,
                                             display_y + 6.0f,
@@ -1015,8 +1174,8 @@ static void paint_node(
             if (child->has_children || child->first_child) {
                 int32_t ax = (int32_t)(arrow_slot_x + (tree->icon_size - arrow_size) * 0.5f);
                 int32_t ay = (int32_t)(display_y + (tree->row_height - arrow_size) / 2.0f);
-                uint32_t arrow_color = (child == tree->selected) ? theme->colors.fg_primary
-                                                                 : theme->colors.fg_secondary;
+                uint32_t arrow_color =
+                    child->selected ? theme->colors.fg_primary : theme->colors.fg_secondary;
                 if (child->expanded) {
                     // ▼ downward triangle
                     vgfx_line(
@@ -1417,9 +1576,9 @@ static void treeview_update_drop_target(vg_treeview_t *tree, float local_y) {
     float row_top = current_y - tree->scroll_y;
     float local_row_y = local_y - row_top;
     vg_tree_drop_position_t position = VG_TREE_DROP_INTO;
-    if (tree->app_directed_dnd) {
-        // Application-directed DnD is INTO-only, onto an expandable (folder)
-        // node. A leaf target is not a valid drop.
+    if (tree->app_directed_dnd_mode == VG_TREEVIEW_APP_DND_LEGACY_INTO) {
+        // Legacy poll-mode DnD remains INTO-only on expandable containers so
+        // existing Explorer behavior does not change.
         if (!target->has_children && target->first_child == NULL) {
             tree->drop_target = NULL;
             return;
@@ -1716,8 +1875,11 @@ static bool treeview_handle_event(vg_widget_t *widget, vg_event_t *event) {
                     // Toggle expand
                     vg_treeview_toggle(tree, clicked);
                 } else {
-                    // Select node
-                    vg_treeview_select(tree, clicked);
+                    uint32_t modifiers = event->modifiers;
+                    bool toggle = tree->multi_select && ((modifiers & VG_MOD_CTRL) != 0 ||
+                                                         (modifiers & VG_MOD_SUPER) != 0);
+                    bool range = tree->multi_select && (modifiers & VG_MOD_SHIFT) != 0;
+                    treeview_select_interactive(tree, clicked, toggle, range);
                 }
                 return true;
             }
@@ -1748,7 +1910,11 @@ static bool treeview_handle_event(vg_widget_t *widget, vg_event_t *event) {
                             vg_tree_node_t *prev =
                                 get_node_at_index(tree->root, index - 1, &current);
                             if (prev) {
-                                vg_treeview_select(tree, prev);
+                                treeview_select_interactive(
+                                    tree,
+                                    prev,
+                                    false,
+                                    tree->multi_select && (event->modifiers & VG_MOD_SHIFT) != 0);
                             }
                         }
                         return true;
@@ -1760,7 +1926,11 @@ static bool treeview_handle_event(vg_widget_t *widget, vg_event_t *event) {
                         current = 0;
                         vg_tree_node_t *next = get_node_at_index(tree->root, index + 1, &current);
                         if (next) {
-                            vg_treeview_select(tree, next);
+                            treeview_select_interactive(tree,
+                                                        next,
+                                                        false,
+                                                        tree->multi_select &&
+                                                            (event->modifiers & VG_MOD_SHIFT) != 0);
                         }
                         return true;
                     }
@@ -1769,7 +1939,7 @@ static bool treeview_handle_event(vg_widget_t *widget, vg_event_t *event) {
                         if (tree->selected->expanded && tree->selected->first_child) {
                             vg_treeview_collapse(tree, tree->selected);
                         } else if (tree->selected->parent && tree->selected->parent != tree->root) {
-                            vg_treeview_select(tree, tree->selected->parent);
+                            treeview_select_interactive(tree, tree->selected->parent, false, false);
                         }
                         return true;
                     case VG_KEY_RIGHT:
@@ -1778,7 +1948,8 @@ static bool treeview_handle_event(vg_widget_t *widget, vg_event_t *event) {
                             (tree->selected->has_children || tree->selected->first_child)) {
                             vg_treeview_expand(tree, tree->selected);
                         } else if (tree->selected->first_child) {
-                            vg_treeview_select(tree, tree->selected->first_child);
+                            treeview_select_interactive(
+                                tree, tree->selected->first_child, false, false);
                         }
                         return true;
                     case VG_KEY_ENTER:
@@ -1810,7 +1981,7 @@ static bool treeview_handle_event(vg_widget_t *widget, vg_event_t *event) {
             if (vg_widget_get_input_capture() == widget)
                 vg_widget_release_input_capture();
             if (tree->is_dragging && tree->drag_node && tree->drop_target) {
-                if (tree->app_directed_dnd) {
+                if (tree->app_directed_dnd_mode != VG_TREEVIEW_APP_DND_DISABLED) {
                     // Latch for polling; the application performs the move and
                     // refreshes the tree. Do NOT self-reorder or fire on_drop.
                     tree->drop_latched = true;
@@ -2050,11 +2221,13 @@ void vg_treeview_remove_node(vg_treeview_t *tree, vg_tree_node_t *node) {
     if (tree->virtual_mode)
         vg_treeview_clear_virtual_model(tree);
 
-    // Update selection if needed
-    if (node_in_subtree(node, tree->selected)) {
+    // Update selection if needed. A removed non-primary selection is still a
+    // logical selection change and must emit exactly one edge.
+    bool removed_had_selection = treeview_subtree_has_selection(node);
+    if (node_in_subtree(node, tree->selected))
         tree->selected = NULL;
-        treeview_note_selection_changed(tree);
-    }
+    if (node_in_subtree(node, tree->anchor_selected))
+        tree->anchor_selected = NULL;
     if (node_in_subtree(node, tree->prev_selected)) {
         tree->prev_selected = NULL;
     }
@@ -2092,6 +2265,18 @@ void vg_treeview_remove_node(vg_treeview_t *tree, vg_tree_node_t *node) {
         parent->has_children = parent->first_child != NULL;
     }
 
+    if (removed_had_selection) {
+        for (vg_tree_node_t *candidate = node; candidate;
+             candidate = treeview_next_retained(node, candidate, false)) {
+            candidate->selected = false;
+        }
+        if (!tree->selected)
+            tree->selected = treeview_first_selected(tree);
+        if (!tree->anchor_selected)
+            tree->anchor_selected = tree->selected;
+        treeview_note_selection_changed(tree);
+    }
+
     retire_node_subtree(tree, node);
 
     tree->base.needs_layout = true;
@@ -2113,6 +2298,7 @@ void vg_treeview_clear(vg_treeview_t *tree) {
         vg_treeview_clear_virtual_model(tree);
 
     bool had_nodes = tree->root && tree->root->first_child != NULL;
+    bool had_selection = treeview_first_selected(tree) != NULL;
 
     // Retire all children of root so stale node handles remain safely inert
     // until the tree itself is destroyed.
@@ -2127,10 +2313,11 @@ void vg_treeview_clear(vg_treeview_t *tree) {
     tree->root->last_child = NULL;
     tree->root->child_count = 0;
     tree->root->has_children = false;
-    if (tree->selected)
+    if (had_selection)
         treeview_note_selection_changed(tree);
     tree->selected = NULL;
     tree->prev_selected = NULL;
+    tree->anchor_selected = NULL;
     tree->hovered = NULL;
     tree->drag_node = NULL;
     tree->drop_target = NULL;
@@ -2263,9 +2450,9 @@ void vg_treeview_toggle(vg_treeview_t *tree, vg_tree_node_t *node) {
 
 /// @brief Select a node, updating visual state and firing the on_select callback.
 ///
-/// @details Deselects the previously-selected node, selects node (or clears
-///          selection if NULL), scrolls to keep the node visible, and fires
-///          on_select if the selection changed. Passing NULL clears the selection.
+/// @details Replaces selection in single-select mode, adds node and makes it primary in
+///          multi-select mode, or clears every selected flag for NULL. Programmatic additive
+///          behavior lets callers reconstruct a stable selection after rebuilding retained rows.
 ///
 /// @param tree The owning tree view; may be NULL.
 /// @param node Node to select; must be live and owned by tree, or NULL to deselect.
@@ -2277,23 +2464,52 @@ void vg_treeview_select(vg_treeview_t *tree, vg_tree_node_t *node) {
     if (tree->virtual_mode)
         vg_treeview_clear_virtual_model(tree);
 
-    if (tree->selected != node) {
-        if (tree->selected) {
-            tree->selected->selected = false;
-        }
+    vg_tree_node_t *old_primary = tree->selected;
+    bool changed = false;
+    if (!node) {
+        changed = treeview_clear_retained_selection(tree, NULL);
+        tree->selected = NULL;
+        tree->anchor_selected = NULL;
+        changed = changed || old_primary != NULL;
+    } else if (!tree->multi_select) {
+        changed = treeview_clear_retained_selection(tree, node);
+        changed = changed || !node->selected || old_primary != node;
+        node->selected = true;
         tree->selected = node;
-        treeview_note_selection_changed(tree);
-        if (node) {
-            node->selected = true;
-            vg_treeview_scroll_to(tree, node);
-        } else {
-            treeview_clamp_scroll(tree);
-        }
-        tree->base.needs_paint = true;
+        tree->anchor_selected = node;
+    } else {
+        changed = !node->selected || old_primary != node;
+        node->selected = true;
+        tree->selected = node;
+        tree->anchor_selected = node;
+    }
+    treeview_publish_retained_selection(tree, changed);
+}
 
-        if (tree->on_select && node) {
-            tree->on_select(&tree->base, node, tree->on_select_data);
-        }
+/// @brief Configure retained-node multi-selection, preserving only the primary when disabled.
+void vg_treeview_set_multi_select(vg_treeview_t *tree, bool enabled) {
+    if (!tree || tree->multi_select == enabled)
+        return;
+    tree->multi_select = enabled;
+    if (enabled)
+        return;
+
+    vg_tree_node_t *keep = tree->selected;
+    if (!keep || !vg_tree_node_is_live(keep) || keep->owner != tree || !keep->selected)
+        keep = treeview_first_selected(tree);
+    bool changed = treeview_clear_retained_selection(tree, keep);
+    if (keep && !keep->selected) {
+        keep->selected = true;
+        changed = true;
+    }
+    if (tree->selected != keep) {
+        tree->selected = keep;
+        changed = true;
+    }
+    tree->anchor_selected = keep;
+    if (changed) {
+        treeview_note_selection_changed(tree);
+        tree->base.needs_paint = true;
     }
 }
 
@@ -2574,15 +2790,33 @@ void vg_treeview_set_drag_enabled(vg_treeview_t *tree, bool enabled) {
 }
 
 void vg_treeview_set_app_directed_dnd(vg_treeview_t *tree, bool enabled) {
+    vg_treeview_set_app_directed_dnd_mode(
+        tree, enabled ? VG_TREEVIEW_APP_DND_LEGACY_INTO : VG_TREEVIEW_APP_DND_DISABLED);
+}
+
+void vg_treeview_set_app_directed_dnd_mode(vg_treeview_t *tree, int mode) {
     if (!tree)
         return;
-    tree->app_directed_dnd = enabled;
-    tree->drag_enabled = enabled;
-    if (!enabled) {
-        tree->drop_latched = false;
-        tree->latched_src = NULL;
-        tree->latched_tgt = NULL;
-    }
+    if (mode < (int)VG_TREEVIEW_APP_DND_DISABLED || mode > (int)VG_TREEVIEW_APP_DND_ROW_AWARE)
+        return;
+    vg_treeview_app_dnd_mode_t requested = (vg_treeview_app_dnd_mode_t)mode;
+    if (tree->app_directed_dnd_mode == requested &&
+        (requested != VG_TREEVIEW_APP_DND_DISABLED || !tree->drag_enabled))
+        return;
+
+    if (vg_widget_get_input_capture() == &tree->base)
+        vg_widget_release_input_capture();
+    tree->drag_node = NULL;
+    tree->drop_target = NULL;
+    tree->is_dragging = false;
+    tree->suppress_click = false;
+    tree->drop_latched = false;
+    tree->latched_src = NULL;
+    tree->latched_tgt = NULL;
+    tree->latched_pos = VG_TREE_DROP_INTO;
+    tree->app_directed_dnd_mode = requested;
+    tree->drag_enabled = requested != VG_TREEVIEW_APP_DND_DISABLED;
+    tree->base.needs_paint = true;
 }
 
 bool vg_treeview_has_pending_drop(const vg_treeview_t *tree) {

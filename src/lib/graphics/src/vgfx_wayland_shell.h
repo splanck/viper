@@ -33,6 +33,7 @@ typedef struct vgfx_wayland_shell {
     int32_t height;
     int32_t maximized;
     int32_t fullscreen;
+    int32_t resizing;
     int32_t activated;
     uint32_t decoration_mode;
     struct wl_proxy *entered_outputs[16];

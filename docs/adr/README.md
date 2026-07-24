@@ -72,6 +72,7 @@ from [0000-template.md](0000-template.md) and take the next unused number.
 - [ADR 0038](0038-graphics-factory-aliases.md) — Graphics Factory Aliases
 - [ADR 0039](0039-option-failure-aliases.md) — Option Failure Aliases
 - [ADR 0040](0040-input-key-namespace.md) — Input Key Namespace
+- [ADR 0169](0169-super-modifier-keys-and-studio-viewport-picking.md) — Add Super Keys and Geometry-Aware Studio Viewport Interaction
 - [ADR 0041](0041-crypto-result-and-legacy-apis.md) — Crypto Result APIs and Legacy Namespaces
 - [ADR 0042](0042-http-tls-verification-bypass-api.md) — HTTP TLS Verification Bypass API
 - [ADR 0043](0043-random-chance-boolean-api.md) — Random Chance Boolean API
@@ -128,11 +129,23 @@ from [0000-template.md](0000-template.md) and take the next unused number.
 - [ADR 0153](0153-non-following-path-link-inspection.md) — Reject Linked Descendants at Explorer Boundaries
 - [ADR 0154](0154-single-owner-split-editor-documents.md) — Give Split-Editor Documents One Live Buffer Owner
 - [ADR 0156](0156-listbox-selected-row-data.md) — Expose Selected ListBox Row Data
+- [ADR 0163](0163-stable-multiselect-and-row-aware-treeview-editing.md) — Add Stable Multi-Select and Row-Aware TreeView Editing
+- [ADR 0165](0165-scrollview-descendant-reveal.md) — Expose ScrollView Descendant Reveal
+- [ADR 0167](0167-spinner-mixed-value-state.md) — Expose Spinner Mixed-Value State
 
 ## Graphics3D & Game Systems
 
 - [ADR 0155](0155-scene-object-authoring-metadata-and-duplication.md) — Make Scene Object Metadata and Duplication Authorable
 - [ADR 0157](0157-material-texture-pixel-inspection.md) — Expose Read-Only Material Texture Pixels for Authoring Tools
+- [ADR 0158](0158-scene-level-property-authoring.md) — Make Scene-Level Properties Fully Authorable
+- [ADR 0159](0159-typed-scenenode-metadata-and-vscn-v6.md) — Add Typed SceneNode Metadata and VSCN v6
+- [ADR 0160](0160-project-scene-component-schemas.md) — Add Project Scene Component Schemas
+- [ADR 0161](0161-stable-scenenode-sibling-reordering.md) — Add Stable SceneNode Sibling Reordering
+- [ADR 0162](0162-exact-preserve-world-scenenode-reparenting.md) — Add Exact Preserve-World SceneNode Reparenting
+- [ADR 0164](0164-backward-compatible-2d-scene-object-hierarchy.md) — Add Backward-Compatible 2D Scene Object Hierarchy
+- [ADR 0166](0166-exact-scenenode-world-matrix-assignment.md) — Add Exact SceneNode World-Matrix Assignment
+- [ADR 0168](0168-windowless-canvas3d-rendering.md) — Add Windowless Canvas3D Rendering
+- [ADR 0170](0170-studio-2d-canvas-marquee-selection.md) — Add Modifier and Marquee Selection to the Studio 2D Canvas
 - [ADR 0004](0004-graphics3d-runtime-surface-expansion.md) — Graphics3D Runtime Surface Expansion Uses Registry-Only Semantics
 - [ADR 0046](0046-game3d-prefab-loading-api.md) — Game3D Prefab Loading API
 - [ADR 0059](0059-graphics3d-lookup-option-apis.md) — Graphics3D Lookup Option APIs

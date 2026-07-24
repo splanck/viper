@@ -1,0 +1,541 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: zannastudio/src/ui/scene_component_schema.zia
+// Purpose: Load and validate project-defined typed scene-component templates.
+// Key invariants:
+//   - A malformed, oversized, or racing file publishes no partial components.
+//   - Component names are case-insensitively unique and field keys are unique
+//     within one component.
+//   - Every default is validated against its declared scalar kind before use.
+//   - Limits are below the backing 2D/3D scene metadata limits.
+// Ownership/Lifetime: Returned schemas own value-only component/field records.
+// Links: zannastudio/src/ui/scene_component_authoring.zia,
+//        zannastudio/src/ui/scene_component_authoring_controller.zia,
+//        zannastudio/src/ui/scene_editor_2d.zia,
+//        zannastudio/src/ui/scene_editor_3d.zia,
+//        docs/adr/0160-project-scene-component-schemas.md
+//
+//===----------------------------------------------------------------------===//
+
+module scene_component_schema;
+
+bind "../services/safe_io";
+
+bind File = Zanna.IO.File;
+bind Path = Zanna.IO.Path;
+bind Json = Zanna.Data.Json;
+bind Map = Zanna.Collections.Map;
+bind Seq = Zanna.Collections.Seq;
+bind Str = Zanna.String;
+bind Parse = Zanna.Core.Parse;
+bind Fmt = Zanna.Text.Fmt;
+
+final SCHEMA_FILE_NAME: String = "scene-components.json";
+final SCHEMA_VERSION: Integer = 1;
+final TARGET_2D_OBJECT: String = "2d-object";
+final TARGET_3D_NODE: String = "3d-node";
+final TARGET_BOTH: String = "both";
+final MAX_SCHEMA_BYTES: Integer = 1000000;
+final MAX_COMPONENTS: Integer = 128;
+final MAX_FIELDS_PER_COMPONENT: Integer = 64;
+final MAX_TOTAL_FIELDS: Integer = 2048;
+final MAX_COMPONENT_NAME_CHARS: Integer = 64;
+final MAX_LABEL_CHARS: Integer = 128;
+final MAX_DESCRIPTION_CHARS: Integer = 1024;
+final MAX_FIELD_KEY_CHARS: Integer = 128;
+final MAX_DEFAULT_STRING_CHARS: Integer = 16384;
+
+/// @brief One validated typed field in a project scene-component template.
+class SceneComponentField {
+    expose String key;
+    expose String label;
+    expose String kind;
+    expose String defaultText;
+    expose String description;
+
+    expose func init() {
+        key = "";
+        label = "";
+        kind = "";
+        defaultText = "";
+        description = "";
+    }
+}
+
+/// @brief One named project template applicable to 2D objects, 3D nodes, or both.
+class SceneComponentDefinition {
+    expose String name;
+    expose String label;
+    expose String target;
+    expose String description;
+    expose List[SceneComponentField] fields;
+
+    expose func init() {
+        name = "";
+        label = "";
+        target = "";
+        description = "";
+        fields = [];
+    }
+
+    /// @brief Return whether this definition may be applied to one editor target.
+    expose func SupportsTarget(requested: String) -> Boolean {
+        return target == TARGET_BOTH or target == requested;
+    }
+
+    /// @brief Find one exact field key, or null when absent.
+    expose func FieldNamed(key: String) -> SceneComponentField {
+        var index = 0;
+        while index < fields.count() {
+            var field = fields.get(index);
+            if field != null and field.key == key { return field; }
+            index = index + 1;
+        }
+        return null;
+    }
+}
+
+/// @brief Complete fail-closed result of loading one project schema.
+class SceneComponentSchema {
+    expose Boolean found;
+    expose Boolean valid;
+    expose String sourcePath;
+    expose String error;
+    expose List[SceneComponentDefinition] components;
+
+    expose func init() {
+        found = false;
+        valid = true;
+        sourcePath = "";
+        error = "";
+        components = [];
+    }
+
+    /// @brief Count definitions compatible with one editor target.
+    expose func CountForTarget(target: String) -> Integer {
+        var count = 0;
+        var index = 0;
+        while index < components.count() {
+            var component = components.get(index);
+            if component != null and component.SupportsTarget(target) {
+                count = count + 1;
+            }
+            index = index + 1;
+        }
+        return count;
+    }
+
+    /// @brief Return one compatible component by filtered index.
+    expose func AtForTarget(
+        target: String,
+        filteredIndex: Integer) -> SceneComponentDefinition {
+        if filteredIndex < 0 { return null; }
+        var seen = 0;
+        var index = 0;
+        while index < components.count() {
+            var component = components.get(index);
+            if component != null and component.SupportsTarget(target) {
+                if seen == filteredIndex { return component; }
+                seen = seen + 1;
+            }
+            index = index + 1;
+        }
+        return null;
+    }
+
+    /// @brief Find a compatible component by case-insensitive stable name.
+    expose func Find(name: String,
+                     target: String) -> SceneComponentDefinition {
+        var folded = Str.ToLower(Str.Trim(name));
+        var index = 0;
+        while index < components.count() {
+            var component = components.get(index);
+            if component != null and component.SupportsTarget(target)
+               and Str.ToLower(component.name) == folded {
+                return component;
+            }
+            index = index + 1;
+        }
+        return null;
+    }
+}
+
+/// @brief Return the fixed schema path beneath a workspace root.
+expose func PathForRoot(root: String) -> String {
+    if root == "" { return ""; }
+    return Path.Join(root, SCHEMA_FILE_NAME);
+}
+
+/// @brief Load one bounded schema path without propagating filesystem failures.
+/// @details Missing files are valid empty configurations. Existing unreadable
+///          or oversized files are found-but-invalid so Studio can surface the
+///          problem without applying stale definitions.
+expose func LoadPath(path: String) -> SceneComponentSchema {
+    var empty = new SceneComponentSchema();
+    empty.sourcePath = path;
+    if path == "" { return empty; }
+
+    var exists = false;
+    try {
+        exists = File.Exists(path);
+    } catch {
+        empty.found = true;
+        return Reject(empty, "Could not inspect the component schema file.");
+    }
+    if exists == false { return empty; }
+
+    empty.found = true;
+    var read = safe_io.ReadAllTextBounded(path, MAX_SCHEMA_BYTES);
+    if read.ok == false {
+        return Reject(
+            empty,
+            "Could not read the component schema within the 1 MB limit.");
+    }
+    return ParseText(read.text, path);
+}
+
+/// @brief Parse one complete schema string into staged value records.
+/// @return A valid complete schema, or a fail-closed result with no components.
+expose func ParseText(text: String,
+                      sourcePath: String) -> SceneComponentSchema {
+    var schema = new SceneComponentSchema();
+    schema.found = true;
+    schema.sourcePath = sourcePath;
+    if Str.get_Length(text) > MAX_SCHEMA_BYTES {
+        return Reject(schema, "Component schema exceeds the 1 MB limit.");
+    }
+    if Json.IsValid(text) == false {
+        return Reject(schema, "Component schema is not valid JSON.");
+    }
+
+    var root = Json.Parse(text);
+    if Json.TypeOf(root) != "object" {
+        return Reject(schema, "Component schema root must be an object.");
+    }
+    if Map.Has(root, "version") == false
+       or Json.TypeOf(Map.Get(root, "version")) != "number" {
+        return Reject(schema, "Component schema requires numeric version 1.");
+    }
+    var parsedVersion =
+        Parse.TryInt(Json.Format(Map.Get(root, "version")));
+    if parsedVersion.IsNone
+       or parsedVersion.UnwrapI64() != SCHEMA_VERSION {
+        return Reject(schema, "Unsupported component schema version.");
+    }
+
+    var rawComponents = Map.Get(root, "components");
+    if rawComponents == null or Json.TypeOf(rawComponents) != "array" {
+        return Reject(schema, "Component schema requires a components array.");
+    }
+    var componentCount = Seq.get_Count(rawComponents);
+    if componentCount > MAX_COMPONENTS {
+        return Reject(schema, "Component schema exceeds 128 components.");
+    }
+
+    var staged: List[SceneComponentDefinition] = [];
+    var componentNames = Map.New();
+    var totalFields = 0;
+    var componentIndex = 0;
+    while componentIndex < componentCount {
+        var rawComponent = Seq.Get(rawComponents, componentIndex);
+        var component = ParseComponent(
+            rawComponent, componentIndex, componentNames, schema);
+        if component == null { return schema; }
+        totalFields = totalFields + component.fields.count();
+        if totalFields > MAX_TOTAL_FIELDS {
+            return Reject(schema, "Component schema exceeds 2,048 fields.");
+        }
+        staged.add(component);
+        componentIndex = componentIndex + 1;
+    }
+
+    schema.components = staged;
+    schema.valid = true;
+    schema.error = "";
+    return schema;
+}
+
+/// @brief Parse and validate one component without publishing it to the schema.
+func ParseComponent(raw: Any,
+                    index: Integer,
+                    seenNames: Any,
+                    schema: SceneComponentSchema)
+    -> SceneComponentDefinition {
+    if raw == null or Json.TypeOf(raw) != "object" {
+        Reject(schema, "Component " + index + " must be an object.");
+        return null;
+    }
+
+    var component = new SceneComponentDefinition();
+    component.name = Str.Trim(Map.GetStr(raw, "name"));
+    if PortableIdentifier(component.name, MAX_COMPONENT_NAME_CHARS) == false {
+        Reject(
+            schema,
+            "Component " + index
+                + " requires a portable name of at most 64 characters.");
+        return null;
+    }
+    var foldedName = Str.ToLower(component.name);
+    if Map.Has(seenNames, foldedName) {
+        Reject(
+            schema,
+            "Duplicate component name \"" + component.name + "\".");
+        return null;
+    }
+    Map.SetBool(seenNames, foldedName, true);
+
+    component.target = Str.ToLower(Str.Trim(Map.GetStr(raw, "target")));
+    if component.target != TARGET_2D_OBJECT
+       and component.target != TARGET_3D_NODE
+       and component.target != TARGET_BOTH {
+        Reject(
+            schema,
+            "Component \"" + component.name
+                + "\" target must be 2d-object, 3d-node, or both.");
+        return null;
+    }
+
+    component.label = component.name;
+    if Map.Has(raw, "label") {
+        if Json.TypeOf(Map.Get(raw, "label")) != "string" {
+            Reject(
+                schema,
+                "Component \"" + component.name + "\" label must be a string.");
+            return null;
+        }
+        component.label = Str.Trim(Map.GetStr(raw, "label"));
+        if component.label == ""
+           or Str.get_Length(component.label) > MAX_LABEL_CHARS {
+            Reject(
+                schema,
+                "Component \"" + component.name
+                    + "\" label must contain at most 128 characters.");
+            return null;
+        }
+    }
+    if Map.Has(raw, "description") {
+        if Json.TypeOf(Map.Get(raw, "description")) != "string" {
+            Reject(
+                schema,
+                "Component \"" + component.name
+                    + "\" description must be a string.");
+            return null;
+        }
+        component.description = Map.GetStr(raw, "description");
+        if Str.get_Length(component.description) > MAX_DESCRIPTION_CHARS {
+            Reject(
+                schema,
+                "Component \"" + component.name
+                    + "\" description exceeds 1,024 characters.");
+            return null;
+        }
+    }
+
+    var rawFields = Map.Get(raw, "fields");
+    if rawFields == null or Json.TypeOf(rawFields) != "array" {
+        Reject(
+            schema,
+            "Component \"" + component.name + "\" requires a fields array.");
+        return null;
+    }
+    var fieldCount = Seq.get_Count(rawFields);
+    if fieldCount <= 0 or fieldCount > MAX_FIELDS_PER_COMPONENT {
+        Reject(
+            schema,
+            "Component \"" + component.name
+                + "\" requires between 1 and 64 fields.");
+        return null;
+    }
+
+    var seenKeys = Map.New();
+    var fieldIndex = 0;
+    while fieldIndex < fieldCount {
+        var field = ParseField(
+            Seq.Get(rawFields, fieldIndex),
+            component.name,
+            fieldIndex,
+            seenKeys,
+            schema);
+        if field == null { return null; }
+        component.fields.add(field);
+        fieldIndex = fieldIndex + 1;
+    }
+    return component;
+}
+
+/// @brief Parse one scalar field and canonicalize its default as editor text.
+func ParseField(raw: Any,
+                componentName: String,
+                index: Integer,
+                seenKeys: Any,
+                schema: SceneComponentSchema) -> SceneComponentField {
+    if raw == null or Json.TypeOf(raw) != "object" {
+        Reject(
+            schema,
+            "Field " + index + " in \"" + componentName
+                + "\" must be an object.");
+        return null;
+    }
+
+    var field = new SceneComponentField();
+    field.key = Str.Trim(Map.GetStr(raw, "key"));
+    if PortableIdentifier(field.key, MAX_FIELD_KEY_CHARS) == false {
+        Reject(
+            schema,
+            "Field " + index + " in \"" + componentName
+                + "\" requires a portable key of at most 128 characters.");
+        return null;
+    }
+    if Map.Has(seenKeys, field.key) {
+        Reject(
+            schema,
+            "Duplicate field key \"" + field.key
+                + "\" in component \"" + componentName + "\".");
+        return null;
+    }
+    Map.SetBool(seenKeys, field.key, true);
+
+    field.kind = Str.ToLower(Str.Trim(Map.GetStr(raw, "type")));
+    if IsScalarKind(field.kind) == false {
+        Reject(
+            schema,
+            "Field \"" + field.key
+                + "\" type must be string, int, float, bool, or null.");
+        return null;
+    }
+
+    field.label = field.key;
+    if Map.Has(raw, "label") {
+        if Json.TypeOf(Map.Get(raw, "label")) != "string" {
+            Reject(
+                schema,
+                "Field \"" + field.key + "\" label must be a string.");
+            return null;
+        }
+        field.label = Str.Trim(Map.GetStr(raw, "label"));
+        if field.label == ""
+           or Str.get_Length(field.label) > MAX_LABEL_CHARS {
+            Reject(
+                schema,
+                "Field \"" + field.key
+                    + "\" label must contain at most 128 characters.");
+            return null;
+        }
+    }
+    if Map.Has(raw, "description") {
+        if Json.TypeOf(Map.Get(raw, "description")) != "string" {
+            Reject(
+                schema,
+                "Field \"" + field.key + "\" description must be a string.");
+            return null;
+        }
+        field.description = Map.GetStr(raw, "description");
+        if Str.get_Length(field.description) > MAX_DESCRIPTION_CHARS {
+            Reject(
+                schema,
+                "Field \"" + field.key
+                    + "\" description exceeds 1,024 characters.");
+            return null;
+        }
+    }
+
+    if CanonicalizeDefault(raw, field, schema) == false {
+        if schema.error == "" {
+            Reject(
+                schema,
+                "Field \"" + field.key
+                    + "\" has a default that does not match " + field.kind + ".");
+        }
+        return null;
+    }
+    return field;
+}
+
+/// @brief Validate one optional JSON default and produce exact editor text.
+func CanonicalizeDefault(raw: Any,
+                         field: SceneComponentField,
+                         schema: SceneComponentSchema) -> Boolean {
+    if Map.Has(raw, "default") == false {
+        if field.kind == "int" or field.kind == "float" {
+            field.defaultText = "0";
+        }
+        if field.kind == "bool" { field.defaultText = "false"; }
+        return true;
+    }
+
+    var value = Map.Get(raw, "default");
+    var valueType = Json.TypeOf(value);
+    if field.kind == "string" {
+        if valueType != "string" { return false; }
+        field.defaultText = Map.GetStr(raw, "default");
+        if Str.get_Length(field.defaultText) > MAX_DEFAULT_STRING_CHARS {
+            Reject(
+                schema,
+                "Field \"" + field.key
+                    + "\" string default exceeds 16,384 characters.");
+            return false;
+        }
+        return true;
+    }
+    if field.kind == "int" {
+        if valueType != "number" { return false; }
+        var parsedInt = Parse.TryInt(Json.Format(value));
+        if parsedInt.IsNone { return false; }
+        field.defaultText = Fmt.Int(parsedInt.UnwrapI64());
+        return true;
+    }
+    if field.kind == "float" {
+        if valueType != "number" { return false; }
+        var parsedFloat = Parse.TryDouble(Json.Format(value));
+        if parsedFloat.IsNone { return false; }
+        field.defaultText = Fmt.Num(parsedFloat.UnwrapF64());
+        return true;
+    }
+    if field.kind == "bool" {
+        if valueType != "boolean" { return false; }
+        field.defaultText = Fmt.Bool(Map.GetBool(raw, "default"));
+        return true;
+    }
+    if valueType != "null" { return false; }
+    field.defaultText = "";
+    return true;
+}
+
+/// @brief Return whether one schema kind maps to supported runtime metadata.
+expose func IsScalarKind(kind: String) -> Boolean {
+    return kind == "string" or kind == "int" or kind == "float"
+        or kind == "bool" or kind == "null";
+}
+
+/// @brief Restrict stable schema identities to single-byte portable characters.
+/// @details Labels and descriptions remain Unicode. Keys stay ASCII so the
+///          character limit is also an exact UTF-8 byte limit for both runtimes.
+func PortableIdentifier(value: String,
+                        maximum: Integer) -> Boolean {
+    var length = Str.get_Length(value);
+    if length <= 0 or length > maximum { return false; }
+    var allowed =
+        "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._:-";
+    var index = 1;
+    while index <= length {
+        if Str.IndexOf(allowed, Str.MidLen(value, index, 1)) == 0 {
+            return false;
+        }
+        index = index + 1;
+    }
+    return true;
+}
+
+/// @brief Invalidate a schema and erase any staged/public component state.
+func Reject(schema: SceneComponentSchema,
+            message: String) -> SceneComponentSchema {
+    schema.valid = false;
+    schema.error = message;
+    schema.components = [];
+    return schema;
+}

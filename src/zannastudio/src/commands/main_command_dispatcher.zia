@@ -13,6 +13,7 @@
 //   - Workspace changes keep indexing and terminal context synchronized.
 //   - Scene selection shortcuts never escape hierarchy/viewport focus, while
 //     explicit palette selections remain executable after focus moves.
+//   - Standard Find follows the active source, 2D scene, or 3D scene surface.
 // Ownership/Lifetime: Stateless dispatcher borrowing one CommandContext.
 // Links: zannastudio/src/commands/command_context.zia,
 //        zannastudio/src/main.zia
@@ -535,7 +536,9 @@ hide func DispatchEditCommands(ctx: command_context.CommandContext,
     if dispatch_helpers.Triggered("selectall", ctx.shell.menuChrome.miSelectAll, null, cpSelected) {
         HandleSurfaceSelectAll(ctx);
     }
-    if dispatch_helpers.Triggered("find", ctx.shell.menuChrome.miFind, ctx.shell.menuChrome.tbFind, cpSelected)    { edit_commands.handleFind(ctx.shell); }
+    if dispatch_helpers.Triggered("find", ctx.shell.menuChrome.miFind, ctx.shell.menuChrome.tbFind, cpSelected) {
+        HandleSurfaceFind(ctx);
+    }
     if dispatch_helpers.TriggeredMenu("goto", ctx.shell.menuChrome.miGoToLine, cpSelected) {
         if ctx.commandInputOverlay != null and ctx.engine != null and ctx.engine.editor != null {
             ctx.commandInputOverlay.OpenGoToLine(ctx.shell, ctx.engine.editor.CursorLine + 1);
@@ -813,6 +816,47 @@ hide func HandleSurfaceSelectAll(ctx: command_context.CommandContext) {
         return;
     }
     edit_commands.handleSelectAll(ctx.engine);
+}
+
+/// @brief Route standard Find to the visible source or scene hierarchy.
+/// @details Scene Find reveals its inspector and focuses a non-destructive
+///          retained-hierarchy query. A damaged visual scene never falls
+///          through to the hidden CodeEditor FindBar.
+/// @param ctx Active command dependencies and visible document.
+/// @return True when a source or scene surface consumed the command.
+expose func HandleSurfaceFind(
+    ctx: command_context.CommandContext) -> Boolean {
+    if ctx == null or ctx.docMgr == null { return false; }
+    var doc = ctx.docMgr.GetActive();
+    if doc != null and doc!.kind == file_utils.DOC_KIND_SCENE_2D {
+        var focused2D = ctx.scene2DEditor != null
+            and ctx.scene2DEditor.FocusHierarchySearch();
+        if ctx.shell != null {
+            if focused2D {
+                ctx.shell.SetStatusLeft("Find 2D scene object");
+            } else {
+                ctx.shell.SetStatusLeft(
+                    "2D hierarchy Find is unavailable while the scene needs repair");
+            }
+        }
+        return true;
+    }
+    if doc != null and doc!.kind == file_utils.DOC_KIND_SCENE_3D {
+        var focused3D = ctx.scene3DEditor != null
+            and ctx.scene3DEditor.FocusHierarchySearch();
+        if ctx.shell != null {
+            if focused3D {
+                ctx.shell.SetStatusLeft("Find 3D scene node");
+            } else {
+                ctx.shell.SetStatusLeft(
+                    "3D hierarchy Find is unavailable while the scene needs repair");
+            }
+        }
+        return true;
+    }
+    if ctx.shell == null { return false; }
+    edit_commands.handleFind(ctx.shell);
+    return true;
 }
 
 /// @brief Route Duplicate Selection without escaping scene-owned focus.

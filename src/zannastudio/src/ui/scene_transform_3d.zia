@@ -10,11 +10,18 @@
 //          3D scene gizmo.
 // Key invariants:
 //   - Pointer projection remains deterministic and independent of GUI widgets.
+//   - Plane motion uses a conditioned two-axis solve and rejects edge-on bases.
+//   - One projected handle width maps to one scale unit on both plane axes.
+//   - Rotation rings invert their projected ellipse and unwrap angular deltas.
 //   - Snapping quantizes the resulting axis value, never each pointer delta.
 //   - Scale cannot collapse through an unusable zero value.
+//   - Transform-space validation keeps persisted local/world state bounded.
 // Ownership/Lifetime: Stateless helper module borrowed by SceneEditor3D.
 // Links: zannastudio/src/ui/scene_editor_3d.zia,
-//        zannastudio/src/probes/scene_editor_3d_probe.zia
+//        zannastudio/src/probes/scene_editor_3d_probe.zia,
+//        zannastudio/src/probes/scene_rotation_ring_probe.zia,
+//        zannastudio/src/probes/scene_scale_plane_probe.zia,
+//        docs/adr/0166-exact-scenenode-world-matrix-assignment.md
 //
 //===----------------------------------------------------------------------===//
 
@@ -37,6 +44,8 @@ bind Math = Zanna.Math;
 final TRANSFORM_MOVE: Integer = 0;
 final TRANSFORM_ROTATE: Integer = 1;
 final TRANSFORM_SCALE: Integer = 2;
+final TRANSFORM_SPACE_LOCAL: Integer = 0;
+final TRANSFORM_SPACE_WORLD: Integer = 1;
 
 final MOVE_SNAP_INCREMENT: Number = 0.5;
 final ROTATE_SNAP_INCREMENT: Number = 15.0;
@@ -45,12 +54,50 @@ final ROTATE_DEGREES_PER_HANDLE: Number = 45.0;
 final SCALE_UNITS_PER_HANDLE: Number = 1.0;
 final MIN_ABSOLUTE_SCALE: Number = 0.001;
 final VALUE_EPSILON: Number = 0.0000001;
+final MIN_PLANE_SIN_SQUARED: Number = 0.01;
+final RING_RAD_TO_DEG: Number = 57.29577951308232;
+
+/// @brief Two scene-space amounts decoded from one projected plane drag.
+class PlaneDragResult {
+    expose Boolean valid;
+    expose Number amountA;
+    expose Number amountB;
+
+    expose func init() {
+        valid = false;
+        amountA = 0.0;
+        amountB = 0.0;
+    }
+}
+
+/// @brief One decoded angular coordinate on a projected rotation ring.
+class RingAngleResult {
+    expose Boolean valid;
+    expose Number degrees;
+
+    expose func init() {
+        valid = false;
+        degrees = 0.0;
+    }
+}
 
 /// @brief Return whether an integer names a supported transform mode.
 func IsValidMode(mode: Integer) -> Boolean {
     return mode == TRANSFORM_MOVE
         or mode == TRANSFORM_ROTATE
         or mode == TRANSFORM_SCALE;
+}
+
+/// @brief Return whether an integer names a supported gizmo coordinate space.
+func IsValidSpace(space: Integer) -> Boolean {
+    return space == TRANSFORM_SPACE_LOCAL
+        or space == TRANSFORM_SPACE_WORLD;
+}
+
+/// @brief Return the concise label shown by the transform-space control.
+func SpaceLabel(space: Integer) -> String {
+    if space == TRANSFORM_SPACE_WORLD { return "World"; }
+    return "Local";
 }
 
 /// @brief Return the user-facing transform mode label.
@@ -110,6 +157,130 @@ func AxisDragAmount(mode: Integer,
         return fraction * SCALE_UNITS_PER_HANDLE;
     }
     return fraction * localLength;
+}
+
+/// @brief Return whether two projected axes can define a stable drag plane.
+/// @details The relative sine threshold rejects views within roughly six
+///          degrees of edge-on instead of amplifying tiny pointer noise.
+expose func PlaneProjectionIsUsable(axisAX: Number,
+                                    axisAY: Number,
+                                    axisBX: Number,
+                                    axisBY: Number) -> Boolean {
+    var lengthASquared = axisAX * axisAX + axisAY * axisAY;
+    var lengthBSquared = axisBX * axisBX + axisBY * axisBY;
+    if lengthASquared <= VALUE_EPSILON
+       or lengthBSquared <= VALUE_EPSILON {
+        return false;
+    }
+    var determinant = axisAX * axisBY - axisAY * axisBX;
+    return determinant * determinant
+        > lengthASquared * lengthBSquared * MIN_PLANE_SIN_SQUARED;
+}
+
+/// @brief Decode pointer motion into amounts along two projected plane axes.
+/// @details Solving the complete 2x2 basis avoids the diagonal drift produced
+///          by projecting the same mouse delta independently onto each axis.
+expose func PlaneDragAmounts(deltaX: Number,
+                             deltaY: Number,
+                             axisAX: Number,
+                             axisAY: Number,
+                             axisBX: Number,
+                             axisBY: Number,
+                             lengthA: Number,
+                             lengthB: Number) -> PlaneDragResult {
+    var result = new PlaneDragResult();
+    if PlaneProjectionIsUsable(
+           axisAX, axisAY, axisBX, axisBY) == false
+       or lengthA <= VALUE_EPSILON
+       or lengthB <= VALUE_EPSILON {
+        return result;
+    }
+    var determinant = axisAX * axisBY - axisAY * axisBX;
+    var fractionA =
+        (deltaX * axisBY - deltaY * axisBX) / determinant;
+    var fractionB =
+        (axisAX * deltaY - axisAY * deltaX) / determinant;
+    result.amountA = fractionA * lengthA;
+    result.amountB = fractionB * lengthB;
+    result.valid = true;
+    return result;
+}
+
+/// @brief Decode one Move or Scale pointer drag across two projected axes.
+/// @details Move retains scene-unit handle lengths. Scale deliberately uses
+///          one unit per complete handle on both axes, matching axis scaling
+///          even when parent transforms require unequal local handle lengths.
+expose func PlanarDragAmounts(mode: Integer,
+                              deltaX: Number,
+                              deltaY: Number,
+                              axisAX: Number,
+                              axisAY: Number,
+                              axisBX: Number,
+                              axisBY: Number,
+                              lengthA: Number,
+                              lengthB: Number) -> PlaneDragResult {
+    if mode == TRANSFORM_SCALE {
+        return PlaneDragAmounts(
+            deltaX, deltaY,
+            axisAX, axisAY, axisBX, axisBY,
+            SCALE_UNITS_PER_HANDLE, SCALE_UNITS_PER_HANDLE);
+    }
+    if mode == TRANSFORM_MOVE {
+        return PlaneDragAmounts(
+            deltaX, deltaY,
+            axisAX, axisAY, axisBX, axisBY,
+            lengthA, lengthB);
+    }
+    return new PlaneDragResult();
+}
+
+/// @brief Decode a pointer coordinate on one projected rotation ellipse.
+/// @details The projected ring axes form a complete 2x2 basis. Inverting that
+///          basis recovers the circle coordinate before Atan2, so angular
+///          motion stays correct on a foreshortened ellipse. Edge-on rings are
+///          rejected by the same relative conditioning contract as move planes.
+expose func RotationRingAngle(pointerX: Number,
+                              pointerY: Number,
+                              originX: Number,
+                              originY: Number,
+                              axisAX: Number,
+                              axisAY: Number,
+                              axisBX: Number,
+                              axisBY: Number) -> RingAngleResult {
+    var result = new RingAngleResult();
+    var vectorAX = axisAX - originX;
+    var vectorAY = axisAY - originY;
+    var vectorBX = axisBX - originX;
+    var vectorBY = axisBY - originY;
+    if PlaneProjectionIsUsable(
+           vectorAX, vectorAY, vectorBX, vectorBY) == false {
+        return result;
+    }
+    var relativeX = pointerX - originX;
+    var relativeY = pointerY - originY;
+    var determinant =
+        vectorAX * vectorBY - vectorAY * vectorBX;
+    var coordinateA =
+        (relativeX * vectorBY - relativeY * vectorBX) / determinant;
+    var coordinateB =
+        (vectorAX * relativeY - vectorAY * relativeX) / determinant;
+    if coordinateA * coordinateA + coordinateB * coordinateB
+       <= VALUE_EPSILON {
+        return result;
+    }
+    result.degrees =
+        Math.Atan2(coordinateB, coordinateA) * RING_RAD_TO_DEG;
+    result.valid = true;
+    return result;
+}
+
+/// @brief Return the shortest signed angular step across the ±180 seam.
+expose func SignedAngleDelta(previousDegrees: Number,
+                             currentDegrees: Number) -> Number {
+    var delta = currentDegrees - previousDegrees;
+    while delta > 180.0 { delta = delta - 360.0; }
+    while delta < -180.0 { delta = delta + 360.0; }
+    return delta;
 }
 
 /// @brief Resolve one drag-origin axis value plus accumulated motion.

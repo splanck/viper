@@ -13,7 +13,8 @@
 // Ownership/Lifetime:
 //   - Declarative registry data is consumed by rtgen and X-macro tests.
 //   - Generated string storage has process lifetime.
-// Links: src/il/runtime/runtime.def, src/tools/rtgen/rtgen.cpp
+// Links: src/il/runtime/runtime.def, src/tools/rtgen/rtgen.cpp,
+//        docs/adr/0168-windowless-canvas3d-rendering.md
 //
 //===----------------------------------------------------------------------===//
 
@@ -75,6 +76,8 @@ RT_CLASS_END()
 RT_FUNC(Canvas3DIsAvailable,     rt_canvas3d_is_available,    "Zanna.Graphics3D.Canvas3D.IsAvailable",     "i1()")
 RT_FUNC(Canvas3DNew,             rt_canvas3d_new,             "Zanna.Graphics3D.Canvas3D.New",             "obj(str,i64,i64)")
 RT_FUNC(Canvas3DNewFullscreen,   rt_canvas3d_new_fullscreen,  "Zanna.Graphics3D.Canvas3D.NewFullscreen",   "obj(str)")
+RT_FUNC(Canvas3DNewOffscreen,    rt_canvas3d_new_offscreen,   "Zanna.Graphics3D.Canvas3D.NewOffscreen",    "obj(obj<Zanna.Graphics3D.RenderTarget3D>)")
+RT_FUNC(Canvas3DGetIsOffscreen,  rt_canvas3d_get_is_offscreen,"Zanna.Graphics3D.Canvas3D.get_IsOffscreen",  "i1(obj)")
 RT_FUNC(Canvas3DResize,          rt_canvas3d_resize,          "Zanna.Graphics3D.Canvas3D.Resize",          "void(obj,i64,i64)")
 RT_FUNC(Canvas3DClear,           rt_canvas3d_clear,           "Zanna.Graphics3D.Canvas3D.Clear",           "void(obj,f64,f64,f64)")
 RT_FUNC(Canvas3DBegin,           rt_canvas3d_begin,           "Zanna.Graphics3D.Canvas3D.Begin",           "void(obj,obj)")
@@ -223,6 +226,9 @@ RT_CLASS_BEGIN("Zanna.Graphics3D.Canvas3D", Canvas3D, "obj", Canvas3DNew)
     RT_METHOD("IsAvailable", "i1()", Canvas3DIsAvailable)
     // Fullscreen-at-creation: desktop resolution, no windowed flash.
     RT_METHOD("NewFullscreen", "obj(str)", Canvas3DNewFullscreen)
+    // Windowless deterministic software renderer backed by an explicit target.
+    RT_METHOD("NewOffscreen", "obj(obj<Zanna.Graphics3D.RenderTarget3D>)", Canvas3DNewOffscreen)
+    RT_PROP("IsOffscreen", "i1", Canvas3DGetIsOffscreen, none)
     RT_PROP("ShouldClose", "i1", Canvas3DShouldClose, none)
     RT_PROP("Width", "i64", Canvas3DGetWidth, none)
     RT_PROP("Height", "i64", Canvas3DGetHeight, none)

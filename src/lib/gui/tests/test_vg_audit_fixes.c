@@ -525,6 +525,33 @@ TEST(splitpane_proportional_clamp_when_mins_exceed_available) {
     vg_widget_destroy(&sp->base);
 }
 
+/// @brief Split-pane state changes must invalidate the complete ancestor chain
+/// so a retained root layout cannot leave collapsed child geometry stale.
+TEST(splitpane_collapse_invalidates_ancestor_layout) {
+    vg_widget_t *root = vg_widget_create(VG_WIDGET_CONTAINER);
+    ASSERT_NOT_NULL(root);
+    vg_splitpane_t *sp = vg_splitpane_create(root, VG_SPLIT_HORIZONTAL);
+    ASSERT_NOT_NULL(sp);
+
+    root->needs_layout = false;
+    root->needs_paint = false;
+    sp->base.needs_layout = false;
+    sp->base.needs_paint = false;
+
+    vg_splitpane_collapse_second(sp);
+    ASSERT_TRUE(sp->base.needs_layout);
+    ASSERT_TRUE(root->needs_layout);
+    ASSERT_TRUE(root->needs_paint);
+
+    root->needs_layout = false;
+    root->needs_paint = false;
+    vg_splitpane_restore(sp);
+    ASSERT_TRUE(root->needs_layout);
+    ASSERT_TRUE(root->needs_paint);
+
+    vg_widget_destroy(root);
+}
+
 //=============================================================================
 // Fix #11: scrollview hit-test excludes the scrollbar gutter
 //=============================================================================
@@ -5240,6 +5267,7 @@ int main(void) {
 
     printf("\nFix #10: SplitPane proportional min clamp\n");
     RUN(splitpane_proportional_clamp_when_mins_exceed_available);
+    RUN(splitpane_collapse_invalidates_ancestor_layout);
 
     printf("\nFix #11: ScrollView hit-test gutter exclusion\n");
     RUN(scrollview_hit_test_excludes_scrollbar_gutter);

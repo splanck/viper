@@ -17,6 +17,7 @@
 
 #if RT_PLATFORM_LINUX
 extern "C" rt_string rt_machine_linux_parse_os_release_file(const char *path);
+extern "C" int64_t rt_machine_linux_parse_meminfo_file(const char *path);
 #endif
 
 #include <cassert>
@@ -26,6 +27,9 @@ extern "C" rt_string rt_machine_linux_parse_os_release_file(const char *path);
 #include <string>
 
 #if RT_PLATFORM_LINUX
+#include "rt_machine_linux_cgroup.h"
+#include "rt_machine_linux_helpers.h"
+
 #include <unistd.h>
 #endif
 
@@ -185,6 +189,102 @@ static void test_linux_os_release_parser() {
     rt_string_unref(version);
     assert(unlink(path) == 0);
 }
+
+static void test_linux_control_parsers() {
+    unsigned long long value = 0;
+    assert(rt_machine_linux_parse_u64("0", &value) && value == 0);
+    assert(rt_machine_linux_parse_u64("18446744073709551615", &value) &&
+           value == ULLONG_MAX);
+    assert(!rt_machine_linux_parse_u64("18446744073709551616", &value));
+    assert(!rt_machine_linux_parse_u64("1 trailing", &value));
+    assert(!rt_machine_linux_parse_u64("+1", &value));
+
+    assert(rt_machine_linux_count_cpuset("0-3,5,7-9") == 8);
+    assert(rt_machine_linux_count_cpuset("0") == 1);
+    assert(rt_machine_linux_count_cpuset("4-2") == 0);
+    assert(rt_machine_linux_count_cpuset("0-3,2-4") == 0);
+    assert(rt_machine_linux_count_cpuset("2,1") == 0);
+    assert(rt_machine_linux_count_cpuset("0,,2") == 0);
+    assert(rt_machine_linux_count_cpuset("0,") == 0);
+    assert(rt_machine_linux_count_cpuset("1x") == 0);
+
+    assert(rt_machine_linux_cpu_quota(1, 100000) == 1);
+    assert(rt_machine_linux_cpu_quota(100000, 100000) == 1);
+    assert(rt_machine_linux_cpu_quota(100001, 100000) == 2);
+    assert(rt_machine_linux_cpu_quota(250000, 100000) == 3);
+    assert(rt_machine_linux_cpu_quota(0, 100000) == 0);
+    assert(rt_machine_linux_cpu_quota(100000, 0) == 0);
+}
+
+static void test_linux_meminfo_fallback() {
+    char path[] = "/tmp/zanna-meminfo-XXXXXX";
+    int fd = mkstemp(path);
+    assert(fd >= 0);
+    FILE *file = fdopen(fd, "w");
+    assert(file != nullptr);
+    fprintf(file,
+            "MemTotal: 8192 kB\n"
+            "MemFree: 100 kB\n"
+            "Buffers: 20 kB\n"
+            "Cached: 300 kB\n"
+            "SReclaimable: 40 kB\n"
+            "Shmem: 10 kB\n");
+    assert(fclose(file) == 0);
+    assert(rt_machine_linux_parse_meminfo_file(path) == 450 * 1024);
+    assert(unlink(path) == 0);
+
+    char available_path[] = "/tmp/zanna-memavailable-XXXXXX";
+    fd = mkstemp(available_path);
+    assert(fd >= 0);
+    file = fdopen(fd, "w");
+    assert(file != nullptr);
+    fprintf(file, "MemFree: 1 kB\nMemAvailable: 777 kB\nCached: 999 kB\n");
+    assert(fclose(file) == 0);
+    assert(rt_machine_linux_parse_meminfo_file(available_path) == 777 * 1024);
+    assert(unlink(available_path) == 0);
+}
+
+static void write_fixture_file(char *path_template, const char *contents) {
+    int fd = mkstemp(path_template);
+    assert(fd >= 0);
+    FILE *file = fdopen(fd, "w");
+    assert(file != nullptr);
+    assert(fputs(contents, file) >= 0);
+    assert(fclose(file) == 0);
+}
+
+static void test_linux_cgroup_resolution() {
+    char v2_mounts[] = "/tmp/zanna-cgroup-v2-mounts-XXXXXX";
+    char v2_membership[] = "/tmp/zanna-cgroup-v2-membership-XXXXXX";
+    write_fixture_file(v2_mounts,
+                       "36 25 0:32 /tenant /run/cgroup\\040space rw,nosuid - "
+                       "cgroup2 cgroup rw\n");
+    write_fixture_file(v2_membership, "0::/tenant/workload/leaf\n");
+    rt_machine_linux_cgroup_paths_t paths = {};
+    assert(zanna_machine_linux_resolve_cgroups(v2_mounts, v2_membership, &paths));
+    assert(strcmp(paths.unified, "/run/cgroup space/workload/leaf") == 0);
+    assert(unlink(v2_mounts) == 0);
+    assert(unlink(v2_membership) == 0);
+
+    char v1_mounts[] = "/tmp/zanna-cgroup-v1-mounts-XXXXXX";
+    char v1_membership[] = "/tmp/zanna-cgroup-v1-membership-XXXXXX";
+    write_fixture_file(v1_mounts,
+                       "40 25 0:40 / /cgroups/cpu rw - cgroup cgroup rw,cpu,cpuacct\n"
+                       "41 25 0:41 /pod /cgroups/cpuset rw - cgroup cgroup rw,cpuset\n"
+                       "42 25 0:42 / /cgroups/memory rw - cgroup cgroup rw,memory\n");
+    write_fixture_file(v1_membership,
+                       "2:cpu,cpuacct:/jobs/a\n"
+                       "3:cpuset:/pod/limited\n"
+                       "4:memory:/containers/m\n");
+    paths = {};
+    assert(zanna_machine_linux_resolve_cgroups(v1_mounts, v1_membership, &paths));
+    assert(strcmp(paths.cpu, "/cgroups/cpu/jobs/a") == 0);
+    assert(strcmp(paths.cpuset, "/cgroups/cpuset/limited") == 0);
+    assert(strcmp(paths.memory, "/cgroups/memory/containers/m") == 0);
+    assert(paths.unified[0] == '\0');
+    assert(unlink(v1_mounts) == 0);
+    assert(unlink(v1_membership) == 0);
+}
 #endif
 
 int main() {
@@ -204,6 +304,9 @@ int main() {
     test_mem_relationship();
 #if RT_PLATFORM_LINUX
     test_linux_os_release_parser();
+    test_linux_control_parsers();
+    test_linux_meminfo_fallback();
+    test_linux_cgroup_resolution();
 #endif
 
     printf("\nAll tests passed!\n");

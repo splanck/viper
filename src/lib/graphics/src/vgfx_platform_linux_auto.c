@@ -7,8 +7,13 @@
 //
 // File: src/lib/graphics/src/vgfx_platform_linux_auto.c
 // Purpose: Select and dispatch the Linux Wayland or X11 graphics adapter at runtime.
-// Key invariants: The first successful window fixes one backend for the process lifetime.
-// Ownership/Lifetime: Owns only process-lifetime selection state; adapters own native objects.
+// Key invariants:
+//   - The first successful window fixes one backend for the process lifetime.
+//   - Backend publication uses release/acquire ordering so lock-free dispatch
+//     never races first-window initialization.
+// Ownership/Lifetime:
+//   - Owns only process-lifetime selection state; adapters own native objects.
+//   - The selection atomic remains valid until process exit.
 // Links: docs/adr/0139-native-wayland-backend-and-linux-runtime-selection.md
 //
 //===----------------------------------------------------------------------===//
@@ -16,6 +21,7 @@
 #include "vgfx_internal.h"
 
 #include <pthread.h>
+#include <stdatomic.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -26,7 +32,7 @@ typedef enum {
 } vgfx_linux_backend_t;
 
 static pthread_mutex_t g_backend_mutex = PTHREAD_MUTEX_INITIALIZER;
-static vgfx_linux_backend_t g_backend = VGFX_LINUX_BACKEND_UNSELECTED;
+static atomic_int g_backend = ATOMIC_VAR_INIT(VGFX_LINUX_BACKEND_UNSELECTED);
 
 #define DECLARE_ADAPTER(prefix)                                                                    \
     void *prefix##_vgfx_platform_aligned_alloc(size_t, size_t);                                    \
@@ -87,8 +93,10 @@ static int env_has_value(const char *name) {
 }
 
 static vgfx_linux_backend_t preferred_backend(void) {
-    if (g_backend != VGFX_LINUX_BACKEND_UNSELECTED)
-        return g_backend;
+    const vgfx_linux_backend_t selected =
+        (vgfx_linux_backend_t)atomic_load_explicit(&g_backend, memory_order_acquire);
+    if (selected != VGFX_LINUX_BACKEND_UNSELECTED)
+        return selected;
     return env_has_value("WAYLAND_DISPLAY") ? VGFX_LINUX_BACKEND_WAYLAND
 #if defined(VGFX_AUTO_HAS_X11)
                                             : VGFX_LINUX_BACKEND_X11;
@@ -100,21 +108,23 @@ static vgfx_linux_backend_t preferred_backend(void) {
 int vgfx_platform_init_window(struct vgfx_window *win, const vgfx_window_params_t *params) {
     int result = 0;
     (void)pthread_mutex_lock(&g_backend_mutex);
-    if (g_backend == VGFX_LINUX_BACKEND_WAYLAND)
+    const vgfx_linux_backend_t selected =
+        (vgfx_linux_backend_t)atomic_load_explicit(&g_backend, memory_order_relaxed);
+    if (selected == VGFX_LINUX_BACKEND_WAYLAND)
         result = vgfx_wayland_vgfx_platform_init_window(win, params);
 #if defined(VGFX_AUTO_HAS_X11)
-    else if (g_backend == VGFX_LINUX_BACKEND_X11)
+    else if (selected == VGFX_LINUX_BACKEND_X11)
         result = vgfx_x11_vgfx_platform_init_window(win, params);
 #endif
     else {
         if (env_has_value("WAYLAND_DISPLAY") &&
             vgfx_wayland_vgfx_platform_init_window(win, params)) {
-            g_backend = VGFX_LINUX_BACKEND_WAYLAND;
+            atomic_store_explicit(&g_backend, VGFX_LINUX_BACKEND_WAYLAND, memory_order_release);
             result = 1;
         }
 #if defined(VGFX_AUTO_HAS_X11)
         else if (env_has_value("DISPLAY") && vgfx_x11_vgfx_platform_init_window(win, params)) {
-            g_backend = VGFX_LINUX_BACKEND_X11;
+            atomic_store_explicit(&g_backend, VGFX_LINUX_BACKEND_X11, memory_order_release);
             result = 1;
         }
 #endif

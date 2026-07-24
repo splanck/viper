@@ -10,6 +10,7 @@
 //          inspector.
 // Key invariants:
 //   - Editing one node never mutates a material shared by another node.
+//   - Sparse group patches never overwrite unresolved per-node PBR fields.
 //   - Unexposed texture, environment, and custom-parameter state survives edits.
 //   - User-authored scalar values are bounded before reaching the runtime.
 //   - Inspector thumbnails read canonical material pixels and remain disposable.
@@ -17,7 +18,8 @@
 //                     by the receiving SceneNode.
 // Links: zannastudio/src/ui/scene_editor_3d.zia,
 //        zannastudio/src/ui/scene_material_inspector_3d.zia,
-//        zannastudio/src/probes/scene_editor_3d_probe.zia
+//        zannastudio/src/probes/scene_editor_3d_probe.zia,
+//        zannastudio/src/probes/scene_material_batch_probe.zia
 //
 //===----------------------------------------------------------------------===//
 
@@ -64,6 +66,64 @@ final DEFAULT_AO: Number = 1.0;
 final MATERIAL_VALUE_EPSILON: Number = 0.0000001;
 final MAX_EDITABLE_MAP_PIXELS: Integer = 16777216;
 final MATERIAL_MAP_PREVIEW_EDGE: Integer = 128;
+
+/// @brief Sparse PBR intent used by single- and multi-node material edits.
+/// @details A false apply flag preserves that field independently on every
+///          destination material. A missing material begins from Studio's
+///          documented PBR defaults before resolved fields are applied.
+class MaterialPatch3D {
+    expose Boolean applyColor;
+    expose Number red;
+    expose Number green;
+    expose Number blue;
+    expose Boolean applyAlpha;
+    expose Number alpha;
+    expose Boolean applyMetallic;
+    expose Number metallic;
+    expose Boolean applyRoughness;
+    expose Number roughness;
+    expose Boolean applyAmbientOcclusion;
+    expose Number ambientOcclusion;
+    expose Boolean applyAlphaMode;
+    expose Integer alphaMode;
+    expose Boolean applyDoubleSided;
+    expose Boolean doubleSided;
+    expose Boolean applyUnlit;
+    expose Boolean unlit;
+
+    expose func init() {
+        applyColor = false;
+        red = 1.0;
+        green = 1.0;
+        blue = 1.0;
+        applyAlpha = false;
+        alpha = DEFAULT_ALPHA;
+        applyMetallic = false;
+        metallic = DEFAULT_METALLIC;
+        applyRoughness = false;
+        roughness = DEFAULT_ROUGHNESS;
+        applyAmbientOcclusion = false;
+        ambientOcclusion = DEFAULT_AO;
+        applyAlphaMode = false;
+        alphaMode = ALPHA_OPAQUE;
+        applyDoubleSided = false;
+        doubleSided = false;
+        applyUnlit = false;
+        unlit = false;
+    }
+
+    /// @brief Return whether this patch resolves at least one material field.
+    expose func HasFields() -> Boolean {
+        return applyColor
+            or applyAlpha
+            or applyMetallic
+            or applyRoughness
+            or applyAmbientOcclusion
+            or applyAlphaMode
+            or applyDoubleSided
+            or applyUnlit;
+    }
+}
 
 /// @brief Clamp a normalized material component to its public unit interval.
 func ClampUnit(value: Number) -> Number {
@@ -205,6 +265,51 @@ func PackedRgb(material: Material3D) -> Integer {
     return red * 65536 + green * 256 + blue;
 }
 
+/// @brief Return one material alpha or the documented missing-material default.
+func AlphaValue(material: Material3D) -> Number {
+    if material == null { return DEFAULT_ALPHA; }
+    return material.Alpha;
+}
+
+/// @brief Return one material metallic value or its missing-material default.
+func MetallicValue(material: Material3D) -> Number {
+    if material == null { return DEFAULT_METALLIC; }
+    return material.Metallic;
+}
+
+/// @brief Return one material roughness or its missing-material default.
+func RoughnessValue(material: Material3D) -> Number {
+    if material == null { return DEFAULT_ROUGHNESS; }
+    return material.Roughness;
+}
+
+/// @brief Return one material AO value or its missing-material default.
+func AmbientOcclusionValue(material: Material3D) -> Number {
+    if material == null { return DEFAULT_AO; }
+    return material.AmbientOcclusion;
+}
+
+/// @brief Return one material alpha mode or opaque for a missing material.
+func AlphaModeValue(material: Material3D) -> Integer {
+    if material == null { return ALPHA_OPAQUE; }
+    return AlphaModeOrOpaque(material.AlphaMode);
+}
+
+/// @brief Return one material's double-sided state or its default.
+func DoubleSidedValue(material: Material3D) -> Boolean {
+    return material != null and material.DoubleSided;
+}
+
+/// @brief Return one material's unlit state or its default.
+func UnlitValue(material: Material3D) -> Boolean {
+    return material != null and material.Unlit;
+}
+
+/// @brief Compare normalized material scalars with the editing tolerance.
+func ValuesEqual(left: Number, right: Number) -> Boolean {
+    return Near(left, right);
+}
+
 /// @brief Count advanced maps retained invisibly by the compact inspector.
 func RetainedMapCount(material: Material3D) -> Integer {
     if material == null { return 0; }
@@ -277,6 +382,98 @@ func MakeUnique(material: Material3D,
     next.SetUnlit(unlit);
     // Set the explicit mode after Alpha, whose runtime setter may auto-promote.
     next.AlphaMode = AlphaModeOrOpaque(alphaMode);
+    return next;
+}
+
+/// @brief Return whether all resolved fields already match one material.
+/// @details A missing component never matches a non-empty patch, even when the
+///          resolved values equal defaults, because applying the patch is also
+///          explicit intent to create that component.
+func MatchesPatch(material: Material3D,
+                  patch: MaterialPatch3D) -> Boolean {
+    if patch == null or patch.HasFields() == false { return true; }
+    if material == null { return false; }
+    var color = material.Color;
+    if patch.applyColor
+       and (color == null
+            or Near(color.X, ClampUnit(patch.red)) == false
+            or Near(color.Y, ClampUnit(patch.green)) == false
+            or Near(color.Z, ClampUnit(patch.blue)) == false) {
+        return false;
+    }
+    if patch.applyAlpha
+       and Near(material.Alpha, ClampUnit(patch.alpha)) == false {
+        return false;
+    }
+    if patch.applyMetallic
+       and Near(material.Metallic, ClampUnit(patch.metallic)) == false {
+        return false;
+    }
+    if patch.applyRoughness
+       and Near(material.Roughness, ClampUnit(patch.roughness)) == false {
+        return false;
+    }
+    if patch.applyAmbientOcclusion
+       and Near(material.AmbientOcclusion,
+                ClampUnit(patch.ambientOcclusion)) == false {
+        return false;
+    }
+    if patch.applyAlphaMode
+       and AlphaModeOrOpaque(material.AlphaMode)
+            != AlphaModeOrOpaque(patch.alphaMode) {
+        return false;
+    }
+    if patch.applyDoubleSided
+       and material.DoubleSided != patch.doubleSided {
+        return false;
+    }
+    if patch.applyUnlit and material.Unlit != patch.unlit {
+        return false;
+    }
+    return true;
+}
+
+/// @brief Clone one material and apply only the fields resolved by a patch.
+/// @details Hidden maps, custom parameters, and every unresolved PBR field
+///          survive. Alpha's runtime auto-mode behavior is neutralized unless
+///          the patch explicitly resolves alpha mode.
+func ApplyPatchUnique(material: Material3D,
+                      patch: MaterialPatch3D) -> Material3D {
+    if patch == null or patch.HasFields() == false { return null; }
+    var next: Material3D = null;
+    if material != null {
+        next = Material3D.Clone(material) as Material3D;
+    } else {
+        next = Material3D.PBR(1.0, 1.0, 1.0) as Material3D;
+    }
+    if next == null { return null; }
+
+    var preservedAlphaMode = AlphaModeOrOpaque(next.AlphaMode);
+    if patch.applyColor {
+        next.SetColor(
+            ClampUnit(patch.red),
+            ClampUnit(patch.green),
+            ClampUnit(patch.blue));
+    }
+    if patch.applyAlpha { next.Alpha = ClampUnit(patch.alpha); }
+    if patch.applyMetallic {
+        next.Metallic = ClampUnit(patch.metallic);
+    }
+    if patch.applyRoughness {
+        next.Roughness = ClampUnit(patch.roughness);
+    }
+    if patch.applyAmbientOcclusion {
+        next.AmbientOcclusion = ClampUnit(patch.ambientOcclusion);
+    }
+    if patch.applyDoubleSided {
+        next.DoubleSided = patch.doubleSided;
+    }
+    if patch.applyUnlit { next.SetUnlit(patch.unlit); }
+    if patch.applyAlphaMode {
+        next.AlphaMode = AlphaModeOrOpaque(patch.alphaMode);
+    } else {
+        next.AlphaMode = preservedAlphaMode;
+    }
     return next;
 }
 

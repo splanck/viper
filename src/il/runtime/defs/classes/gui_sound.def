@@ -13,7 +13,11 @@
 // Ownership/Lifetime:
 //   - Declarative registry data is consumed by rtgen and X-macro tests.
 //   - Generated string storage has process lifetime.
-// Links: src/il/runtime/runtime.def, src/tools/rtgen/rtgen.cpp
+// Links: src/il/runtime/runtime.def,
+//        src/tools/rtgen/rtgen.cpp,
+//        docs/adr/0163-stable-multiselect-and-row-aware-treeview-editing.md,
+//        docs/adr/0165-scrollview-descendant-reveal.md,
+//        docs/adr/0167-spinner-mixed-value-state.md
 //
 //===----------------------------------------------------------------------===//
 
@@ -303,10 +307,13 @@ RT_CLASS_END()
 /// @details
 /// Create `Zanna.GUI.ScrollView` values through its registered constructor and use the returned
 /// object with the instance members below. Its public surface exposes operations including
-/// `SetScroll`, `SetContentSize`, `GetScrollX`, `GetScrollY`.
+/// `SetScroll`, `SetContentSize`, descendant `ScrollTo`, `GetScrollX`, and `GetScrollY`.
+/// `ScrollTo` retains one live-ID-guarded request through the next layout pass,
+/// allowing an enclosing pane to be restored and its descendant revealed by one command.
 RT_CLASS_BEGIN("Zanna.GUI.ScrollView", GuiScrollView, "obj", GuiScrollViewNew, "Zanna.GUI.Widget")
     RT_METHOD("SetScroll", "void(f64,f64)", GuiScrollViewSetScroll)
     RT_METHOD("SetContentSize", "void(f64,f64)", GuiScrollViewSetContentSize)
+    RT_METHOD("ScrollTo", "void(obj)", GuiScrollViewScrollTo)
     RT_METHOD("GetScrollX", "f64()", GuiScrollViewGetScrollX)
     RT_METHOD("GetScrollY", "f64()", GuiScrollViewGetScrollY)
 RT_CLASS_END()
@@ -316,9 +323,12 @@ RT_CLASS_END()
 /// @details
 /// Create `Zanna.GUI.TreeView` values through its registered constructor and use the returned
 /// object with the instance members below. Its public surface exposes operations including
-/// `AddNode`, `RemoveNode`, `Toggle`, `ScrollTo`, lazy-child request polling, and activation
-/// payload lookup. Node-returning event payloads use `Zanna.Option`, remain independent from their
-/// compatibility `Was*` edges, and preserve the tree-owned lifetime contract.
+/// retained-node Ctrl/Command and Shift multi-selection, byte-exact selected data in structural
+/// preorder, `AddNode`, `RemoveNode`, `Toggle`, `ScrollTo`, lazy-child request polling, and
+/// activation payload lookup. `SetDragDropMode(1)` preserves container-only INTO drops;
+/// `SetDragDropMode(2)` exposes application-directed BEFORE/INTO/AFTER row regions whose numeric
+/// values are 0/1/2. Node-returning event payloads use `Zanna.Option`, remain independent from
+/// their compatibility `Was*` edges, and preserve the tree-owned lifetime contract.
 RT_CLASS_BEGIN("Zanna.GUI.TreeView", GuiTreeView, "obj", GuiTreeViewNew, "Zanna.GUI.Widget")
     RT_METHOD("AddNode", "obj(obj,str)", GuiTreeViewAddNode)
     RT_METHOD("RemoveNode", "void(obj)", GuiTreeViewRemoveNode)
@@ -328,9 +338,11 @@ RT_CLASS_BEGIN("Zanna.GUI.TreeView", GuiTreeView, "obj", GuiTreeViewNew, "Zanna.
     RT_METHOD("Collapse", "void(obj)", GuiTreeViewCollapse)
     RT_METHOD("Toggle", "void(obj)", GuiTreeViewToggle)
     RT_METHOD("Select", "void(obj)", GuiTreeViewSelect)
+    RT_METHOD("SetMultiSelect", "void(i1)", GuiTreeViewSetMultiSelect)
     RT_METHOD("ScrollTo", "void(obj)", GuiTreeViewScrollTo)
     RT_METHOD("SetFont", "void(obj,f64)", GuiTreeViewSetFont)
     RT_METHOD("GetSelected", "obj()", GuiTreeViewGetSelected)
+    RT_METHOD("GetSelectedData", "seq<str>()", GuiTreeViewGetSelectedData)
     RT_METHOD("GetNodeAt", "obj(i64,i64)", GuiTreeViewGetNodeAt)
     RT_METHOD("WasSelectionChanged", "i1()", GuiTreeViewWasSelectionChanged)
     RT_METHOD("WasChanged", "i1()", GuiTreeViewWasChanged)
@@ -340,6 +352,7 @@ RT_CLASS_BEGIN("Zanna.GUI.TreeView", GuiTreeView, "obj", GuiTreeViewNew, "Zanna.
     RT_METHOD("GetActivatedNodeOption", "obj<Zanna.Option>()", GuiTreeViewGetActivatedNodeOption)
     RT_METHOD("GetRevision", "i64()", GuiTreeViewGetRevision)
     RT_METHOD("SetDragDropEnabled", "void(i1)", GuiTreeViewSetDragDropEnabled)
+    RT_METHOD("SetDragDropMode", "void(i64)", GuiTreeViewSetDragDropMode)
     RT_METHOD("WasDropReceived", "i1()", GuiTreeViewWasDropReceived)
     RT_METHOD("GetDropSourceData", "str()", GuiTreeViewGetDropSourceData)
     RT_METHOD("GetDropTargetData", "str()", GuiTreeViewGetDropTargetData)
@@ -789,10 +802,13 @@ RT_CLASS_END()
 /// @details
 /// Create `Zanna.GUI.Spinner` values through its registered constructor and use the returned object
 /// with the instance members below. Its public surface exposes properties such as `Value` and
-/// operations including `SetValue`, `SetRange`, `SetStep`, `SetDecimals`.
+/// operations including `SetValue`, mixed-value `SetIndeterminate` / `IsIndeterminate`,
+/// `SetRange`, `SetStep`, and `SetDecimals`.
 RT_CLASS_BEGIN("Zanna.GUI.Spinner", GuiSpinner, "obj", GuiSpinnerNew, "Zanna.GUI.Widget")
     RT_PROP("Value", "f64", GuiSpinnerGetValue, none)
     RT_METHOD("SetValue", "void(f64)", GuiSpinnerSetValue)
+    RT_METHOD("SetIndeterminate", "void(i1)", GuiSpinnerSetIndeterminate)
+    RT_METHOD("IsIndeterminate", "i1()", GuiSpinnerIsIndeterminate)
     RT_METHOD("SetRange", "void(f64,f64)", GuiSpinnerSetRange)
     RT_METHOD("SetStep", "void(f64)", GuiSpinnerSetStep)
     RT_METHOD("SetDecimals", "void(i64)", GuiSpinnerSetDecimals)

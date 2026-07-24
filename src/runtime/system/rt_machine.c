@@ -141,6 +141,9 @@ static wchar_t *machine_win32_temp_path(void) {
 
 #ifdef __linux__
 #include <sys/sysinfo.h>
+
+#include "rt_machine_linux_cgroup.h"
+#include "rt_machine_linux_helpers.h"
 #endif
 
 /// @brief Helper to create a string from a C string.
@@ -188,6 +191,46 @@ static int64_t checked_u64_bytes(unsigned long long value, unsigned long long un
     return (int64_t)(value * unit);
 }
 
+static unsigned long long linux_saturating_add_u64(unsigned long long left,
+                                                   unsigned long long right) {
+    return ULLONG_MAX - left < right ? ULLONG_MAX : left + right;
+}
+
+int64_t rt_machine_linux_parse_meminfo_file(const char *path) {
+    FILE *file = path ? fopen(path, "r") : NULL;
+    if (!file)
+        return 0;
+    unsigned long long mem_free_kb = 0;
+    unsigned long long buffers_kb = 0;
+    unsigned long long cached_kb = 0;
+    unsigned long long reclaimable_kb = 0;
+    unsigned long long shared_kb = 0;
+    char line[256];
+    while (fgets(line, sizeof(line), file)) {
+        unsigned long long value = 0;
+        if (sscanf(line, "MemAvailable: %llu kB", &value) == 1) {
+            fclose(file);
+            return checked_u64_bytes(value, 1024ULL);
+        }
+        if (sscanf(line, "MemFree: %llu kB", &value) == 1)
+            mem_free_kb = value;
+        else if (sscanf(line, "Buffers: %llu kB", &value) == 1)
+            buffers_kb = value;
+        else if (sscanf(line, "Cached: %llu kB", &value) == 1)
+            cached_kb = value;
+        else if (sscanf(line, "SReclaimable: %llu kB", &value) == 1)
+            reclaimable_kb = value;
+        else if (sscanf(line, "Shmem: %llu kB", &value) == 1)
+            shared_kb = value;
+    }
+    fclose(file);
+    unsigned long long available_kb = linux_saturating_add_u64(mem_free_kb, buffers_kb);
+    available_kb = linux_saturating_add_u64(available_kb, cached_kb);
+    available_kb = linux_saturating_add_u64(available_kb, reclaimable_kb);
+    available_kb = available_kb > shared_kb ? available_kb - shared_kb : 0;
+    return checked_u64_bytes(available_kb, 1024ULL);
+}
+
 static int linux_read_control_line(const char *path, char *buffer, size_t capacity) {
     if (!path || !buffer || capacity < 2)
         return 0;
@@ -203,101 +246,125 @@ static int linux_read_control_line(const char *path, char *buffer, size_t capaci
     return buffer[0] != '\0';
 }
 
-static int linux_parse_u64(const char *text, unsigned long long *out) {
-    if (!text || !out || text[0] == '\0' || text[0] == '-')
-        return 0;
-    errno = 0;
-    char *end = NULL;
-    unsigned long long value = strtoull(text, &end, 10);
-    if (errno != 0 || end == text || (*end != '\0' && *end != ' '))
-        return 0;
-    *out = value;
-    return 1;
-}
-
-static int64_t linux_read_control_u64(const char *path) {
+static int linux_try_read_control_u64(const char *path, int64_t *out) {
+    if (out)
+        *out = 0;
     char line[128];
     if (!linux_read_control_line(path, line, sizeof(line)) || strcmp(line, "max") == 0)
         return 0;
     unsigned long long value = 0;
-    return linux_parse_u64(line, &value) && value <= (unsigned long long)INT64_MAX ? (int64_t)value
-                                                                                   : 0;
+    if (!rt_machine_linux_parse_u64(line, &value) || value > (unsigned long long)INT64_MAX)
+        return 0;
+    if (out)
+        *out = (int64_t)value;
+    return 1;
 }
 
-static int64_t linux_cgroup_memory_value(const char *name) {
+static int64_t linux_read_control_u64(const char *path) {
+    int64_t value = 0;
+    return linux_try_read_control_u64(path, &value) ? value : 0;
+}
+
+static void linux_active_cgroup_paths(rt_machine_linux_cgroup_paths_t *paths) {
+    memset(paths, 0, sizeof(*paths));
+    if (!zanna_machine_linux_resolve_cgroups(
+            "/proc/self/mountinfo", "/proc/self/cgroup", paths)) {
+        (void)snprintf(paths->unified, sizeof(paths->unified), "%s", "/sys/fs/cgroup");
+        (void)snprintf(paths->cpu, sizeof(paths->cpu), "%s", "/sys/fs/cgroup/cpu");
+        (void)snprintf(paths->cpuset, sizeof(paths->cpuset), "%s", "/sys/fs/cgroup/cpuset");
+        (void)snprintf(paths->memory, sizeof(paths->memory), "%s", "/sys/fs/cgroup/memory");
+    }
+}
+
+static int linux_cgroup_control_path(char *out,
+                                     size_t capacity,
+                                     const char *directory,
+                                     const char *control) {
+    if (!out || capacity == 0 || !directory || !directory[0] || !control || !control[0])
+        return 0;
+    int written = snprintf(out, capacity, "%s/%s", directory, control);
+    return written > 0 && (size_t)written < capacity;
+}
+
+static int64_t linux_cgroup_memory_value(const char *name, int *found) {
+    if (found)
+        *found = 0;
+    rt_machine_linux_cgroup_paths_t paths;
+    linux_active_cgroup_paths(&paths);
+    const char *unified = paths.unified[0] ? paths.unified : NULL;
+    const char *memory = paths.memory[0] ? paths.memory : NULL;
+    char primary[RT_MACHINE_CGROUP_PATH_CAPACITY + 32];
+    char legacy[RT_MACHINE_CGROUP_PATH_CAPACITY + 64];
     if (strcmp(name, "memory.max") == 0) {
-        int64_t value = linux_read_control_u64("/sys/fs/cgroup/memory.max");
-        return value > 0 ? value
-                         : linux_read_control_u64("/sys/fs/cgroup/memory/memory.limit_in_bytes");
+        int64_t value = 0;
+        int primary_valid =
+            linux_cgroup_control_path(primary, sizeof(primary), unified, "memory.max");
+        int legacy_valid = linux_cgroup_control_path(
+            legacy, sizeof(legacy), memory, "memory.limit_in_bytes");
+        if ((primary_valid && linux_try_read_control_u64(primary, &value)) ||
+            (legacy_valid && linux_try_read_control_u64(legacy, &value))) {
+            if (found)
+                *found = 1;
+            return value;
+        }
     }
     if (strcmp(name, "memory.current") == 0) {
-        int64_t value = linux_read_control_u64("/sys/fs/cgroup/memory.current");
-        return value > 0 ? value
-                         : linux_read_control_u64("/sys/fs/cgroup/memory/memory.usage_in_bytes");
+        int64_t value = 0;
+        int primary_valid =
+            linux_cgroup_control_path(primary, sizeof(primary), unified, "memory.current");
+        int legacy_valid = linux_cgroup_control_path(
+            legacy, sizeof(legacy), memory, "memory.usage_in_bytes");
+        if ((primary_valid && linux_try_read_control_u64(primary, &value)) ||
+            (legacy_valid && linux_try_read_control_u64(legacy, &value))) {
+            if (found)
+                *found = 1;
+            return value;
+        }
     }
     return 0;
 }
 
-static int64_t linux_count_cpuset(const char *text) {
-    if (!text || text[0] == '\0')
-        return 0;
-    unsigned long long count = 0;
-    const char *cursor = text;
-    while (*cursor) {
-        errno = 0;
-        char *end = NULL;
-        unsigned long long first = strtoull(cursor, &end, 10);
-        if (errno != 0 || end == cursor)
-            return 0;
-        unsigned long long last = first;
-        if (*end == '-') {
-            cursor = end + 1;
-            errno = 0;
-            last = strtoull(cursor, &end, 10);
-            if (errno != 0 || end == cursor || last < first)
-                return 0;
-        }
-        unsigned long long span = last - first + 1u;
-        if (ULLONG_MAX - count < span)
-            return 0;
-        count += span;
-        if (*end == '\0')
-            break;
-        if (*end != ',')
-            return 0;
-        cursor = end + 1;
-    }
-    return count > 0 && count <= (unsigned long long)INT64_MAX ? (int64_t)count : 0;
-}
-
 static int64_t linux_cgroup_cpu_limit(void) {
     char line[128];
+    char path[RT_MACHINE_CGROUP_PATH_CAPACITY + 64];
+    rt_machine_linux_cgroup_paths_t paths;
+    linux_active_cgroup_paths(&paths);
+    const char *unified = paths.unified[0] ? paths.unified : NULL;
+    const char *cpu = paths.cpu[0] ? paths.cpu : NULL;
+    const char *cpuset_base = paths.cpuset[0] ? paths.cpuset : NULL;
     int64_t limit = 0;
-    if (linux_read_control_line("/sys/fs/cgroup/cpu.max", line, sizeof(line)) &&
+    if (linux_cgroup_control_path(path, sizeof(path), unified, "cpu.max") &&
+        linux_read_control_line(path, line, sizeof(line)) &&
         strncmp(line, "max ", 4) != 0) {
         unsigned long long quota = 0, period = 0;
         char *space = strchr(line, ' ');
         if (space) {
             *space++ = '\0';
-            if (linux_parse_u64(line, &quota) && linux_parse_u64(space, &period) && period > 0) {
-                unsigned long long rounded = quota / period + (quota % period != 0);
-                if (rounded > 0 && rounded <= (unsigned long long)INT64_MAX)
-                    limit = (int64_t)rounded;
+            if (rt_machine_linux_parse_u64(line, &quota) &&
+                rt_machine_linux_parse_u64(space, &period) && period > 0) {
+                limit = rt_machine_linux_cpu_quota(quota, period);
             }
         }
     }
     if (limit == 0) {
-        int64_t quota = linux_read_control_u64("/sys/fs/cgroup/cpu/cpu.cfs_quota_us");
-        int64_t period = linux_read_control_u64("/sys/fs/cgroup/cpu/cpu.cfs_period_us");
+        int64_t quota = 0;
+        int64_t period = 0;
+        if (linux_cgroup_control_path(path, sizeof(path), cpu, "cpu.cfs_quota_us"))
+            quota = linux_read_control_u64(path);
+        if (linux_cgroup_control_path(path, sizeof(path), cpu, "cpu.cfs_period_us"))
+            period = linux_read_control_u64(path);
         if (quota > 0 && period > 0)
-            limit = quota / period + (quota % period != 0);
+            limit = rt_machine_linux_cpu_quota(
+                (unsigned long long)quota, (unsigned long long)period);
     }
-    if (linux_read_control_line("/sys/fs/cgroup/cpuset.cpus.effective", line, sizeof(line))) {
-        int64_t cpuset = linux_count_cpuset(line);
+    if (linux_cgroup_control_path(path, sizeof(path), unified, "cpuset.cpus.effective") &&
+        linux_read_control_line(path, line, sizeof(line))) {
+        int64_t cpuset = rt_machine_linux_count_cpuset(line);
         if (cpuset > 0 && (limit == 0 || cpuset < limit))
             limit = cpuset;
-    } else if (linux_read_control_line("/sys/fs/cgroup/cpuset/cpuset.cpus", line, sizeof(line))) {
-        int64_t cpuset = linux_count_cpuset(line);
+    } else if (linux_cgroup_control_path(path, sizeof(path), cpuset_base, "cpuset.cpus") &&
+               linux_read_control_line(path, line, sizeof(line))) {
+        int64_t cpuset = rt_machine_linux_count_cpuset(line);
         if (cpuset > 0 && (limit == 0 || cpuset < limit))
             limit = cpuset;
     }
@@ -700,7 +767,7 @@ int64_t rt_machine_mem_total(void) {
     if (sysinfo(&si) == 0) {
         int64_t host =
             checked_u64_bytes((unsigned long long)si.totalram, (unsigned long long)si.mem_unit);
-        int64_t constrained = linux_cgroup_memory_value("memory.max");
+        int64_t constrained = linux_cgroup_memory_value("memory.max", NULL);
         return constrained > 0 && constrained < host ? constrained : host;
     }
     return 0;
@@ -723,7 +790,8 @@ int64_t rt_machine_mem_total(void) {
 ///   - macOS: `host_statistics64(HOST_VM_INFO64)`, `(free_count + inactive_count)` pages —
 ///     inactive pages are reclaimable on macOS (truly idle, not just unmapped).
 ///   - Linux: `MemAvailable` from `/proc/meminfo` (kernel's available estimate, includes
-///     reclaimable cache); falls back to `(freeram + bufferram) * mem_unit` on kernels lacking it.
+///     reclaimable cache); falls back to free, buffers, page cache, and reclaimable
+///     slab minus shared memory on kernels lacking it.
 ///   - Generic POSIX: `sysconf(_SC_AVPHYS_PAGES) * _SC_PAGE_SIZE`.
 /// Mach paths carefully `mach_port_deallocate` on every exit (success or failure).
 int64_t rt_machine_mem_free(void) {
@@ -767,27 +835,18 @@ int64_t rt_machine_mem_free(void) {
     // understates usable memory, making the metric incomparable with macOS
     // (free+inactive) and Windows (ullAvailPhys). Reporting MemAvailable puts all
     // three platforms on one "available memory" definition (VDOC-218).
-    {
-        FILE *meminfo = fopen("/proc/meminfo", "r");
-        if (meminfo) {
-            char line[256];
-            while (fgets(line, sizeof(line), meminfo)) {
-                unsigned long long kb = 0;
-                if (sscanf(line, "MemAvailable: %llu kB", &kb) == 1) {
-                    fclose(meminfo);
-                    int64_t host_available = checked_u64_bytes(kb, 1024ULL);
-                    int64_t limit = linux_cgroup_memory_value("memory.max");
-                    int64_t current = linux_cgroup_memory_value("memory.current");
-                    if (limit > 0 && current >= 0) {
-                        int64_t container_available = current < limit ? limit - current : 0;
-                        if (container_available < host_available)
-                            host_available = container_available;
-                    }
-                    return host_available;
-                }
-            }
-            fclose(meminfo);
+    int64_t host_available = rt_machine_linux_parse_meminfo_file("/proc/meminfo");
+    if (host_available > 0) {
+        int limit_found = 0;
+        int current_found = 0;
+        int64_t limit = linux_cgroup_memory_value("memory.max", &limit_found);
+        int64_t current = linux_cgroup_memory_value("memory.current", &current_found);
+        if (limit_found && current_found && limit > 0) {
+            int64_t container_available = current < limit ? limit - current : 0;
+            if (container_available < host_available)
+                host_available = container_available;
         }
+        return host_available;
     }
     // Fallback for older kernels without MemAvailable: free + buffers + cached is
     // a closer approximation than freeram alone.

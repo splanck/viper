@@ -235,14 +235,15 @@ func main() {
         return;
     }
     shell.SetSurfaceEditActionsAvailable(
-        true, true, false, true, true, true);
+        true, true, false, true, true, true, true);
     if shell.menuChrome.miCut.IsEnabled() == false
        or shell.menuChrome.miCopy.IsEnabled() == false
        or shell.menuChrome.miPaste.IsEnabled()
        or shell.menuChrome.miSelectAll.IsEnabled() == false
        or shell.menuChrome.miDuplicateSelection.IsEnabled() == false
        or shell.menuChrome.miDeleteSceneSelection.IsEnabled() == false
-       or shell.menuChrome.miFind.IsEnabled() {
+       or shell.menuChrome.miFind.IsEnabled() == false
+       or shell.menuChrome.tbFind.IsEnabled() == false {
         fail(shell, "visual-surface standard edit action state");
         return;
     }
@@ -1519,7 +1520,19 @@ func main() {
        or asyncDiff.closeButton.GetScreenY()
               + asyncDiff.closeButton.GetScreenHeight() > diffPanelBottom {
         asyncDiff.Shutdown();
-        fail(shell, "diff overlay escaped the compact viewport");
+        fail(shell, "diff overlay escaped the compact viewport"
+             + ": panel=" + asyncDiff.panel.GetScreenX() + ","
+             + asyncDiff.panel.GetScreenY() + " "
+             + asyncDiff.panel.GetScreenWidth() + "x"
+             + asyncDiff.panel.GetScreenHeight()
+             + " close=" + asyncDiff.closeButton.GetScreenX() + ","
+             + asyncDiff.closeButton.GetScreenY() + " "
+             + asyncDiff.closeButton.GetScreenWidth() + "x"
+             + asyncDiff.closeButton.GetScreenHeight()
+             + " viewport=" + UiViewportWidth(shell.app) + "x"
+             + UiViewportHeight(shell.app)
+             + " app=" + shell.app.GetWidth() + "x"
+             + shell.app.GetHeight());
         return;
     }
     if asyncDiff.rowsList.Count != 1 or asyncDiff.IsBusy() == false {

@@ -1,6 +1,25 @@
-#pragma once
+//===----------------------------------------------------------------------===//
+//
+// Part of the Zanna project, under the GNU GPL v3.
+// See LICENSE for license information.
+//
+//===----------------------------------------------------------------------===//
+//
+// File: include/zanna/platform/Capabilities.hpp.in
+// Purpose: Generate the canonical host, compiler, and build capability flags.
+//
+// Key invariants:
+//   - Exactly one supported host operating system is selected.
+//   - At most one recognized compiler family is selected.
+//
+// Ownership/Lifetime:
+//   - Header-only compile-time constants; no runtime state.
+//
+// Links: src/common/PlatformCapabilities.hpp, src/runtime/rt_platform.h
+//
+//===----------------------------------------------------------------------===//
 
-// Generated build/host capability header.
+#pragma once
 
 #define ZANNA_HOST_WINDOWS @ZANNA_HOST_WINDOWS_VALUE@
 #define ZANNA_HOST_MACOS @ZANNA_HOST_MACOS_VALUE@
@@ -16,6 +35,14 @@
 
 #define ZANNA_BUILD_NATIVE_LINK_X86_64 @ZANNA_BUILD_NATIVE_LINK_X86_64@
 #define ZANNA_BUILD_NATIVE_LINK_AARCH64 @ZANNA_BUILD_NATIVE_LINK_AARCH64@
+
+#if (ZANNA_HOST_WINDOWS + ZANNA_HOST_MACOS + ZANNA_HOST_LINUX) != 1
+#error "Zanna requires exactly one supported host operating-system capability"
+#endif
+
+#if (ZANNA_COMPILER_MSVC + ZANNA_COMPILER_CLANG + ZANNA_COMPILER_GCC) > 1
+#error "Zanna compiler capability flags must be mutually exclusive"
+#endif
 
 namespace zanna::platform {
 inline constexpr bool kHostWindows = ZANNA_HOST_WINDOWS != 0;
@@ -36,4 +63,11 @@ inline constexpr bool kNativeLinkAArch64 = ZANNA_BUILD_NATIVE_LINK_AARCH64 != 0;
 inline constexpr bool kCanFork = !kHostWindows;
 inline constexpr bool kCanLocalBind = true;
 inline constexpr bool kCanIpv6Loopback = true;
+
+static_assert(static_cast<int>(kHostWindows) + static_cast<int>(kHostMacOS) +
+                  static_cast<int>(kHostLinux) ==
+              1);
+static_assert(static_cast<int>(kCompilerMSVC) + static_cast<int>(kCompilerClang) +
+                  static_cast<int>(kCompilerGCC) <=
+              1);
 } // namespace zanna::platform

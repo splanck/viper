@@ -24,6 +24,12 @@
 //   PARTIAL-007: vg_codeeditor_get_selection() returns NULL without selection,
 //                non-NULL after vg_codeeditor_set_selection
 //   API-005:     vg_widget_set_margin() writes to layout params
+//   MIXED-001:   Spinner retains a numeric seed while mixed and resolves on edit
+// Links: lib/gui/include/vg_widgets.h,
+//        lib/gui/src/widgets/vg_scrollview.c,
+//        lib/gui/src/widgets/vg_spinner.c,
+//        docs/adr/0165-scrollview-descendant-reveal.md,
+//        docs/adr/0167-spinner-mixed-value-state.md
 //
 #include "vg_event.h"
 #include "vg_ide_widgets.h"
@@ -1338,6 +1344,56 @@ TEST(scrollview_scroll_to_nested_descendant_uses_full_offset) {
     vg_widget_destroy(&sv->base);
 }
 
+TEST(scrollview_scroll_to_survives_zero_viewport_layout) {
+    vg_scrollview_t *sv = vg_scrollview_create(NULL);
+    vg_widget_t *content = vg_vbox_create(0.0f);
+    vg_widget_t *leading = vg_widget_create(VG_WIDGET_CONTAINER);
+    vg_widget_t *target = vg_widget_create(VG_WIDGET_CONTAINER);
+    vg_widget_t *trailing = vg_widget_create(VG_WIDGET_CONTAINER);
+    ASSERT_NOT_NULL(sv);
+    ASSERT_NOT_NULL(content);
+    ASSERT_NOT_NULL(leading);
+    ASSERT_NOT_NULL(target);
+    ASSERT_NOT_NULL(trailing);
+
+    vg_widget_set_fixed_size(leading, 100.0f, 300.0f);
+    vg_widget_set_fixed_size(target, 100.0f, 24.0f);
+    vg_widget_set_fixed_size(trailing, 100.0f, 600.0f);
+    vg_widget_add_child(content, leading);
+    vg_widget_add_child(content, target);
+    vg_widget_add_child(content, trailing);
+    vg_widget_add_child(&sv->base, content);
+
+    vg_widget_arrange(&sv->base, 0.0f, 0.0f, 120.0f, 90.0f);
+    vg_scrollview_set_scroll(sv, 0.0f, 0.0f);
+
+    // Collapsing a containing split pane leaves the scroll view with no usable
+    // viewport until the next layout pass. ScrollTo must retain the descendant
+    // request and resolve it against the restored viewport, not the zero-sized
+    // intermediate geometry.
+    vg_widget_arrange(&sv->base, 0.0f, 0.0f, 0.0f, 0.0f);
+    vg_scrollview_scroll_to_widget(sv, target);
+    vg_widget_arrange(&sv->base, 0.0f, 0.0f, 120.0f, 90.0f);
+
+    float target_y = 0.0f;
+    float target_height = 0.0f;
+    vg_widget_get_screen_bounds(target, NULL, &target_y, NULL, &target_height);
+    ASSERT_TRUE(target_y >= -0.1f);
+    ASSERT_TRUE(target_y + target_height <= 90.1f);
+
+    vg_widget_t *doomed = vg_widget_create(VG_WIDGET_CONTAINER);
+    ASSERT_NOT_NULL(doomed);
+    vg_widget_set_fixed_size(doomed, 100.0f, 24.0f);
+    vg_widget_add_child(content, doomed);
+    vg_scrollview_scroll_to_widget(sv, doomed);
+    vg_widget_destroy(doomed);
+    vg_widget_arrange(&sv->base, 0.0f, 0.0f, 120.0f, 90.0f);
+    ASSERT_NULL(sv->scroll_to_widget);
+    ASSERT_EQ(sv->scroll_to_widget_id, 0);
+
+    vg_widget_destroy(&sv->base);
+}
+
 TEST(treeview_remove_node_clears_descendant_state) {
     vg_treeview_t *tree = vg_treeview_create(NULL);
     ASSERT_NOT_NULL(tree);
@@ -2583,6 +2639,49 @@ TEST(codeeditor_fold_gutter_click_toggles_region) {
     vg_widget_destroy(&editor->base);
 }
 
+TEST(spinner_indeterminate_retains_value_and_resolves_on_edit) {
+    vg_spinner_t *spinner = vg_spinner_create(NULL);
+    ASSERT_NOT_NULL(spinner);
+
+    vg_spinner_set_range(spinner, -10.0, 10.0);
+    vg_spinner_set_value(spinner, 4.0);
+    ASSERT_TRUE(vg_widget_was_changed(&spinner->base));
+    uint64_t revision = spinner->base.revision;
+
+    vg_spinner_set_indeterminate(spinner, true);
+    ASSERT_TRUE(vg_spinner_is_indeterminate(spinner));
+    ASSERT_TRUE(vg_spinner_get_value(spinner) == 4.0);
+    ASSERT_TRUE(spinner->base.revision > revision);
+    ASSERT_TRUE(vg_widget_was_changed(&spinner->base));
+
+    revision = spinner->base.revision;
+    vg_spinner_set_indeterminate(spinner, true);
+    ASSERT_TRUE(spinner->base.revision == revision);
+    ASSERT_FALSE(vg_widget_was_changed(&spinner->base));
+
+    vg_spinner_set_range(spinner, -20.0, 20.0);
+    ASSERT_TRUE(vg_spinner_is_indeterminate(spinner));
+    vg_spinner_set_value(spinner, 4.0);
+    ASSERT_FALSE(vg_spinner_is_indeterminate(spinner));
+    ASSERT_TRUE(vg_widget_was_changed(&spinner->base));
+
+    vg_spinner_set_indeterminate(spinner, true);
+    ASSERT_TRUE(vg_widget_was_changed(&spinner->base));
+    vg_event_t up = vg_event_key(VG_EVENT_KEY_DOWN, VG_KEY_UP, 0, VG_MOD_NONE);
+    ASSERT_TRUE(vg_event_send(&spinner->base, &up));
+    ASSERT_FALSE(vg_spinner_is_indeterminate(spinner));
+    ASSERT_TRUE(vg_spinner_get_value(spinner) == 5.0);
+    ASSERT_TRUE(vg_widget_was_changed(&spinner->base));
+
+    vg_spinner_set_indeterminate(spinner, true);
+    ASSERT_TRUE(vg_widget_was_changed(&spinner->base));
+    vg_event_t digit = vg_event_key(VG_EVENT_KEY_CHAR, VG_KEY_UNKNOWN, '7', VG_MOD_NONE);
+    ASSERT_TRUE(vg_event_send(&spinner->base, &digit));
+    ASSERT_FALSE(vg_spinner_is_indeterminate(spinner));
+
+    vg_widget_destroy(&spinner->base);
+}
+
 //=============================================================================
 // Main
 //=============================================================================
@@ -2654,6 +2753,7 @@ int main(void) {
     RUN(scrollview_direct_children_stack_vertically);
     RUN(scrollview_auto_hide_rechecks_cross_axis);
     RUN(scrollview_scroll_to_nested_descendant_uses_full_offset);
+    RUN(scrollview_scroll_to_survives_zero_viewport_layout);
     RUN(treeview_remove_node_clears_descendant_state);
     RUN(treeview_nested_blank_click_selects_instead_of_toggling);
     RUN(treeview_right_click_does_not_select_or_activate);
@@ -2697,6 +2797,7 @@ int main(void) {
     RUN(listbox_scroll_helpers_do_not_change_selection);
     RUN(listbox_multi_select_respects_ctrl_and_shift_modifiers);
     RUN(codeeditor_fold_gutter_click_toggles_region);
+    RUN(spinner_indeterminate_retains_value_and_resolves_on_edit);
 
     printf("\n%d passed, %d failed\n", g_passed, g_failed);
     return g_failed ? 1 : 0;

@@ -945,17 +945,49 @@ static void pty_child_report_errno(int fd, int error_value) {
     }
 }
 
-static void pty_signal_session(pid_t pid, int signal_number) {
+static int pty_signal_session(pid_t pid, int signal_number) {
     if (pid <= 0)
-        return;
-    if (kill(-pid, signal_number) != 0 && errno == ESRCH)
-        (void)kill(pid, signal_number);
+        return 1;
+    if (kill(-pid, signal_number) == 0)
+        return 1;
+    if (errno != ESRCH)
+        return 0;
+    if (kill(pid, signal_number) == 0 || errno == ESRCH)
+        return 1;
+    return 0;
 }
 
-static void set_nonblocking(int fd) {
+static int pty_set_nonblocking(int fd) {
     int flags = fcntl(fd, F_GETFL, 0);
-    if (flags >= 0)
-        (void)fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+    if (flags < 0)
+        return 0;
+    if ((flags & O_NONBLOCK) != 0)
+        return 1;
+    return fcntl(fd, F_SETFL, flags | O_NONBLOCK) == 0;
+}
+
+static int pty_set_close_on_exec(int fd) {
+#if defined(FD_CLOEXEC)
+    int flags = fcntl(fd, F_GETFD, 0);
+    if (flags < 0)
+        return 0;
+    if ((flags & FD_CLOEXEC) != 0)
+        return 1;
+    return fcntl(fd, F_SETFD, flags | FD_CLOEXEC) == 0;
+#else
+    (void)fd;
+    errno = ENOTSUP;
+    return 0;
+#endif
+}
+
+static void pty_reap_child_blocking(pid_t pid) {
+    if (pid <= 0)
+        return;
+    pid_t result;
+    do {
+        result = waitpid(pid, NULL, 0);
+    } while (result < 0 && errno == EINTR);
 }
 
 static void pty_drain(rt_pty_impl *pty) {
@@ -1021,6 +1053,8 @@ static void pty_poll_internal(rt_pty_impl *pty, int wait) {
         pty->exit_code = -1;
         pty->running = 0;
         pty_drain(pty);
+    } else if (result < 0) {
+        pty_set_last_errno("waitpid failed");
     }
 }
 
@@ -1271,7 +1305,7 @@ static rt_pty_impl *pty_open_impl(
     close(exec_pipe[0]);
     if (status_bytes != 0) {
         // The child failed before/at exec (e.g. program not found on PATH).
-        (void)waitpid(pid, NULL, 0);
+        pty_reap_child_blocking(pid);
         close(master);
         free_string_vector(&envp);
         free_string_vector(&argv);
@@ -1284,21 +1318,24 @@ static rt_pty_impl *pty_open_impl(
         return NULL;
     }
 
-    set_nonblocking(master);
-#if defined(FD_CLOEXEC)
-    {
-        int flags = fcntl(master, F_GETFD, 0);
-        if (flags >= 0)
-            (void)fcntl(master, F_SETFD, flags | FD_CLOEXEC);
+    if (!pty_set_nonblocking(master) || !pty_set_close_on_exec(master)) {
+        int setup_errno = errno;
+        (void)pty_signal_session(pid, SIGTERM);
+        pty_reap_child_blocking(pid);
+        close(master);
+        free_string_vector(&envp);
+        free_string_vector(&argv);
+        errno = setup_errno;
+        pty_set_last_errno("PTY master descriptor setup failed");
+        return NULL;
     }
-#endif
     free_string_vector(&envp);
     free_string_vector(&argv);
 
     rt_pty_impl *pty = pty_alloc();
     if (!pty) {
-        pty_signal_session(pid, SIGTERM);
-        (void)waitpid(pid, NULL, 0);
+        (void)pty_signal_session(pid, SIGTERM);
+        pty_reap_child_blocking(pid);
         close(master);
         return NULL;
     }
@@ -1313,10 +1350,12 @@ static void pty_close(rt_pty_impl *pty) {
     if (!pty || pty->destroyed)
         return;
     if (pty->running && pty->pid > 0) {
-        pty_signal_session(pty->pid, SIGTERM);
+        if (!pty_signal_session(pty->pid, SIGTERM))
+            pty_set_last_errno("PTY SIGTERM failed");
         pty_wait_after_sigterm(pty, 500);
         if (pty->running) {
-            pty_signal_session(pty->pid, SIGKILL);
+            if (!pty_signal_session(pty->pid, SIGKILL))
+                pty_set_last_errno("PTY SIGKILL failed");
             pty_poll_internal(pty, 1);
         }
     } else {

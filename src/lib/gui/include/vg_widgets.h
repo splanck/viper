@@ -19,6 +19,8 @@
 //     pointer up-casts for generic tree operations.
 //   - ListBox overflow is visibly ellipsized while its full row text remains
 //     available through the shared hover-tooltip manager.
+//   - ScrollView descendant reveals retain one live-ID-guarded target until
+//     settled layout geometry can make it visible.
 // Ownership/Lifetime:
 //   - Created widgets are owned by their parent once added; destroying the
 //     parent destroys all children.
@@ -27,7 +29,9 @@
 //        lib/gui/include/vg_layout.h,
 //        lib/gui/include/vg_theme.h,
 //        lib/gui/include/vg_font.h,
-//        lib/gui/include/vg_ide_widgets.h
+//        lib/gui/include/vg_ide_widgets.h,
+//        docs/adr/0165-scrollview-descendant-reveal.md,
+//        docs/adr/0167-spinner-mixed-value-state.md
 //
 //===----------------------------------------------------------------------===//
 #ifndef VG_WIDGETS_H
@@ -715,13 +719,13 @@ typedef enum vg_scroll_direction {
 typedef struct vg_scrollview {
     vg_widget_t base;
 
-    float scroll_x;       ///< Horizontal scroll position
-    float scroll_y;       ///< Vertical scroll position
+    float scroll_x;        ///< Horizontal scroll position
+    float scroll_y;        ///< Vertical scroll position
     float smooth_target_x; ///< Wheel easing destination (smooth scrolling)
     float smooth_target_y; ///< Wheel easing destination (smooth scrolling)
     bool smooth_animating; ///< True while wheel easing is in flight
-    float content_width;  ///< Effective content width after auto/explicit resolution
-    float content_height; ///< Effective content height after auto/explicit resolution
+    float content_width;   ///< Effective content width after auto/explicit resolution
+    float content_height;  ///< Effective content height after auto/explicit resolution
     float
         explicit_content_width; ///< Caller-provided content width, when has_explicit_content_width
     float explicit_content_height;    ///< Caller-provided content height, when
@@ -742,11 +746,13 @@ typedef struct vg_scrollview {
     uint32_t thumb_hover_color; ///< Thumb color when hovered
 
     // State
-    bool h_scrollbar_hovered;  ///< Is horizontal scrollbar hovered
-    bool v_scrollbar_hovered;  ///< Is vertical scrollbar hovered
-    bool h_scrollbar_dragging; ///< Is horizontal scrollbar being dragged
-    bool v_scrollbar_dragging; ///< Is vertical scrollbar being dragged
-    float drag_offset;         ///< Drag offset for scrollbar
+    bool h_scrollbar_hovered;      ///< Is horizontal scrollbar hovered
+    bool v_scrollbar_hovered;      ///< Is vertical scrollbar hovered
+    bool h_scrollbar_dragging;     ///< Is horizontal scrollbar being dragged
+    bool v_scrollbar_dragging;     ///< Is vertical scrollbar being dragged
+    float drag_offset;             ///< Drag offset for scrollbar
+    vg_widget_t *scroll_to_widget; ///< Pending descendant reveal target (non-owning)
+    uint64_t scroll_to_widget_id;  ///< Immutable ID guarding the pending target
 } vg_scrollview_t;
 
 /// @brief Create a new scroll view widget
@@ -778,9 +784,11 @@ void vg_scrollview_get_scroll(vg_scrollview_t *scroll, float *out_x, float *out_
 /// @param height Content height (0 = auto)
 void vg_scrollview_set_content_size(vg_scrollview_t *scroll, float width, float height);
 
-/// @brief Scroll to make a child widget visible
+/// @brief Scroll to make a descendant widget visible.
+/// @details The request is retained through the next layout pass so callers
+///          may reveal a descendant while an ancestor pane is being restored.
 /// @param scroll Scroll view widget
-/// @param child Child widget to scroll into view
+/// @param child Descendant widget to scroll into view
 void vg_scrollview_scroll_to_widget(vg_scrollview_t *scroll, vg_widget_t *child);
 
 /// @brief Set scroll direction
@@ -1582,6 +1590,7 @@ typedef struct vg_spinner {
     double max_value;   ///< Maximum value
     double step;        ///< Step increment
     int decimal_places; ///< Decimal places to display
+    bool indeterminate; ///< Mixed group value; numeric value remains an editing seed
 
     vg_font_t *font;   ///< Font for value display
     float font_size;   ///< Font size
@@ -1621,6 +1630,19 @@ void vg_spinner_set_value(vg_spinner_t *spinner, double value);
 /// @param spinner Spinner widget.
 /// @return Current value in [min, max].
 double vg_spinner_get_value(vg_spinner_t *spinner);
+
+/// @brief Set whether the spinner represents a mixed group value.
+/// @details The committed numeric value is retained as an editing seed. Setting
+///          a concrete value or editing the control clears this state.
+/// @param spinner Spinner widget.
+/// @param indeterminate true to present a mixed value; false to reveal the
+///        retained concrete value.
+void vg_spinner_set_indeterminate(vg_spinner_t *spinner, bool indeterminate);
+
+/// @brief Return whether the spinner currently represents a mixed group value.
+/// @param spinner Spinner widget.
+/// @return true only while the mixed-value presentation is active.
+bool vg_spinner_is_indeterminate(const vg_spinner_t *spinner);
 
 /// @brief Set the allowed value range.
 /// @param spinner Spinner widget.

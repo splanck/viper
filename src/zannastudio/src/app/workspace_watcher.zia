@@ -41,6 +41,7 @@ bind Threads = Zanna.Threads;
 
 final WORKSPACE_WATCHER_MAX_DIRS = 2048;
 final WORKSPACE_WATCHER_DIR_PAGE_SIZE = 64;
+final WORKSPACE_WATCHER_DIRECTORY_FILTER = ".__zanna_watcher_directory_only__";
 final WORKSPACE_WATCHERS_PER_FRAME = 32;
 final WORKSPACE_WATCHER_EVENTS_PER_FRAME = 32;
 final WORKSPACE_FALLBACK_PAGE_SIZE = 256;
@@ -285,7 +286,7 @@ expose func PumpWorkspaceWatcherDiscovery(state: WorkspaceWatcherState,
         ignores = state.rootIgnorePatterns.get(rootIndex);
     }
     var page = FileIndex.Page(root,
-                              "",
+                              WORKSPACE_WATCHER_DIRECTORY_FILTER,
                               ignores,
                               true,
                               state.discoveryPageOffset,

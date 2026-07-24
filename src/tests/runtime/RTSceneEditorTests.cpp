@@ -19,7 +19,9 @@
 // Links: src/runtime/game/rt_scene_editor.cpp,
 //   src/runtime/game/rt_tiled_import.cpp, docs/adr/0140-tiled-map-and-scene-import.md,
 //   docs/adr/0144-complete-tiled-map-import.md,
-//   docs/adr/0155-scene-object-authoring-metadata-and-duplication.md
+//   docs/adr/0155-scene-object-authoring-metadata-and-duplication.md,
+//   docs/adr/0158-scene-level-property-authoring.md,
+//   docs/adr/0164-backward-compatible-2d-scene-object-hierarchy.md
 //
 //===----------------------------------------------------------------------===//
 
@@ -278,12 +280,27 @@ int main() {
     rt_game_scene_set_float(scene, rt_const_cstr("gravity"), 0.75);
     rt_game_scene_set_bool(scene, rt_const_cstr("dark"), 1);
     rt_game_scene_set_str(scene, rt_const_cstr("theme"), rt_const_cstr("descent"));
+    rt_game_scene_set_null(scene, rt_const_cstr("nextObjective"));
     assert(rt_game_scene_get_int(scene, rt_const_cstr("playerStartX"), -1) == 96);
     assert(rt_game_scene_get_int(scene, rt_const_cstr("theme"), -1) == -1);
     assert(rt_game_scene_get_bool(scene, rt_const_cstr("dark"), 0) == 1);
     assert(rt_game_scene_get_float(scene, rt_const_cstr("gravity"), -1.0) > 0.7);
     assert(to_std(rt_game_scene_get_str(scene, rt_const_cstr("theme"), rt_const_cstr(""))) ==
            "descent");
+    assert(to_std(rt_game_scene_property_kind(scene, rt_const_cstr("playerStartX"))) == "int");
+    assert(to_std(rt_game_scene_property_kind(scene, rt_const_cstr("gravity"))) == "float");
+    assert(to_std(rt_game_scene_property_kind(scene, rt_const_cstr("dark"))) == "bool");
+    assert(to_std(rt_game_scene_property_kind(scene, rt_const_cstr("theme"))) == "string");
+    assert(to_std(rt_game_scene_property_kind(scene, rt_const_cstr("nextObjective"))) == "null");
+    assert(to_std(rt_game_scene_property_kind(scene, rt_const_cstr("missing"))).empty());
+    void *scene_keys = rt_game_scene_keys(scene);
+    assert(rt_seq_len(scene_keys) == 6);
+    assert(to_std(rt_seq_get_str(scene_keys, 0)) == "dark");
+    assert(to_std(rt_seq_get_str(scene_keys, 1)) == "gravity");
+    assert(to_std(rt_seq_get_str(scene_keys, 2)) == "nextObjective");
+    assert(to_std(rt_seq_get_str(scene_keys, 3)) == "playerStartX");
+    assert(to_std(rt_seq_get_str(scene_keys, 4)) == "theme");
+    assert(to_std(rt_seq_get_str(scene_keys, 5)) == "tileset");
     rt_game_scene_object_set_int(scene, obj, rt_const_cstr("hp"), 3);
     rt_game_scene_object_set_bool(scene, obj, rt_const_cstr("elite"), 1);
     rt_game_scene_object_set_null(scene, obj, rt_const_cstr("target"));
@@ -345,6 +362,183 @@ int main() {
     assert(rt_game_scene_object_x(scene, obj) == 10);
     assert(rt_game_scene_object_y(scene, obj) == 20);
     assert(rt_game_scene_duplicate_object(scene, -1, rt_const_cstr("invalid")) == -1);
+
+    // ADR 0164: SceneDocument owns a cycle-safe organizational hierarchy while
+    // retaining absolute scene-space positions and version-1 compatibility.
+    {
+        void *hierarchy = rt_game_scene_new(2, 2, 16, 16);
+        int64_t root = rt_game_scene_add_object(
+            hierarchy, rt_const_cstr("Group"), rt_const_cstr("root"), 4, 8);
+        int64_t child = rt_game_scene_add_object(
+            hierarchy, rt_const_cstr("Actor"), rt_const_cstr("child"), 12, 16);
+        int64_t grandchild = rt_game_scene_add_object(
+            hierarchy, rt_const_cstr("Actor"), rt_const_cstr("grandchild"), 20, 24);
+        int64_t peer = rt_game_scene_add_object(
+            hierarchy, rt_const_cstr("Actor"), rt_const_cstr("peer"), 28, 32);
+
+        assert(rt_game_scene_object_parent(hierarchy, root) == -1);
+        assert(rt_game_scene_object_parent(hierarchy, child) == -1);
+        assert(rt_game_scene_object_parent(hierarchy, -1) == -1);
+        assert(rt_game_scene_try_set_object_parent(hierarchy, child, root) == 1);
+        assert(rt_game_scene_try_set_object_parent(hierarchy, grandchild, child) == 1);
+        assert(rt_game_scene_object_parent(hierarchy, child) == root);
+        assert(rt_game_scene_object_parent(hierarchy, grandchild) == child);
+        assert(rt_game_scene_object_x(hierarchy, child) == 12);
+        assert(rt_game_scene_object_y(hierarchy, child) == 16);
+
+        std::string before_rejection = scene_json(hierarchy);
+        assert(rt_game_scene_try_set_object_parent(hierarchy, -1, root) == 0);
+        assert(rt_game_scene_try_set_object_parent(hierarchy, child, 99) == 0);
+        assert(rt_game_scene_try_set_object_parent(hierarchy, child, child) == 0);
+        assert(rt_game_scene_try_set_object_parent(hierarchy, root, grandchild) == 0);
+        assert(scene_json(hierarchy) == before_rejection);
+
+        constexpr const char *parent_key = "zanna.hierarchy.parentIndex";
+        rt_game_scene_object_set_int(hierarchy, child, rt_const_cstr(parent_key), peer);
+        assert(rt_game_scene_object_parent(hierarchy, child) == root);
+        assert(rt_game_scene_object_has(hierarchy, child, rt_const_cstr(parent_key)) == 0);
+        assert(rt_game_scene_object_get_int(hierarchy, child, rt_const_cstr(parent_key), -77) ==
+               -77);
+        assert(
+            to_std(rt_game_scene_object_property_kind(hierarchy, child, rt_const_cstr(parent_key)))
+                .empty());
+        void *public_keys = rt_game_scene_object_keys(hierarchy, child);
+        assert(rt_seq_len(public_keys) == 0);
+        rt_game_scene_object_remove(hierarchy, child, rt_const_cstr(parent_key));
+        assert(rt_game_scene_object_parent(hierarchy, child) == root);
+
+        std::string hierarchy_json = scene_json(hierarchy);
+        assert(hierarchy_json.find("\"zanna.hierarchy.parentIndex\": 0") != std::string::npos);
+        void *hierarchy_roundtrip = load_text(hierarchy_json);
+        assert(rt_game_scene_has_errors(hierarchy_roundtrip) == 0);
+        assert(rt_game_scene_object_parent(hierarchy_roundtrip, 1) == 0);
+        assert(rt_game_scene_object_parent(hierarchy_roundtrip, 2) == 1);
+        assert(rt_game_scene_object_has(hierarchy_roundtrip, 1, rt_const_cstr(parent_key)) == 0);
+
+        // The reserved hierarchy entry consumes one of the 256 serialized
+        // property slots. Parenting a full root must be an exact rejection,
+        // and a child at capacity may replace but not add public properties.
+        void *property_limits = rt_game_scene_new(1, 1, 16, 16);
+        int64_t limit_root = rt_game_scene_add_object(
+            property_limits, rt_const_cstr("Group"), rt_const_cstr("limit-root"), 0, 0);
+        int64_t limit_child = rt_game_scene_add_object(
+            property_limits, rt_const_cstr("Actor"), rt_const_cstr("limit-child"), 0, 0);
+        for (int64_t property = 0; property < 256; ++property) {
+            std::string key = "property-" + std::to_string(property);
+            rt_string key_string = rt_string_from_bytes(key.data(), key.size());
+            rt_game_scene_object_set_int(property_limits, limit_child, key_string, property);
+            rt_string_unref(key_string);
+        }
+        assert(rt_seq_len(rt_game_scene_object_keys(property_limits, limit_child)) == 256);
+        assert(rt_game_scene_try_set_object_parent(property_limits, limit_child, limit_root) == 0);
+        assert(rt_game_scene_object_parent(property_limits, limit_child) == -1);
+
+        rt_game_scene_object_remove(property_limits, limit_child, rt_const_cstr("property-255"));
+        assert(rt_game_scene_try_set_object_parent(property_limits, limit_child, limit_root) == 1);
+        assert(rt_seq_len(rt_game_scene_object_keys(property_limits, limit_child)) == 255);
+        rt_game_scene_object_set_int(property_limits, limit_child, rt_const_cstr("overflow"), 1);
+        assert(rt_game_scene_object_has(property_limits, limit_child, rt_const_cstr("overflow")) ==
+               0);
+        rt_game_scene_object_set_int(
+            property_limits, limit_child, rt_const_cstr("property-0"), 999);
+        assert(rt_game_scene_object_get_int(
+                   property_limits, limit_child, rt_const_cstr("property-0"), -1) == 999);
+        std::string limited_json = scene_json(property_limits);
+        void *limited_roundtrip = load_text(limited_json);
+        assert(rt_game_scene_has_errors(limited_roundtrip) == 0);
+        assert(rt_game_scene_object_parent(limited_roundtrip, limit_child) == limit_root);
+        assert(rt_seq_len(rt_game_scene_object_keys(limited_roundtrip, limit_child)) == 255);
+
+        // Moving root to the end applies one old-to-new permutation to objects
+        // and every structural parent reference.
+        rt_game_scene_move_object(hierarchy, root, peer);
+        assert(to_std(rt_game_scene_object_id(hierarchy, 0)) == "child");
+        assert(to_std(rt_game_scene_object_id(hierarchy, 1)) == "grandchild");
+        assert(to_std(rt_game_scene_object_id(hierarchy, 2)) == "peer");
+        assert(to_std(rt_game_scene_object_id(hierarchy, 3)) == "root");
+        assert(rt_game_scene_object_parent(hierarchy, 0) == 3);
+        assert(rt_game_scene_object_parent(hierarchy, 1) == 0);
+        assert(rt_game_scene_object_parent(hierarchy, 2) == -1);
+        assert(rt_game_scene_object_parent(hierarchy, 3) == -1);
+    }
+
+    {
+        void *removal = rt_game_scene_new(2, 2, 16, 16);
+        int64_t root =
+            rt_game_scene_add_object(removal, rt_const_cstr("Group"), rt_const_cstr("root"), 0, 0);
+        int64_t child =
+            rt_game_scene_add_object(removal, rt_const_cstr("Group"), rt_const_cstr("child"), 0, 0);
+        int64_t grandchild = rt_game_scene_add_object(
+            removal, rt_const_cstr("Actor"), rt_const_cstr("grandchild"), 0, 0);
+        int64_t sibling = rt_game_scene_add_object(
+            removal, rt_const_cstr("Actor"), rt_const_cstr("sibling"), 0, 0);
+        assert(rt_game_scene_try_set_object_parent(removal, child, root) == 1);
+        assert(rt_game_scene_try_set_object_parent(removal, grandchild, child) == 1);
+        assert(rt_game_scene_try_set_object_parent(removal, sibling, root) == 1);
+
+        rt_game_scene_remove_object(removal, child);
+        assert(rt_game_scene_object_count(removal) == 3);
+        assert(to_std(rt_game_scene_object_id(removal, 1)) == "grandchild");
+        assert(rt_game_scene_object_parent(removal, 1) == 0);
+        assert(rt_game_scene_object_parent(removal, 2) == 0);
+
+        rt_game_scene_remove_object(removal, 0);
+        assert(rt_game_scene_object_count(removal) == 2);
+        assert(rt_game_scene_object_parent(removal, 0) == -1);
+        assert(rt_game_scene_object_parent(removal, 1) == -1);
+    }
+
+    {
+        void *duplication = rt_game_scene_new(2, 2, 16, 16);
+        int64_t root = rt_game_scene_add_object(
+            duplication, rt_const_cstr("Group"), rt_const_cstr("root"), 0, 0);
+        int64_t child = rt_game_scene_add_object(
+            duplication, rt_const_cstr("Actor"), rt_const_cstr("child"), 0, 0);
+        int64_t grandchild = rt_game_scene_add_object(
+            duplication, rt_const_cstr("Actor"), rt_const_cstr("grandchild"), 0, 0);
+        assert(rt_game_scene_try_set_object_parent(duplication, child, root) == 1);
+        assert(rt_game_scene_try_set_object_parent(duplication, grandchild, child) == 1);
+
+        int64_t root_copy =
+            rt_game_scene_duplicate_object(duplication, root, rt_const_cstr("root-copy"));
+        assert(root_copy == 1);
+        assert(rt_game_scene_object_parent(duplication, root_copy) == -1);
+        assert(to_std(rt_game_scene_object_id(duplication, 2)) == "child");
+        assert(to_std(rt_game_scene_object_id(duplication, 3)) == "grandchild");
+        assert(rt_game_scene_object_parent(duplication, 2) == 0);
+        assert(rt_game_scene_object_parent(duplication, 3) == 2);
+
+        int64_t child_copy =
+            rt_game_scene_duplicate_object(duplication, 2, rt_const_cstr("child-copy"));
+        assert(child_copy == 3);
+        assert(rt_game_scene_object_parent(duplication, child_copy) == 0);
+        assert(to_std(rt_game_scene_object_id(duplication, 4)) == "grandchild");
+        assert(rt_game_scene_object_parent(duplication, 4) == 2);
+    }
+
+    {
+        constexpr const char *malformed_hierarchy =
+            "{\"version\":1,\"width\":1,\"height\":1,\"tileWidth\":16,\"tileHeight\":16,"
+            "\"layers\":[{\"name\":\"base\",\"visible\":true,\"asset\":\"\",\"tiles\":[0]}],"
+            "\"objects\":["
+            "{\"type\":\"Group\",\"id\":\"bad-type\",\"x\":0,\"y\":0,\"properties\":{"
+            "\"zanna.hierarchy.parentIndex\":\"nope\"}},"
+            "{\"type\":\"Group\",\"id\":\"bad-range\",\"x\":0,\"y\":0,\"properties\":{"
+            "\"zanna.hierarchy.parentIndex\":99}},"
+            "{\"type\":\"Group\",\"id\":\"self\",\"x\":0,\"y\":0,\"properties\":{"
+            "\"zanna.hierarchy.parentIndex\":2}},"
+            "{\"type\":\"Group\",\"id\":\"cycle-a\",\"x\":0,\"y\":0,\"properties\":{"
+            "\"zanna.hierarchy.parentIndex\":4}},"
+            "{\"type\":\"Group\",\"id\":\"cycle-b\",\"x\":0,\"y\":0,\"properties\":{"
+            "\"zanna.hierarchy.parentIndex\":3}}]}";
+        void *malformed_hierarchy_scene = load_text(malformed_hierarchy);
+        assert(rt_game_scene_has_errors(malformed_hierarchy_scene) == 1);
+        assert(rt_seq_len(rt_game_scene_diagnostic_records(malformed_hierarchy_scene)) >= 4);
+        for (int64_t index = 0; index < 5; ++index)
+            assert(rt_game_scene_object_parent(malformed_hierarchy_scene, index) == -1);
+        assert(scene_json(malformed_hierarchy_scene).find("zanna.hierarchy.parentIndex") ==
+               std::string::npos);
+    }
 
     rt_string bad_json = rt_const_cstr("{\"version\":1,");
     void *bad = rt_game_scene_load_json(bad_json);

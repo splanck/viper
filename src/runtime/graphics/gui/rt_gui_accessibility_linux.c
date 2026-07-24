@@ -101,6 +101,8 @@ static rt_gui_xsetting_value_t rt_gui_xsettings_parse(const unsigned char *bytes
     rt_gui_xsetting_value_t result = {0};
     if (!bytes || length < 12u || !requested)
         return result;
+    if (bytes[0] != LSBFirst && bytes[0] != MSBFirst)
+        return result;
     int msb_first = bytes[0] == MSBFirst;
     uint32_t setting_count = rt_gui_xsettings_u32(bytes + 8u, msb_first);
     size_t offset = 12u;
@@ -156,6 +158,18 @@ static rt_gui_xsetting_value_t rt_gui_xsettings_parse(const unsigned char *bytes
         }
     }
     return result;
+}
+
+int rt_gui_linux_test_parse_xsetting(const unsigned char *bytes,
+                                     size_t length,
+                                     const char *requested,
+                                     int32_t *integer_out) {
+    rt_gui_xsetting_value_t value = rt_gui_xsettings_parse(bytes, length, requested);
+    if (!value.found)
+        return 0;
+    if (integer_out)
+        *integer_out = value.integer;
+    return 1;
 }
 
 /// @brief Fetch and parse one setting from the XSettings manager on the window's screen.

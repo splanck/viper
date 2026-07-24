@@ -17,7 +17,9 @@
 //   - Canvas owns the input subsystem; input callbacks are non-owning function pointers.
 //   - No heap allocation in state query functions.
 //
-// Links: src/runtime/graphics/rt_input.c (implementation), src/runtime/core/rt_string.h
+// Links: src/runtime/graphics/input/rt_input.c (implementation),
+//        src/runtime/core/rt_string.h,
+//        docs/adr/0169-super-modifier-keys-and-studio-viewport-picking.md
 //
 //===----------------------------------------------------------------------===//
 #pragma once
@@ -142,9 +144,11 @@ extern "C" {
 #define ZANNA_KEY_LSHIFT 340
 #define ZANNA_KEY_LCTRL 341
 #define ZANNA_KEY_LALT 342
+#define ZANNA_KEY_LSUPER 343
 #define ZANNA_KEY_RSHIFT 344
 #define ZANNA_KEY_RCTRL 345
 #define ZANNA_KEY_RALT 346
+#define ZANNA_KEY_RSUPER 347
 
 // Maximum key code we track
 #define ZANNA_KEY_MAX 512
@@ -356,6 +360,8 @@ int64_t rt_keyboard_key_lctrl(void);
 int64_t rt_keyboard_key_rctrl(void);
 int64_t rt_keyboard_key_lalt(void);
 int64_t rt_keyboard_key_ralt(void);
+int64_t rt_keyboard_key_lsuper(void);
+int64_t rt_keyboard_key_rsuper(void);
 int64_t rt_keyboard_key_minus(void);
 int64_t rt_keyboard_key_equals(void);
 int64_t rt_keyboard_key_lbracket(void);

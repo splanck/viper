@@ -1159,7 +1159,9 @@ Provides scrollable container widget.
 
 Create `Zanna.GUI.ScrollView` values through its registered constructor and use the returned
 object with the instance members below. Its public surface exposes operations including
-`SetScroll`, `SetContentSize`, `GetScrollX`, `GetScrollY`.
+`SetScroll`, `SetContentSize`, descendant `ScrollTo`, `GetScrollX`, and `GetScrollY`.
+`ScrollTo` retains one live-ID-guarded request through the next layout pass,
+allowing an enclosing pane to be restored and its descendant revealed by one command.
 
 Constructor: `Zanna.GUI.ScrollView.New`
 
@@ -1169,6 +1171,7 @@ Constructor: `Zanna.GUI.ScrollView.New`
 |---|---|---|
 | <a id="zanna-gui-scrollview-setscroll"></a>`SetScroll` | `void(f64,f64)` | `Zanna.GUI.ScrollView.SetScroll` |
 | <a id="zanna-gui-scrollview-setcontentsize"></a>`SetContentSize` | `void(f64,f64)` | `Zanna.GUI.ScrollView.SetContentSize` |
+| <a id="zanna-gui-scrollview-scrollto"></a>`ScrollTo` | `void(obj)` | `Zanna.GUI.ScrollView.ScrollTo` |
 | <a id="zanna-gui-scrollview-getscrollx"></a>`GetScrollX` | `f64()` | `Zanna.GUI.ScrollView.GetScrollX` |
 | <a id="zanna-gui-scrollview-getscrolly"></a>`GetScrollY` | `f64()` | `Zanna.GUI.ScrollView.GetScrollY` |
 | <a id="zanna-gui-scrollview-new"></a>`New` | `obj(obj)` | `Zanna.GUI.ScrollView.New` |
@@ -1180,9 +1183,12 @@ Provides tree view widget.
 
 Create `Zanna.GUI.TreeView` values through its registered constructor and use the returned
 object with the instance members below. Its public surface exposes operations including
-`AddNode`, `RemoveNode`, `Toggle`, `ScrollTo`, lazy-child request polling, and activation
-payload lookup. Node-returning event payloads use `Zanna.Option`, remain independent from their
-compatibility `Was*` edges, and preserve the tree-owned lifetime contract.
+retained-node Ctrl/Command and Shift multi-selection, byte-exact selected data in structural
+preorder, `AddNode`, `RemoveNode`, `Toggle`, `ScrollTo`, lazy-child request polling, and
+activation payload lookup. `SetDragDropMode(1)` preserves container-only INTO drops;
+`SetDragDropMode(2)` exposes application-directed BEFORE/INTO/AFTER row regions whose numeric
+values are 0/1/2. Node-returning event payloads use `Zanna.Option`, remain independent from
+their compatibility `Was*` edges, and preserve the tree-owned lifetime contract.
 
 Constructor: `Zanna.GUI.TreeView.New`
 
@@ -1198,9 +1204,11 @@ Constructor: `Zanna.GUI.TreeView.New`
 | <a id="zanna-gui-treeview-collapse"></a>`Collapse` | `void(obj)` | `Zanna.GUI.TreeView.Collapse` |
 | <a id="zanna-gui-treeview-toggle"></a>`Toggle` | `void(obj)` | `Zanna.GUI.TreeView.Toggle` |
 | <a id="zanna-gui-treeview-select"></a>`Select` | `void(obj)` | `Zanna.GUI.TreeView.Select` |
+| <a id="zanna-gui-treeview-setmultiselect"></a>`SetMultiSelect` | `void(i1)` | `Zanna.GUI.TreeView.SetMultiSelect` |
 | <a id="zanna-gui-treeview-scrollto"></a>`ScrollTo` | `void(obj)` | `Zanna.GUI.TreeView.ScrollTo` |
 | <a id="zanna-gui-treeview-setfont"></a>`SetFont` | `void(obj,f64)` | `Zanna.GUI.TreeView.SetFont` |
 | <a id="zanna-gui-treeview-getselected"></a>`GetSelected` | `obj()` | `Zanna.GUI.TreeView.GetSelected` |
+| <a id="zanna-gui-treeview-getselecteddata"></a>`GetSelectedData` | `seq<str>()` | `Zanna.GUI.TreeView.GetSelectedData` |
 | <a id="zanna-gui-treeview-getnodeat"></a>`GetNodeAt` | `obj(i64,i64)` | `Zanna.GUI.TreeView.GetNodeAt` |
 | <a id="zanna-gui-treeview-wasselectionchanged"></a>`WasSelectionChanged` | `i1()` | `Zanna.GUI.TreeView.WasSelectionChanged` |
 | <a id="zanna-gui-treeview-waschanged"></a>`WasChanged` | `i1()` | `Zanna.GUI.TreeView.WasChanged` |
@@ -1210,6 +1218,7 @@ Constructor: `Zanna.GUI.TreeView.New`
 | <a id="zanna-gui-treeview-getactivatednodeoption"></a>`GetActivatedNodeOption` | `obj<Zanna.Option>()` | `Zanna.GUI.TreeView.GetActivatedNodeOption` |
 | <a id="zanna-gui-treeview-getrevision"></a>`GetRevision` | `i64()` | `Zanna.GUI.TreeView.GetRevision` |
 | <a id="zanna-gui-treeview-setdragdropenabled"></a>`SetDragDropEnabled` | `void(i1)` | `Zanna.GUI.TreeView.SetDragDropEnabled` |
+| <a id="zanna-gui-treeview-setdragdropmode"></a>`SetDragDropMode` | `void(i64)` | `Zanna.GUI.TreeView.SetDragDropMode` |
 | <a id="zanna-gui-treeview-wasdropreceived"></a>`WasDropReceived` | `i1()` | `Zanna.GUI.TreeView.WasDropReceived` |
 | <a id="zanna-gui-treeview-getdropsourcedata"></a>`GetDropSourceData` | `str()` | `Zanna.GUI.TreeView.GetDropSourceData` |
 | <a id="zanna-gui-treeview-getdroptargetdata"></a>`GetDropTargetData` | `str()` | `Zanna.GUI.TreeView.GetDropTargetData` |
@@ -1832,7 +1841,8 @@ Provides numeric spinner widget.
 
 Create `Zanna.GUI.Spinner` values through its registered constructor and use the returned object
 with the instance members below. Its public surface exposes properties such as `Value` and
-operations including `SetValue`, `SetRange`, `SetStep`, `SetDecimals`.
+operations including `SetValue`, mixed-value `SetIndeterminate` / `IsIndeterminate`,
+`SetRange`, `SetStep`, and `SetDecimals`.
 
 Constructor: `Zanna.GUI.Spinner.New`
 
@@ -1847,6 +1857,8 @@ Constructor: `Zanna.GUI.Spinner.New`
 | Method | Signature | Runtime target |
 |---|---|---|
 | <a id="zanna-gui-spinner-setvalue"></a>`SetValue` | `void(f64)` | `Zanna.GUI.Spinner.SetValue` |
+| <a id="zanna-gui-spinner-setindeterminate"></a>`SetIndeterminate` | `void(i1)` | `Zanna.GUI.Spinner.SetIndeterminate` |
+| <a id="zanna-gui-spinner-isindeterminate"></a>`IsIndeterminate` | `i1()` | `Zanna.GUI.Spinner.IsIndeterminate` |
 | <a id="zanna-gui-spinner-setrange"></a>`SetRange` | `void(f64,f64)` | `Zanna.GUI.Spinner.SetRange` |
 | <a id="zanna-gui-spinner-setstep"></a>`SetStep` | `void(f64)` | `Zanna.GUI.Spinner.SetStep` |
 | <a id="zanna-gui-spinner-setdecimals"></a>`SetDecimals` | `void(i64)` | `Zanna.GUI.Spinner.SetDecimals` |
@@ -2612,6 +2624,7 @@ Constructor: `Zanna.GUI.VideoWidget.New`
 | `Zanna.GUI.ScrollView.New` | `obj(obj)` | `rt_scrollview_new` |
 | `Zanna.GUI.ScrollView.SetScroll` | `void(obj,f64,f64)` | `rt_scrollview_set_scroll` |
 | `Zanna.GUI.ScrollView.SetContentSize` | `void(obj,f64,f64)` | `rt_scrollview_set_content_size` |
+| `Zanna.GUI.ScrollView.ScrollTo` | `void(obj,obj)` | `rt_scrollview_scroll_to` |
 | `Zanna.GUI.ScrollView.GetScrollX` | `f64(obj)` | `rt_scrollview_get_scroll_x` |
 | `Zanna.GUI.ScrollView.GetScrollY` | `f64(obj)` | `rt_scrollview_get_scroll_y` |
 | `Zanna.GUI.TreeView.New` | `obj(obj)` | `rt_treeview_new` |
@@ -2623,9 +2636,11 @@ Constructor: `Zanna.GUI.VideoWidget.New`
 | `Zanna.GUI.TreeView.Collapse` | `void(obj,obj)` | `rt_treeview_collapse` |
 | `Zanna.GUI.TreeView.Toggle` | `void(obj,obj)` | `rt_treeview_toggle` |
 | `Zanna.GUI.TreeView.Select` | `void(obj,obj)` | `rt_treeview_select` |
+| `Zanna.GUI.TreeView.SetMultiSelect` | `void(obj,i1)` | `rt_treeview_set_multi_select` |
 | `Zanna.GUI.TreeView.ScrollTo` | `void(obj,obj)` | `rt_treeview_scroll_to` |
 | `Zanna.GUI.TreeView.SetFont` | `void(obj,obj,f64)` | `rt_treeview_set_font` |
 | `Zanna.GUI.TreeView.GetSelected` | `obj(obj)` | `rt_treeview_get_selected` |
+| `Zanna.GUI.TreeView.GetSelectedData` | `seq<str>(obj)` | `rt_treeview_get_selected_data` |
 | `Zanna.GUI.TreeView.GetNodeAt` | `obj(obj,i64,i64)` | `rt_treeview_get_node_at` |
 | `Zanna.GUI.TreeView.WasSelectionChanged` | `i1(obj)` | `rt_treeview_was_selection_changed` |
 | `Zanna.GUI.TreeView.WasChanged` | `i1(obj)` | `rt_treeview_was_changed` |
@@ -2635,6 +2650,7 @@ Constructor: `Zanna.GUI.VideoWidget.New`
 | `Zanna.GUI.TreeView.GetActivatedNodeOption` | `obj<Zanna.Option>(obj)` | `rt_treeview_get_activated_node_option` |
 | `Zanna.GUI.TreeView.GetRevision` | `i64(obj)` | `rt_treeview_get_revision` |
 | `Zanna.GUI.TreeView.SetDragDropEnabled` | `void(obj,i1)` | `rt_treeview_set_drag_drop_enabled` |
+| `Zanna.GUI.TreeView.SetDragDropMode` | `void(obj,i64)` | `rt_treeview_set_drag_drop_mode` |
 | `Zanna.GUI.TreeView.WasDropReceived` | `i1(obj)` | `rt_treeview_was_drop_received` |
 | `Zanna.GUI.TreeView.GetDropSourceData` | `str(obj)` | `rt_treeview_get_drop_source_data` |
 | `Zanna.GUI.TreeView.GetDropTargetData` | `str(obj)` | `rt_treeview_get_drop_target_data` |
@@ -2857,6 +2873,8 @@ Constructor: `Zanna.GUI.VideoWidget.New`
 | `Zanna.GUI.Spinner.New` | `obj(obj)` | `rt_spinner_new` |
 | `Zanna.GUI.Spinner.SetValue` | `void(obj,f64)` | `rt_spinner_set_value` |
 | <a id="zanna-gui-spinner-get-value"></a>`Zanna.GUI.Spinner.get_Value` | `f64(obj)` | `rt_spinner_get_value` |
+| `Zanna.GUI.Spinner.SetIndeterminate` | `void(obj,i1)` | `rt_spinner_set_indeterminate` |
+| `Zanna.GUI.Spinner.IsIndeterminate` | `i1(obj)` | `rt_spinner_is_indeterminate` |
 | `Zanna.GUI.Spinner.SetRange` | `void(obj,f64,f64)` | `rt_spinner_set_range` |
 | `Zanna.GUI.Spinner.SetStep` | `void(obj,f64)` | `rt_spinner_set_step` |
 | `Zanna.GUI.Spinner.SetDecimals` | `void(obj,i64)` | `rt_spinner_set_decimals` |

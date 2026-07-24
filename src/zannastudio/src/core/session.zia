@@ -22,7 +22,9 @@
 // Ownership/Lifetime:
 //   - SessionManager owns only its settings path and borrows live IDE models.
 // Links: zannastudio/src/core/document_manager.zia,
-//        zannastudio/src/core/settings.zia
+//        zannastudio/src/core/settings.zia,
+//        docs/adr/0166-exact-scenenode-world-matrix-assignment.md,
+//        docs/adr/0168-windowless-canvas3d-rendering.md
 //
 //===----------------------------------------------------------------------===//
 
@@ -909,6 +911,9 @@ class SessionManager {
             Ini.Set(ini, section, "scene2dProperty",
                     "" + ClampSessionInt(
                         state2D.selectedObjectProperty, -1, 511));
+            Ini.Set(ini, section, "scene2dSceneProperty",
+                    "" + ClampSessionInt(
+                        state2D.selectedSceneProperty, -1, 511));
             Ini.Set(ini, section, "scene2dCellX",
                     "" + ClampSessionInt(state2D.selectedCellX, -1, 255));
             Ini.Set(ini, section, "scene2dCellY",
@@ -946,8 +951,13 @@ class SessionManager {
                     "" + SCENE_WORKSPACE_STATE_VERSION);
             Ini.Set(ini, section, "scene3dSelection",
                     "" + ClampSessionInt(state3D.selectedIndex, -1, 1023));
+            Ini.Set(ini, section, "scene3dMetadataProperty",
+                    "" + ClampSessionInt(
+                        state3D.selectedNodeMetadata, -1, 255));
             Ini.Set(ini, section, "scene3dTransformMode",
                     "" + ClampSessionInt(state3D.transformMode, 0, 2));
+            Ini.Set(ini, section, "scene3dTransformSpace",
+                    "" + ClampSessionInt(state3D.transformSpace, 0, 1));
             Ini.Set(ini, section, "scene3dTransformSnap",
                     SessionBool(state3D.transformSnapEnabled));
             Ini.Set(ini, section, "scene3dYaw",
@@ -957,6 +967,8 @@ class SessionManager {
                     "" + ClampSessionInt(state3D.viewPitchDegrees, -80, 80));
             Ini.Set(ini, section, "scene3dScale",
                     "" + ClampSessionInt(state3D.viewScale, 4, 120));
+            Ini.Set(ini, section, "scene3dViewportMode",
+                    "" + ClampSessionInt(state3D.viewportMode, 0, 1));
             Ini.Set(ini, section, "scene3dTargetX",
                     ScaledSceneTarget(state3D.viewTargetX));
             Ini.Set(ini, section, "scene3dTargetY",
@@ -999,6 +1011,8 @@ class SessionManager {
                 ini, section, "scene2dObject", -1, -1, 1000000);
             state2D.selectedObjectProperty = ReadSessionInt(
                 ini, section, "scene2dProperty", -1, -1, 511);
+            state2D.selectedSceneProperty = ReadSessionInt(
+                ini, section, "scene2dSceneProperty", -1, -1, 511);
             state2D.selectedCellX = ReadSessionInt(
                 ini, section, "scene2dCellX", -1, -1, 255);
             state2D.selectedCellY = ReadSessionInt(
@@ -1036,8 +1050,12 @@ class SessionManager {
             state3D.initialized = true;
             state3D.selectedIndex = ReadSessionInt(
                 ini, section, "scene3dSelection", -1, -1, 1023);
+            state3D.selectedNodeMetadata = ReadSessionInt(
+                ini, section, "scene3dMetadataProperty", -1, -1, 255);
             state3D.transformMode = ReadSessionInt(
                 ini, section, "scene3dTransformMode", 0, 0, 2);
+            state3D.transformSpace = ReadSessionInt(
+                ini, section, "scene3dTransformSpace", 0, 0, 1);
             state3D.transformSnapEnabled = ReadSessionInt(
                 ini, section, "scene3dTransformSnap", 0, 0, 1) != 0;
             state3D.viewYawDegrees = ReadSessionInt(
@@ -1046,6 +1064,8 @@ class SessionManager {
                 ini, section, "scene3dPitch", -25, -80, 80);
             state3D.viewScale = ReadSessionInt(
                 ini, section, "scene3dScale", 28, 4, 120);
+            state3D.viewportMode = ReadSessionInt(
+                ini, section, "scene3dViewportMode", 0, 0, 1);
             state3D.viewTargetX = ReadSceneTarget(
                 ini, section, "scene3dTargetX");
             state3D.viewTargetY = ReadSceneTarget(

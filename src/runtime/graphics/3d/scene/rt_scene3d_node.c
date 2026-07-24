@@ -12,10 +12,18 @@
 // Key invariants:
 //   - Scene roots cannot be reparented or detached through node hierarchy APIs.
 //   - Reparenting preflights subtree owner propagation before topology mutation.
+//   - Preserve-world reparenting rejects before mutation unless local TRS can
+//     reproduce the complete prior world matrix.
+//   - Sibling reordering validates the complete direct-child table before
+//     moving one retained slot and never changes ownership or parent links.
 // Ownership/Lifetime:
 //   - Parent nodes retain each child exactly once while it is attached.
 //   - Mesh, material, animator, physics, and name slots are runtime-managed references.
-// Links: rt_scene3d_internal.h, rt_scene3d.h
+//   - Each node releases its native gameplay-metadata table during finalization.
+// Links: rt_scene3d_internal.h, rt_scene3d.h, rt_scene3d_metadata.c,
+//   docs/adr/0161-stable-scenenode-sibling-reordering.md,
+//   docs/adr/0162-exact-preserve-world-scenenode-reparenting.md,
+//   docs/adr/0166-exact-scenenode-world-matrix-assignment.md
 //
 //===----------------------------------------------------------------------===//
 
@@ -195,6 +203,7 @@ static void rt_scene_node3d_finalize(void *obj) {
     node->variant_materials = NULL;
     node->variant_material_count = 0;
     scene_node_release_string_slot(&node->name);
+    rt_scene_node3d_metadata_clear_internal(node);
 }
 
 /// @brief Install a variant-indexed material table on @p node (importer/clone hook).
@@ -290,6 +299,9 @@ void *rt_scene_node3d_new(void) {
     node->import_index = -1;
     node->visible = 1;
     node->name = NULL;
+    node->metadata = NULL;
+    node->metadata_count = 0;
+    node->metadata_capacity = 0;
     node->socket_animator = NULL;
     node->socket_bone = -1;
     node->socket_offset_pos[0] = node->socket_offset_pos[1] = node->socket_offset_pos[2] = 0.0;
@@ -430,6 +442,42 @@ void *rt_scene_node3d_get_world_matrix(void *obj) {
                        m[13],
                        m[14],
                        m[15]);
+}
+
+/// @brief Assign one complete world matrix only when parent-relative TRS is exact.
+/// @details The requested Mat4 and current parent chain are validated before any
+///          transform lane changes. Singular parents, projective matrices,
+///          degenerate bases, shear, and decomposition drift reject atomically.
+int8_t rt_scene_node3d_try_set_world_matrix(void *obj, void *world_matrix) {
+    rt_scene_node3d *node = scene_node3d_checked(obj);
+    rt_scene_node3d *parent;
+    double desired_world[16];
+    double position[3];
+    double rotation[4];
+    double scale[3];
+
+    if (!node || !rt_obj_is_instance(world_matrix, RT_MAT4_CLASS_ID, 16 * sizeof(double)))
+        return 0;
+    for (int64_t row = 0; row < 4; ++row) {
+        for (int64_t column = 0; column < 4; ++column)
+            desired_world[row * 4 + column] = rt_mat4_get(world_matrix, row, column);
+    }
+    if (!scene3d_preserve_matrix_equal(desired_world, desired_world))
+        return 0;
+    recompute_world_matrix(node);
+    if (scene3d_preserve_matrix_equal(node->world_matrix, desired_world))
+        return 1;
+
+    parent = scene_node3d_checked(node->parent);
+    if (!scene_node_compute_local_trs_for_world_matrix(
+            parent, desired_world, position, rotation, scale))
+        return 0;
+
+    memcpy(node->position, position, sizeof(position));
+    memcpy(node->rotation, rotation, sizeof(rotation));
+    memcpy(node->scale_xyz, scale, sizeof(scale));
+    mark_dirty(node);
+    return 1;
 }
 
 /// @brief Read the world-space translation as a Vec3.
@@ -810,6 +858,97 @@ int8_t rt_scene_node3d_try_add_child(void *obj, void *child_obj) {
     rt_scene_node3d *parent = scene_node3d_checked(obj);
     rt_scene_node3d *child = scene_node3d_checked(child_obj);
     return scene_node3d_try_add_child_impl(parent, child, 0);
+}
+
+/// @brief Reparent one node while retaining its complete world-space matrix.
+/// @details The prospective local matrix is derived and proven representable as
+///          finite non-degenerate TRS before hierarchy mutation. Singular
+///          destination transforms, conversions requiring shear, cycles, roots,
+///          and invalid handles return 0 without changing either hierarchy or
+///          transform. Once the normal attach transaction succeeds, publishing
+///          the precomputed local scalars cannot fail.
+int8_t rt_scene_node3d_try_add_child_preserve_world(void *obj, void *child_obj) {
+    rt_scene_node3d *parent = scene_node3d_checked(obj);
+    rt_scene_node3d *child = scene_node3d_checked(child_obj);
+    double position[3];
+    double rotation[4];
+    double scale[3];
+    int32_t ancestor_guard = 0;
+
+    if (!parent || !child || parent == child)
+        return 0;
+    if (child->owner_scene && child->owner_scene->root == child)
+        return 0;
+    if (scene_node_ref(child->parent) == parent)
+        return 1;
+    for (rt_scene_node3d *ancestor = parent; ancestor;
+         ancestor = scene_node_ref(ancestor->parent)) {
+        if (++ancestor_guard > RT_SCENE3D_MAX_ANCESTOR_DEPTH || ancestor == child)
+            return 0;
+    }
+    if (!scene_node_compute_preserved_local_trs(parent, child, position, rotation, scale))
+        return 0;
+    if (!scene_node3d_try_add_child_impl(parent, child, 0))
+        return 0;
+
+    memcpy(child->position, position, sizeof(position));
+    memcpy(child->rotation, rotation, sizeof(rotation));
+    memcpy(child->scale_xyz, scale, sizeof(scale));
+    mark_dirty(child);
+    return 1;
+}
+
+/// @brief Move one existing direct child to a zero-based sibling index.
+/// @details The complete retained child table is validated before mutation.
+///          The move is stable for every other sibling and does not change
+///          references, parent links, or scene ownership. An already-satisfied
+///          index succeeds. Invalid relationships, indexes, or corrupt private
+///          child slots fail without changing the hierarchy.
+int8_t rt_scene_node3d_try_move_child(void *obj, void *child_obj, int64_t index) {
+    rt_scene_node3d *parent = scene_node3d_checked(obj);
+    rt_scene_node3d *child = scene_node3d_checked(child_obj);
+    int32_t child_count;
+    int32_t source_index = -1;
+    int32_t target_index;
+
+    if (!parent || !child || scene_node_ref(child->parent) != parent)
+        return 0;
+    child_count = scene3d_node_child_count(parent);
+    parent->child_count = child_count;
+    if (index < 0 || index >= child_count)
+        return 0;
+    target_index = (int32_t)index;
+
+    for (int32_t i = 0; i < child_count; ++i) {
+        rt_scene_node3d *candidate = scene_node_ref(parent->children[i]);
+        if (!candidate || scene_node_ref(candidate->parent) != parent)
+            return 0;
+        if (candidate == child) {
+            if (source_index >= 0)
+                return 0;
+            source_index = i;
+        }
+    }
+    if (source_index < 0)
+        return 0;
+    if (source_index == target_index)
+        return 1;
+
+    rt_scene_node3d *retained_child = parent->children[source_index];
+    if (source_index < target_index) {
+        memmove(&parent->children[source_index],
+                &parent->children[source_index + 1],
+                (size_t)(target_index - source_index) * sizeof(parent->children[0]));
+    } else {
+        memmove(&parent->children[target_index + 1],
+                &parent->children[target_index],
+                (size_t)(source_index - target_index) * sizeof(parent->children[0]));
+    }
+    parent->children[target_index] = retained_child;
+    if (parent->owner_scene)
+        scene3d_mark_spatial_dirty(parent->owner_scene);
+    mark_dirty(parent);
+    return 1;
 }
 
 /// @brief Attach @p child_obj under @p obj, retaining it and propagating owner/dirty state.

@@ -10,6 +10,7 @@
 // Key invariants:
 //   - The application root is registered before user widgets are attached.
 //   - One rendered frame coalesces topology changes into a fully registered snapshot.
+//   - Concurrent mutation requests are bounded and detach cancels an in-flight request.
 // Ownership/Lifetime: The test owns and destroys its app and widget subtree.
 // Links: src/runtime/graphics/gui/rt_gui_atspi_linux.c
 //
@@ -90,9 +91,31 @@ int main(void) {
                                      .value = 0.75};
     complete_request_on_gui_thread(app, &value);
     assert(rt_slider_get_value(slider) > 0.749 && rt_slider_get_value(slider) < 0.751);
+
+    atspi_request_fixture_t first = {.window = state->window,
+                                     .widget_id = ((vg_widget_t *)button)->id,
+                                     .kind = RT_GUI_ATSPI_TEST_ACTION};
+    pthread_t first_worker;
+    assert(pthread_create(&first_worker, NULL, run_atspi_request, &first) == 0);
+    usleep(10000);
+    assert(rt_gui_atspi_linux_test_request(
+               state->window, ((vg_widget_t *)slider)->id, RT_GUI_ATSPI_TEST_VALUE, 0.25) == 0);
+    rt_gui_app_render(app);
+    assert(pthread_join(first_worker, NULL) == 0);
+    assert(first.result == 1);
+
     rt_gui_atspi_linux_announce(
         state->window, (vg_widget_t *)label, "Account is ready", VG_LIVE_REGION_POLITE);
+
+    atspi_request_fixture_t detached = {.window = state->window,
+                                        .widget_id = ((vg_widget_t *)button)->id,
+                                        .kind = RT_GUI_ATSPI_TEST_ACTION};
+    pthread_t detached_worker;
+    assert(pthread_create(&detached_worker, NULL, run_atspi_request, &detached) == 0);
+    usleep(10000);
     rt_gui_app_destroy(app);
+    assert(pthread_join(detached_worker, NULL) == 0);
+    assert(detached.result == 0);
     puts("RTGuiAtspiLinuxTests: PASSED");
     return 0;
 }

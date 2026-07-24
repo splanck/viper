@@ -13,7 +13,11 @@
 // Ownership/Lifetime:
 //   - Declarative registry data is consumed by rtgen and X-macro tests.
 //   - Generated string storage has process lifetime.
-// Links: src/il/runtime/runtime.def, src/tools/rtgen/rtgen.cpp
+// Links: src/il/runtime/runtime.def,
+//        src/tools/rtgen/rtgen.cpp,
+//        docs/adr/0163-stable-multiselect-and-row-aware-treeview-editing.md,
+//        docs/adr/0165-scrollview-descendant-reveal.md,
+//        docs/adr/0167-spinner-mixed-value-state.md
 //
 //===----------------------------------------------------------------------===//
 
@@ -246,6 +250,7 @@ RT_FUNC(GuiCheckboxGetRevision, rt_checkbox_get_revision, "Zanna.GUI.Checkbox.Ge
 RT_FUNC(GuiScrollViewNew, rt_scrollview_new, "Zanna.GUI.ScrollView.New", "obj(obj)")
 RT_FUNC(GuiScrollViewSetScroll, rt_scrollview_set_scroll, "Zanna.GUI.ScrollView.SetScroll", "void(obj,f64,f64)")
 RT_FUNC(GuiScrollViewSetContentSize, rt_scrollview_set_content_size, "Zanna.GUI.ScrollView.SetContentSize", "void(obj,f64,f64)")
+RT_FUNC(GuiScrollViewScrollTo, rt_scrollview_scroll_to, "Zanna.GUI.ScrollView.ScrollTo", "void(obj,obj)")
 RT_FUNC(GuiScrollViewGetScrollX, rt_scrollview_get_scroll_x, "Zanna.GUI.ScrollView.GetScrollX", "f64(obj)")
 RT_FUNC(GuiScrollViewGetScrollY, rt_scrollview_get_scroll_y, "Zanna.GUI.ScrollView.GetScrollY", "f64(obj)")
 
@@ -262,9 +267,11 @@ RT_FUNC(GuiTreeViewExpand, rt_treeview_expand, "Zanna.GUI.TreeView.Expand", "voi
 RT_FUNC(GuiTreeViewCollapse, rt_treeview_collapse, "Zanna.GUI.TreeView.Collapse", "void(obj,obj)")
 RT_FUNC(GuiTreeViewToggle, rt_treeview_toggle, "Zanna.GUI.TreeView.Toggle", "void(obj,obj)")
 RT_FUNC(GuiTreeViewSelect, rt_treeview_select, "Zanna.GUI.TreeView.Select", "void(obj,obj)")
+RT_FUNC(GuiTreeViewSetMultiSelect, rt_treeview_set_multi_select, "Zanna.GUI.TreeView.SetMultiSelect", "void(obj,i1)")
 RT_FUNC(GuiTreeViewScrollTo, rt_treeview_scroll_to, "Zanna.GUI.TreeView.ScrollTo", "void(obj,obj)")
 RT_FUNC(GuiTreeViewSetFont, rt_treeview_set_font, "Zanna.GUI.TreeView.SetFont", "void(obj,obj,f64)")
 RT_FUNC(GuiTreeViewGetSelected, rt_treeview_get_selected, "Zanna.GUI.TreeView.GetSelected", "obj(obj)")
+RT_FUNC(GuiTreeViewGetSelectedData, rt_treeview_get_selected_data, "Zanna.GUI.TreeView.GetSelectedData", "seq<str>(obj)")
 RT_FUNC(GuiTreeViewGetNodeAt, rt_treeview_get_node_at, "Zanna.GUI.TreeView.GetNodeAt", "obj(obj,i64,i64)")
 RT_FUNC(GuiTreeViewWasSelectionChanged, rt_treeview_was_selection_changed, "Zanna.GUI.TreeView.WasSelectionChanged", "i1(obj)")
 RT_FUNC(GuiTreeViewWasChanged, rt_treeview_was_changed, "Zanna.GUI.TreeView.WasChanged", "i1(obj)")
@@ -274,6 +281,7 @@ RT_FUNC(GuiTreeViewGetLoadRequestedNodeOption, rt_treeview_get_load_requested_no
 RT_FUNC(GuiTreeViewGetActivatedNodeOption, rt_treeview_get_activated_node_option, "Zanna.GUI.TreeView.GetActivatedNodeOption", "obj<Zanna.Option>(obj)")
 RT_FUNC(GuiTreeViewGetRevision, rt_treeview_get_revision, "Zanna.GUI.TreeView.GetRevision", "i64(obj)")
 RT_FUNC(GuiTreeViewSetDragDropEnabled, rt_treeview_set_drag_drop_enabled, "Zanna.GUI.TreeView.SetDragDropEnabled", "void(obj,i1)")
+RT_FUNC(GuiTreeViewSetDragDropMode, rt_treeview_set_drag_drop_mode, "Zanna.GUI.TreeView.SetDragDropMode", "void(obj,i64)")
 RT_FUNC(GuiTreeViewWasDropReceived, rt_treeview_was_drop_received, "Zanna.GUI.TreeView.WasDropReceived", "i1(obj)")
 RT_FUNC(GuiTreeViewGetDropSourceData, rt_treeview_get_drop_source_data, "Zanna.GUI.TreeView.GetDropSourceData", "str(obj)")
 RT_FUNC(GuiTreeViewGetDropTargetData, rt_treeview_get_drop_target_data, "Zanna.GUI.TreeView.GetDropTargetData", "str(obj)")
@@ -545,6 +553,8 @@ RT_FUNC(GuiRadioButtonGetRevision, rt_radiobutton_get_revision, "Zanna.GUI.Radio
 RT_FUNC(GuiSpinnerNew, rt_spinner_new, "Zanna.GUI.Spinner.New", "obj(obj)")
 RT_FUNC(GuiSpinnerSetValue, rt_spinner_set_value, "Zanna.GUI.Spinner.SetValue", "void(obj,f64)")
 RT_FUNC(GuiSpinnerGetValue, rt_spinner_get_value, "Zanna.GUI.Spinner.get_Value", "f64(obj)")
+RT_FUNC(GuiSpinnerSetIndeterminate, rt_spinner_set_indeterminate, "Zanna.GUI.Spinner.SetIndeterminate", "void(obj,i1)")
+RT_FUNC(GuiSpinnerIsIndeterminate, rt_spinner_is_indeterminate, "Zanna.GUI.Spinner.IsIndeterminate", "i1(obj)")
 RT_FUNC(GuiSpinnerSetRange, rt_spinner_set_range, "Zanna.GUI.Spinner.SetRange", "void(obj,f64,f64)")
 RT_FUNC(GuiSpinnerSetStep, rt_spinner_set_step, "Zanna.GUI.Spinner.SetStep", "void(obj,f64)")
 RT_FUNC(GuiSpinnerSetDecimals, rt_spinner_set_decimals, "Zanna.GUI.Spinner.SetDecimals", "void(obj,i64)")
