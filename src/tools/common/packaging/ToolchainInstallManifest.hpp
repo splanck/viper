@@ -62,7 +62,8 @@ struct ToolchainFileEntry {
 
 /// @brief The full Zanna toolchain install manifest for one (arch, platform) pair.
 struct ToolchainInstallManifest {
-    std::string version;                     ///< Toolchain version (e.g. "0.2.5").
+    std::string version;                     ///< Package-compatible version (e.g. "0.2.5").
+    std::string productVersion;              ///< Exact configured version, including prerelease.
     std::string snapshot;                    ///< Optional git-describe build identity.
     std::string sourceCommit;                ///< Optional lowercase source commit hash.
     std::string sourceState{"unknown"};      ///< "clean", "dirty", or "unknown".
@@ -71,7 +72,7 @@ struct ToolchainInstallManifest {
     std::string license{"GPL-3.0-only"};     ///< SPDX license id for package metadata.
     std::string maintainer{"Zanna Project"}; ///< Maintainer/packager display name.
     std::string maintainerEmail{"splanck@users.noreply.github.com"}; ///< Package contact email.
-    std::string homepage{"https://github.com/zannagames/zanna"};        ///< Project homepage URL.
+    std::string homepage{"https://github.com/zannagames/zanna"};     ///< Project homepage URL.
     std::vector<ToolchainFileEntry> files;   ///< All staged files and symlinks.
     std::vector<FileAssoc> fileAssociations; ///< File-type associations to register.
 

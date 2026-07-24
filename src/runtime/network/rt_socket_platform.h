@@ -92,8 +92,10 @@ extern "C" {
 
 /// @brief Initialize Windows Sockets once for the current process.
 /// @details On Windows this calls WSAStartup(2.2) using an idempotent,
-///          thread-safe state machine and registers WSACleanup at process exit.
-///          On non-Windows platforms the function is a no-op.
+///          thread-safe state machine and holds that startup reference until
+///          process teardown so CRT-less native executables never depend on
+///          an uninitialized CRT exit table. On non-Windows platforms the
+///          function is a no-op.
 void rt_net_init_wsa(void);
 
 /// @brief Close a native socket handle.

@@ -30,6 +30,15 @@ param(
     [string]$Scope = "",
     [string]$SignToolPath = "signtool.exe",
 
+    [ValidateRange(5, 3600)]
+    [int]$ProcessTimeoutSeconds = 300,
+
+    [ValidateRange(4096, 16777216)]
+    [int]$MaximumCaptureBytes = 1048576,
+
+    [ValidateRange(4096, 16777216)]
+    [int]$MaximumInspectBytes = 1048576,
+
     [switch]$RequireSignature,
     [switch]$ReplaceExisting,
     [switch]$KeepInstalled
@@ -52,6 +61,211 @@ function Quote-ProcessArgument {
     return $escaped
 }
 
+function Test-PathWithin {
+    param(
+        [Parameter(Mandatory = $true)][string]$Base,
+        [Parameter(Mandatory = $true)][string]$Candidate,
+        [switch]$AllowBase
+    )
+
+    $baseFull = [IO.Path]::GetFullPath($Base).TrimEnd('\', '/')
+    $candidateFull = [IO.Path]::GetFullPath($Candidate).TrimEnd('\', '/')
+    if ($AllowBase -and
+        [string]::Equals($baseFull, $candidateFull, [StringComparison]::OrdinalIgnoreCase)) {
+        return $true
+    }
+    return $candidateFull.StartsWith(
+        $baseFull + [IO.Path]::DirectorySeparatorChar,
+        [StringComparison]::OrdinalIgnoreCase)
+}
+
+function Assert-NoReparseAncestors {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][string]$Description
+    )
+
+    $current = [IO.Path]::GetFullPath($Path)
+    while (-not [string]::IsNullOrWhiteSpace($current)) {
+        if (Test-Path -LiteralPath $current) {
+            $item = Get-Item -LiteralPath $current -Force
+            if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+                throw "$Description traverses a reparse point: $current"
+            }
+            $linkTypeProperty = $item.PSObject.Properties["LinkType"]
+            if ($linkTypeProperty -and $linkTypeProperty.Value -eq "HardLink") {
+                throw "$Description traverses a hard-link alias: $current"
+            }
+        }
+        $parent = Split-Path -Parent $current
+        if ([string]::IsNullOrWhiteSpace($parent) -or
+            [string]::Equals($parent, $current, [StringComparison]::OrdinalIgnoreCase)) {
+            break
+        }
+        $current = $parent
+    }
+}
+
+function Resolve-SafeRelativePath {
+    param(
+        [Parameter(Mandatory = $true)][string]$Root,
+        [Parameter(Mandatory = $true)][string]$RelativePath,
+        [Parameter(Mandatory = $true)][string]$Description
+    )
+
+    if ([string]::IsNullOrWhiteSpace($RelativePath) -or
+        [IO.Path]::IsPathRooted($RelativePath) -or
+        $RelativePath.IndexOfAny([char[]](0..31)) -ge 0 -or
+        $RelativePath.IndexOfAny([char[]]('<', '>', ':', '"', '|', '?', '*')) -ge 0) {
+        throw "$Description must be a safe relative Windows path."
+    }
+    foreach ($component in $RelativePath.Split([char[]]('\', '/'),
+                                                [StringSplitOptions]::None)) {
+        if ([string]::IsNullOrWhiteSpace($component) -or $component -in @(".", "..") -or
+            $component.EndsWith(".", [StringComparison]::Ordinal) -or
+            $component.EndsWith(" ", [StringComparison]::Ordinal)) {
+            throw "$Description contains an unsafe path component."
+        }
+    }
+    $resolved = [IO.Path]::GetFullPath((Join-Path $Root $RelativePath))
+    if (-not (Test-PathWithin -Base $Root -Candidate $resolved)) {
+        throw "$Description escapes the selected installation root."
+    }
+    return $resolved
+}
+
+function Write-NewSentinel {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][string]$Text
+    )
+
+    $bytes = [Text.UTF8Encoding]::new($false).GetBytes($Text)
+    $stream = [IO.File]::Open(
+        $Path, [IO.FileMode]::CreateNew, [IO.FileAccess]::Write, [IO.FileShare]::None)
+    try {
+        $stream.Write($bytes, 0, $bytes.Length)
+        $stream.Flush($true)
+    } finally {
+        $stream.Dispose()
+    }
+}
+
+function Get-PeArchitecture {
+    param([Parameter(Mandatory = $true)][string]$Binary)
+
+    $machine = 0
+    $stream = [IO.File]::Open(
+        $Binary, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)
+    try {
+        if ($stream.Length -lt 64) {
+            throw "Installed executable is too small to contain a PE header: $Binary"
+        }
+        $reader = [IO.BinaryReader]::new($stream, [Text.Encoding]::ASCII, $true)
+        try {
+            if ($reader.ReadUInt16() -ne 0x5A4D) {
+                throw "Installed executable has no MZ signature: $Binary"
+            }
+            $stream.Position = 0x3c
+            $peOffset = [uint64]$reader.ReadUInt32()
+            if ($peOffset -gt [uint64]($stream.Length - 26)) {
+                throw "Installed executable has an invalid PE offset: $Binary"
+            }
+            $stream.Position = [int64]$peOffset
+            if ($reader.ReadUInt32() -ne 0x00004550) {
+                throw "Installed executable has no PE signature: $Binary"
+            }
+            $machine = $reader.ReadUInt16()
+            $stream.Position = [int64]($peOffset + 20)
+            $optionalHeaderSize = [uint64]$reader.ReadUInt16()
+            if ($optionalHeaderSize -lt 2 -or
+                $peOffset + 24 + $optionalHeaderSize -gt [uint64]$stream.Length) {
+                throw "Installed executable has an invalid optional header: $Binary"
+            }
+            $stream.Position = [int64]($peOffset + 24)
+            if ($reader.ReadUInt16() -ne 0x020B) {
+                throw "Installed executable is not a PE32+ image: $Binary"
+            }
+        } finally {
+            $reader.Dispose()
+        }
+    } finally {
+        $stream.Dispose()
+    }
+    switch ($machine) {
+        0x8664 { return "x64" }
+        0xAA64 { return "arm64" }
+        default { throw ("Unsupported installed PE machine 0x{0:X4}: {1}" -f $machine, $Binary) }
+    }
+}
+
+function Assert-ZannaStudioBuildInfo {
+    param(
+        [Parameter(Mandatory = $true)][string]$Binary,
+        [Parameter(Mandatory = $true)][string]$BuildInfo,
+        [Parameter(Mandatory = $true)][string]$Architecture,
+        [Parameter(Mandatory = $true)][string]$Version
+    )
+
+    if (-not (Test-Path -LiteralPath $BuildInfo -PathType Leaf)) {
+        throw "Installed Zanna Studio build metadata is missing: $BuildInfo"
+    }
+    Assert-NoReparseAncestors -Path $Binary -Description "Installed Zanna Studio executable"
+    Assert-NoReparseAncestors -Path $BuildInfo -Description "Installed Zanna Studio build metadata"
+    $binaryItem = Get-Item -LiteralPath $Binary
+    $metadataItem = Get-Item -LiteralPath $BuildInfo
+    if ($binaryItem.Length -le 0 -or $metadataItem.Length -le 0 -or
+        $metadataItem.Length -gt 16384) {
+        throw "Installed Zanna Studio provenance has an invalid size."
+    }
+    $fields = @{}
+    $lines = [IO.File]::ReadAllLines(
+        $BuildInfo, [Text.UTF8Encoding]::new($false, $true))
+    if ($lines.Count -lt 2 -or
+        -not [string]::Equals(
+            $lines[0], "Zanna Studio $Version", [StringComparison]::Ordinal)) {
+        throw "Installed Zanna Studio provenance version does not match the package."
+    }
+    foreach ($line in $lines | Select-Object -Skip 1) {
+        if ($line.Length -gt 4096) {
+            throw "Installed Zanna Studio provenance contains an oversized line."
+        }
+        $separator = $line.IndexOf(": ", [StringComparison]::Ordinal)
+        if ($separator -le 0 -or $separator + 2 -ge $line.Length) {
+            throw "Installed Zanna Studio provenance contains an invalid field."
+        }
+        $key = $line.Substring(0, $separator)
+        if ($fields.ContainsKey($key)) {
+            throw "Installed Zanna Studio provenance contains a duplicate field."
+        }
+        $fields[$key] = $line.Substring($separator + 2)
+    }
+    foreach ($required in @(
+            "Schema", "Build", "Source", "Architecture", "Size", "SHA256", "Output", "Zanna")) {
+        if (-not $fields.ContainsKey($required)) {
+            throw "Installed Zanna Studio provenance is missing $required."
+        }
+    }
+    if ($fields.Count -ne 8) {
+        throw "Installed Zanna Studio provenance contains an unknown field."
+    }
+    [uint64]$recordedSize = 0
+    if ($fields["Schema"] -ne "1" -or $fields["Architecture"] -ne $Architecture -or
+        (Get-PeArchitecture -Binary $Binary) -ne $Architecture -or
+        -not [uint64]::TryParse(
+            $fields["Size"],
+            [Globalization.NumberStyles]::None,
+            [Globalization.CultureInfo]::InvariantCulture,
+            [ref]$recordedSize) -or
+        $recordedSize -ne [uint64]$binaryItem.Length) {
+        throw "Installed Zanna Studio provenance does not match the installed PE."
+    }
+    $hash = (Get-FileHash -LiteralPath $Binary -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($fields["SHA256"] -cnotmatch '^[0-9a-f]{64}$' -or $fields["SHA256"] -cne $hash) {
+        throw "Installed Zanna Studio provenance hash does not match the installed PE."
+    }
+}
+
 function Invoke-CapturedProcess {
     param(
         [Parameter(Mandatory = $true)][string]$FilePath,
@@ -59,35 +273,141 @@ function Invoke-CapturedProcess {
         [string]$WorkingDirectory = (Get-Location).Path
     )
 
-    $psi = [Diagnostics.ProcessStartInfo]::new()
-    $psi.FileName = $FilePath
-    if ($psi.PSObject.Properties.Name -contains "ArgumentList") {
-        foreach ($argument in $Arguments) {
-            [void]$psi.ArgumentList.Add($argument)
-        }
-    } else {
-        $psi.Arguments = ($Arguments | ForEach-Object { Quote-ProcessArgument $_ }) -join " "
-    }
-    $psi.WorkingDirectory = $WorkingDirectory
-    $psi.UseShellExecute = $false
-    $psi.CreateNoWindow = $true
-    $psi.RedirectStandardOutput = $true
-    $psi.RedirectStandardError = $true
-    $process = [Diagnostics.Process]::Start($psi)
-    if ($null -eq $process) {
-        throw "Failed to start process: $FilePath"
-    }
+    $captureToken = "$PID-$([Guid]::NewGuid().ToString('N'))"
+    $captureRoot = [IO.Path]::GetTempPath()
+    $stdoutPath = Join-Path $captureRoot ".zanna-process-$captureToken.stdout"
+    $stderrPath = Join-Path $captureRoot ".zanna-process-$captureToken.stderr"
+    $stdoutStream = $null
+    $stderrStream = $null
+    $process = $null
     try {
-        $stdoutTask = $process.StandardOutput.ReadToEndAsync()
-        $stderrTask = $process.StandardError.ReadToEndAsync()
-        $process.WaitForExit()
+        $stdoutStream = [IO.FileStream]::new(
+            $stdoutPath,
+            [IO.FileMode]::CreateNew,
+            [IO.FileAccess]::Write,
+            [IO.FileShare]::Read,
+            4096,
+            [IO.FileOptions]::Asynchronous)
+        $stderrStream = [IO.FileStream]::new(
+            $stderrPath,
+            [IO.FileMode]::CreateNew,
+            [IO.FileAccess]::Write,
+            [IO.FileShare]::Read,
+            4096,
+            [IO.FileOptions]::Asynchronous)
+
+        $psi = [Diagnostics.ProcessStartInfo]::new()
+        $psi.FileName = $FilePath
+        if ($psi.PSObject.Properties.Name -contains "ArgumentList") {
+            foreach ($argument in $Arguments) {
+                [void]$psi.ArgumentList.Add($argument)
+            }
+        } else {
+            $psi.Arguments = ($Arguments | ForEach-Object { Quote-ProcessArgument $_ }) -join " "
+        }
+        $psi.WorkingDirectory = $WorkingDirectory
+        $psi.UseShellExecute = $false
+        $psi.CreateNoWindow = $true
+        $psi.RedirectStandardOutput = $true
+        $psi.RedirectStandardError = $true
+        $process = [Diagnostics.Process]::Start($psi)
+        if ($null -eq $process) {
+            throw "Failed to start process: $FilePath"
+        }
+
+        $stdoutTask = $process.StandardOutput.BaseStream.CopyToAsync($stdoutStream)
+        $stderrTask = $process.StandardError.BaseStream.CopyToAsync($stderrStream)
+        $deadline = [DateTime]::UtcNow.AddSeconds($ProcessTimeoutSeconds)
+        $failure = $null
+        while (-not $process.WaitForExit(25)) {
+            if ($stdoutStream.Length -gt $MaximumCaptureBytes -or
+                $stderrStream.Length -gt $MaximumCaptureBytes) {
+                $failure =
+                    "Process output exceeded the $MaximumCaptureBytes-byte capture limit: $FilePath"
+                break
+            }
+            if ([DateTime]::UtcNow -ge $deadline) {
+                $failure = "Process timed out after $ProcessTimeoutSeconds seconds: $FilePath"
+                break
+            }
+        }
+        if ($failure) {
+            try {
+                [void]$process.Kill()
+            } catch {
+                if (-not $process.HasExited) {
+                    throw
+                }
+            }
+            [void]$process.WaitForExit(10000)
+            [void]$process.StandardOutput.Close()
+            [void]$process.StandardError.Close()
+        } else {
+            [void]$process.WaitForExit()
+        }
+        $drainTask = [Threading.Tasks.Task]::WhenAll(
+            [Threading.Tasks.Task[]]@($stdoutTask, $stderrTask))
+        $captureDrained = $false
+        try {
+            $captureDrained = $drainTask.Wait(10000)
+        } catch {
+            if (-not $failure) {
+                $failure = "Process output capture failed: $FilePath"
+            }
+        }
+        if (-not $captureDrained) {
+            [void]$process.StandardOutput.Close()
+            [void]$process.StandardError.Close()
+            if (-not $failure) {
+                $failure = "Process output did not drain within 10 seconds: $FilePath"
+            }
+            try {
+                [void]$drainTask.Wait(1000)
+            } catch {
+                # The primary timeout/limit diagnostic remains authoritative.
+            }
+        }
+        try {
+            [void]$stdoutTask.GetAwaiter().GetResult()
+            [void]$stderrTask.GetAwaiter().GetResult()
+        } catch {
+            if (-not $failure) {
+                throw
+            }
+        }
+        [void]$stdoutStream.Flush()
+        [void]$stderrStream.Flush()
+        if (-not $failure -and
+            ($stdoutStream.Length -gt $MaximumCaptureBytes -or
+             $stderrStream.Length -gt $MaximumCaptureBytes)) {
+            $failure =
+                "Process output exceeded the $MaximumCaptureBytes-byte capture limit: $FilePath"
+        }
+        if ($failure) {
+            throw $failure
+        }
+        $exitCode = $process.ExitCode
+        [void]$stdoutStream.Dispose()
+        $stdoutStream = $null
+        [void]$stderrStream.Dispose()
+        $stderrStream = $null
+        $captureEncoding = [Text.UTF8Encoding]::new($false, $false)
         return [pscustomobject]@{
-            ExitCode = $process.ExitCode
-            Stdout = $stdoutTask.GetAwaiter().GetResult()
-            Stderr = $stderrTask.GetAwaiter().GetResult()
+            ExitCode = $exitCode
+            Stdout = [IO.File]::ReadAllText($stdoutPath, $captureEncoding)
+            Stderr = [IO.File]::ReadAllText($stderrPath, $captureEncoding)
         }
     } finally {
-        $process.Dispose()
+        if ($null -ne $process) {
+            [void]$process.Dispose()
+        }
+        if ($null -ne $stdoutStream) {
+            [void]$stdoutStream.Dispose()
+        }
+        if ($null -ne $stderrStream) {
+            [void]$stderrStream.Dispose()
+        }
+        Remove-Item -LiteralPath $stdoutPath, $stderrPath -Force -ErrorAction SilentlyContinue
     }
 }
 
@@ -108,6 +428,24 @@ function Invoke-CheckedProcess {
     return $result.Stdout
 }
 
+function Get-ZannaProductVersion {
+    param([Parameter(Mandatory = $true)][string]$Binary)
+
+    $output = Invoke-CheckedProcess -FilePath $Binary -Arguments @("--version")
+    if ($output.Length -eq 0 -or $output.Length -gt 256 -or
+        $output.IndexOf([char]0) -ge 0) {
+        throw "Installed zanna returned invalid version output."
+    }
+    $versionMatch = [regex]::Match(
+        $output,
+        '\Azanna v(?<version>[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?)(?:\r?\n|\z)',
+        [Text.RegularExpressions.RegexOptions]::CultureInvariant)
+    if (-not $versionMatch.Success) {
+        throw "Installed zanna returned malformed version output."
+    }
+    return $versionMatch.Groups["version"].Value
+}
+
 function Get-InstallerMetadata {
     param([Parameter(Mandatory = $true)][string]$Path)
 
@@ -122,7 +460,13 @@ function Get-InstallerMetadata {
         if (-not (Test-Path -LiteralPath $jsonPath -PathType Leaf)) {
             throw "Installer inspection did not create $jsonPath."
         }
-        $json = [IO.File]::ReadAllText($jsonPath, [Text.Encoding]::UTF8)
+        $jsonItem = Get-Item -LiteralPath $jsonPath -Force
+        if (($jsonItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 -or
+            $jsonItem.Length -le 0 -or $jsonItem.Length -gt $MaximumInspectBytes) {
+            throw "Installer inspection output has an invalid type or size."
+        }
+        $json = [IO.File]::ReadAllText(
+            $jsonPath, [Text.UTF8Encoding]::new($false, $true))
         $metadata = $json | ConvertFrom-Json
     } catch {
         throw "Installer /inspect did not return valid JSON for $Path`: $($_.Exception.Message)"
@@ -138,10 +482,46 @@ function Get-InstallerMetadata {
             throw "Installer /inspect is missing required schema-3 field '$field'."
         }
     }
-    if ($metadata.schema_version -lt 3 -or $metadata.kind -ne "toolchain" -or
-        [string]::IsNullOrWhiteSpace($metadata.identifier) -or
-        [string]::IsNullOrWhiteSpace($metadata.default_install_dir)) {
+    [int]$schemaVersion = 0
+    if (-not [int]::TryParse(
+            [string]$metadata.schema_version,
+            [Globalization.NumberStyles]::None,
+            [Globalization.CultureInfo]::InvariantCulture,
+            [ref]$schemaVersion) -or
+        $schemaVersion -ne 3 -or $metadata.kind -cne "toolchain") {
         throw "Installer does not expose the required native schema-3 toolchain identity."
+    }
+    $identifierText = [string]$metadata.identifier
+    $displayNameText = [string]$metadata.display_name
+    $versionText = [string]$metadata.version
+    $channelText = [string]$metadata.channel
+    $architectureText = [string]$metadata.architecture
+    $scopeText = [string]$metadata.default_scope
+    $installDirText = [string]$metadata.default_install_dir
+    if ($identifierText -cnotmatch '^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$' -or
+        [string]::IsNullOrWhiteSpace($displayNameText) -or $displayNameText.Length -gt 256 -or
+        [string]::IsNullOrWhiteSpace($versionText) -or $versionText.Length -gt 128 -or
+        $channelText -cnotmatch '^[a-z0-9][a-z0-9-]{0,63}$' -or
+        $architectureText -notin @("x64", "arm64") -or
+        $scopeText -notin @("user", "machine") -or
+        [string]::IsNullOrWhiteSpace($installDirText) -or $installDirText.Length -gt 128 -or
+        $installDirText.IndexOfAny([char[]]('\', '/', ':')) -ge 0 -or
+        $installDirText -in @(".", "..") -or $installDirText.EndsWith(".") -or
+        $installDirText.EndsWith(" ")) {
+        throw "Installer /inspect contains an invalid schema-3 identity value."
+    }
+    $componentNames = @($metadata.components)
+    if ($componentNames.Count -gt 16) {
+        throw "Installer /inspect contains too many components."
+    }
+    $seenComponents = @{}
+    foreach ($component in $componentNames) {
+        $componentText = [string]$component
+        if ($componentText -cnotmatch '^[a-z0-9][a-z0-9-]{0,31}$' -or
+            $seenComponents.ContainsKey($componentText)) {
+            throw "Installer /inspect contains an invalid or duplicate component."
+        }
+        $seenComponents[$componentText] = $true
     }
     return $metadata
 }
@@ -207,14 +587,19 @@ function Assert-AdministratorForMachineScope {
 }
 
 $installerPath = (Resolve-Path -LiteralPath $Installer).Path
+Assert-NoReparseAncestors -Path $installerPath -Description "Installer input"
 $metadata = Get-InstallerMetadata $installerPath
 $baselinePath = $null
 if (-not [string]::IsNullOrWhiteSpace($BaselineInstaller)) {
     $baselinePath = (Resolve-Path -LiteralPath $BaselineInstaller).Path
+    Assert-NoReparseAncestors -Path $baselinePath -Description "Baseline installer input"
     $baselineMetadata = Get-InstallerMetadata $baselinePath
     if ($baselineMetadata.identifier -ne $metadata.identifier -or
         $baselineMetadata.architecture -ne $metadata.architecture) {
         throw "Baseline and current installers must have the same identifier and architecture."
+    }
+    if ($baselineMetadata.version -eq $metadata.version) {
+        throw "BaselineInstaller must describe a different version for upgrade validation."
     }
 }
 
@@ -235,11 +620,38 @@ if ([string]::IsNullOrWhiteSpace($InstallRoot)) {
     } else {
         Join-Path $env:LOCALAPPDATA "Programs"
     }
+    if ([string]::IsNullOrWhiteSpace($base)) {
+        throw "Cannot resolve the default base directory for $Scope scope."
+    }
     $InstallRoot = Join-Path $base ([string]$metadata.default_install_dir)
 }
 $InstallRoot = [IO.Path]::GetFullPath($InstallRoot)
 if ($InstallRoot -eq [IO.Path]::GetPathRoot($InstallRoot) -or $InstallRoot.Length -lt 8) {
     throw "Refusing unsafe validation install root: $InstallRoot"
+}
+$windowsRoot = [IO.Path]::GetFullPath($env:SystemRoot)
+if (Test-PathWithin -Base $windowsRoot -Candidate $InstallRoot -AllowBase) {
+    throw "Validation install root must not be the Windows directory or one of its descendants."
+}
+if ((Test-Path -LiteralPath $InstallRoot) -and
+    -not (Test-Path -LiteralPath $InstallRoot -PathType Container)) {
+    throw "Validation install root is not a directory: $InstallRoot"
+}
+Assert-NoReparseAncestors -Path $InstallRoot -Description "Validation install root"
+foreach ($protectedRoot in @(
+        $env:SystemRoot,
+        $env:ProgramFiles,
+        $env:ProgramData,
+        $env:LOCALAPPDATA,
+        $env:USERPROFILE,
+        [IO.Path]::GetTempPath())) {
+    if (-not [string]::IsNullOrWhiteSpace($protectedRoot) -and
+        [string]::Equals(
+            $InstallRoot.TrimEnd('\', '/'),
+            [IO.Path]::GetFullPath($protectedRoot).TrimEnd('\', '/'),
+            [StringComparison]::OrdinalIgnoreCase)) {
+        throw "Validation install root must be below, not equal to, a protected Windows directory."
+    }
 }
 
 $identifier = [string]$metadata.identifier
@@ -251,6 +663,11 @@ $uninstallRegistry = if ($machineScope) {
     "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\$identifier"
 }
 $pathScope = if ($machineScope) { "Machine" } else { "User" }
+$maintenanceCacheBase = if ($machineScope) { $env:ProgramData } else { $env:LOCALAPPDATA }
+if ([string]::IsNullOrWhiteSpace($maintenanceCacheBase)) {
+    throw "Cannot resolve the Windows maintenance-cache base directory."
+}
+$maintenanceCacheRoot = Join-Path $maintenanceCacheBase "Zanna\InstallerCache"
 $installedPathEntry = Join-Path $InstallRoot "bin"
 $startMenuBase = if ($machineScope) {
     Join-Path $env:ProgramData "Microsoft\Windows\Start Menu\Programs"
@@ -258,22 +675,43 @@ $startMenuBase = if ($machineScope) {
     Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs"
 }
 $startMenu = Join-Path $startMenuBase ([string]$metadata.default_install_dir)
-$work = Join-Path $env:TEMP ("zanna-installer-vm-" + [Guid]::NewGuid().ToString("N"))
+$work = Join-Path ([IO.Path]::GetTempPath()) (
+    "zanna-installer-vm-" + [Guid]::NewGuid().ToString("N"))
 $powershell = Join-Path $env:SystemRoot "System32\WindowsPowerShell\v1.0\powershell.exe"
 $originalPath = $env:Path
-$unownedSentinel = Join-Path $InstallRoot "validator-unowned-sentinel.txt"
+$originalZannaLibPath = [Environment]::GetEnvironmentVariable("ZANNA_LIB_PATH", "Process")
+$unownedSentinel =
+    Join-Path $InstallRoot ("validator-unowned-{0}.txt" -f [Guid]::NewGuid().ToString("N"))
 $stalePath = if ($UpgradeStaleRelativePath) {
-    Join-Path $InstallRoot $UpgradeStaleRelativePath
+    Resolve-SafeRelativePath -Root $InstallRoot -RelativePath $UpgradeStaleRelativePath `
+        -Description "UpgradeStaleRelativePath"
 } else {
     $null
 }
-$installedByValidation = $false
+$installationAttempted = $false
+$installRootWasAbsentBeforeInstall = $false
 $maintenanceCache = $null
 $components = @($metadata.components)
-New-Item -ItemType Directory -Path $work -Force | Out-Null
+if (-not (Test-PathWithin -Base ([IO.Path]::GetTempPath()) -Candidate $work)) {
+    throw "Refusing validation workspace outside the Windows temporary directory: $work"
+}
+New-Item -ItemType Directory -Path $work | Out-Null
+Assert-NoReparseAncestors -Path $work -Description "Validation workspace"
 
 try {
-    $hostArchitecture = if ($env:PROCESSOR_ARCHITECTURE -eq "ARM64") { "arm64" } else { "x64" }
+    $nativeArchitecture = $env:PROCESSOR_ARCHITEW6432
+    if ([string]::IsNullOrWhiteSpace($nativeArchitecture)) {
+        $nativeArchitecture = $env:PROCESSOR_ARCHITECTURE
+    }
+    if ([string]::IsNullOrWhiteSpace($nativeArchitecture)) {
+        throw "Cannot determine the native Windows validation host architecture."
+    }
+    $hostArchitecture = switch ($nativeArchitecture.ToLowerInvariant()) {
+        "arm64" { "arm64" }
+        "amd64" { "x64" }
+        "x86_64" { "x64" }
+        default { throw "Unsupported Windows validation host architecture '$nativeArchitecture'." }
+    }
     if ($metadata.architecture -ne $hostArchitecture) {
         throw "Package architecture $($metadata.architecture) does not match validation host $hostArchitecture."
     }
@@ -300,11 +738,39 @@ try {
             -not (Test-Path -LiteralPath $existingMaintenance -PathType Leaf)) {
             throw "Existing product has no verified maintenance cache: $identifier"
         }
+        $existingMaintenance = [IO.Path]::GetFullPath($existingMaintenance)
+        if (-not (Test-PathWithin -Base $maintenanceCacheRoot -Candidate $existingMaintenance) -or
+            [IO.Path]::GetFileName($existingMaintenance) -ine "maintenance.exe") {
+            throw "Existing product maintenance cache is outside the owned cache root."
+        }
+        Assert-NoReparseAncestors -Path $existingMaintenance `
+            -Description "Existing maintenance cache"
+        if ($RequireSignature) {
+            Invoke-CheckedProcess -FilePath $SignToolPath `
+                -Arguments @("verify", "/pa", "/all", "/tw", "/v", $existingMaintenance) |
+                Out-Null
+        }
+        $existingMetadata = Get-InstallerMetadata $existingMaintenance
+        if ($existingMetadata.identifier -ne $metadata.identifier -or
+            $existingMetadata.architecture -ne $metadata.architecture) {
+            throw "Existing maintenance cache identity does not match the selected package."
+        }
         Invoke-CheckedProcess -FilePath $existingMaintenance `
             -Arguments @("/uninstall", "/quiet", "/norestart") -SuccessCodes @(0, 3010) | Out-Null
         if (-not (Wait-PathAbsent -Path $uninstallRegistry)) {
             throw "Existing product registration did not disappear after uninstall."
         }
+        if (-not (Wait-PathAbsent -Path $existingMaintenance)) {
+            throw "Existing product maintenance cache was not detached after uninstall."
+        }
+    }
+    if (Test-Path -LiteralPath $InstallRoot) {
+        $preinstallEntries = @(Get-ChildItem -LiteralPath $InstallRoot -Force)
+        if ($preinstallEntries.Count -ne 0) {
+            throw "Validation install root contains unrelated pre-existing content: $InstallRoot"
+        }
+    } else {
+        $installRootWasAbsentBeforeInstall = $true
     }
 
     $installArguments = @(
@@ -313,19 +779,20 @@ try {
         "/addToPath", "/associations", "/shortcuts"
     )
     if ($baselinePath) {
+        $installationAttempted = $true
         Invoke-CheckedProcess -FilePath $baselinePath -Arguments $installArguments `
             -SuccessCodes @(0, 3010) | Out-Null
-        $installedByValidation = $true
         if ($stalePath -and -not (Test-Path -LiteralPath $stalePath -PathType Leaf)) {
             throw "Baseline installer omitted the expected stale-owned file: $stalePath"
         }
         New-Item -ItemType Directory -Path $InstallRoot -Force | Out-Null
-        [IO.File]::WriteAllText($unownedSentinel, "preserve-unowned-upgrade-content")
+        Write-NewSentinel -Path $unownedSentinel `
+            -Text "preserve-unowned-upgrade-content"
     }
 
+    $installationAttempted = $true
     Invoke-CheckedProcess -FilePath $installerPath -Arguments $installArguments `
         -SuccessCodes @(0, 3010) | Out-Null
-    $installedByValidation = $true
 
     if ($stalePath -and $baselinePath -and (Test-Path -LiteralPath $stalePath)) {
         throw "Upgrade left a file owned only by the baseline package: $stalePath"
@@ -354,9 +821,26 @@ try {
             [StringComparison]::OrdinalIgnoreCase)) {
         throw "Apps & Features InstallLocation does not match the selected root."
     }
+    if ([string]$arp.DisplayName -ne [string]$metadata.display_name -or
+        [string]$arp.DisplayVersion -ne [string]$metadata.version) {
+        throw "Apps & Features identity does not match the inspected package."
+    }
     $maintenanceCache = [string]$arp.ZannaMaintenanceCache
     if (-not (Test-Path -LiteralPath $maintenanceCache -PathType Leaf)) {
         throw "Verified maintenance cache is missing: $maintenanceCache"
+    }
+    $maintenanceCache = [IO.Path]::GetFullPath($maintenanceCache)
+    if (-not (Test-PathWithin -Base $maintenanceCacheRoot -Candidate $maintenanceCache) -or
+        [IO.Path]::GetFileName($maintenanceCache) -ine "maintenance.exe") {
+        throw "Installed maintenance cache is outside the owned cache root."
+    }
+    Assert-NoReparseAncestors -Path $maintenanceCache `
+        -Description "Installed maintenance cache"
+    $maintenanceMetadata = Get-InstallerMetadata $maintenanceCache
+    if ($maintenanceMetadata.identifier -ne $metadata.identifier -or
+        $maintenanceMetadata.version -ne $metadata.version -or
+        $maintenanceMetadata.architecture -ne $metadata.architecture) {
+        throw "Installed maintenance cache identity does not match the package."
     }
 
     $requiredTools = @(
@@ -371,6 +855,20 @@ try {
         if (-not (Test-Path -LiteralPath $toolPath -PathType Leaf)) {
             throw "Expected installed tool: $toolPath"
         }
+        Assert-NoReparseAncestors -Path $toolPath -Description "Installed tool"
+        if ((Get-PeArchitecture -Binary $toolPath) -ne [string]$metadata.architecture) {
+            throw "Installed tool architecture does not match the package: $toolPath"
+        }
+    }
+    $zanna = Join-Path $InstallRoot "bin\zanna.exe"
+    $studioProductVersion = ""
+    if ($components -contains "zannastudio") {
+        $studioProductVersion = Get-ZannaProductVersion -Binary $zanna
+        Assert-ZannaStudioBuildInfo `
+            -Binary (Join-Path $InstallRoot "bin\zannastudio.exe") `
+            -BuildInfo (Join-Path $InstallRoot "bin\zannastudio.buildinfo") `
+            -Architecture ([string]$metadata.architecture) `
+            -Version $studioProductVersion
     }
 
     $developerPrompt = Join-Path $InstallRoot "bin\zanna-dev.cmd"
@@ -411,12 +909,19 @@ try {
             "/modify", "/quiet", "/norestart", "/type", "complete",
             "/addToPath", "/associations", "/shortcuts") -SuccessCodes @(0, 3010) | Out-Null
         Assert-AssociationState -ClassesRoot $classesRoot -Identifier $identifier -Expected $true
+        if ($components -contains "zannastudio") {
+            Assert-ZannaStudioBuildInfo `
+                -Binary (Join-Path $InstallRoot "bin\zannastudio.exe") `
+                -BuildInfo (Join-Path $InstallRoot "bin\zannastudio.buildinfo") `
+                -Architecture ([string]$metadata.architecture) `
+                -Version $studioProductVersion
+        }
     }
 
-    $zanna = Join-Path $InstallRoot "bin\zanna.exe"
     $expectedZannaHash = (Get-FileHash -LiteralPath $zanna -Algorithm SHA256).Hash
     if (-not (Test-Path -LiteralPath $unownedSentinel)) {
-        [IO.File]::WriteAllText($unownedSentinel, "preserve-unowned-repair-content")
+        Write-NewSentinel -Path $unownedSentinel `
+            -Text "preserve-unowned-repair-content"
     }
     [IO.File]::WriteAllText($zanna, "intentionally-corrupt-for-repair")
     Invoke-CheckedProcess -FilePath $maintenanceCache `
@@ -431,7 +936,8 @@ try {
     if ($RequireSignature) {
         Invoke-CheckedProcess -FilePath $SignToolPath `
             -Arguments @("verify", "/pa", "/all", "/tw", "/v", $maintenanceCache) | Out-Null
-        foreach ($pe in Get-ChildItem -LiteralPath (Join-Path $InstallRoot "bin") -File |
+        foreach ($pe in Get-ChildItem -LiteralPath (Join-Path $InstallRoot "bin") `
+                -File -Recurse |
                 Where-Object { $_.Extension -in @(".exe", ".dll") }) {
             Invoke-CheckedProcess -FilePath $SignToolPath `
                 -Arguments @("verify", "/pa", "/all", "/tw", "/v", $pe.FullName) | Out-Null
@@ -509,14 +1015,18 @@ int main() {
 }
 '@)
         $consumerDriver = Join-Path $work "build-cmake-consumer.cmd"
+        $developerPromptBatch = $developerPrompt.Replace("%", "%%")
+        $cmakeBatch = $cmake.Replace("%", "%%")
+        $consumerSourceBatch = $consumerSource.Replace("%", "%%")
+        $consumerBuildBatch = $consumerBuild.Replace("%", "%%")
         [IO.File]::WriteAllText($consumerDriver, @"
 @echo off
 chcp 65001 >nul
-call "$developerPrompt"
+call "$developerPromptBatch"
 if errorlevel 1 exit /b %errorlevel%
-"$cmake" -S "$consumerSource" -B "$consumerBuild"
+"$cmakeBatch" -S "$consumerSourceBatch" -B "$consumerBuildBatch"
 if errorlevel 1 exit /b %errorlevel%
-"$cmake" --build "$consumerBuild" --config Release
+"$cmakeBatch" --build "$consumerBuildBatch" --config Release
 exit /b %errorlevel%
 "@)
         Invoke-CheckedProcess -FilePath $cmd -Arguments @("/d", "/c", $consumerDriver) | Out-Host
@@ -534,7 +1044,9 @@ exit /b %errorlevel%
         "$($metadata.version) $($metadata.architecture)."
 } finally {
     $env:Path = $originalPath
-    if (-not $KeepInstalled -and $installedByValidation -and
+    [Environment]::SetEnvironmentVariable(
+        "ZANNA_LIB_PATH", $originalZannaLibPath, "Process")
+    if (-not $KeepInstalled -and $installationAttempted -and
         (Test-Path -LiteralPath $uninstallRegistry)) {
         $rootUninstaller = Join-Path $InstallRoot "uninstall.exe"
         $cleanupExecutable = if (Test-Path -LiteralPath $rootUninstaller -PathType Leaf) {
@@ -585,12 +1097,34 @@ exit /b %errorlevel%
             }
             Remove-Item -LiteralPath $InstallRoot -Force
         }
+    } elseif (-not $KeepInstalled -and $installationAttempted -and
+              $installRootWasAbsentBeforeInstall -and
+              (Test-Path -LiteralPath $InstallRoot -PathType Container)) {
+        Assert-NoReparseAncestors -Path $InstallRoot `
+            -Description "Partially installed validation root"
+        if (-not (Test-PathWithin -Base ([IO.Path]::GetPathRoot($InstallRoot)) `
+                -Candidate $InstallRoot)) {
+            throw "Refusing to clean an unsafe partial installation root: $InstallRoot"
+        }
+        if (@(Get-ChildItem -LiteralPath $InstallRoot -Force -Recurse |
+                Where-Object {
+                    ($_.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0
+                }).Count -ne 0) {
+            throw "Refusing to recursively clean a partial installation containing reparse points."
+        }
+        Remove-Item -LiteralPath $InstallRoot -Recurse -Force
     }
     if (Test-Path -LiteralPath $work) {
         $resolvedWork = (Resolve-Path -LiteralPath $work).Path
-        if (-not $resolvedWork.StartsWith(
-                [IO.Path]::GetFullPath($env:TEMP), [StringComparison]::OrdinalIgnoreCase)) {
+        if (-not (Test-PathWithin -Base ([IO.Path]::GetTempPath()) `
+                -Candidate $resolvedWork)) {
             throw "Refusing to clean unexpected validation workspace: $resolvedWork"
+        }
+        if (@(Get-ChildItem -LiteralPath $resolvedWork -Force -Recurse |
+                Where-Object {
+                    ($_.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0
+                }).Count -ne 0) {
+            throw "Refusing to recursively clean a validation workspace containing reparse points."
         }
         Remove-Item -LiteralPath $resolvedWork -Recurse -Force
     }

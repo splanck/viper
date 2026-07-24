@@ -11,18 +11,23 @@
 #   - A failed signer cannot replace an existing artifact or its metadata.
 #   - Successful signing publishes both the artifact and canonical hash metadata.
 #   - Demo automation retains single-config lookup and path-confinement guards.
+#   - Studio artifacts are staged, PE-validated, provenance-bound, and pair-published.
 #   - The cmd.exe demo compatibility entry point remains a logic-free forwarding shim.
 #   - Installer automation recognizes every existing-input spelling and requires Studio by default.
+#   - End-to-end validation has bounded child processes and path-confined cleanup.
 # Ownership/Lifetime: The caller-owned work directory contains all temporary fixtures.
 # Links: scripts/sign-windows-installer.ps1, scripts/build_demos_win.ps1,
-#        scripts/build_installer.ps1
+#        scripts/build_ide_win.ps1, scripts/build_installer.ps1,
+#        scripts/validate-windows-toolchain-installer.ps1
 #
 #===----------------------------------------------------------------------===#
 
 param(
     [Parameter(Mandatory = $true)][string]$SignScript,
     [Parameter(Mandatory = $true)][string]$DemoScript,
+    [Parameter(Mandatory = $true)][string]$IdeScript,
     [Parameter(Mandatory = $true)][string]$InstallerScript,
+    [Parameter(Mandatory = $true)][string]$ValidatorScript,
     [Parameter(Mandatory = $true)][string]$WorkDir
 )
 
@@ -99,6 +104,52 @@ Assert-True ($metadataText.Contains("unsigned_sha256 ") -and
              $metadataText.Contains("timestamp_url https://timestamp.example.test")) `
     "Signed-artifact metadata is incomplete."
 
+$inPlace = Join-Path $root "in-place.exe"
+[IO.File]::WriteAllBytes($inPlace, [byte[]](0x4D, 0x5A, 0x05, 0x06))
+$status = Invoke-PowerShellScript -Path $SignScript -Arguments @(
+    "-InputPath", $inPlace,
+    "-Thumbprint", ("A" * 40),
+    "-TimestampUrl", "https://timestamp.example.test",
+    "-SignToolPath", $successfulSigner
+)
+Assert-True ($status -eq 0) "Rollback-protected in-place signing failed."
+Assert-True (Test-Path -LiteralPath "$inPlace.sha256.txt" -PathType Leaf) `
+    "In-place signing did not publish its metadata pair."
+
+$blockedOutput = Join-Path $root "blocked-output.exe"
+$blockedMetadata = "$blockedOutput.sha256.txt"
+[IO.File]::WriteAllText($blockedOutput, "preserve-blocked-output", [Text.Encoding]::ASCII)
+[void](New-Item -ItemType Directory -Path $blockedMetadata)
+$status = Invoke-PowerShellScript -Path $SignScript -Arguments @(
+    "-InputPath", $input,
+    "-OutputPath", $blockedOutput,
+    "-Thumbprint", ("A" * 40),
+    "-TimestampUrl", "https://timestamp.example.test",
+    "-SignToolPath", $successfulSigner
+)
+Assert-True ($status -ne 0) "A directory-valued metadata destination was accepted."
+Assert-True ([IO.File]::ReadAllText($blockedOutput) -eq "preserve-blocked-output") `
+    "Metadata preflight failure replaced the existing signed output."
+
+$racingOutput = Join-Path $root "racing-output.exe"
+$racingSigner = Join-Path $root "racing-signtool.cmd"
+[IO.File]::WriteAllText($racingOutput, "preserve-racing-output", [Text.Encoding]::ASCII)
+$escapedInput = $input.Replace("%", "%%")
+[IO.File]::WriteAllText(
+    $racingSigner,
+    "@echo off`r`n> `"$escapedInput`" echo changed-during-signing`r`nexit /b 0`r`n",
+    [Text.Encoding]::ASCII)
+$status = Invoke-PowerShellScript -Path $SignScript -Arguments @(
+    "-InputPath", $input,
+    "-OutputPath", $racingOutput,
+    "-Thumbprint", ("A" * 40),
+    "-TimestampUrl", "https://timestamp.example.test",
+    "-SignToolPath", $racingSigner
+)
+Assert-True ($status -ne 0) "An input mutation during signing was not detected."
+Assert-True ([IO.File]::ReadAllText($racingOutput) -eq "preserve-racing-output") `
+    "Input-race failure replaced the existing output."
+
 $status = Invoke-PowerShellScript -Path $SignScript -Arguments @(
     "-InputPath", $input,
     "-OutputPath", $output,
@@ -107,6 +158,14 @@ $status = Invoke-PowerShellScript -Path $SignScript -Arguments @(
     "-SignToolPath", $successfulSigner
 )
 Assert-True ($status -ne 0) "A credential-bearing timestamp URL was accepted."
+
+$status = Invoke-PowerShellScript -Path $SignScript -Arguments @(
+    "-InputPath", $inPlace,
+    "-Thumbprint", ("A" * 40),
+    "-TimestampUrl", "https://timestamp.example.test/path with-space",
+    "-SignToolPath", $successfulSigner
+)
+Assert-True ($status -ne 0) "A whitespace-bearing timestamp URL was accepted."
 
 $status = Invoke-PowerShellScript -Path $DemoScript -Arguments @("--help")
 Assert-True ($status -eq 0) "The Windows demo driver help path failed."
@@ -140,17 +199,55 @@ Assert-True ($cmdSource.Contains("build_demos_win.ps1") -and
 Assert-True (-not $cmdSource.Contains("cmake") -and -not $cmdSource.Contains("zanna build")) `
     "The cmd.exe demo shim duplicates build logic."
 
+$status = Invoke-PowerShellScript -Path $IdeScript -Arguments @("--help")
+Assert-True ($status -eq 0) "The Windows Zanna Studio driver help path failed."
+$ideSource = [IO.File]::ReadAllText($IdeScript)
+Assert-True ($ideSource.Contains("PROCESSOR_ARCHITEW6432") -and
+             $ideSource.Contains("Resolve-ZannaExecutable") -and
+             $ideSource.Contains("Assert-CMakeTreeArchitecture")) `
+    "The Studio driver lacks native-host and CMake-tree architecture handling."
+Assert-True ($ideSource.Contains("Assert-PortableExecutableArchitecture") -and
+             $ideSource.Contains('"Schema: 1"') -and
+             $ideSource.Contains('"SHA256: $sha256"')) `
+    "The Studio driver lacks PE and provenance validation."
+Assert-True ($ideSource.Contains("Publish-StudioArtifact") -and
+             $ideSource.Contains("zanna-backup")) `
+    "The Studio driver does not publish the binary/buildinfo pair transactionally."
+
 $status = Invoke-PowerShellScript -Path $InstallerScript -Arguments @("--help")
 Assert-True ($status -eq 0) "The Windows installer wrapper help path failed."
 $installerSource = [IO.File]::ReadAllText($InstallerScript)
-Assert-True ($installerSource.Contains('StartsWith("--build-dir="') -and
-             $installerSource.Contains('StartsWith("--stage-dir="') -and
-             $installerSource.Contains('StartsWith("--verify-only="')) `
+Assert-True ($installerSource.Contains('"$inputOption="') -and
+             $installerSource.Contains("normalizedArguments") -and
+             $installerSource.Contains("Specify at most one of")) `
     "The installer wrapper does not recognize equals-form existing inputs."
 Assert-True ($installerSource.Contains("ZANNA_INSTALL_ZANNASTUDIO") -and
-             $installerSource.Contains("zannastudio.buildinfo")) `
+             $installerSource.Contains("zannastudio.buildinfo") -and
+             $installerSource.Contains("Assert-ZannaStudioArtifact") -and
+             $installerSource.Contains('settingType -ine "BOOL"')) `
     "The installer wrapper does not verify the default Zanna Studio build."
 Assert-True ($installerSource.Contains("[IO.Path]::GetFullPath(`$buildDir)")) `
     "The installer wrapper does not normalize an absolute build directory."
+
+$validatorSource = [IO.File]::ReadAllText($ValidatorScript)
+Assert-True ($validatorSource.Contains("ProcessTimeoutSeconds") -and
+             $validatorSource.Contains("MaximumCaptureBytes") -and
+             $validatorSource.Contains("MaximumInspectBytes") -and
+             $validatorSource.Contains("Process timed out after")) `
+    "The installer validator lacks bounded process and inspect handling."
+Assert-True ($validatorSource.Contains("Resolve-SafeRelativePath") -and
+             $validatorSource.Contains("Test-PathWithin") -and
+             $validatorSource.Contains("[IO.FileMode]::CreateNew")) `
+    "The installer validator lacks stale-path confinement and no-clobber sentinels."
+Assert-True ($validatorSource.Contains("Existing maintenance cache identity") -and
+             $validatorSource.Contains("Assert-ZannaStudioBuildInfo") -and
+             $validatorSource.Contains("PROCESSOR_ARCHITEW6432")) `
+    "The installer validator lacks cache identity, Studio provenance, or native-host checks."
+Assert-True ($validatorSource.Contains("Get-ZannaProductVersion") -and
+             $validatorSource.Contains('-Version $studioProductVersion') -and
+             $validatorSource.Contains('(?:\r?\n|\z)') -and
+             -not $validatorSource.Contains('\r?\n?\z') -and
+             -not $validatorSource.Contains('-Version ([string]$metadata.version)')) `
+    "The installer validator conflates version domains or rejects canonical multiline output."
 
 Write-Host "Windows automation script tests passed."

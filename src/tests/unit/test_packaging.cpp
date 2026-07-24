@@ -181,7 +181,7 @@ static void writeTestWindowsPe(const std::filesystem::path &path,
 }
 
 static std::vector<uint8_t> makeMockNativeExecutableHeader() {
-#if defined(_WIN32)
+#if ZANNA_HOST_WINDOWS
     std::vector<uint8_t> bytes(128, 0);
     bytes[0] = 'M';
     bytes[1] = 'Z';
@@ -779,7 +779,7 @@ static std::filesystem::path createMockToolchainStage(const std::filesystem::pat
     }
     {
         std::ofstream out(stage / "include" / "zanna" / "version.hpp");
-        out << "#define ZANNA_VERSION_STR \"9.8.7\"\n"
+        out << "#define ZANNA_VERSION_STR \"9.8.7-snapshot\"\n"
                "#define ZANNA_SNAPSHOT_STR \"9.8.7-0-g0123456789ab\"\n"
                "#define ZANNA_SOURCE_COMMIT_STR \"0123456789abcdef0123456789abcdef01234567\"\n"
                "#define ZANNA_SOURCE_STATE_STR \"clean\"\n";
@@ -827,14 +827,55 @@ static std::filesystem::path createMockToolchainStage(const std::filesystem::pat
     return stage;
 }
 
+/// @brief Make a mock toolchain stage look like a Linux install tree.
+/// @details Windows test hosts otherwise leave `.exe` and `.lib` suffixes in
+///          cross-target Linux package fixtures, which makes archive-layout
+///          assertions host-dependent.
+/// @param stage Mock stage root returned by createMockToolchainStage().
+static void normalizeMockStageForLinuxToolchain(const std::filesystem::path &stage) {
+    namespace fs = std::filesystem;
+#if ZANNA_HOST_WINDOWS
+    std::vector<fs::path> executables;
+    for (const auto &entry : fs::directory_iterator(stage / "bin")) {
+        if (entry.is_regular_file() && entry.path().extension() == ".exe")
+            executables.push_back(entry.path());
+    }
+    for (const auto &path : executables)
+        fs::rename(path, path.parent_path() / path.stem());
+
+    std::vector<fs::path> archives;
+    for (const auto &entry : fs::directory_iterator(stage / "lib")) {
+        if (entry.is_regular_file() && entry.path().extension() == ".lib")
+            archives.push_back(entry.path());
+    }
+    for (const auto &path : archives)
+        fs::rename(path, path.parent_path() / ("lib" + path.stem().string() + ".a"));
+
+    std::vector<uint8_t> elf(64, 0);
+    elf[0] = 0x7F;
+    elf[1] = 'E';
+    elf[2] = 'L';
+    elf[3] = 'F';
+    elf[4] = 2;
+    elf[5] = 1;
+    elf[6] = 1;
+    elf[16] = 3;
+    elf[18] = 62;
+    elf[20] = 1;
+    writeBytes(stage / "bin" / "zanna", elf);
+#else
+    (void)stage;
+#endif
+}
+
 /// @brief Make a mock toolchain stage look like a Windows install tree.
 /// @details Non-Windows test hosts create the primary mock executable as
 ///          `bin/zanna`; Windows toolchain installer tests need `bin/zanna.exe`
 ///          so the manifest and payload names match the target platform.
 /// @param stage Mock stage root returned by createMockToolchainStage().
 static void normalizeMockStageForWindowsToolchain(const std::filesystem::path &stage) {
-#if !defined(_WIN32)
     namespace fs = std::filesystem;
+#if !defined(_WIN32)
     std::vector<fs::path> extensionless;
     for (const auto &entry : fs::directory_iterator(stage / "bin")) {
         if (entry.is_regular_file() && entry.path().extension().empty())
@@ -849,6 +890,39 @@ static void normalizeMockStageForWindowsToolchain(const std::filesystem::path &s
 #else
     (void)stage;
 #endif
+    const fs::path studio = stage / "bin" / "zannastudio.exe";
+    writeTestWindowsPe(studio, "x64");
+    const std::vector<uint8_t> studioBytes = readFile(studio.string());
+    std::ofstream buildInfo(stage / "bin" / "zannastudio.buildinfo",
+                            std::ios::binary | std::ios::trunc);
+    buildInfo << "Zanna Studio 9.8.7-snapshot\n"
+                 "Schema: 1\n"
+                 "Build: 2026-01-01T00:00:00.000Z\n"
+                 "Source: 0123456789ab\n"
+                 "Architecture: x64\n"
+                 "Size: "
+              << studioBytes.size()
+              << "\nSHA256: " << sha256Hex(studioBytes.data(), studioBytes.size())
+              << "\nOutput: C:\\build\\zannastudio.exe\n"
+                 "Zanna: C:\\build\\zanna.exe\n";
+}
+
+/// @brief Refresh mock Studio provenance after a test changes its PE architecture or bytes.
+static void refreshMockWindowsStudioBuildInfo(const std::filesystem::path &stage,
+                                              std::string_view architecture) {
+    const std::filesystem::path studio = stage / "bin" / "zannastudio.exe";
+    const std::vector<uint8_t> studioBytes = readFile(studio.string());
+    std::ofstream buildInfo(stage / "bin" / "zannastudio.buildinfo",
+                            std::ios::binary | std::ios::trunc);
+    buildInfo << "Zanna Studio 9.8.7-snapshot\n"
+                 "Schema: 1\n"
+                 "Build: 2026-01-01T00:00:00.000Z\n"
+                 "Source: 0123456789ab\n"
+                 "Architecture: "
+              << architecture << "\nSize: " << studioBytes.size()
+              << "\nSHA256: " << sha256Hex(studioBytes.data(), studioBytes.size())
+              << "\nOutput: C:\\build\\zannastudio.exe\n"
+                 "Zanna: C:\\build\\zanna.exe\n";
 }
 
 /// @brief Add deterministic branding and samples to exercise optional Windows toolchain payloads.
@@ -5075,6 +5149,7 @@ TEST(ToolchainInstallManifest, GatherAndValidateMockStage) {
 
     const auto manifest = gatherToolchainInstallManifest(stage);
     EXPECT_EQ(manifest.version, std::string("9.8.7"));
+    EXPECT_EQ(manifest.productVersion, std::string("9.8.7-snapshot"));
     EXPECT_EQ(manifest.snapshot, std::string("9.8.7-0-g0123456789ab"));
     EXPECT_EQ(manifest.sourceCommit, std::string("0123456789abcdef0123456789abcdef01234567"));
     EXPECT_EQ(manifest.sourceState, std::string("clean"));
@@ -5383,6 +5458,7 @@ TEST(ToolchainLinuxPackageBuilder, BuildsDebFromManifest) {
     const fs::path tmpRoot = fs::temp_directory_path() / "zanna_toolchain_deb_stage";
     fs::remove_all(tmpRoot);
     const fs::path stage = createMockToolchainStage(tmpRoot);
+    normalizeMockStageForLinuxToolchain(stage);
     auto manifest = gatherToolchainInstallManifest(stage);
     manifest.platform = "linux";
 
@@ -5572,8 +5648,15 @@ TEST(ToolchainLinuxPackageBuilder, BuildsTarballFromManifest) {
                             fs::perms::group_read | fs::perms::group_exec,
                         fs::perm_options::replace);
     }
+    normalizeMockStageForLinuxToolchain(stage);
     auto manifest = gatherToolchainInstallManifest(stage);
     manifest.platform = "linux";
+    const auto helperEntry =
+        std::find_if(manifest.files.begin(), manifest.files.end(), [](const auto &file) {
+            return file.stagedRelativePath == "share/doc/zanna/helper.sh";
+        });
+    ASSERT_TRUE(helperEntry != manifest.files.end());
+    helperEntry->unixMode = 0100750u;
 
     LinuxToolchainBuildParams params;
     params.manifest = manifest;
@@ -5857,6 +5940,7 @@ TEST(ToolchainLinuxPackageBuilder, BuildsSelfExtractingBundleFromManifest) {
     const fs::path tmpRoot = fs::temp_directory_path() / "zanna_toolchain_bundle_stage";
     fs::remove_all(tmpRoot);
     const fs::path stage = createMockToolchainStage(tmpRoot);
+    normalizeMockStageForLinuxToolchain(stage);
     auto manifest = gatherToolchainInstallManifest(stage);
     manifest.platform = "linux";
 
@@ -5915,6 +5999,7 @@ TEST(ToolchainLinuxPackageBuilder, TarballNormalizesDebianEpochVersionInTopDirec
     const fs::path tmpRoot = fs::temp_directory_path() / "zanna_toolchain_tar_epoch_stage";
     fs::remove_all(tmpRoot);
     const fs::path stage = createMockToolchainStage(tmpRoot);
+    normalizeMockStageForLinuxToolchain(stage);
     auto manifest = gatherToolchainInstallManifest(stage);
     manifest.platform = "linux";
     manifest.version = "2:9.8.7";
@@ -5968,6 +6053,13 @@ TEST(ToolchainWindowsPackageBuilder, BuildsInstallerFromManifest) {
     auto manifest = gatherToolchainInstallManifest(stage);
     manifest.arch = "x64";
     manifest.platform = "windows";
+    const auto studioBuildInfo =
+        std::find_if(manifest.files.begin(), manifest.files.end(), [](const auto &file) {
+            return file.stagedRelativePath == "bin/zannastudio.buildinfo";
+        });
+    ASSERT_TRUE(studioBuildInfo != manifest.files.end());
+    EXPECT_TRUE(studioBuildInfo->kind == ToolchainFileKind::Extra);
+    EXPECT_FALSE(studioBuildInfo->executable);
 
     WindowsToolchainBuildParams params;
     params.manifest = manifest;
@@ -6088,6 +6180,77 @@ TEST(ToolchainWindowsPackageBuilder, BuildsInstallerFromManifest) {
     fs::remove_all(tmpRoot);
 }
 
+TEST(ToolchainWindowsPackageBuilder, RejectsUnboundZannaStudioArtifacts) {
+    namespace fs = std::filesystem;
+    const fs::path tmpRoot =
+        fs::temp_directory_path() / "zanna_toolchain_windows_studio_provenance";
+    fs::remove_all(tmpRoot);
+    const fs::path stage = createMockToolchainStage(tmpRoot);
+    normalizeMockStageForWindowsToolchain(stage);
+
+    auto buildParams = [&]() {
+        WindowsToolchainBuildParams params;
+        params.manifest = gatherToolchainInstallManifest(stage);
+        params.manifest.arch = "x64";
+        params.manifest.platform = "windows";
+        params.outputPath = (tmpRoot / "zanna-toolchain-setup.exe").string();
+        params.archStr = "x64";
+        return params;
+    };
+
+    fs::remove(stage / "bin" / "zannastudio.buildinfo");
+    WindowsToolchainBuildParams missingMetadata = buildParams();
+    EXPECT_THROWS(buildWindowsToolchainInstaller(missingMetadata), std::runtime_error);
+
+    normalizeMockStageForWindowsToolchain(stage);
+    {
+        const fs::path metadata = stage / "bin" / "zannastudio.buildinfo";
+        std::vector<uint8_t> bytes = readFile(metadata.string());
+        const std::string marker = "SHA256: ";
+        const auto position = std::search(bytes.begin(), bytes.end(), marker.begin(), marker.end());
+        ASSERT_TRUE(position != bytes.end());
+        const size_t hashOffset =
+            static_cast<size_t>(std::distance(bytes.begin(), position)) + marker.size();
+        ASSERT_LT(hashOffset, bytes.size());
+        bytes[hashOffset] = bytes[hashOffset] == '0' ? '1' : '0';
+        writeBytes(metadata, bytes);
+    }
+    WindowsToolchainBuildParams badHash = buildParams();
+    EXPECT_THROWS(buildWindowsToolchainInstaller(badHash), std::runtime_error);
+
+    normalizeMockStageForWindowsToolchain(stage);
+    {
+        const fs::path metadata = stage / "bin" / "zannastudio.buildinfo";
+        std::vector<uint8_t> bytes = readFile(metadata.string());
+        const std::string expected = "Zanna Studio 9.8.7-snapshot";
+        const std::string stale = "Zanna Studio 9.8.6-snapshot";
+        const auto position =
+            std::search(bytes.begin(), bytes.end(), expected.begin(), expected.end());
+        ASSERT_TRUE(position != bytes.end());
+        std::copy(stale.begin(), stale.end(), position);
+        writeBytes(metadata, bytes);
+    }
+    WindowsToolchainBuildParams staleVersion = buildParams();
+    EXPECT_THROWS(buildWindowsToolchainInstaller(staleVersion), std::runtime_error);
+
+    normalizeMockStageForWindowsToolchain(stage);
+    refreshMockWindowsStudioBuildInfo(stage, "arm64");
+    WindowsToolchainBuildParams wrongArchitecture = buildParams();
+    EXPECT_THROWS(buildWindowsToolchainInstaller(wrongArchitecture), std::runtime_error);
+
+    refreshMockWindowsStudioBuildInfo(stage, "x64");
+    WindowsToolchainBuildParams nonExecutable = buildParams();
+    const auto studio = std::find_if(nonExecutable.manifest.files.begin(),
+                                     nonExecutable.manifest.files.end(),
+                                     [](const ToolchainFileEntry &file) {
+                                         return file.stagedRelativePath == "bin/zannastudio.exe";
+                                     });
+    ASSERT_TRUE(studio != nonExecutable.manifest.files.end());
+    studio->executable = false;
+    EXPECT_THROWS(buildWindowsToolchainInstaller(nonExecutable), std::runtime_error);
+    fs::remove_all(tmpRoot);
+}
+
 TEST(ToolchainWindowsPackageBuilder, OmitsInstallerBootstrapExecutablesFromDeveloperPayload) {
     namespace fs = std::filesystem;
     const fs::path tmpRoot =
@@ -6201,8 +6364,14 @@ TEST(ToolchainWindowsPackageBuilder, SignsAllOwnedPesAndPreservesMicrosoftRuntim
     ASSERT_FALSE(payloadZip.empty());
     EXPECT_TRUE(
         containsAscii(extractZipEntry(payloadZip, "bin/zanna.exe"), "ZAPS-TOOLCHAIN-SIGNED"));
-    EXPECT_TRUE(
-        containsAscii(extractZipEntry(payloadZip, "bin/zannastudio.exe"), "ZAPS-TOOLCHAIN-SIGNED"));
+    const auto installedStudio = extractZipEntry(payloadZip, "bin/zannastudio.exe");
+    EXPECT_TRUE(containsAscii(installedStudio, "ZAPS-TOOLCHAIN-SIGNED"));
+    const auto installedStudioInfo = extractZipEntry(payloadZip, "bin/zannastudio.buildinfo");
+    const std::string installedStudioInfoText(installedStudioInfo.begin(),
+                                              installedStudioInfo.end());
+    EXPECT_CONTAINS(installedStudioInfoText, "Size: " + std::to_string(installedStudio.size()));
+    EXPECT_CONTAINS(installedStudioInfoText,
+                    "SHA256: " + sha256Hex(installedStudio.data(), installedStudio.size()));
     EXPECT_TRUE(
         containsAscii(extractZipEntry(payloadZip, "uninstall.exe"), "ZAPS-TOOLCHAIN-SIGNED"));
     EXPECT_FALSE(containsAscii(extractZipEntry(payloadZip, "bin/vcruntime140.dll"),
@@ -6232,6 +6401,7 @@ TEST(ToolchainWindowsPackageBuilder, BuildsAndRecursivelyVerifiesNativeArm64Inst
     }
     for (const fs::path &executable : stagedExecutables)
         writeTestWindowsPe(executable, "arm64");
+    refreshMockWindowsStudioBuildInfo(stage, "arm64");
     writeTestWindowsPe(stage / "bin" / "zanna-installer-host.exe", "arm64");
     writeTestWindowsPe(stage / "bin" / "zanna-installer-cleanup.exe", "arm64");
     {

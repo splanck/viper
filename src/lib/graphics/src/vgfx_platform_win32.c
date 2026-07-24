@@ -179,7 +179,9 @@ static WCHAR *utf8_to_utf16(const char *utf8) {
         return NULL;
 
     /* Allocate buffer */
-    WCHAR *wstr = (WCHAR *)malloc(wlen * sizeof(WCHAR));
+    if ((size_t)wlen > SIZE_MAX / sizeof(WCHAR))
+        return NULL;
+    WCHAR *wstr = (WCHAR *)malloc((size_t)wlen * sizeof(WCHAR));
     if (!wstr)
         return NULL;
 
@@ -1900,7 +1902,8 @@ void vgfx_platform_sleep_ms(int32_t ms) {
 /// @details Used for brief internal spin waits where sleeping for a full
 ///          scheduler tick would add visible event latency.
 void vgfx_platform_yield(void) {
-    SwitchToThread();
+    if (!SwitchToThread())
+        Sleep(0);
 }
 
 //===----------------------------------------------------------------------===//

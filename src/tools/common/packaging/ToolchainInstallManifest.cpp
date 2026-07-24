@@ -198,6 +198,7 @@ std::string parseQuotedDefine(const std::string &text, std::string_view name) {
 }
 
 struct StagedBuildProvenance {
+    std::string productVersion;
     std::string snapshot;
     std::string commit;
     std::string state{"unknown"};
@@ -213,6 +214,7 @@ StagedBuildProvenance detectBuildProvenance(const fs::path &stagePrefix) {
     std::ostringstream bytes;
     bytes << input.rdbuf();
     const std::string text = bytes.str();
+    result.productVersion = parseQuotedDefine(text, "ZANNA_VERSION_STR");
     result.snapshot = parseQuotedDefine(text, "ZANNA_SNAPSHOT_STR");
     result.commit = parseQuotedDefine(text, "ZANNA_SOURCE_COMMIT_STR");
     const std::string state = parseQuotedDefine(text, "ZANNA_SOURCE_STATE_STR");
@@ -491,6 +493,10 @@ ToolchainFileKind classifyFileKind(const std::string &relativePath) {
     const fs::path relPath(relativePath);
     const std::string filenameBase = toolchainBaseNameFromFilename(relPath.filename().string());
 
+    if (rel.rfind("bin/", 0) == 0 && rel.size() >= 10U &&
+        rel.substr(rel.size() - 10U) == ".buildinfo") {
+        return ToolchainFileKind::Extra;
+    }
     if (rel.rfind("bin/", 0) == 0)
         return ToolchainFileKind::Binary;
     if (rel.rfind("include/", 0) == 0)
@@ -860,6 +866,7 @@ ToolchainInstallManifest gatherToolchainInstallManifest(
     if (identity.platform == "macos")
         validateMacOSPayloadArchitectures(stage, files, identity.arch);
     manifest.version = detectManifestVersion(stage);
+    manifest.productVersion = provenance.productVersion;
     manifest.snapshot = provenance.snapshot;
     manifest.sourceCommit = provenance.commit;
     manifest.sourceState = provenance.state;
@@ -910,6 +917,9 @@ void validateToolchainInstallManifest(const ToolchainInstallManifest &manifest) 
         validateToolchainArchitecture(manifest.arch);
     }
     validateDebVersion(manifest.version, "toolchain package version");
+    if (manifest.productVersion.empty())
+        throw std::runtime_error("toolchain product version is missing from staged metadata");
+    validateSingleLineField(manifest.productVersion, "toolchain product version");
     validateSingleLineField(manifest.snapshot, "toolchain snapshot identity");
     if (!manifest.sourceCommit.empty() &&
         (manifest.sourceCommit.size() < 7U || manifest.sourceCommit.size() > 64U ||

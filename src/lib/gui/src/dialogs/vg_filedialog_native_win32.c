@@ -100,9 +100,9 @@ static int vgfd_com_enter(vgfd_com_scope *scope) {
         return 0;
     scope->uninitialize = 0;
     HRESULT hr = CoInitializeEx(NULL, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
-    if (FAILED(hr) && hr != RPC_E_CHANGED_MODE)
+    if (FAILED(hr))
         return 0;
-    scope->uninitialize = SUCCEEDED(hr) ? 1 : 0;
+    scope->uninitialize = 1;
     return 1;
 }
 
@@ -149,8 +149,9 @@ static int vgfd_apply_common(IFileDialog *dialog,
         if (FAILED(hr))
             return 0;
     }
-    if (filter_name && filter_pattern && *filter_pattern) {
-        *filter_name_w = vgfd_wide(filter_name);
+    if (filter_pattern && *filter_pattern) {
+        const char *effective_name = filter_name && *filter_name ? filter_name : "Files";
+        *filter_name_w = vgfd_wide(effective_name);
         *filter_spec_w = vgfd_wide(filter_pattern);
         if (!*filter_name_w || !*filter_spec_w)
             return 0;
@@ -220,6 +221,13 @@ char *vg_native_open_file(const char *title,
     char *result = NULL;
     if (FAILED(hr) || !dialog)
         goto cleanup;
+    FILEOPENDIALOGOPTIONS options = 0;
+    if (FAILED(dialog->lpVtbl->GetOptions(dialog, &options)) ||
+        FAILED(dialog->lpVtbl->SetOptions(dialog,
+                                          options | FOS_FORCEFILESYSTEM | FOS_FILEMUSTEXIST |
+                                              FOS_PATHMUSTEXIST | FOS_NOCHANGEDIR |
+                                              FOS_DONTADDTORECENT)))
+        goto cleanup;
     if (!vgfd_apply_common((IFileDialog *)dialog,
                            title,
                            initial_path,
@@ -269,7 +277,10 @@ char **vg_native_open_files(const char *title,
         goto cleanup;
     FILEOPENDIALOGOPTIONS options = 0;
     if (FAILED(dialog->lpVtbl->GetOptions(dialog, &options)) ||
-        FAILED(dialog->lpVtbl->SetOptions(dialog, options | FOS_ALLOWMULTISELECT)))
+        FAILED(dialog->lpVtbl->SetOptions(dialog,
+                                          options | FOS_ALLOWMULTISELECT | FOS_FORCEFILESYSTEM |
+                                              FOS_FILEMUSTEXIST | FOS_PATHMUSTEXIST |
+                                              FOS_NOCHANGEDIR | FOS_DONTADDTORECENT)))
         goto cleanup;
     if (!vgfd_apply_common((IFileDialog *)dialog,
                            title,
@@ -346,6 +357,13 @@ char *vg_native_save_file(const char *title,
     char *result = NULL;
     if (FAILED(hr) || !dialog)
         goto cleanup;
+    FILEOPENDIALOGOPTIONS options = 0;
+    if (FAILED(dialog->lpVtbl->GetOptions(dialog, &options)) ||
+        FAILED(dialog->lpVtbl->SetOptions(dialog,
+                                          options | FOS_FORCEFILESYSTEM | FOS_OVERWRITEPROMPT |
+                                              FOS_PATHMUSTEXIST | FOS_NOCHANGEDIR |
+                                              FOS_DONTADDTORECENT)))
+        goto cleanup;
     if (!vgfd_apply_common((IFileDialog *)dialog,
                            title,
                            initial_path,
@@ -396,7 +414,10 @@ char *vg_native_select_folder(const char *title, const char *initial_path) {
         goto cleanup;
     FILEOPENDIALOGOPTIONS options = 0;
     if (FAILED(dialog->lpVtbl->GetOptions(dialog, &options)) ||
-        FAILED(dialog->lpVtbl->SetOptions(dialog, options | FOS_PICKFOLDERS)))
+        FAILED(dialog->lpVtbl->SetOptions(dialog,
+                                          options | FOS_PICKFOLDERS | FOS_FORCEFILESYSTEM |
+                                              FOS_PATHMUSTEXIST | FOS_NOCHANGEDIR |
+                                              FOS_DONTADDTORECENT)))
         goto cleanup;
     if (!vgfd_apply_common((IFileDialog *)dialog, title, initial_path, NULL, NULL, &fname, &fspec))
         goto cleanup;

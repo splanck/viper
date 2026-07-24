@@ -87,6 +87,65 @@ function Get-FullPath {
     return [IO.Path]::GetFullPath((Join-Path $Base $Path))
 }
 
+function Test-PathsEqual {
+    param(
+        [Parameter(Mandatory = $true)][string]$Left,
+        [Parameter(Mandatory = $true)][string]$Right
+    )
+
+    return [string]::Equals(
+        [IO.Path]::GetFullPath($Left).TrimEnd('\', '/'),
+        [IO.Path]::GetFullPath($Right).TrimEnd('\', '/'),
+        [StringComparison]::OrdinalIgnoreCase)
+}
+
+function Assert-SafeAutomationPath {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][string]$Description
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Path) -or
+        $Path.IndexOfAny([char[]](0..31)) -ge 0) {
+        throw "$Description contains an empty or control-character path."
+    }
+}
+
+function Assert-ArtifactDestination {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][string]$Description
+    )
+
+    Assert-SafeAutomationPath -Path $Path -Description $Description
+    if ((Test-Path -LiteralPath $Path) -and
+        -not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+        throw "$Description is not a regular file destination: $Path"
+    }
+    $current = $Path
+    $isLeaf = $true
+    while (-not [string]::IsNullOrWhiteSpace($current)) {
+        if (Test-Path -LiteralPath $current) {
+            $item = Get-Item -LiteralPath $current -Force
+            if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+                throw "$Description traverses a reparse point: $current"
+            }
+            $linkTypeProperty = $item.PSObject.Properties["LinkType"]
+            if ($isLeaf -and $linkTypeProperty -and
+                $linkTypeProperty.Value -eq "HardLink") {
+                throw "$Description must not replace a hard-link alias: $current"
+            }
+        }
+        $parent = Split-Path -Parent $current
+        if ([string]::IsNullOrWhiteSpace($parent) -or
+            [string]::Equals($parent, $current, [StringComparison]::OrdinalIgnoreCase)) {
+            break
+        }
+        $current = $parent
+        $isLeaf = $false
+    }
+}
+
 function Invoke-CheckedNative {
     param(
         [Parameter(Mandatory = $true)][string]$FilePath,
@@ -96,6 +155,123 @@ function Invoke-CheckedNative {
     & $FilePath @Arguments
     if ($LASTEXITCODE -ne 0) {
         throw "$FailureMessage (exit $LASTEXITCODE)"
+    }
+}
+
+function Resolve-ZannaExecutable {
+    param(
+        [Parameter(Mandatory = $true)][string]$Tree,
+        [Parameter(Mandatory = $true)][string]$Configuration
+    )
+
+    $configured = Join-Path $Tree "src\tools\zanna\$Configuration\zanna.exe"
+    $singleConfig = Join-Path $Tree "src\tools\zanna\zanna.exe"
+    if (Test-Path -LiteralPath $configured -PathType Leaf) {
+        return $configured
+    }
+    if (Test-Path -LiteralPath $singleConfig -PathType Leaf) {
+        return $singleConfig
+    }
+    return $configured
+}
+
+function Get-CMakeCacheValue {
+    param(
+        [Parameter(Mandatory = $true)][string]$Cache,
+        [Parameter(Mandatory = $true)][string]$Name
+    )
+
+    $prefix = "${Name}:"
+    foreach ($line in Get-Content -LiteralPath $Cache) {
+        if ($line.StartsWith($prefix, [StringComparison]::Ordinal)) {
+            $separator = $line.IndexOf('=')
+            if ($separator -ge 0) {
+                return $line.Substring($separator + 1).Trim()
+            }
+        }
+    }
+    return ""
+}
+
+function Assert-CMakeTreeArchitecture {
+    param(
+        [Parameter(Mandatory = $true)][string]$Cache,
+        [Parameter(Mandatory = $true)][string]$Architecture,
+        [Parameter(Mandatory = $true)][string]$Description
+    )
+
+    $reported = Get-CMakeCacheValue -Cache $Cache -Name "CMAKE_GENERATOR_PLATFORM"
+    if ([string]::IsNullOrWhiteSpace($reported)) {
+        $reported = Get-CMakeCacheValue -Cache $Cache -Name "CMAKE_SYSTEM_PROCESSOR"
+    }
+    if ([string]::IsNullOrWhiteSpace($reported)) {
+        return
+    }
+    $normalized = switch ($reported.ToLowerInvariant()) {
+        "arm64" { "arm64" }
+        "aarch64" { "arm64" }
+        "x64" { "x64" }
+        "amd64" { "x64" }
+        "x86_64" { "x64" }
+        default { "" }
+    }
+    if (-not [string]::IsNullOrWhiteSpace($normalized) -and
+        $normalized -ne $Architecture) {
+        throw "$Description CMake tree targets $reported, not requested architecture $Architecture`: $Cache"
+    }
+}
+
+function Assert-PortableExecutableArchitecture {
+    param(
+        [Parameter(Mandatory = $true)][string]$Binary,
+        [Parameter(Mandatory = $true)][ValidateSet("arm64", "x64")][string]$Architecture
+    )
+
+    if (-not (Test-Path -LiteralPath $Binary -PathType Leaf)) {
+        throw "Expected Windows executable was not produced: $Binary"
+    }
+    $machine = 0
+    $stream = [IO.File]::Open(
+        $Binary, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)
+    try {
+        if ($stream.Length -lt 64) {
+            throw "Windows executable is too small to contain a PE header: $Binary"
+        }
+        $reader = [IO.BinaryReader]::new($stream, [Text.Encoding]::ASCII, $true)
+        try {
+            if ($reader.ReadUInt16() -ne 0x5A4D) {
+                throw "Windows executable is missing the MZ signature: $Binary"
+            }
+            $stream.Position = 0x3c
+            $peOffset = [uint64]$reader.ReadUInt32()
+            if ($peOffset -gt [uint64]($stream.Length - 26)) {
+                throw "Windows executable has an out-of-range PE header: $Binary"
+            }
+            $stream.Position = [int64]$peOffset
+            if ($reader.ReadUInt32() -ne 0x00004550) {
+                throw "Windows executable is missing the PE signature: $Binary"
+            }
+            $machine = $reader.ReadUInt16()
+            $stream.Position = [int64]($peOffset + 20)
+            $optionalHeaderSize = [uint64]$reader.ReadUInt16()
+            if ($optionalHeaderSize -lt 2 -or
+                $peOffset + 24 + $optionalHeaderSize -gt [uint64]$stream.Length) {
+                throw "Windows executable has an invalid optional header: $Binary"
+            }
+            $stream.Position = [int64]($peOffset + 24)
+            if ($reader.ReadUInt16() -ne 0x020B) {
+                throw "Windows executable is not a PE32+ image: $Binary"
+            }
+        } finally {
+            $reader.Dispose()
+        }
+    } finally {
+        $stream.Dispose()
+    }
+    $expectedMachine = if ($Architecture -eq "arm64") { 0xAA64 } else { 0x8664 }
+    if ($machine -ne $expectedMachine) {
+        throw ("Windows executable machine 0x{0:X4} does not match requested {1}: {2}" -f
+            $machine, $Architecture, $Binary)
     }
 }
 
@@ -171,18 +347,37 @@ if (-not $toolBuildDirExplicit) {
 }
 
 $buildType = Get-EnvironmentValue -Name "ZANNA_BUILD_TYPE" -Default "Release"
+$buildTypeInput = $buildType
+switch ($buildType.ToLowerInvariant()) {
+    "debug" { $buildType = "Debug" }
+    "release" { $buildType = "Release" }
+    "relwithdebinfo" { $buildType = "RelWithDebInfo" }
+    "minsizerel" { $buildType = "MinSizeRel" }
+    default {
+        throw "ZANNA_BUILD_TYPE must be Debug, Release, RelWithDebInfo, or MinSizeRel; received '$buildTypeInput'."
+    }
+}
 $jobsValue = Get-EnvironmentValue -Name "JOBS" `
     -Default (Get-EnvironmentValue -Name "NUMBER_OF_PROCESSORS" -Default "8")
 $jobs = 0
-if (-not [int]::TryParse($jobsValue, [ref]$jobs) -or $jobs -lt 1) {
-    throw "JOBS must be a positive integer; received '$jobsValue'."
+if (-not [int]::TryParse($jobsValue, [ref]$jobs) -or $jobs -lt 1 -or $jobs -gt 1024) {
+    throw "JOBS must be an integer from 1 through 1024; received '$jobsValue'."
 }
 
-$hostArch = if ([Environment]::GetEnvironmentVariable("PROCESSOR_ARCHITECTURE", "Process") -ieq
-                   "ARM64") {
-    "arm64"
-} else {
-    "x64"
+$nativeArchitecture = [Environment]::GetEnvironmentVariable("PROCESSOR_ARCHITEW6432", "Process")
+if ([string]::IsNullOrWhiteSpace($nativeArchitecture)) {
+    $nativeArchitecture = [Environment]::GetEnvironmentVariable("PROCESSOR_ARCHITECTURE", "Process")
+}
+if ([string]::IsNullOrWhiteSpace($nativeArchitecture)) {
+    throw "Cannot determine the native Windows host architecture."
+}
+$hostArch = switch ($nativeArchitecture.ToLowerInvariant()) {
+    "arm64" { "arm64" }
+    "amd64" { "x64" }
+    "x86_64" { "x64" }
+    default {
+        throw "Unsupported native Windows host architecture '$nativeArchitecture'."
+    }
 }
 if ([string]::IsNullOrWhiteSpace($requestedArch)) {
     $requestedArch = $hostArch
@@ -224,21 +419,28 @@ if ([string]::IsNullOrWhiteSpace($compatSetting)) {
     $compatOutput = Get-FullPath -Path $compatSetting -Base $invocationRoot
 }
 $skipCompatCopy = Get-EnvironmentValue -Name "ZANNA_IDE_SKIP_COMPAT_COPY" -Default "0"
-$zanna = Join-Path $toolBuildDir "src\tools\zanna\$buildType\zanna.exe"
-$targetZanna = Join-Path $buildDir "src\tools\zanna\$buildType\zanna.exe"
+if ($skipCompatCopy -notin @("0", "1")) {
+    throw "ZANNA_IDE_SKIP_COMPAT_COPY must be 0 or 1; received '$skipCompatCopy'."
+}
+$zanna = Resolve-ZannaExecutable -Tree $toolBuildDir -Configuration $buildType
+$targetZanna = Resolve-ZannaExecutable -Tree $buildDir -Configuration $buildType
+if ($ideArch -ne $hostArch -and (Test-PathsEqual -Left $toolBuildDir -Right $buildDir)) {
+    throw "Cross-architecture Studio builds require distinct host-tool and target-runtime CMake trees."
+}
 
 function Ensure-ZannaBuild {
     param(
         [Parameter(Mandatory = $true)][string]$Tree,
         [Parameter(Mandatory = $true)][string]$Architecture,
         [Parameter(Mandatory = $true)][bool]$TreeIsExplicit,
-        [Parameter(Mandatory = $true)][string]$ExpectedExecutable,
         [Parameter(Mandatory = $true)][string]$Description
     )
 
-    Write-Host "$Description not found at $ExpectedExecutable"
+    Write-Host "$Description not found in $Tree"
     $cache = Join-Path $Tree "CMakeCache.txt"
     if (Test-Path -LiteralPath $cache -PathType Leaf) {
+        Assert-CMakeTreeArchitecture -Cache $cache -Architecture $Architecture `
+            -Description $Description
         Write-Host "Reusing the existing CMake configuration for $Description."
     } else {
         Write-Host "Configuring $Description..."
@@ -255,20 +457,32 @@ function Ensure-ZannaBuild {
             ([Environment]::GetEnvironmentVariable("ZANNA_EXTRA_CMAKE_ARGS", "Process")))
         Invoke-CheckedNative -FilePath "cmake" -Arguments $configureArguments `
             -FailureMessage "CMake configuration failed for $Description"
+        if (-not (Test-Path -LiteralPath $cache -PathType Leaf)) {
+            throw "CMake did not produce an expected cache for $Description`: $cache"
+        }
+        Assert-CMakeTreeArchitecture -Cache $cache -Architecture $Architecture `
+            -Description $Description
     }
     Write-Host "Building $Description..."
     Invoke-CheckedNative -FilePath "cmake" `
         -Arguments @("--build", $Tree, "--config", $buildType, "--target", "zanna", "-j", [string]$jobs) `
         -FailureMessage "$Description build failed"
-    if (-not (Test-Path -LiteralPath $ExpectedExecutable -PathType Leaf)) {
-        throw "$Description still not found at $ExpectedExecutable"
+    $resolvedExecutable =
+        Resolve-ZannaExecutable -Tree $Tree -Configuration $buildType
+    if (-not (Test-Path -LiteralPath $resolvedExecutable -PathType Leaf)) {
+        throw "$Description still not found in $Tree"
     }
 }
 
-function Write-BuildInfo {
-    param([Parameter(Mandatory = $true)][string]$Binary)
+function Write-StagedBuildInfo {
+    param(
+        [Parameter(Mandatory = $true)][string]$Binary,
+        [Parameter(Mandatory = $true)][string]$PublishedBinary,
+        [Parameter(Mandatory = $true)][string]$MetadataPath,
+        [Parameter(Mandatory = $true)][ValidateSet("arm64", "x64")][string]$Architecture,
+        [Parameter(Mandatory = $true)][string]$ZannaExecutable
+    )
 
-    $infoPath = Join-Path (Split-Path -Parent $Binary) "zannastudio.buildinfo"
     $versionPath = Join-Path $repoRoot "src\buildmeta\VERSION"
     $version = if (Test-Path -LiteralPath $versionPath -PathType Leaf) {
         ([string](Get-Content -LiteralPath $versionPath -TotalCount 1)).Trim()
@@ -278,12 +492,15 @@ function Write-BuildInfo {
     if ([string]::IsNullOrWhiteSpace($version)) {
         $version = "unknown"
     }
+    $diffStatus = 1
     $savedErrorActionPreference = $ErrorActionPreference
     try {
         $ErrorActionPreference = "Continue"
         $revision = (& git -C $repoRoot rev-parse --short HEAD 2>$null | Select-Object -First 1)
-        & git -C $repoRoot diff --quiet --ignore-submodules -- 2>$null
-        $diffStatus = $LASTEXITCODE
+        $statusLines = @(& git -C $repoRoot status --porcelain --untracked-files=normal 2>$null)
+        if ($LASTEXITCODE -eq 0) {
+            $diffStatus = if ($statusLines.Count -eq 0) { 0 } else { 1 }
+        }
     } finally {
         $ErrorActionPreference = $savedErrorActionPreference
     }
@@ -291,21 +508,139 @@ function Write-BuildInfo {
         $revision = "unknown"
     }
     $dirty = if ($diffStatus -eq 0) { "" } else { " dirty" }
+    $binaryItem = Get-Item -LiteralPath $Binary
+    if ($binaryItem.Length -le 0) {
+        throw "Zanna Studio output is empty: $Binary"
+    }
+    $sha256 = (Get-FileHash -LiteralPath $Binary -Algorithm SHA256).Hash.ToLowerInvariant()
     $lines = @(
         "Zanna Studio $version",
-        "Build: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss.fff')",
+        "Schema: 1",
+        "Build: $([DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ss.fffZ', [Globalization.CultureInfo]::InvariantCulture))",
         "Source: $revision$dirty",
-        "Output: $Binary",
-        "Zanna: $zanna"
+        "Architecture: $Architecture",
+        "Size: $($binaryItem.Length)",
+        "SHA256: $sha256",
+        "Output: $PublishedBinary",
+        "Zanna: $ZannaExecutable"
     )
-    [IO.File]::WriteAllLines($infoPath, $lines, [Text.UTF8Encoding]::new($false))
-    return $infoPath
+    [IO.File]::WriteAllLines($MetadataPath, $lines, [Text.UTF8Encoding]::new($false))
 }
 
+function Publish-StudioArtifact {
+    param(
+        [Parameter(Mandatory = $true)][string]$StagedBinary,
+        [Parameter(Mandatory = $true)][string]$StagedMetadata,
+        [Parameter(Mandatory = $true)][string]$DestinationBinary,
+        [Parameter(Mandatory = $true)][string]$DestinationMetadata
+    )
+
+    $token = [Guid]::NewGuid().ToString("N")
+    $binaryBackup = "$DestinationBinary.zanna-backup-$token"
+    $metadataBackup = "$DestinationMetadata.zanna-backup-$token"
+    $hadBinary = Test-Path -LiteralPath $DestinationBinary -PathType Leaf
+    $hadMetadata = Test-Path -LiteralPath $DestinationMetadata -PathType Leaf
+    $publishedBinary = $false
+    $publishedMetadata = $false
+    $publicationSucceeded = $false
+    try {
+        if ($hadBinary) {
+            Move-Item -LiteralPath $DestinationBinary -Destination $binaryBackup
+        }
+        if ($hadMetadata) {
+            Move-Item -LiteralPath $DestinationMetadata -Destination $metadataBackup
+        }
+        Move-Item -LiteralPath $StagedBinary -Destination $DestinationBinary
+        $publishedBinary = $true
+        Move-Item -LiteralPath $StagedMetadata -Destination $DestinationMetadata
+        $publishedMetadata = $true
+        $publicationSucceeded = $true
+    } catch {
+        if ($publishedMetadata -and
+            (Test-Path -LiteralPath $DestinationMetadata -PathType Leaf)) {
+            Remove-Item -LiteralPath $DestinationMetadata -Force
+        }
+        if ($publishedBinary -and
+            (Test-Path -LiteralPath $DestinationBinary -PathType Leaf)) {
+            Remove-Item -LiteralPath $DestinationBinary -Force
+        }
+        if ($hadMetadata -and (Test-Path -LiteralPath $metadataBackup -PathType Leaf)) {
+            Move-Item -LiteralPath $metadataBackup -Destination $DestinationMetadata
+        }
+        if ($hadBinary -and (Test-Path -LiteralPath $binaryBackup -PathType Leaf)) {
+            Move-Item -LiteralPath $binaryBackup -Destination $DestinationBinary
+        }
+        throw
+    } finally {
+        if ($publicationSucceeded) {
+            foreach ($backup in @($binaryBackup, $metadataBackup)) {
+                if (Test-Path -LiteralPath $backup -PathType Leaf) {
+                    Remove-Item -LiteralPath $backup -Force
+                }
+            }
+        }
+    }
+}
+
+$outputDir = Split-Path -Parent $outputFile
+$outputMetadata = Join-Path $outputDir "zannastudio.buildinfo"
+$compatDir = Split-Path -Parent $compatOutput
+$compatMetadata = Join-Path $compatDir "zannastudio.buildinfo"
+$automationPaths = @(
+    $buildDir,
+    $toolBuildDir,
+    $ideBinDir,
+    $outputFile,
+    $outputMetadata,
+    $zanna,
+    $targetZanna
+)
+$artifactPaths = @($outputFile, $outputMetadata)
+if ($skipCompatCopy -eq "0" -and
+    -not (Test-PathsEqual -Left $outputFile -Right $compatOutput)) {
+    $automationPaths += @($compatOutput, $compatMetadata)
+    $artifactPaths += @($compatOutput, $compatMetadata)
+}
+foreach ($automationPath in $automationPaths) {
+    Assert-SafeAutomationPath -Path $automationPath -Description "Zanna Studio automation path"
+}
+foreach ($pathEntry in $artifactPaths) {
+    Assert-ArtifactDestination -Path $pathEntry -Description "Zanna Studio output"
+}
+foreach ($protectedPath in @(
+        (Join-Path $ideDir "zanna.project"),
+        $zanna,
+        $targetZanna,
+        (Join-Path $toolBuildDir "src\tools\zanna\zanna.exe"),
+        (Join-Path $buildDir "src\tools\zanna\zanna.exe"),
+        $outputMetadata)) {
+    if (Test-PathsEqual -Left $outputFile -Right $protectedPath) {
+        throw "Zanna Studio output collides with a protected input or metadata path: $outputFile"
+    }
+}
+if ($skipCompatCopy -eq "0" -and
+    -not (Test-PathsEqual -Left $outputFile -Right $compatOutput)) {
+    $collisionPairs = @(
+        [pscustomobject]@{ Left = $compatOutput; Right = $outputMetadata },
+        [pscustomobject]@{ Left = $compatMetadata; Right = $outputFile },
+        [pscustomobject]@{ Left = $compatMetadata; Right = $outputMetadata },
+        [pscustomobject]@{ Left = $compatOutput; Right = $zanna },
+        [pscustomobject]@{ Left = $compatOutput; Right = $targetZanna }
+    )
+    foreach ($pair in $collisionPairs) {
+        if (Test-PathsEqual -Left $pair.Left -Right $pair.Right) {
+            throw "Zanna Studio compatibility output collides with another artifact: $($pair.Left)"
+        }
+    }
+}
+
+$temporaryPaths = [Collections.Generic.List[string]]::new()
 $previousBuildDir = [Environment]::GetEnvironmentVariable("ZANNA_BUILD_DIR", "Process")
 $env:ZANNA_BUILD_DIR = $buildDir
-Push-Location $repoRoot
+$locationPushed = $false
 try {
+    Push-Location $repoRoot
+    $locationPushed = $true
     Write-Host "Building Zanna Studio as a native $ideArch binary"
     Write-Host "=============================================="
     Write-Host ""
@@ -318,69 +653,111 @@ try {
     if (-not (Test-Path -LiteralPath (Join-Path $ideDir "zanna.project") -PathType Leaf)) {
         throw "No zanna.project found in $ideDir"
     }
-    if (-not (Test-Path -LiteralPath $zanna -PathType Leaf)) {
-        Ensure-ZannaBuild -Tree $toolBuildDir -Architecture $hostArch `
-            -TreeIsExplicit $toolBuildDirExplicit -ExpectedExecutable $zanna `
+    $toolCache = Join-Path $toolBuildDir "CMakeCache.txt"
+    if (Test-Path -LiteralPath $toolCache -PathType Leaf) {
+        Assert-CMakeTreeArchitecture -Cache $toolCache -Architecture $hostArch `
             -Description "host Zanna tool"
     }
-    if ($toolBuildDir -ine $buildDir -and
-        -not (Test-Path -LiteralPath $targetZanna -PathType Leaf)) {
-        Ensure-ZannaBuild -Tree $buildDir -Architecture $ideArch `
-            -TreeIsExplicit $buildDirExplicit -ExpectedExecutable $targetZanna `
+    $targetCache = Join-Path $buildDir "CMakeCache.txt"
+    if (-not (Test-PathsEqual -Left $toolBuildDir -Right $buildDir) -and
+        (Test-Path -LiteralPath $targetCache -PathType Leaf)) {
+        Assert-CMakeTreeArchitecture -Cache $targetCache -Architecture $ideArch `
             -Description "target-architecture Zanna runtime"
     }
+    if (-not (Test-Path -LiteralPath $zanna -PathType Leaf)) {
+        Ensure-ZannaBuild -Tree $toolBuildDir -Architecture $hostArch `
+            -TreeIsExplicit $toolBuildDirExplicit `
+            -Description "host Zanna tool"
+        $zanna = Resolve-ZannaExecutable -Tree $toolBuildDir -Configuration $buildType
+    }
+    Assert-PortableExecutableArchitecture -Binary $zanna -Architecture $hostArch
+    if (-not (Test-PathsEqual -Left $toolBuildDir -Right $buildDir) -and
+        -not (Test-Path -LiteralPath $targetZanna -PathType Leaf)) {
+        Ensure-ZannaBuild -Tree $buildDir -Architecture $ideArch `
+            -TreeIsExplicit $buildDirExplicit `
+            -Description "target-architecture Zanna runtime"
+        $targetZanna = Resolve-ZannaExecutable -Tree $buildDir -Configuration $buildType
+    }
+    if (-not (Test-PathsEqual -Left $toolBuildDir -Right $buildDir)) {
+        Assert-PortableExecutableArchitecture -Binary $targetZanna -Architecture $ideArch
+    }
 
-    $outputDir = Split-Path -Parent $outputFile
     [void](New-Item -ItemType Directory -Path $outputDir -Force)
+    if ($skipCompatCopy -eq "0" -and
+        -not (Test-PathsEqual -Left $outputFile -Right $compatOutput)) {
+        [void](New-Item -ItemType Directory -Path $compatDir -Force)
+    }
     if ($clean) {
-        Write-Host "Cleaning existing Zanna Studio binary..."
-        foreach ($path in @(
-                $outputFile,
-                (Join-Path $outputDir "zannastudio.buildinfo"),
-                $compatOutput,
-                (Join-Path (Split-Path -Parent $compatOutput) "zannastudio.buildinfo"))) {
+        Write-Host "Cleaning existing Zanna Studio artifacts..."
+        $cleanPaths = @($outputFile, $outputMetadata)
+        if ($skipCompatCopy -eq "0" -and
+            -not (Test-PathsEqual -Left $outputFile -Right $compatOutput)) {
+            $cleanPaths += @($compatOutput, $compatMetadata)
+        }
+        foreach ($path in $cleanPaths) {
             if (Test-Path -LiteralPath $path -PathType Leaf) {
                 Remove-Item -LiteralPath $path -Force
             }
         }
     }
 
-    $buildArguments = @("build", $ideDir, "--arch", $ideArch, "-o", $outputFile)
+    $buildToken = [Guid]::NewGuid().ToString("N")
+    $stagedOutput = Join-Path $outputDir ".zannastudio-$PID-$buildToken.tmp.exe"
+    $stagedMetadata = Join-Path $outputDir ".zannastudio-$PID-$buildToken.tmp.buildinfo"
+    $temporaryPaths.Add($stagedOutput)
+    $temporaryPaths.Add($stagedMetadata)
+    $buildArguments = @("build", $ideDir, "--arch", $ideArch, "-o", $stagedOutput)
     Write-Host "Compiling..."
     $savedErrorActionPreference = $ErrorActionPreference
     try {
         # Windows PowerShell 5.1 promotes redirected native stderr to error
         # records even when Zanna is only reporting normal linker progress.
         $ErrorActionPreference = "Continue"
-        & $zanna @buildArguments 2>$null | ForEach-Object { Write-Host $_ }
+        $compilerOutput = @(& $zanna @buildArguments 2>&1)
         $buildStatus = $LASTEXITCODE
     } finally {
         $ErrorActionPreference = $savedErrorActionPreference
     }
+    $compilerOutput | ForEach-Object { Write-Host $_ }
     if ($buildStatus -ne 0) {
-        Write-Host "FAILED"
-        try {
-            $ErrorActionPreference = "Continue"
-            & $zanna @buildArguments 2>&1 | ForEach-Object { Write-Host $_ }
-        } finally {
-            $ErrorActionPreference = $savedErrorActionPreference
-        }
-        exit 1
+        throw "Zanna Studio compilation failed (exit $buildStatus)."
     }
 
+    Assert-PortableExecutableArchitecture -Binary $stagedOutput -Architecture $ideArch
+    Write-StagedBuildInfo -Binary $stagedOutput -PublishedBinary $outputFile `
+        -MetadataPath $stagedMetadata -Architecture $ideArch -ZannaExecutable $zanna
+    Publish-StudioArtifact -StagedBinary $stagedOutput -StagedMetadata $stagedMetadata `
+        -DestinationBinary $outputFile -DestinationMetadata $outputMetadata
     Write-Host "OK"
-    $buildInfo = Write-BuildInfo -Binary $outputFile
-    if ($skipCompatCopy -ne "1" -and $outputFile -ine $compatOutput) {
-        $compatDir = Split-Path -Parent $compatOutput
-        [void](New-Item -ItemType Directory -Path $compatDir -Force)
-        Copy-Item -LiteralPath $outputFile -Destination $compatOutput -Force
-        [void](Write-BuildInfo -Binary $compatOutput)
+    if ($skipCompatCopy -eq "0" -and
+        -not (Test-PathsEqual -Left $outputFile -Right $compatOutput)) {
+        $compatToken = [Guid]::NewGuid().ToString("N")
+        $stagedCompat =
+            Join-Path $compatDir ".zannastudio-compat-$PID-$compatToken.tmp.exe"
+        $stagedCompatMetadata =
+            Join-Path $compatDir ".zannastudio-compat-$PID-$compatToken.tmp.buildinfo"
+        $temporaryPaths.Add($stagedCompat)
+        $temporaryPaths.Add($stagedCompatMetadata)
+        Copy-Item -LiteralPath $outputFile -Destination $stagedCompat
+        Assert-PortableExecutableArchitecture -Binary $stagedCompat -Architecture $ideArch
+        Write-StagedBuildInfo -Binary $stagedCompat -PublishedBinary $compatOutput `
+            -MetadataPath $stagedCompatMetadata -Architecture $ideArch `
+            -ZannaExecutable $zanna
+        Publish-StudioArtifact -StagedBinary $stagedCompat `
+            -StagedMetadata $stagedCompatMetadata -DestinationBinary $compatOutput `
+            -DestinationMetadata $compatMetadata
         Write-Host "Compatibility copy: $compatOutput"
     }
     Write-Host "Built: $outputFile"
-    Write-Host "Build info: $buildInfo"
-    exit 0
+    Write-Host "Build info: $outputMetadata"
 } finally {
-    Pop-Location
+    foreach ($temporaryPath in $temporaryPaths) {
+        if (Test-Path -LiteralPath $temporaryPath -PathType Leaf) {
+            Remove-Item -LiteralPath $temporaryPath -Force
+        }
+    }
+    if ($locationPushed) {
+        Pop-Location
+    }
     [Environment]::SetEnvironmentVariable("ZANNA_BUILD_DIR", $previousBuildDir, "Process")
 }

@@ -19,6 +19,12 @@
 //
 //===----------------------------------------------------------------------===//
 
+// COM calls are part of the assertions below, so eliding assert would skip
+// provider initialization and turn later checks into null dereferences.
+#ifdef NDEBUG
+#undef NDEBUG
+#endif
+
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 

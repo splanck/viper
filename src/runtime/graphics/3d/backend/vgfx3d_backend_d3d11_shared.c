@@ -1389,6 +1389,29 @@ int vgfx3d_d3d11_should_abandon_depth_probe(uint32_t pending_polls) {
     return pending_polls >= VGFX3D_D3D11_DEPTH_PROBE_PENDING_POLL_LIMIT;
 }
 
+/// @brief Require both halves of the exported frame protocol to be idle.
+/// @details EndFrame clears the active bit before Present consumes the pending
+///   bit. Treating only `frame_active` as busy allowed target and post-FX
+///   mutation to invalidate a completed frame before it reached the swapchain.
+int vgfx3d_d3d11_frame_state_is_idle(int8_t frame_active, int8_t frame_pending_present) {
+    return !frame_active && !frame_pending_present;
+}
+
+/// @brief Validate the state required by an ordinary color draw.
+/// @details Shadow rendering has a dedicated submission entry point. Main and
+///   overlay draws must therefore be inside BeginFrame/EndFrame, outside a
+///   shadow pass, and have a concrete color target and positive viewport.
+int vgfx3d_d3d11_draw_submission_is_ready(int8_t frame_active,
+                                          int32_t shadow_pass_slot,
+                                          int has_device_context,
+                                          uint32_t render_target_count,
+                                          int has_primary_render_target,
+                                          int32_t target_width,
+                                          int32_t target_height) {
+    return frame_active && shadow_pass_slot < 0 && has_device_context && render_target_count > 0 &&
+           has_primary_render_target && target_width > 0 && target_height > 0;
+}
+
 /// @brief Pick the right render-target classification for the current draw context.
 /// Order of priority: explicit RTT > swapchain (no postfx) > overlay (loading existing
 /// color) > scene (HDR intermediate that postfx will tonemap).

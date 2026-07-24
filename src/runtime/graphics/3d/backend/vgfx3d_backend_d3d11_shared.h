@@ -464,6 +464,16 @@ int vgfx3d_d3d11_compute_gpu_time_us(int disjoint,
 int vgfx3d_d3d11_should_abandon_frame_timing(uint32_t pending_polls);
 /// @brief Decide when a perpetually busy depth-probe staging map should be abandoned.
 int vgfx3d_d3d11_should_abandon_depth_probe(uint32_t pending_polls);
+/// @brief Return non-zero only when no frame is active or awaiting presentation.
+int vgfx3d_d3d11_frame_state_is_idle(int8_t frame_active, int8_t frame_pending_present);
+/// @brief Validate the CPU-side state required by ordinary color draw submission.
+int vgfx3d_d3d11_draw_submission_is_ready(int8_t frame_active,
+                                          int32_t shadow_pass_slot,
+                                          int has_device_context,
+                                          uint32_t render_target_count,
+                                          int has_primary_render_target,
+                                          int32_t target_width,
+                                          int32_t target_height);
 /// @brief Pick the right render-target classification (RTT > swapchain > overlay > scene).
 vgfx3d_d3d11_target_kind_t vgfx3d_d3d11_choose_target_kind(int8_t rtt_active,
                                                            int8_t gpu_postfx_enabled,

@@ -39,6 +39,7 @@
 #include <filesystem>
 #include <iomanip>
 #include <limits>
+#include <map>
 #include <optional>
 #include <set>
 #include <sstream>
@@ -550,6 +551,174 @@ void validateWindowsPayloadExecutable(const fs::path &path, const std::string &a
     }
 }
 
+/// @brief Parse an unsigned decimal metadata field without locale or sign ambiguity.
+std::optional<uint64_t> parseUnsignedDecimal(std::string_view text) {
+    if (text.empty())
+        return std::nullopt;
+    uint64_t value = 0;
+    for (const char ch : text) {
+        if (ch < '0' || ch > '9')
+            return std::nullopt;
+        const uint64_t digit = static_cast<uint64_t>(ch - '0');
+        if (value > (std::numeric_limits<uint64_t>::max() - digit) / 10U)
+            return std::nullopt;
+        value = value * 10U + digit;
+    }
+    return value;
+}
+
+/// @brief Validate the canonical Zanna Studio binary/buildinfo provenance pair.
+/// @details Any staged Studio-owned asset opts into the component, but the component is
+///          packageable only when its canonical executable and schema-1 build metadata are
+///          present as ordinary files. The metadata must bind the exact PE bytes, size, and
+///          selected target architecture.
+/// @return True when the manifest contains a complete, validated Studio component.
+bool validateZannaStudioArtifacts(const ToolchainInstallManifest &manifest,
+                                  const std::string &architecture) {
+    const ToolchainFileEntry *studioExecutable = nullptr;
+    const ToolchainFileEntry *studioBuildInfo = nullptr;
+    bool hasStudioAsset = false;
+    for (const ToolchainFileEntry &file : manifest.files) {
+        std::string normalized = lowerAscii(file.stagedRelativePath);
+        std::replace(normalized.begin(), normalized.end(), '\\', '/');
+        if (toolchainComponentForPath(normalized, false) == kComponentZannaStudio)
+            hasStudioAsset = true;
+        if (normalized == "bin/zannastudio.exe") {
+            if (studioExecutable)
+                throw std::runtime_error("duplicate canonical Zanna Studio executable");
+            studioExecutable = &file;
+        } else if (normalized == "bin/zannastudio.buildinfo") {
+            if (studioBuildInfo)
+                throw std::runtime_error("duplicate canonical Zanna Studio build metadata");
+            studioBuildInfo = &file;
+        }
+    }
+    if (!hasStudioAsset)
+        return false;
+    if (!studioExecutable || !studioBuildInfo) {
+        throw std::runtime_error("Zanna Studio packaging requires bin/zannastudio.exe and "
+                                 "bin/zannastudio.buildinfo");
+    }
+    if (studioExecutable->symlink || !studioExecutable->executable ||
+        !fs::is_regular_file(studioExecutable->stagedAbsolutePath)) {
+        throw std::runtime_error(
+            "bin/zannastudio.exe must be an executable, non-symlink regular file");
+    }
+    if (studioBuildInfo->symlink || studioBuildInfo->executable ||
+        !fs::is_regular_file(studioBuildInfo->stagedAbsolutePath)) {
+        throw std::runtime_error(
+            "bin/zannastudio.buildinfo must be a non-executable, non-symlink regular file");
+    }
+
+    const std::vector<uint8_t> executableBytes =
+        readFile(studioExecutable->stagedAbsolutePath.string());
+    if (executableBytes.empty() || studioExecutable->sizeBytes != executableBytes.size())
+        throw std::runtime_error("Zanna Studio executable size disagrees with the stage manifest");
+    validateWindowsPayloadExecutable(studioExecutable->stagedAbsolutePath, architecture);
+
+    std::error_code sizeError;
+    const uintmax_t buildInfoSize = fs::file_size(studioBuildInfo->stagedAbsolutePath, sizeError);
+    if (sizeError || buildInfoSize == 0 || buildInfoSize > 16384U ||
+        studioBuildInfo->sizeBytes != buildInfoSize) {
+        throw std::runtime_error("Zanna Studio build metadata has an invalid size");
+    }
+    const std::vector<uint8_t> buildInfoBytes =
+        readFile(studioBuildInfo->stagedAbsolutePath.string());
+    if (std::find(buildInfoBytes.begin(), buildInfoBytes.end(), uint8_t{0}) != buildInfoBytes.end())
+        throw std::runtime_error("Zanna Studio build metadata contains a NUL byte");
+    const std::string buildInfo(buildInfoBytes.begin(), buildInfoBytes.end());
+    std::istringstream input(buildInfo);
+    std::string line;
+    if (!std::getline(input, line)) {
+        throw std::runtime_error("Zanna Studio build metadata is empty");
+    }
+    if (!line.empty() && line.back() == '\r')
+        line.pop_back();
+    if (line != "Zanna Studio " + manifest.productVersion) {
+        throw std::runtime_error(
+            "Zanna Studio build metadata version does not match the toolchain package");
+    }
+
+    std::map<std::string, std::string> fields;
+    while (std::getline(input, line)) {
+        if (line.size() > 4096U)
+            throw std::runtime_error("Zanna Studio build metadata contains an oversized line");
+        if (!line.empty() && line.back() == '\r')
+            line.pop_back();
+        if (line.empty())
+            continue;
+        const size_t separator = line.find(": ");
+        if (separator == std::string::npos || separator == 0 || separator + 2U == line.size()) {
+            throw std::runtime_error("Zanna Studio build metadata contains an invalid field");
+        }
+        const std::string key = line.substr(0, separator);
+        const std::string value = line.substr(separator + 2U);
+        if (!fields.emplace(key, value).second)
+            throw std::runtime_error("Zanna Studio build metadata contains a duplicate field");
+    }
+    for (const std::string_view required :
+         {"Schema", "Build", "Source", "Architecture", "Size", "SHA256", "Output", "Zanna"}) {
+        if (fields.find(std::string(required)) == fields.end())
+            throw std::runtime_error("Zanna Studio build metadata is missing field " +
+                                     std::string(required));
+    }
+    if (fields.size() != 8U)
+        throw std::runtime_error("Zanna Studio build metadata contains an unknown field");
+    if (fields["Schema"] != "1")
+        throw std::runtime_error("Zanna Studio build metadata uses an unsupported schema");
+    const std::string expectedArchitecture = architecture.empty() ? "x64" : architecture;
+    if (fields["Architecture"] != expectedArchitecture)
+        throw std::runtime_error("Zanna Studio build metadata architecture does not match package");
+    const std::optional<uint64_t> recordedSize = parseUnsignedDecimal(fields["Size"]);
+    if (!recordedSize || *recordedSize != executableBytes.size())
+        throw std::runtime_error("Zanna Studio build metadata size does not match executable");
+    const std::string &recordedHash = fields["SHA256"];
+    if (recordedHash.size() != 64U ||
+        !std::all_of(
+            recordedHash.begin(),
+            recordedHash.end(),
+            [](char ch) { return (ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'f'); }) ||
+        recordedHash != sha256Hex(executableBytes.data(), executableBytes.size())) {
+        throw std::runtime_error("Zanna Studio build metadata SHA-256 does not match executable");
+    }
+    return true;
+}
+
+/// @brief Rebind validated Studio metadata to the exact PE bytes placed in the payload.
+/// @details Nested Authenticode signing can change the executable after the staging buildinfo was
+///          produced. Updating only the already-validated Size and SHA256 fields preserves the
+///          provenance fields while keeping the installed pair internally consistent.
+std::vector<uint8_t> bindZannaStudioBuildInfo(const std::vector<uint8_t> &original,
+                                              const std::vector<uint8_t> &packagedExecutable) {
+    std::istringstream input(std::string(original.begin(), original.end()));
+    std::ostringstream output;
+    std::string line;
+    bool replacedSize = false;
+    bool replacedHash = false;
+    while (std::getline(input, line)) {
+        if (!line.empty() && line.back() == '\r')
+            line.pop_back();
+        if (line.rfind("Size: ", 0) == 0) {
+            if (replacedSize)
+                throw std::runtime_error("duplicate Zanna Studio Size metadata during rebinding");
+            output << "Size: " << packagedExecutable.size() << '\n';
+            replacedSize = true;
+        } else if (line.rfind("SHA256: ", 0) == 0) {
+            if (replacedHash)
+                throw std::runtime_error("duplicate Zanna Studio SHA256 metadata during rebinding");
+            output << "SHA256: " << sha256Hex(packagedExecutable.data(), packagedExecutable.size())
+                   << '\n';
+            replacedHash = true;
+        } else {
+            output << line << '\n';
+        }
+    }
+    if (!replacedSize || !replacedHash)
+        throw std::runtime_error("cannot rebind incomplete Zanna Studio build metadata");
+    const std::string rebound = output.str();
+    return {rebound.begin(), rebound.end()};
+}
+
 /// @brief Translate a PE relative virtual address to a file offset.
 /// @details Searches @p sections for the one containing @p rva and maps it into
 ///          that section's raw data. Returns nullopt when no section covers the
@@ -1015,15 +1184,16 @@ std::string toolchainWindowsPrerequisitesReadme(std::string_view installDirName)
     readme += installDirName;
     readme += ", and its machine-scope root is %ProgramFiles%\\";
     readme += installDirName;
-    readme += ". Setup also supports a validated custom folder.\r\n"
-              "\r\n"
-              "The Zanna Developer Prompt configures ZANNA_HOME, PATH, Zanna_DIR, and "
-              "CMAKE_PREFIX_PATH so CMake projects can use find_package(Zanna CONFIG REQUIRED).\r\n"
-              "\r\n"
-              "Start Menu shortcuts include a Zanna developer prompt, Zanna Studio, and the VS Code "
-              "extension installer when a verified .vsix was packaged. Settings > Apps supports "
-              "Modify, Repair, and Uninstall. Direct uninstall.exe removal safely hands off to the "
-              "verified maintenance cache before deleting the install directory.\r\n";
+    readme +=
+        ". Setup also supports a validated custom folder.\r\n"
+        "\r\n"
+        "The Zanna Developer Prompt configures ZANNA_HOME, PATH, Zanna_DIR, and "
+        "CMAKE_PREFIX_PATH so CMake projects can use find_package(Zanna CONFIG REQUIRED).\r\n"
+        "\r\n"
+        "Start Menu shortcuts include a Zanna developer prompt, Zanna Studio, and the VS Code "
+        "extension installer when a verified .vsix was packaged. Settings > Apps supports "
+        "Modify, Repair, and Uninstall. Direct uninstall.exe removal safely hands off to the "
+        "verified maintenance cache before deleting the install directory.\r\n";
     return readme;
 }
 
@@ -2196,7 +2366,8 @@ void buildWindowsToolchainInstaller(const WindowsToolchainBuildParams &params) {
         hasPackagedVSIX = true;
     }
 
-    bool hasZannaStudioComponent = false;
+    const bool hasZannaStudioComponent =
+        validateZannaStudioArtifacts(params.manifest, params.archStr);
     bool hasSDKComponent = false;
     bool hasSamplesComponent = false;
     bool hasVSCodeComponent = false;
@@ -2205,7 +2376,6 @@ void buildWindowsToolchainInstaller(const WindowsToolchainBuildParams &params) {
             continue;
         const std::string component =
             toolchainComponentForPath(file.stagedRelativePath, hasPackagedVSIX);
-        hasZannaStudioComponent = hasZannaStudioComponent || component == kComponentZannaStudio;
         hasSDKComponent = hasSDKComponent || component == kComponentSDK;
         hasSamplesComponent = hasSamplesComponent || component == kComponentSamples;
         hasVSCodeComponent = hasVSCodeComponent || component == kComponentVSCode;
@@ -2241,12 +2411,31 @@ void buildWindowsToolchainInstaller(const WindowsToolchainBuildParams &params) {
              true});
     }
 
+    std::optional<std::vector<uint8_t>> packagedStudioExecutable;
+    if (hasZannaStudioComponent) {
+        for (const ToolchainFileEntry &file : params.manifest.files) {
+            std::string normalized = lowerAscii(file.stagedRelativePath);
+            std::replace(normalized.begin(), normalized.end(), '\\', '/');
+            if (normalized == "bin/zannastudio.exe") {
+                packagedStudioExecutable =
+                    signWindowsPayloadPe(params.peSigner,
+                                         "bin/zannastudio.exe",
+                                         readFile(file.stagedAbsolutePath.string()),
+                                         params.archStr);
+                break;
+            }
+        }
+        if (!packagedStudioExecutable)
+            throw std::runtime_error("validated Zanna Studio executable disappeared from manifest");
+    }
+
     for (const auto &file : params.manifest.files) {
         if (isToolchainInstallerBootstrapPath(file.stagedRelativePath))
             continue;
         const std::string relInstall =
             sanitizePackageRelativePath(file.stagedRelativePath, "windows toolchain path");
         validateWindowsRelativePath(relInstall, "windows toolchain path");
+        const std::string lowerRel = lowerAscii(relInstall);
         if (file.symlink && !fs::is_regular_file(file.stagedAbsolutePath)) {
             throw std::runtime_error("Windows toolchain installers can only dereference "
                                      "symlinks to regular files: " +
@@ -2254,10 +2443,18 @@ void buildWindowsToolchainInstaller(const WindowsToolchainBuildParams &params) {
         }
         addParentDirs(
             layout.installDirectories, installDirSet, WindowsInstallRoot::InstallDir, relInstall);
-        const auto data = signWindowsPayloadPe(params.peSigner,
-                                               relInstall,
-                                               readFile(file.stagedAbsolutePath.string()),
-                                               params.archStr);
+        std::vector<uint8_t> data;
+        if (lowerRel == "bin/zannastudio.exe" && packagedStudioExecutable) {
+            data = *packagedStudioExecutable;
+        } else {
+            const std::vector<uint8_t> stagedData = readFile(file.stagedAbsolutePath.string());
+            if (lowerRel == "bin/zannastudio.buildinfo" && packagedStudioExecutable) {
+                data = bindZannaStudioBuildInfo(stagedData, *packagedStudioExecutable);
+            } else {
+                data =
+                    signWindowsPayloadPe(params.peSigner, relInstall, stagedData, params.archStr);
+            }
+        }
         const std::string componentId = toolchainComponentForPath(relInstall, hasPackagedVSIX);
         addCompressedPayloadFile(payloadZip,
                                  relInstall,
@@ -2271,7 +2468,6 @@ void buildWindowsToolchainInstaller(const WindowsToolchainBuildParams &params) {
                                  &installedManifestPaths,
                                  componentId);
 
-        const std::string lowerRel = lowerAscii(relInstall);
         const bool isCanonicalLicense =
             lowerRel == "license" || lowerRel == "share/doc/zanna/license";
         const bool isCanonicalReadme =

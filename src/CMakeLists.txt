@@ -417,6 +417,7 @@ if(WIN32)
 
     add_executable(zanna_installer_cleanup WIN32
         tools/windows_installer/WindowsInstallerCleanup.cpp
+        tools/windows_installer/WindowsInstallerCleanupPolicy.cpp
         "${CMAKE_CURRENT_BINARY_DIR}/WindowsInstallerCleanup.rc")
     set_target_properties(zanna_installer_cleanup PROPERTIES
         OUTPUT_NAME "zanna-installer-cleanup"

@@ -11,12 +11,16 @@
 // Key invariants:
 //   - Finite Win32 deadlines never become the INFINITE sentinel.
 //   - Concurrent WinSock initialization is idempotent.
+//   - WinSock startup remains process-lifetime state and never touches the CRT
+//     exit table used by CRT-less native PE executables.
 //   - WinSock error classifiers cover documented non-blocking states.
 //   - WinSock failure helpers publish deterministic errors and outputs.
 //   - Entropy adapters reject invalid outputs without a fallback.
 //   - Filesystem adapters reject malformed UTF-8/UTF-16 at Win32 boundaries
 //     and recursive-delete protection fails closed.
 //   - Machine queries preserve drive roots and long environment-backed paths.
+//   - WASAPI source contracts use the CRT thread entry point, strict negotiated
+//     format metadata, bounded repeated failures, and paired buffer release.
 //
 // Ownership/Lifetime:
 //   - The test owns all worker threads and joins them before exit.
@@ -24,7 +28,8 @@
 // Links: src/runtime/rt_win32_wait.h,
 //        src/runtime/network/rt_socket_platform.h,
 //        src/runtime/network/rt_entropy_platform.h,
-//        src/runtime/io/rt_file_path.h, src/runtime/io/rt_dir_internal.h
+//        src/runtime/io/rt_file_path.h, src/runtime/io/rt_dir_internal.h,
+//        src/lib/audio/src/vaud_platform_win32.c
 //
 //===----------------------------------------------------------------------===//
 
@@ -44,6 +49,9 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
+#include <fstream>
+#include <iterator>
 #include <string>
 #include <thread>
 #include <vector>
@@ -51,6 +59,10 @@
 extern "C" void vm_trap(const char *msg) {
     rt_abort(msg);
 }
+
+#ifndef ZANNA_SOURCE_DIR
+#define ZANNA_SOURCE_DIR "."
+#endif
 
 static void test_finite_wait_deadlines() {
     assert(rt_win32_deadline_after_ms(100, -1) == 100);
@@ -95,6 +107,17 @@ static void test_winsock_error_contracts() {
     assert(!rt_socket_pending_error(INVALID_SOCK, &pending_error));
     assert(pending_error == 0);
     assert(!rt_socket_pending_error(INVALID_SOCK, nullptr));
+}
+
+static void test_winsock_startup_source_contract() {
+    const std::filesystem::path sourcePath = std::filesystem::path(ZANNA_SOURCE_DIR) / "src" /
+                                             "runtime" / "network" / "rt_socket_platform_win.c";
+    std::ifstream input(sourcePath, std::ios::binary);
+    assert(input);
+    const std::string source{std::istreambuf_iterator<char>(input),
+                             std::istreambuf_iterator<char>()};
+    assert(source.find("atexit(") == std::string::npos);
+    assert(source.find("process lifetime") != std::string::npos);
 }
 
 static void test_entropy_argument_contracts() {
@@ -204,14 +227,33 @@ static void test_machine_windows_snapshots() {
     rt_str_release_maybe(home);
 }
 
+static void test_wasapi_backend_source_contracts() {
+    const std::filesystem::path sourcePath = std::filesystem::path(ZANNA_SOURCE_DIR) / "src" /
+                                             "lib" / "audio" / "src" / "vaud_platform_win32.c";
+    std::ifstream input(sourcePath, std::ios::binary);
+    assert(input);
+    const std::string source{std::istreambuf_iterator<char>(input),
+                             std::istreambuf_iterator<char>()};
+    assert(source.find("_beginthreadex") != std::string::npos);
+    assert(source.find("CreateThread(NULL") == std::string::npos);
+    assert(source.find("fmt->nBlockAlign != expected_block_align") != std::string::npos);
+    assert(source.find("fmt->nAvgBytesPerSec != expected_bytes_per_second") != std::string::npos);
+    assert(source.find("consecutive_padding_failures >= 8") != std::string::npos);
+    assert(source.find("consecutive_buffer_failures >= 8") != std::string::npos);
+    assert(source.find("WASAPI failed to release a render buffer") != std::string::npos);
+    assert(source.find("InterlockedExchange(&plat->paused, 0)") != std::string::npos);
+}
+
 int main() {
     test_finite_wait_deadlines();
     test_concurrent_winsock_initialization();
     test_winsock_error_contracts();
+    test_winsock_startup_source_contract();
     test_entropy_argument_contracts();
     test_strict_windows_path_transcoding();
     test_recursive_delete_path_guards();
     test_machine_windows_snapshots();
+    test_wasapi_backend_source_contracts();
     std::puts("RTWindowsRuntimeTests passed");
     return 0;
 }

@@ -21,6 +21,166 @@
 Set-StrictMode -Version 2.0
 $ErrorActionPreference = "Stop"
 
+function ConvertFrom-NativeArgumentString {
+    param([AllowEmptyString()][string]$Value)
+
+    $result = [Collections.Generic.List[string]]::new()
+    if ([string]::IsNullOrWhiteSpace($Value)) {
+        return $result.ToArray()
+    }
+    $current = [Text.StringBuilder]::new()
+    [char]$quote = [char]0
+    for ($index = 0; $index -lt $Value.Length; ++$index) {
+        $character = $Value[$index]
+        if ($quote -ne [char]0) {
+            if ($character -eq $quote) {
+                $quote = [char]0
+            } elseif ($character -eq '\' -and $index + 1 -lt $Value.Length -and
+                      $Value[$index + 1] -eq $quote) {
+                [void]$current.Append($quote)
+                ++$index
+            } else {
+                [void]$current.Append($character)
+            }
+        } elseif ($character -eq '"' -or $character -eq "'") {
+            $quote = $character
+        } elseif ([char]::IsWhiteSpace($character)) {
+            if ($current.Length -gt 0) {
+                $result.Add($current.ToString())
+                [void]$current.Clear()
+            }
+        } else {
+            [void]$current.Append($character)
+        }
+    }
+    if ($quote -ne [char]0) {
+        throw "ZANNA_EXTRA_CMAKE_ARGS contains an unterminated quoted argument."
+    }
+    if ($current.Length -gt 0) {
+        $result.Add($current.ToString())
+    }
+    return $result.ToArray()
+}
+
+function Get-PeArchitecture {
+    param([Parameter(Mandatory = $true)][string]$Binary)
+
+    $machine = 0
+    $stream = [IO.File]::Open(
+        $Binary, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)
+    try {
+        if ($stream.Length -lt 64) {
+            throw "Zanna Studio executable is too small to contain a PE header."
+        }
+        $reader = [IO.BinaryReader]::new($stream, [Text.Encoding]::ASCII, $true)
+        try {
+            if ($reader.ReadUInt16() -ne 0x5A4D) {
+                throw "Zanna Studio executable is missing the MZ signature."
+            }
+            $stream.Position = 0x3c
+            $peOffset = [uint64]$reader.ReadUInt32()
+            if ($peOffset -gt [uint64]($stream.Length - 26)) {
+                throw "Zanna Studio executable has an out-of-range PE header."
+            }
+            $stream.Position = [int64]$peOffset
+            if ($reader.ReadUInt32() -ne 0x00004550) {
+                throw "Zanna Studio executable is missing the PE signature."
+            }
+            $machine = $reader.ReadUInt16()
+            $stream.Position = [int64]($peOffset + 20)
+            $optionalHeaderSize = [uint64]$reader.ReadUInt16()
+            if ($optionalHeaderSize -lt 2 -or
+                $peOffset + 24 + $optionalHeaderSize -gt [uint64]$stream.Length) {
+                throw "Zanna Studio executable has an invalid optional header."
+            }
+            $stream.Position = [int64]($peOffset + 24)
+            if ($reader.ReadUInt16() -ne 0x020B) {
+                throw "Zanna Studio executable is not a PE32+ image."
+            }
+        } finally {
+            $reader.Dispose()
+        }
+    } finally {
+        $stream.Dispose()
+    }
+    switch ($machine) {
+        0x8664 { return "x64" }
+        0xAA64 { return "arm64" }
+        default { throw ("Unsupported Zanna Studio PE machine 0x{0:X4}." -f $machine) }
+    }
+}
+
+function Assert-ZannaStudioArtifact {
+    param(
+        [Parameter(Mandatory = $true)][string]$Binary,
+        [Parameter(Mandatory = $true)][string]$BuildInfo,
+        [Parameter(Mandatory = $true)][string]$ExpectedVersion
+    )
+
+    if (-not (Test-Path -LiteralPath $Binary -PathType Leaf) -or
+        -not (Test-Path -LiteralPath $BuildInfo -PathType Leaf)) {
+        throw "The Windows toolchain build did not produce the required Zanna Studio executable and build metadata."
+    }
+    $binaryItem = Get-Item -LiteralPath $Binary
+    $metadataItem = Get-Item -LiteralPath $BuildInfo
+    if ($binaryItem.Length -le 0 -or $metadataItem.Length -le 0 -or
+        $metadataItem.Length -gt 16384) {
+        throw "The Zanna Studio executable or build metadata has an invalid size."
+    }
+    $fields = @{}
+    $lines = [IO.File]::ReadAllLines($BuildInfo, [Text.UTF8Encoding]::new($false, $true))
+    if ($lines.Count -lt 2 -or
+        -not [string]::Equals(
+            $lines[0], "Zanna Studio $ExpectedVersion", [StringComparison]::Ordinal)) {
+        throw "The Zanna Studio build metadata version does not match this toolchain."
+    }
+    foreach ($line in $lines | Select-Object -Skip 1) {
+        if ($line.Length -gt 4096) {
+            throw "The Zanna Studio build metadata contains an oversized line."
+        }
+        $separator = $line.IndexOf(": ", [StringComparison]::Ordinal)
+        if ($separator -le 0 -or $separator + 2 -ge $line.Length) {
+            throw "The Zanna Studio build metadata contains an invalid field."
+        }
+        $key = $line.Substring(0, $separator)
+        $value = $line.Substring($separator + 2)
+        if ($fields.ContainsKey($key)) {
+            throw "The Zanna Studio build metadata contains duplicate '$key' fields."
+        }
+        $fields[$key] = $value
+    }
+    foreach ($required in @(
+            "Schema", "Build", "Source", "Architecture", "Size", "SHA256", "Output", "Zanna")) {
+        if (-not $fields.ContainsKey($required)) {
+            throw "The Zanna Studio build metadata is missing '$required'."
+        }
+    }
+    if ($fields.Count -ne 8) {
+        throw "The Zanna Studio build metadata contains an unknown field."
+    }
+    if ($fields["Schema"] -ne "1") {
+        throw "The Zanna Studio build metadata uses an unsupported schema."
+    }
+    [uint64]$recordedSize = 0
+    if (-not [uint64]::TryParse(
+            $fields["Size"],
+            [Globalization.NumberStyles]::None,
+            [Globalization.CultureInfo]::InvariantCulture,
+            [ref]$recordedSize) -or
+        $recordedSize -ne [uint64]$binaryItem.Length) {
+        throw "The Zanna Studio build metadata size does not match the executable."
+    }
+    $architecture = Get-PeArchitecture -Binary $Binary
+    if ($fields["Architecture"] -ne $architecture) {
+        throw "The Zanna Studio build metadata architecture does not match the executable."
+    }
+    $actualHash = (Get-FileHash -LiteralPath $Binary -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($fields["SHA256"] -cnotmatch '^[0-9a-f]{64}$' -or
+        $fields["SHA256"] -cne $actualHash) {
+        throw "The Zanna Studio build metadata SHA-256 does not match the executable."
+    }
+}
+
 $scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $repoRoot = [IO.Path]::GetFullPath((Join-Path $scriptRoot ".."))
 $forwardArguments = @($args | ForEach-Object { [string]$_ })
@@ -30,6 +190,51 @@ if (@($forwardArguments | Where-Object { $_ -ieq "--help" -or $_ -eq "-h" }).Cou
     Write-Host "Use --stage-dir, --build-dir, or --verify-only to reuse caller-owned input."
     exit 0
 }
+
+$normalizedArguments = [Collections.Generic.List[string]]::new()
+$usesExistingInput = $false
+$hasExplicitBuildDir = $false
+$inputModeCount = 0
+for ($argumentIndex = 0; $argumentIndex -lt $forwardArguments.Count; ++$argumentIndex) {
+    $argument = $forwardArguments[$argumentIndex]
+    $matchedInputOption = $false
+    foreach ($inputOption in @("--build-dir", "--stage-dir", "--verify-only")) {
+        if ($argument -ieq $inputOption) {
+            if ($argumentIndex + 1 -ge $forwardArguments.Count -or
+                [string]::IsNullOrWhiteSpace($forwardArguments[$argumentIndex + 1])) {
+                throw "$inputOption requires a non-empty value."
+            }
+            $normalizedArguments.Add($inputOption)
+            ++$argumentIndex
+            $normalizedArguments.Add($forwardArguments[$argumentIndex])
+            $matchedInputOption = $true
+        } elseif ($argument.StartsWith(
+                "$inputOption=", [StringComparison]::OrdinalIgnoreCase)) {
+            $value = $argument.Substring($inputOption.Length + 1)
+            if ([string]::IsNullOrWhiteSpace($value)) {
+                throw "$inputOption requires a non-empty value."
+            }
+            $normalizedArguments.Add($inputOption)
+            $normalizedArguments.Add($value)
+            $matchedInputOption = $true
+        }
+        if ($matchedInputOption) {
+            ++$inputModeCount
+            $usesExistingInput = $true
+            if ($inputOption -eq "--build-dir") {
+                $hasExplicitBuildDir = $true
+            }
+            break
+        }
+    }
+    if (-not $matchedInputOption) {
+        $normalizedArguments.Add($argument)
+    }
+}
+if ($inputModeCount -gt 1) {
+    throw "Specify at most one of --build-dir, --stage-dir, or --verify-only."
+}
+$forwardArguments = $normalizedArguments.ToArray()
 
 $buildDir = [Environment]::GetEnvironmentVariable("ZANNA_BUILD_DIR", "Process")
 if ([string]::IsNullOrWhiteSpace($buildDir)) {
@@ -48,7 +253,21 @@ if ([string]::IsNullOrWhiteSpace($buildType)) {
 switch ($buildType.ToLowerInvariant()) {
     "release" { $buildType = "Release" }
     "relwithdebinfo" { $buildType = "RelWithDebInfo" }
-    default { throw "Windows installer builds require ZANNA_BUILD_TYPE=Release or RelWithDebInfo." }
+    "debug" {
+        if (-not $usesExistingInput) {
+            throw "Fresh Windows installer builds require ZANNA_BUILD_TYPE=Release or RelWithDebInfo."
+        }
+        $buildType = "Debug"
+    }
+    "minsizerel" {
+        if (-not $usesExistingInput) {
+            throw "Fresh Windows installer builds require ZANNA_BUILD_TYPE=Release or RelWithDebInfo."
+        }
+        $buildType = "MinSizeRel"
+    }
+    default {
+        throw "ZANNA_BUILD_TYPE must be Debug, Release, RelWithDebInfo, or MinSizeRel."
+    }
 }
 $env:ZANNA_BUILD_TYPE = $buildType
 if ([string]::IsNullOrWhiteSpace(
@@ -56,28 +275,45 @@ if ([string]::IsNullOrWhiteSpace(
     $env:ZANNA_SKIP_INSTALL = "1"
 }
 
-$usesExistingInput = $false
-$hasExplicitBuildDir = $false
-foreach ($argument in $forwardArguments) {
-    if ($argument -ieq "--build-dir" -or
-        $argument.StartsWith("--build-dir=", [StringComparison]::OrdinalIgnoreCase)) {
-        $hasExplicitBuildDir = $true
-        $usesExistingInput = $true
-    } elseif ($argument -ieq "--stage-dir" -or $argument -ieq "--verify-only" -or
-              $argument.StartsWith("--stage-dir=", [StringComparison]::OrdinalIgnoreCase) -or
-              $argument.StartsWith("--verify-only=", [StringComparison]::OrdinalIgnoreCase)) {
-        $usesExistingInput = $true
-    }
-}
-
 if (-not $usesExistingInput) {
     $extraArguments = [Environment]::GetEnvironmentVariable("ZANNA_EXTRA_CMAKE_ARGS", "Process")
+    $extraTokens = @(ConvertFrom-NativeArgumentString -Value ([string]$extraArguments))
     $requireZannaStudio = $false
-    $studioSettings = [regex]::Matches(
-        [string]$extraArguments,
-        '(?i)(?:^|\s)["'']?-DZANNA_INSTALL_ZANNASTUDIO=([^"''\s]+)["'']?(?=\s|$)'
-    )
-    if ($studioSettings.Count -eq 0) {
+    $studioValues = [Collections.Generic.List[bool]]::new()
+    for ($tokenIndex = 0; $tokenIndex -lt $extraTokens.Count; ++$tokenIndex) {
+        $definition = $extraTokens[$tokenIndex]
+        if ($definition -eq "-D") {
+            if ($tokenIndex + 1 -ge $extraTokens.Count) {
+                throw "ZANNA_EXTRA_CMAKE_ARGS ends with an incomplete -D option."
+            }
+            ++$tokenIndex
+            $definition = "-D" + $extraTokens[$tokenIndex]
+        }
+        if (-not $definition.StartsWith(
+                "-DZANNA_INSTALL_ZANNASTUDIO", [StringComparison]::OrdinalIgnoreCase)) {
+            continue
+        }
+        $settingMatch = [regex]::Match(
+            $definition,
+            '^(?i:-DZANNA_INSTALL_ZANNASTUDIO)(?::(?<type>[^=]+))?=(?<value>.*)$')
+        if (-not $settingMatch.Success) {
+            throw "Malformed ZANNA_INSTALL_ZANNASTUDIO CMake definition '$definition'."
+        }
+        $settingType = $settingMatch.Groups["type"].Value
+        if (-not [string]::IsNullOrEmpty($settingType) -and
+            $settingType -ine "BOOL") {
+            throw "ZANNA_INSTALL_ZANNASTUDIO must be untyped or use the BOOL CMake type."
+        }
+        $studioSetting = $settingMatch.Groups["value"].Value
+        if ($studioSetting -match '^(?i:ON|1|TRUE|YES)$') {
+            $studioValues.Add($true)
+        } elseif ($studioSetting -match '^(?i:OFF|0|FALSE|NO)$') {
+            $studioValues.Add($false)
+        } else {
+            throw "Unsupported ZANNA_INSTALL_ZANNASTUDIO value '$studioSetting'."
+        }
+    }
+    if ($studioValues.Count -eq 0) {
         if ([string]::IsNullOrWhiteSpace($extraArguments)) {
             $env:ZANNA_EXTRA_CMAKE_ARGS = "-DZANNA_INSTALL_ZANNASTUDIO=ON"
         } else {
@@ -85,11 +321,11 @@ if (-not $usesExistingInput) {
         }
         $requireZannaStudio = $true
     } else {
-        $studioSetting = $studioSettings[$studioSettings.Count - 1].Groups[1].Value
-        if ($studioSetting -match '^(?i:ON|1|TRUE|YES)$') {
-            $requireZannaStudio = $true
-        } elseif ($studioSetting -notmatch '^(?i:OFF|0|FALSE|NO)$') {
-            throw "Unsupported ZANNA_INSTALL_ZANNASTUDIO value '$studioSetting'."
+        $requireZannaStudio = $studioValues[0]
+        foreach ($studioValue in $studioValues) {
+            if ($studioValue -ne $requireZannaStudio) {
+                throw "Conflicting ZANNA_INSTALL_ZANNASTUDIO definitions are not allowed."
+            }
         }
     }
 
@@ -111,10 +347,17 @@ if (-not $usesExistingInput) {
     if ($requireZannaStudio) {
         $studio = Join-Path $buildDir "zannastudio\zannastudio.exe"
         $studioBuildInfo = Join-Path $buildDir "zannastudio\zannastudio.buildinfo"
-        if (-not (Test-Path -LiteralPath $studio -PathType Leaf) -or
-            -not (Test-Path -LiteralPath $studioBuildInfo -PathType Leaf)) {
-            throw "The Windows toolchain build did not produce the required Zanna Studio executable and build metadata."
+        $versionPath = Join-Path $repoRoot "src\buildmeta\VERSION"
+        if (-not (Test-Path -LiteralPath $versionPath -PathType Leaf)) {
+            throw "Cannot bind Zanna Studio metadata without $versionPath."
         }
+        $expectedVersion = ([string](
+                Get-Content -LiteralPath $versionPath -TotalCount 1)).Trim()
+        if ([string]::IsNullOrWhiteSpace($expectedVersion)) {
+            throw "The Zanna version metadata is empty: $versionPath"
+        }
+        Assert-ZannaStudioArtifact -Binary $studio -BuildInfo $studioBuildInfo `
+            -ExpectedVersion $expectedVersion
     }
 }
 

@@ -1197,8 +1197,11 @@ add_test(NAME zia_zannastudio_phase2_phase3
 set_tests_properties(zia_zannastudio_phase2_phase3 PROPERTIES
         PASS_REGULAR_EXPRESSION "RESULT: ok"
         LABELS "zia;zannastudio;phase2;phase3"
+        # This end-to-end probe launches two compiler processes plus a debug
+        # adapter.  Windows executable scanning can make cold starts outliers,
+        # so keep the probe serial and leave headroom above its bounded waits.
         RUN_SERIAL TRUE
-        TIMEOUT 60)
+        TIMEOUT 120)
 
 add_test(NAME zia_zannastudio_editor_hot_path
         COMMAND $<TARGET_FILE:zia> "${CMAKE_SOURCE_DIR}/src/zannastudio/src/probes/editor_hot_path_probe.zia"

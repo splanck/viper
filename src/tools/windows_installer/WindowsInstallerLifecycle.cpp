@@ -3441,10 +3441,20 @@ int runLifecycle(HINSTANCE instance,
                  Logger &logger) {
     HostOptions options = requestedOptions;
     preflightWindowsVersion(package, logger);
+    InstallationPlan plan = makePlan(package, options);
+    if (options.uninstallWorker &&
+        (package.metadata.packageMode != "maintenance" ||
+         !sameWindowsPath(currentExecutablePath(), plan.cacheExecutable))) {
+        throw std::runtime_error(
+            "maintenance-handoff worker mode requires the verified cache executable");
+    }
+    if (options.elevatedWorker && (plan.scope != InstallScope::Machine || !isProcessElevated())) {
+        throw std::runtime_error("elevated worker mode requires an elevated machine-scope process");
+    }
     waitForHandoffParent(options.handoffParentId);
     const std::optional<InstalledRecord> recoveryRecord =
         readRecoveryRecord(package, options, logger);
-    InstallationPlan plan = makePlan(package, options, recoveryRecord ? &*recoveryRecord : nullptr);
+    plan = makePlan(package, options, recoveryRecord ? &*recoveryRecord : nullptr);
     if (recoveryRecord) {
         if (plan.scope == InstallScope::Machine && !isProcessElevated()) {
             const int elevated = relaunchElevated(package, options, plan, logger);

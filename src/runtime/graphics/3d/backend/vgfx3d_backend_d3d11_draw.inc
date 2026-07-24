@@ -1395,7 +1395,14 @@ static void d3d11_submit_draw(void *ctx_ptr,
 
     (void)win;
     if (!ctx || !cmd || !cmd->vertices || !cmd->indices || cmd->vertex_count == 0 ||
-        cmd->index_count == 0)
+        cmd->index_count == 0 ||
+        !vgfx3d_d3d11_draw_submission_is_ready(ctx->frame_active,
+                                               ctx->shadow_pass_slot,
+                                               ctx->ctx != NULL,
+                                               ctx->current_rtv_count,
+                                               ctx->current_rtvs[0] != NULL,
+                                               ctx->current_width,
+                                               ctx->current_height))
         return;
     vgfx3d_sanitize_draw_command(cmd, &safe_cmd);
     cmd = &safe_cmd;
@@ -1538,7 +1545,14 @@ static void d3d11_submit_draw_instanced(void *ctx_ptr,
 
     (void)win;
     if (!ctx || !cmd || instance_count <= 0 || !cmd->vertices || !cmd->indices ||
-        (!instance_matrices && !cmd->particle_instances))
+        (!instance_matrices && !cmd->particle_instances) ||
+        !vgfx3d_d3d11_draw_submission_is_ready(ctx->frame_active,
+                                               ctx->shadow_pass_slot,
+                                               ctx->ctx != NULL,
+                                               ctx->current_rtv_count,
+                                               ctx->current_rtvs[0] != NULL,
+                                               ctx->current_width,
+                                               ctx->current_height))
         return;
     vgfx3d_sanitize_draw_command(cmd, &safe_cmd);
     cmd = &safe_cmd;

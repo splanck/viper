@@ -890,12 +890,14 @@ if(ZANNA_INSTALL_ZANNASTUDIO)
               "-DOUTPUT_FILE=${_ZANNASTUDIO_NATIVE_BINARY}"
               "-DZANNA_PATH=$<TARGET_FILE:zanna>"
               "-DZANNA_VERSION=${ZANNA_VERSION_STR}"
+              "-DZANNA_ARCH=${_ZANNA_IDE_ARCH}"
               "-DROOT_DIR=${CMAKE_SOURCE_DIR}"
               -P "${CMAKE_SOURCE_DIR}/cmake/WriteZannaStudioBuildInfo.cmake"
       COMMAND ${CMAKE_COMMAND}
               "-DOUTPUT_FILE=${_ZANNASTUDIO_COMPAT_NATIVE_BINARY}"
               "-DZANNA_PATH=$<TARGET_FILE:zanna>"
               "-DZANNA_VERSION=${ZANNA_VERSION_STR}"
+              "-DZANNA_ARCH=${_ZANNA_IDE_ARCH}"
               "-DROOT_DIR=${CMAKE_SOURCE_DIR}"
               -P "${CMAKE_SOURCE_DIR}/cmake/WriteZannaStudioBuildInfo.cmake"
       DEPENDS zanna ${_ZANNASTUDIO_SOURCE_FILES}
@@ -912,26 +914,36 @@ if(ZANNA_INSTALL_ZANNASTUDIO)
     install(PROGRAMS "${_ZANNASTUDIO_BINARY}" "${_ZANNASTUDIO_NATIVE_BINARY}"
             DESTINATION ${CMAKE_INSTALL_BINDIR})
   else()
+    set(_ZANNASTUDIO_STAGED_BINARY
+        "${_ZANNASTUDIO_OUTPUT_DIR}/.zannastudio-staged${CMAKE_EXECUTABLE_SUFFIX}")
+    set(_ZANNASTUDIO_COMPAT_STAGED_BINARY
+        "${_ZANNASTUDIO_COMPAT_OUTPUT_DIR}/.zannastudio-staged${CMAKE_EXECUTABLE_SUFFIX}")
     add_custom_command(
       OUTPUT "${_ZANNASTUDIO_BINARY}" "${_ZANNASTUDIO_BUILDINFO}"
              "${_ZANNASTUDIO_COMPAT_BINARY}" "${_ZANNASTUDIO_COMPAT_BUILDINFO}"
       COMMAND ${CMAKE_COMMAND} -E make_directory "${_ZANNASTUDIO_OUTPUT_DIR}"
       COMMAND ${CMAKE_COMMAND} -E make_directory "${_ZANNASTUDIO_COMPAT_OUTPUT_DIR}"
+      COMMAND ${CMAKE_COMMAND} -E rm -f "${_ZANNASTUDIO_STAGED_BINARY}"
+              "${_ZANNASTUDIO_COMPAT_STAGED_BINARY}"
       COMMAND ${CMAKE_COMMAND} -E env "ZANNA_BUILD_DIR=${CMAKE_BINARY_DIR}"
               "$<TARGET_FILE:zanna>" build "${CMAKE_SOURCE_DIR}/src/zannastudio"
-              --arch "${_ZANNA_IDE_ARCH}" -o "${_ZANNASTUDIO_BINARY}"
+              --arch "${_ZANNA_IDE_ARCH}" -o "${_ZANNASTUDIO_STAGED_BINARY}"
       COMMAND ${CMAKE_COMMAND}
               "-DOUTPUT_FILE=${_ZANNASTUDIO_BINARY}"
+              "-DSTAGED_OUTPUT_FILE=${_ZANNASTUDIO_STAGED_BINARY}"
               "-DZANNA_PATH=$<TARGET_FILE:zanna>"
               "-DZANNA_VERSION=${ZANNA_VERSION_STR}"
+              "-DZANNA_ARCH=${_ZANNA_IDE_ARCH}"
               "-DROOT_DIR=${CMAKE_SOURCE_DIR}"
               -P "${CMAKE_SOURCE_DIR}/cmake/WriteZannaStudioBuildInfo.cmake"
-      COMMAND ${CMAKE_COMMAND} -E copy_if_different
-              "${_ZANNASTUDIO_BINARY}" "${_ZANNASTUDIO_COMPAT_BINARY}"
+      COMMAND ${CMAKE_COMMAND} -E copy
+              "${_ZANNASTUDIO_BINARY}" "${_ZANNASTUDIO_COMPAT_STAGED_BINARY}"
       COMMAND ${CMAKE_COMMAND}
               "-DOUTPUT_FILE=${_ZANNASTUDIO_COMPAT_BINARY}"
+              "-DSTAGED_OUTPUT_FILE=${_ZANNASTUDIO_COMPAT_STAGED_BINARY}"
               "-DZANNA_PATH=$<TARGET_FILE:zanna>"
               "-DZANNA_VERSION=${ZANNA_VERSION_STR}"
+              "-DZANNA_ARCH=${_ZANNA_IDE_ARCH}"
               "-DROOT_DIR=${CMAKE_SOURCE_DIR}"
               -P "${CMAKE_SOURCE_DIR}/cmake/WriteZannaStudioBuildInfo.cmake"
       DEPENDS zanna ${_ZANNASTUDIO_SOURCE_FILES}

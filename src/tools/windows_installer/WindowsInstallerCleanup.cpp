@@ -23,10 +23,13 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "WindowsInstallerCleanupPolicy.hpp"
+
 #include <windows.h>
 
 #include <shellapi.h>
 
+#include <algorithm>
 #include <cerrno>
 #include <cstddef>
 #include <cstdlib>
@@ -36,14 +39,16 @@
 
 namespace {
 
-bool isAbsoluteSafePath(const std::wstring &path) {
-    if (path.size() < 3 || path.size() >= 32760)
-        return false;
-    if (path.rfind(L"\\\\.\\", 0) == 0 || path.rfind(L"\\\\?\\GLOBALROOT", 0) == 0)
-        return false;
-    return (path.size() >= 3 && path[1] == L':' && (path[2] == L'\\' || path[2] == L'/')) ||
-           path.rfind(L"\\\\?\\", 0) == 0;
-}
+constexpr DWORD kExitInvalidArguments = 2;
+constexpr DWORD kExitSelfOpenFailed = 10;
+constexpr DWORD kExitSelfRenameFailed = 11;
+constexpr DWORD kExitSelfReopenFailed = 12;
+constexpr DWORD kExitSelfDeleteFailed = 13;
+constexpr DWORD kExitParentWaitFailed = 14;
+constexpr DWORD kExitTargetCleanupFailed = 15;
+constexpr size_t kMaximumFiles = 64;
+constexpr size_t kMaximumDirectories = 64;
+constexpr int kMaximumArguments = 3 + static_cast<int>((kMaximumFiles + kMaximumDirectories) * 2);
 
 DWORD waitForParent(DWORD processId) {
     if (processId == 0)
@@ -90,7 +95,7 @@ DWORD markSelfForDeletion() {
                               FILE_ATTRIBUTE_NORMAL,
                               nullptr);
     if (file == INVALID_HANDLE_VALUE)
-        return 1000U + GetLastError();
+        return kExitSelfOpenFailed;
     constexpr wchar_t kDeletedStream[] = L":zanna-cleanup-deleted";
     constexpr DWORD kStreamBytes = sizeof(kDeletedStream) - sizeof(wchar_t);
     std::vector<unsigned char> renameBytes(offsetof(FILE_RENAME_INFO, FileName) +
@@ -103,10 +108,9 @@ DWORD markSelfForDeletion() {
     const bool renamed =
         SetFileInformationByHandle(
             file, FileRenameInfo, rename, static_cast<DWORD>(renameBytes.size())) != FALSE;
-    const DWORD renameError = renamed ? ERROR_SUCCESS : GetLastError();
     CloseHandle(file);
     if (!renamed)
-        return 2000U + renameError;
+        return kExitSelfRenameFailed;
 
     file = CreateFileW(path.data(),
                        DELETE | SYNCHRONIZE,
@@ -116,16 +120,15 @@ DWORD markSelfForDeletion() {
                        FILE_ATTRIBUTE_NORMAL,
                        nullptr);
     if (file == INVALID_HANDLE_VALUE)
-        return 3000U + GetLastError();
+        return kExitSelfReopenFailed;
     FILE_DISPOSITION_INFO_EX disposition{FILE_DISPOSITION_FLAG_DELETE |
                                          FILE_DISPOSITION_FLAG_POSIX_SEMANTICS |
                                          FILE_DISPOSITION_FLAG_IGNORE_READONLY_ATTRIBUTE};
     const bool deleted =
         SetFileInformationByHandle(
             file, FileDispositionInfoEx, &disposition, sizeof(disposition)) != FALSE;
-    const DWORD deleteError = deleted ? ERROR_SUCCESS : GetLastError();
     CloseHandle(file);
-    return deleted ? ERROR_SUCCESS : 4000U + deleteError;
+    return deleted ? ERROR_SUCCESS : kExitSelfDeleteFailed;
 }
 
 bool deleteFileWithRetry(const std::wstring &path) {
@@ -135,10 +138,12 @@ bool deleteFileWithRetry(const std::wstring &path) {
             const DWORD error = GetLastError();
             return error == ERROR_FILE_NOT_FOUND || error == ERROR_PATH_NOT_FOUND;
         }
-        if ((attributes & FILE_ATTRIBUTE_DIRECTORY) != 0)
+        if ((attributes & (FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_REPARSE_POINT)) != 0)
             return false;
-        if ((attributes & FILE_ATTRIBUTE_READONLY) != 0)
-            SetFileAttributesW(path.c_str(), attributes & ~FILE_ATTRIBUTE_READONLY);
+        if ((attributes & FILE_ATTRIBUTE_READONLY) != 0 &&
+            !SetFileAttributesW(path.c_str(), attributes & ~FILE_ATTRIBUTE_READONLY)) {
+            return false;
+        }
         if (DeleteFileW(path.c_str()))
             return true;
         const DWORD error = GetLastError();
@@ -154,6 +159,15 @@ bool deleteFileWithRetry(const std::wstring &path) {
 bool removeEmptyDirectoryWithRetry(const std::wstring &path, bool allowNonEmpty) {
     DWORD lastError = ERROR_SUCCESS;
     for (unsigned attempt = 0; attempt < 600; ++attempt) {
+        const DWORD attributes = GetFileAttributesW(path.c_str());
+        if (attributes == INVALID_FILE_ATTRIBUTES) {
+            const DWORD error = GetLastError();
+            return error == ERROR_FILE_NOT_FOUND || error == ERROR_PATH_NOT_FOUND;
+        }
+        if ((attributes & FILE_ATTRIBUTE_DIRECTORY) == 0 ||
+            (attributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0) {
+            return false;
+        }
         if (RemoveDirectoryW(path.c_str()))
             return true;
         const DWORD error = GetLastError();
@@ -182,13 +196,19 @@ struct DirectoryRequest {
     bool allowNonEmpty{false};
 };
 
+bool containsTarget(const std::vector<std::wstring> &targets, const std::wstring &candidate) {
+    return std::any_of(targets.begin(), targets.end(), [&candidate](const std::wstring &target) {
+        return zanna::installer::cleanup::pathsEqual(target, candidate);
+    });
+}
+
 } // namespace
 
 int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     int argc = 0;
     wchar_t **argv = CommandLineToArgvW(GetCommandLineW(), &argc);
     if (!argv)
-        return ERROR_INVALID_PARAMETER;
+        return kExitInvalidArguments;
     if (argc == 2 &&
         (lstrcmpiW(argv[1], L"/selftest") == 0 || lstrcmpiW(argv[1], L"/self-test") == 0)) {
         LocalFree(argv);
@@ -196,45 +216,66 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     }
 
     DWORD parentId = 0;
+    bool sawParent = false;
     std::vector<std::wstring> files;
     std::vector<DirectoryRequest> directories;
+    std::vector<std::wstring> targets;
     bool valid = true;
+    if (argc < 2 || argc > kMaximumArguments)
+        valid = false;
     for (int i = 1; i < argc; ++i) {
         const std::wstring option(argv[i]);
-        if ((option == L"/parent" || option == L"/delete" || option == L"/rmdir" ||
-             option == L"/rmdir-if-empty") &&
-            i + 1 < argc) {
+        const bool isParent = _wcsicmp(option.c_str(), L"/parent") == 0;
+        const bool isDelete = _wcsicmp(option.c_str(), L"/delete") == 0;
+        const bool isRemoveDirectory = _wcsicmp(option.c_str(), L"/rmdir") == 0;
+        const bool isRemoveIfEmpty = _wcsicmp(option.c_str(), L"/rmdir-if-empty") == 0;
+        if ((isParent || isDelete || isRemoveDirectory || isRemoveIfEmpty) && i + 1 < argc) {
             const std::wstring value(argv[++i]);
-            if (option == L"/parent") {
+            if (isParent) {
                 wchar_t *end = nullptr;
                 errno = 0;
                 const unsigned long parsed = std::wcstoul(value.c_str(), &end, 10);
-                valid = valid && errno == 0 && end && *end == L'\0' && parsed != 0 &&
-                        parsed <= MAXDWORD;
-                parentId = static_cast<DWORD>(parsed);
-            } else if (!isAbsoluteSafePath(value)) {
+                const bool parsedParent = !sawParent && errno == 0 && end && *end == L'\0' &&
+                                          parsed != 0 && parsed <= MAXDWORD;
+                valid = valid && parsedParent;
+                if (parsedParent) {
+                    parentId = static_cast<DWORD>(parsed);
+                    sawParent = true;
+                }
+            } else if (!zanna::installer::cleanup::isSafeAbsolutePath(value) ||
+                       containsTarget(targets, value)) {
                 valid = false;
-            } else if (option == L"/delete") {
+            } else if (isDelete) {
+                if (files.size() >= kMaximumFiles) {
+                    valid = false;
+                    continue;
+                }
                 files.push_back(value);
+                targets.push_back(value);
             } else {
-                directories.push_back({value, option == L"/rmdir-if-empty"});
+                if (directories.size() >= kMaximumDirectories) {
+                    valid = false;
+                    continue;
+                }
+                directories.push_back({value, isRemoveIfEmpty});
+                targets.push_back(value);
             }
         } else {
             valid = false;
         }
     }
     LocalFree(argv);
-    if (!valid || parentId == 0 || files.empty())
-        return ERROR_INVALID_PARAMETER;
+    if (!valid || !sawParent || parentId == 0 || files.empty())
+        return kExitInvalidArguments;
     if (const DWORD selfDeleteError = markSelfForDeletion(); selfDeleteError != ERROR_SUCCESS)
         return static_cast<int>(selfDeleteError);
     if (const DWORD waitError = waitForParent(parentId); waitError != ERROR_SUCCESS)
-        return static_cast<int>(waitError);
+        return kExitParentWaitFailed;
 
     bool success = true;
     for (const std::wstring &file : files)
         success = deleteFileWithRetry(file) && success;
     for (const DirectoryRequest &directory : directories)
         success = removeEmptyDirectoryWithRetry(directory.path, directory.allowNonEmpty) && success;
-    return success ? ERROR_SUCCESS : ERROR_CANNOT_MAKE;
+    return success ? ERROR_SUCCESS : kExitTargetCleanupFailed;
 }

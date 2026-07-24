@@ -318,6 +318,12 @@ static int d3d11_snapshot_backbuffer_for_readback(d3d11_context_t *ctx) {
         ctx->ctx, (ID3D11Resource *)ctx->presented_color_tex, (ID3D11Resource *)back_buffer);
     SAFE_RELEASE(back_buffer);
     d3d11_restore_current_target_bindings(ctx);
+    hr = ctx->device ? ID3D11Device_GetDeviceRemovedReason(ctx->device) : E_POINTER;
+    if (FAILED(hr)) {
+        d3d11_log_hresult("CopyResource(presentedSnapshot)", hr);
+        d3d11_log_device_removed_reason(ctx, "CopyResource(presentedSnapshot)", hr);
+        return 0;
+    }
     ctx->presented_color_valid = 1;
     return 1;
 }
@@ -805,6 +811,7 @@ static int d3d11_sync_render_target_color(void *ctx_ptr, vgfx3d_rendertarget_t *
     HRESULT hr;
     int restore_target = 0;
     int mapped_ok = 0;
+    int staging_failed = 0;
     int ok = 0;
 
     if (!ctx || !ctx->ctx || !target || !ctx->rtt_color_tex || !ctx->rtt_staging ||
@@ -858,11 +865,14 @@ static int d3d11_sync_render_target_color(void *ctx_ptr, vgfx3d_rendertarget_t *
     if (FAILED(hr)) {
         d3d11_log_hresult("Map(rttStaging)", hr);
         d3d11_log_device_removed_reason(ctx, "Map(rttStaging)", hr);
+        staging_failed = 1;
         goto cleanup;
     }
     mapped_ok = 1;
-    if (!mapped.pData)
+    if (!mapped.pData) {
+        staging_failed = 1;
         goto cleanup;
+    }
 
     if (vgfx3d_rendertarget_is_hdr(target)) {
         size_t hdr_row_bytes;
@@ -906,6 +916,18 @@ cleanup:
         ID3D11DeviceContext_Unmap(ctx->ctx, (ID3D11Resource *)ctx->rtt_staging, 0);
     if (restore_target)
         d3d11_restore_current_target_bindings(ctx);
+    if (staging_failed) {
+        SAFE_RELEASE(ctx->rtt_staging);
+        if (ctx->device && vgfx3d_d3d11_is_valid_texture2d_extent(target->width, target->height)) {
+            HRESULT recreate_hr = d3d11_create_staging_texture(
+                ctx, target->width, target->height, expected_format, &ctx->rtt_staging);
+            if (FAILED(recreate_hr)) {
+                d3d11_log_hresult("CreateTexture2D(rttStagingRecovery)", recreate_hr);
+                d3d11_log_device_removed_reason(
+                    ctx, "CreateTexture2D(rttStagingRecovery)", recreate_hr);
+            }
+        }
+    }
     if (ok)
         target->color_dirty = 0;
     return ok;
@@ -1001,6 +1023,11 @@ static HRESULT d3d11_ensure_rtt_targets(d3d11_context_t *ctx, vgfx3d_rendertarge
         goto fail;
     }
 
+    if (ctx->rtt_target && ctx->rtt_target->color_dirty &&
+        !d3d11_sync_render_target_color(ctx, ctx->rtt_target)) {
+        hr = E_FAIL;
+        goto fail;
+    }
     d3d11_destroy_rtt_targets(ctx);
     ctx->rtt_color_tex = new_color_tex;
     ctx->rtt_rtv = new_rtv;

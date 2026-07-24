@@ -6,10 +6,11 @@
 #===----------------------------------------------------------------------===//
 #
 # File: src/tests/e2e/test_windows_native_environment.cmake
-# Purpose: Regression probes for Windows native Environment runtime startup.
+# Purpose: Regression probes for Windows native Environment and network startup.
 # Key invariants:
 #   - Each generated probe must build as a native executable with zanna build.
 #   - Each probe runs under a short timeout so argument/env startup hangs fail fast.
+#   - WinSock initialization works through Zanna's CRT-less native PE entry path.
 # Ownership/Lifetime:
 #   - Test sources and executables are generated under TEST_WORK_DIR.
 #
@@ -149,6 +150,21 @@ func start() {
 }
 ")
 
+write_probe(native_network_listener
+"module NativeNetworkListener;
+func start() {
+    var server = Zanna.Network.TcpServer.Listen(0);
+    var port = Zanna.Network.TcpServer.get_Port(server);
+    var listening = Zanna.Network.TcpServer.get_IsListening(server);
+    Zanna.Network.TcpServer.Close(server);
+    if port > 0 && listening {
+        Zanna.Terminal.Say(\"RESULT: ok\");
+        return;
+    }
+    Zanna.Terminal.Say(\"RESULT: fail\");
+}
+")
+
 foreach (_probe
         native_env_arg_count
         native_env_arg_get
@@ -156,7 +172,8 @@ foreach (_probe
         native_env_long_heap_string
         native_env_set_get_long
         native_env_is_native
-        native_env_end_program)
+        native_env_end_program
+        native_network_listener)
     build_probe(${_probe})
 endforeach ()
 
@@ -167,3 +184,4 @@ run_probe(native_env_long_heap_string "RESULT: ok")
 run_probe(native_env_set_get_long "RESULT: ok")
 run_probe(native_env_is_native "RESULT: ok")
 run_probe_exit(native_env_end_program 7)
+run_probe(native_network_listener "RESULT: ok")

@@ -58,16 +58,19 @@ static int d3d11_chain_has_effect(const vgfx3d_postfx_chain_t *chain, int32_t ty
 }
 
 static void d3d11_harvest_depth_probes(d3d11_context_t *ctx);
+static void d3d11_discard_depth_probe_staging(d3d11_context_t *ctx);
 
 static void d3d11_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) {
     d3d11_context_t *ctx = (d3d11_context_t *)ctx_ptr;
     HRESULT hr;
     int32_t scene_width;
     int32_t scene_height;
+    int8_t prior_pending_present;
     vgfx3d_camera_params_t safe_cam;
 
-    if (!ctx || !cam || ctx->frame_active)
+    if (!ctx || !cam || ctx->frame_active || !ctx->ctx)
         return;
+    prior_pending_present = ctx->frame_pending_present;
     vgfx3d_sanitize_camera_params(cam, &safe_cam);
     cam = &safe_cam;
     ctx->frame_active = 1;
@@ -227,6 +230,19 @@ static void d3d11_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) 
             d3d11_log_hresult("CreateOverlayTarget", hr);
     }
     d3d11_refresh_pass_flags(ctx, cam);
+    d3d11_select_current_targets(ctx);
+    if (!vgfx3d_d3d11_draw_submission_is_ready(ctx->frame_active,
+                                               ctx->shadow_pass_slot,
+                                               ctx->ctx != NULL,
+                                               ctx->current_rtv_count,
+                                               ctx->current_rtvs[0] != NULL,
+                                               ctx->current_width,
+                                               ctx->current_height)) {
+        d3d11_clear_current_target_bindings(ctx);
+        ctx->frame_active = 0;
+        ctx->frame_pending_present = prior_pending_present;
+        return;
+    }
 
     if (!ctx->current_pass_is_overlay) {
         ctx->texture_upload_bytes = 0;
@@ -262,7 +278,6 @@ static void d3d11_begin_frame(void *ctx_ptr, const vgfx3d_camera_params_t *cam) 
         ctx->overlay_used_this_frame = history.overlay_used_this_frame;
     }
 
-    d3d11_select_current_targets(ctx);
     d3d11_clear_current_targets(ctx, ctx->current_load_existing_color, cam->load_existing_depth);
     d3d11_bind_common_state(ctx, NULL);
     d3d11_begin_frame_timing(ctx);
@@ -364,6 +379,19 @@ static void d3d11_issue_depth_probes(d3d11_context_t *ctx) {
                                                   (ID3D11Resource *)source,
                                                   0,
                                                   &box);
+    }
+    {
+        HRESULT device_status =
+            ctx->device ? ID3D11Device_GetDeviceRemovedReason(ctx->device) : E_POINTER;
+        if (FAILED(device_status)) {
+            d3d11_log_hresult("CopySubresourceRegion(depthProbeStaging)", device_status);
+            d3d11_log_device_removed_reason(
+                ctx, "CopySubresourceRegion(depthProbeStaging)", device_status);
+            d3d11_restore_current_target_bindings(ctx);
+            ctx->depth_probe_request_count = 0;
+            d3d11_discard_depth_probe_staging(ctx);
+            return;
+        }
     }
     d3d11_restore_current_target_bindings(ctx);
     ctx->depth_probe_pending_count = ctx->depth_probe_request_count;
@@ -595,7 +623,6 @@ static void d3d11_resize(void *ctx_ptr, int32_t w, int32_t h) {
     if (ctx->width == w && ctx->height == h && ctx->rtv && ctx->depth_tex && ctx->dsv)
         return;
     if (ctx->width == w && ctx->height == h) {
-        d3d11_release_swapchain_main_targets(ctx);
         hr = d3d11_recreate_swapchain_main_targets(
             ctx, w, h, "Recreate incomplete same-size swapchain targets");
         if (SUCCEEDED(hr))
@@ -620,6 +647,9 @@ static void d3d11_resize(void *ctx_ptr, int32_t w, int32_t h) {
         return;
     }
 
+    ctx->frame_pending_present = 0;
+    ctx->scene_composited_to_swapchain = 0;
+    ctx->presented_color_valid = 0;
     d3d11_destroy_scene_targets(ctx);
     ctx->width = w;
     ctx->height = h;
@@ -1588,7 +1618,7 @@ static int8_t d3d11_set_render_scale(void *ctx_ptr, float scale) {
     next_scale = scale >= 0.999f ? 1.0f : scale;
     if (next_scale < 1.0f && (!ctx->vs_postfx || !ctx->ps_postfx))
         return 0;
-    if (ctx->frame_active || ctx->frame_pending_present)
+    if (!vgfx3d_d3d11_frame_state_is_idle(ctx->frame_active, ctx->frame_pending_present))
         return 0;
     prior_scale =
         (isfinite(ctx->render_scale) && ctx->render_scale >= 0.25f && ctx->render_scale <= 1.0f)
@@ -1642,7 +1672,7 @@ static void d3d11_invalidate_presented_snapshot_for_postfx_latch(d3d11_context_t
 ///   rendering with a partial chain.
 static void d3d11_set_gpu_postfx_snapshot(void *ctx_ptr, const vgfx3d_postfx_chain_t *postfx) {
     d3d11_context_t *ctx = (d3d11_context_t *)ctx_ptr;
-    if (!ctx)
+    if (!ctx || ctx->frame_active)
         return;
     d3d11_invalidate_presented_snapshot_for_postfx_latch(ctx);
     if (!postfx) {
@@ -1674,18 +1704,25 @@ static void d3d11_set_render_target(void *ctx_ptr, vgfx3d_rendertarget_t *rt) {
 
     if (!ctx || ctx->frame_active)
         return;
-    ctx->scene_composited_to_swapchain = 0;
-    ctx->presented_color_valid = 0;
     if (!rt) {
+        if (ctx->rtt_target && ctx->rtt_target->color_dirty &&
+            !d3d11_sync_render_target_color(ctx, ctx->rtt_target)) {
+            d3d11_log_hresult("SyncRTTBeforeUnbind", E_FAIL);
+            return;
+        }
         d3d11_destroy_rtt_targets(ctx);
+        ctx->scene_composited_to_swapchain = 0;
+        ctx->presented_color_valid = 0;
         return;
     }
 
     hr = d3d11_ensure_rtt_targets(ctx, rt);
     if (FAILED(hr)) {
         d3d11_log_hresult("CreateRTTTargets", hr);
-        d3d11_destroy_rtt_targets(ctx);
+        return;
     }
+    ctx->scene_composited_to_swapchain = 0;
+    ctx->presented_color_valid = 0;
 }
 
 /// @brief Leave any active shadow pass and restore the current color/depth target set.
@@ -2005,8 +2042,13 @@ static void d3d11_draw_skybox(void *ctx_ptr, const void *cubemap_ptr) {
     float blend_factor[4] = {0, 0, 0, 0};
 
     if (!ctx || !cubemap || !ctx->vs_skybox || !ctx->ps_skybox || !ctx->skybox_vb ||
-        ctx->current_rtv_count == 0 || !ctx->current_rtvs[0] || ctx->current_width <= 0 ||
-        ctx->current_height <= 0)
+        !vgfx3d_d3d11_draw_submission_is_ready(ctx->frame_active,
+                                               ctx->shadow_pass_slot,
+                                               ctx->ctx != NULL,
+                                               ctx->current_rtv_count,
+                                               ctx->current_rtvs[0] != NULL,
+                                               ctx->current_width,
+                                               ctx->current_height))
         return;
 
     memset(&cubemap_resource, 0, sizeof(cubemap_resource));

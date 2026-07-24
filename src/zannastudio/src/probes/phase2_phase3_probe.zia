@@ -168,15 +168,18 @@ func main() {
     procCfg.workingDirectory = spacedDir;
     Seq.Push(procCfg.args, sourcePath);
     if assertTrue(buildSys.StartConfig(procCfg), "process job starts") == false { return; }
-    var spins = 0;
-    while buildSys.IsActive() and spins < 3000 {
+    // Use elapsed time rather than poll counts: Sleep(1) is allowed to wake
+    // later than requested on Windows, and cold process startup can include
+    // executable scanning.  A poll-count deadline therefore varied with host
+    // timer granularity and made the full test suite flaky.
+    var processDeadlineMs = Clock.NowMs() + 15000;
+    while buildSys.IsActive() and Clock.NowMs() < processDeadlineMs {
         buildSys.Update();
         Clock.Sleep(1);
-        spins = spins + 1;
     }
     if buildSys.IsActive() {
         buildSys.Stop();
-        fail("process job timed out");
+        fail("process job timed out: " + buildSys.GetOutput());
         return;
     }
     if assertTrue(buildSys.lastBuildSuccess and Str.IndexOf(buildSys.GetOutput(), "PHASE2-RUN") != 0,
@@ -228,15 +231,14 @@ func main() {
                   and entryProj.project.entryFile == "src/main.zia",
                   "project entry run config targets manifest root") == false { return; }
     if assertTrue(buildSys.StartConfig(entryCfg), "project entry process starts") == false { return; }
-    spins = 0;
-    while buildSys.IsActive() and spins < 3000 {
+    processDeadlineMs = Clock.NowMs() + 15000;
+    while buildSys.IsActive() and Clock.NowMs() < processDeadlineMs {
         buildSys.Update();
         Clock.Sleep(1);
-        spins = spins + 1;
     }
     if buildSys.IsActive() {
         buildSys.Stop();
-        fail("project entry run timed out");
+        fail("project entry run timed out: " + buildSys.GetOutput());
         return;
     }
     if assertTrue(buildSys.lastBuildSuccess and Str.IndexOf(buildSys.GetOutput(), "DIR-RUN-OK") != 0,
@@ -349,11 +351,15 @@ func main() {
     var dbg = new debug_session.DebugSession();
     if assertTrue(dbg.Launch(zannaBin, dbgFile, dbgStore),
                   "debug adapter launches") == false { return; }
-    var dspins = 0;
-    while dbg.IsActive() and dbg.stopped == false and dspins < 6000 {
+    var debugDeadlineMs = Clock.NowMs() + 20000;
+    while dbg.IsActive() and dbg.stopped == false and Clock.NowMs() < debugDeadlineMs {
         dbg.Poll();
         Clock.Sleep(1);
-        dspins = dspins + 1;
+    }
+    if dbg.IsActive() and dbg.stopped == false {
+        dbg.Terminate();
+        fail("debug adapter breakpoint wait timed out");
+        return;
     }
     if assertTrue(dbg.stopped and dbg.lastLine == 5 and dbg.lastReason == "breakpoint",
                   "debug adapter stops at the breakpoint line") == false { return; }
@@ -362,11 +368,15 @@ func main() {
                   "debug stop reports a call stack and locals") == false { return; }
 
     dbg.Continue();
-    dspins = 0;
-    while dbg.IsActive() and dspins < 6000 {
+    debugDeadlineMs = Clock.NowMs() + 20000;
+    while dbg.IsActive() and Clock.NowMs() < debugDeadlineMs {
         dbg.Poll();
         Clock.Sleep(1);
-        dspins = dspins + 1;
+    }
+    if dbg.IsActive() {
+        dbg.Terminate();
+        fail("debug adapter termination wait timed out");
+        return;
     }
     if assertTrue(dbg.terminated
                   and Str.IndexOf(dbg.programOutput, "before-bp") != 0

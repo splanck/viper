@@ -34,10 +34,20 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build_installer.ps1 
 
 On Windows, the wrapper accepts only `Release` or `RelWithDebInfo`, enables
 Zanna Studio when no explicit CMake setting is present, and requires the
-Studio executable plus its build-identity file before packaging. Passing
+Studio executable plus its build-identity file before packaging. The pair must
+use buildinfo schema 1 and bind the exact repository version, PE32+ architecture,
+byte size, and lowercase SHA-256 of `zannastudio.exe`. Passing
 `--stage-dir`, `--build-dir`, or `--verify-only` (including `--name=value`
 forms) selects caller-owned input and suppresses the automatic canonical
 build. `--help` is side-effect free.
+
+The Windows package version remains numeric for installer identity and upgrade
+ordering, while Studio buildinfo retains the full configured product version
+(including prerelease text such as `-snapshot`). Lifecycle validation obtains
+that full version from the canonical first line of the installed, package-owned
+`zanna --version` output; the bounded build-detail lines that follow do not
+change the product version. The validator does not compare Studio provenance
+with the numeric package version.
 
 For repeatable package work, stage once and package that immutable tree:
 
@@ -145,6 +155,9 @@ Zanna-owned staged PE, the embedded maintenance host, and detached cleanup
 helper before hashing and compressing them. Microsoft runtime DLLs retain their
 Microsoft signatures. The outer setup is signed last, then recursive
 verification checks both signatures and structure through every overlay layer.
+Zanna Studio is signed exactly once; because Authenticode changes the PE bytes,
+the package builder rebinds only the already-validated `Size` and `SHA256`
+buildinfo fields to the exact signed bytes installed in the payload.
 
 After the final installer is placed at its public HTTPS URL, author its bounded
 canonical update manifest. The download and release-notes URLs must use the
@@ -165,8 +178,10 @@ $artifact = Resolve-Path artifacts\zanna-toolchain-windows-x64.exe
 The script rejects non-canonical or overflowing versions, HTTP, credentials,
 fragments, cross-origin URLs, malformed hashes, and inaccessible RSA keys. It
 writes deterministic UTF-8 without a BOM using LF records and RSA PKCS#1
-SHA-256. Keep the PFX private; publish only the text manifest and public key
-record used during package generation.
+SHA-256. Manifest and optional public-key outputs are staged and published as
+one rollback-protected set, so a failed second publication cannot leave mixed
+release metadata. Keep the PFX private; publish only the text manifest and
+public key record used during package generation.
 
 ### macOS
 
@@ -233,7 +248,10 @@ files. Repair restores exact owned hashes. A signed cached maintenance image
 allows Settings > Apps to expose Modify, Repair, and Uninstall. Detached native
 cleanup removes the running installed uninstaller, package cache leaf, and
 empty shared cache ancestors without deleting sibling channels or requiring a
-reboot.
+reboot. Its command-line policy accepts only explicit child paths below drive
+or UNC roots, rejects device namespaces, traversal, alternate streams, reserved
+DOS names, duplicates, and reparse points, and never removes directories
+recursively.
 
 The package installs its architecture-matched MSVC runtime closure beside the
 tools and setup never downloads a redistributable. PATH, associations,
@@ -323,6 +341,14 @@ cmake --install build --prefix "$PWD\build\release-stage" --config Release
 & .\build\src\tools\zanna\Release\zanna.exe install-package --verify-only build\zanna-toolchain.exe --require-checksum
 .\scripts\validate-windows-toolchain-installer.ps1 -Installer build\zanna-toolchain.exe
 ```
+
+The validator gives every child a finite timeout and streams stdout/stderr
+through bounded captures. Override the defaults with
+`-ProcessTimeoutSeconds`, `-MaximumCaptureBytes`, and `-MaximumInspectBytes`
+only for a known slow disposable host. It validates every installed tool as an
+architecture-matched PE32+ image and checks the complete Studio
+version/architecture/size/hash provenance both after installation and after a
+Minimal-to-Complete component round trip.
 
 To exercise the upgrade path, package a baseline stage containing
 `share\zanna\installer-upgrade-stale.txt`, remove that file before generating

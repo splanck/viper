@@ -133,8 +133,15 @@ static bool vg_filedialog_platform_append_entry(vg_filedialog_platform_entry_t *
                                                 size_t *capacity_io,
                                                 vg_filedialog_platform_entry_t entry) {
     if (*count_io >= *capacity_io) {
-        size_t new_cap = *capacity_io == 0u ? 64u : *capacity_io * 2u;
-        if (*capacity_io > SIZE_MAX / (2u * sizeof(**entries_io)))
+        size_t new_cap;
+        if (*capacity_io == 0u) {
+            new_cap = 64u;
+        } else {
+            if (*capacity_io > SIZE_MAX / 2u)
+                return false;
+            new_cap = *capacity_io * 2u;
+        }
+        if (new_cap > SIZE_MAX / sizeof(**entries_io))
             return false;
         vg_filedialog_platform_entry_t *grown =
             (vg_filedialog_platform_entry_t *)realloc(*entries_io, new_cap * sizeof(**entries_io));
@@ -222,7 +229,11 @@ char *vg_filedialog_platform_join_path(const char *dir, const char *file) {
 char *vg_filedialog_platform_home_dir(void) {
     wchar_t *userprofile_w = vg_filedialog_platform_environment_wide(L"USERPROFILE");
     if (userprofile_w) {
-        char *userprofile = vg_filedialog_platform_wide_to_utf8(userprofile_w);
+        DWORD attributes = GetFileAttributesW(userprofile_w);
+        char *userprofile =
+            attributes != INVALID_FILE_ATTRIBUTES && (attributes & FILE_ATTRIBUTE_DIRECTORY) != 0
+                ? vg_filedialog_platform_wide_to_utf8(userprofile_w)
+                : NULL;
         free(userprofile_w);
         if (userprofile)
             return userprofile;
@@ -232,26 +243,80 @@ char *vg_filedialog_platform_home_dir(void) {
     wchar_t *homepath_w = vg_filedialog_platform_environment_wide(L"HOMEPATH");
     char *homedrive = vg_filedialog_platform_wide_to_utf8(homedrive_w);
     char *homepath = vg_filedialog_platform_wide_to_utf8(homepath_w);
+    char *result = NULL;
     free(homedrive_w);
     free(homepath_w);
     if (homedrive && homepath) {
         size_t drive_len = strlen(homedrive);
         size_t path_len = strlen(homepath);
         if (drive_len <= SIZE_MAX - path_len && drive_len + path_len <= SIZE_MAX - 1u) {
-            char *result = (char *)malloc(drive_len + path_len + 1u);
+            result = (char *)malloc(drive_len + path_len + 1u);
             if (result) {
                 memcpy(result, homedrive, drive_len);
                 memcpy(result + drive_len, homepath, path_len + 1u);
-                free(homedrive);
-                free(homepath);
-                return result;
+                if (!vg_filedialog_platform_is_absolute_path(result) ||
+                    !vg_filedialog_platform_path_is_dir(result)) {
+                    free(result);
+                    result = NULL;
+                }
             }
         }
     }
     free(homedrive);
     free(homepath);
+    if (result)
+        return result;
 
     return vg_filedialog_platform_strdup(vg_filedialog_platform_root_path());
+}
+
+/// @brief Return the non-trimmable prefix length of a rooted Windows path.
+/// @details Handles drive roots, ordinary UNC share roots, extended drive
+///          roots, and extended UNC share roots. A zero result means the input
+///          has no recognized absolute root.
+static size_t vg_filedialog_platform_root_length(const char *path) {
+    size_t length;
+    size_t cursor;
+    int extended_unc = 0;
+
+    if (!path)
+        return 0u;
+    length = strlen(path);
+    if (length >= 3u && isalpha((unsigned char)path[0]) && path[1] == ':' &&
+        vg_filedialog_platform_is_separator(path[2])) {
+        return 3u;
+    }
+    if (length >= 7u && vg_filedialog_platform_is_separator(path[0]) &&
+        vg_filedialog_platform_is_separator(path[1]) && path[2] == '?' &&
+        vg_filedialog_platform_is_separator(path[3]) && isalpha((unsigned char)path[4]) &&
+        path[5] == ':' && vg_filedialog_platform_is_separator(path[6])) {
+        return 7u;
+    }
+    if (length < 5u || !vg_filedialog_platform_is_separator(path[0]) ||
+        !vg_filedialog_platform_is_separator(path[1])) {
+        return 0u;
+    }
+    cursor = 2u;
+    if (length >= 8u && path[2] == '?' && vg_filedialog_platform_is_separator(path[3]) &&
+        (path[4] == 'U' || path[4] == 'u') && (path[5] == 'N' || path[5] == 'n') &&
+        (path[6] == 'C' || path[6] == 'c') && vg_filedialog_platform_is_separator(path[7])) {
+        cursor = 8u;
+        extended_unc = 1;
+    }
+    while (cursor < length && !vg_filedialog_platform_is_separator(path[cursor]))
+        cursor++;
+    if (cursor == (extended_unc ? 8u : 2u) || cursor >= length)
+        return 0u;
+    while (cursor < length && vg_filedialog_platform_is_separator(path[cursor]))
+        cursor++;
+    {
+        size_t share_start = cursor;
+        while (cursor < length && !vg_filedialog_platform_is_separator(path[cursor]))
+            cursor++;
+        if (cursor == share_start)
+            return 0u;
+    }
+    return cursor;
 }
 
 /// @brief Return a newly allocated parent directory path.
@@ -268,15 +333,24 @@ char *vg_filedialog_platform_parent_dir(const char *path) {
         return NULL;
 
     size_t len = strlen(result);
-    while (len > 1u && vg_filedialog_platform_is_separator(result[len - 1u]))
+    const size_t root_len = vg_filedialog_platform_root_length(result);
+    while (len > (root_len ? root_len : 1u) &&
+           vg_filedialog_platform_is_separator(result[len - 1u]))
         result[--len] = '\0';
+
+    if (root_len && len <= root_len) {
+        result[root_len] = '\0';
+        return result;
+    }
 
     char *last_slash = strrchr(result, '\\');
     char *last_forward = strrchr(result, '/');
     if (!last_slash || (last_forward && last_forward > last_slash))
         last_slash = last_forward;
 
-    if (last_slash == result) {
+    if (root_len && last_slash && (size_t)(last_slash - result) < root_len) {
+        result[root_len] = '\0';
+    } else if (last_slash == result) {
         result[1] = '\0';
     } else if (last_slash == result + 2 && result[1] == ':') {
         result[3] = '\0';

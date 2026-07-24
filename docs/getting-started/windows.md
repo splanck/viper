@@ -190,7 +190,9 @@ Build a local developer installer with:
 Debug CRT payloads are rejected by default. Use Release or RelWithDebInfo for a
 package intended for another developer. The wrapper enables Zanna Studio when
 the setting is absent and verifies both `zannastudio.exe` and
-`zannastudio.buildinfo` before packaging. Supplying `--stage-dir`,
+`zannastudio.buildinfo` before packaging. That metadata binds the exact Zanna
+version, PE32+ architecture, byte size, and SHA-256; packaging rejects a
+partial, stale, or mismatched Studio pair. Supplying `--stage-dir`,
 `--build-dir`, or `--verify-only` reuses caller-owned input and skips the
 automatic build. See the
 [installer release guide](../installer-release.md) for signing, reproducible

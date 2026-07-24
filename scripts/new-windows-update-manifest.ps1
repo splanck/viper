@@ -71,6 +71,114 @@ function Resolve-FullPath {
     return [System.IO.Path]::GetFullPath((Join-Path (Get-Location).Path $Path))
 }
 
+function Test-PathsEqual {
+    param(
+        [Parameter(Mandatory = $true)][string]$Left,
+        [Parameter(Mandatory = $true)][string]$Right
+    )
+    return [string]::Equals(
+        (Resolve-FullPath $Left).TrimEnd('\', '/'),
+        (Resolve-FullPath $Right).TrimEnd('\', '/'),
+        [StringComparison]::OrdinalIgnoreCase)
+}
+
+function Assert-SafeFileOutput {
+    param(
+        [Parameter(Mandatory = $true)][string]$Path,
+        [Parameter(Mandatory = $true)][string]$Description
+    )
+
+    if ($Path.Length -ge 32760) {
+        throw "$Description exceeds the supported Windows path length."
+    }
+    if ((Test-Path -LiteralPath $Path) -and
+        -not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+        throw "$Description is not a regular file destination: $Path"
+    }
+    $current = $Path
+    $isLeaf = $true
+    while (-not [string]::IsNullOrWhiteSpace($current)) {
+        if (Test-Path -LiteralPath $current) {
+            $item = Get-Item -LiteralPath $current -Force
+            if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+                throw "$Description traverses a reparse point: $current"
+            }
+            $linkTypeProperty = $item.PSObject.Properties["LinkType"]
+            if ($isLeaf -and $linkTypeProperty -and
+                $linkTypeProperty.Value -eq "HardLink") {
+                throw "$Description must not be a hard-link alias: $current"
+            }
+        }
+        $parent = Split-Path -Parent $current
+        if ([string]::IsNullOrWhiteSpace($parent) -or
+            [string]::Equals($parent, $current, [StringComparison]::OrdinalIgnoreCase)) {
+            break
+        }
+        $current = $parent
+        $isLeaf = $false
+    }
+}
+
+function Publish-AtomicFileSet {
+    param([Parameter(Mandatory = $true)][object[]]$Entries)
+
+    $states = [Collections.Generic.List[object]]::new()
+    foreach ($entry in $Entries) {
+        $destination = [string]$entry.Destination
+        $parent = Split-Path -Parent $destination
+        [void](New-Item -ItemType Directory -Path $parent -Force)
+        Assert-SafeFileOutput -Path $destination -Description "Update metadata output"
+        $backup = Join-Path $parent (
+            ".zupdate-backup-$PID-$([Guid]::NewGuid().ToString('N')).bak")
+        $states.Add([pscustomobject]@{
+            Source = [string]$entry.Source
+            Destination = $destination
+            Backup = $backup
+            HadDestination = Test-Path -LiteralPath $destination -PathType Leaf
+            BackedUp = $false
+            Published = $false
+        })
+    }
+    $success = $false
+    try {
+        foreach ($state in $states) {
+            if ($state.HadDestination) {
+                Move-Item -LiteralPath $state.Destination -Destination $state.Backup
+                $state.BackedUp = $true
+            }
+        }
+        foreach ($state in $states) {
+            Move-Item -LiteralPath $state.Source -Destination $state.Destination
+            $state.Published = $true
+        }
+        $success = $true
+    } catch {
+        for ($stateIndex = $states.Count - 1; $stateIndex -ge 0; --$stateIndex) {
+            $state = $states[$stateIndex]
+            if ($state.Published -and
+                (Test-Path -LiteralPath $state.Destination -PathType Leaf)) {
+                Remove-Item -LiteralPath $state.Destination -Force
+            }
+        }
+        for ($stateIndex = $states.Count - 1; $stateIndex -ge 0; --$stateIndex) {
+            $state = $states[$stateIndex]
+            if ($state.BackedUp -and (Test-Path -LiteralPath $state.Backup -PathType Leaf)) {
+                Move-Item -LiteralPath $state.Backup -Destination $state.Destination
+            }
+        }
+        throw
+    } finally {
+        foreach ($state in $states) {
+            if (Test-Path -LiteralPath $state.Source -PathType Leaf) {
+                Remove-Item -LiteralPath $state.Source -Force
+            }
+            if ($success -and (Test-Path -LiteralPath $state.Backup -PathType Leaf)) {
+                Remove-Item -LiteralPath $state.Backup -Force
+            }
+        }
+    }
+}
+
 function Convert-ToLowerHex {
     param([Parameter(Mandatory = $true)][byte[]]$Bytes)
 
@@ -84,7 +192,9 @@ function Get-HttpsUri {
     )
 
     $uri = $null
-    if (-not [Uri]::TryCreate($Value, [UriKind]::Absolute, [ref]$uri) -or
+    if ([string]::IsNullOrWhiteSpace($Value) -or $Value.Length -gt 2048 -or
+        $Value -match '[^\x21-\x7e]' -or $Value.Contains('\') -or
+        -not [Uri]::TryCreate($Value, [UriKind]::Absolute, [ref]$uri) -or
         -not [string]::Equals($uri.Scheme, "https", [StringComparison]::OrdinalIgnoreCase) -or
         [string]::IsNullOrWhiteSpace($uri.Host) -or
         -not [string]::IsNullOrEmpty($uri.UserInfo) -or
@@ -162,6 +272,7 @@ function Assert-RequiredText {
 }
 
 $manifestPath = $null
+$publicKeyPath = $null
 if ($PublicKeyOnly) {
     if ([string]::IsNullOrWhiteSpace($PublicKeyOutput)) {
         throw "-PublicKeyOnly requires -PublicKeyOutput."
@@ -184,14 +295,33 @@ if ($PublicKeyOnly) {
         Assert-SameOrigin $manifestUri $notesUri "ReleaseNotesUrl"
     }
 }
+if (-not [string]::IsNullOrWhiteSpace($PublicKeyOutput)) {
+    $publicKeyPath = Resolve-FullPath $PublicKeyOutput
+}
+if ($manifestPath -and $publicKeyPath -and
+    (Test-PathsEqual -Left $manifestPath -Right $publicKeyPath)) {
+    throw "OutputPath and PublicKeyOutput must be distinct files."
+}
+if ($manifestPath) {
+    Assert-SafeFileOutput -Path $manifestPath -Description "Update manifest output"
+}
+if ($publicKeyPath) {
+    Assert-SafeFileOutput -Path $publicKeyPath -Description "Update public-key output"
+}
 
 $certificate = $null
 $rsa = $null
+$stagedOutputs = [Collections.Generic.List[string]]::new()
 try {
     if ($PSCmdlet.ParameterSetName -eq "Pfx") {
         $pfxFull = Resolve-FullPath $PfxPath
         if (-not (Test-Path -LiteralPath $pfxFull -PathType Leaf)) {
             throw "Update-signing PFX not found: $pfxFull"
+        }
+        Assert-SafeFileOutput -Path $pfxFull -Description "Update-signing PFX"
+        if (($manifestPath -and (Test-PathsEqual -Left $pfxFull -Right $manifestPath)) -or
+            ($publicKeyPath -and (Test-PathsEqual -Left $pfxFull -Right $publicKeyPath))) {
+            throw "The update-signing PFX must not alias a generated output."
         }
         if ($null -eq $PfxPassword) {
             throw "Set ZANNA_WINDOWS_UPDATE_SIGN_PASSWORD or pass -PfxPassword."
@@ -203,6 +333,7 @@ try {
         $normalized = $CertificateThumbprint.ToUpperInvariant()
         $storeLocation = [Security.Cryptography.X509Certificates.StoreLocation]::$CertificateStoreLocation
         $store = [Security.Cryptography.X509Certificates.X509Store]::new("My", $storeLocation)
+        $matches = $null
         try {
             $store.Open([Security.Cryptography.X509Certificates.OpenFlags]::ReadOnly)
             $matches = $store.Certificates.Find(
@@ -214,7 +345,12 @@ try {
             }
             $certificate = [Security.Cryptography.X509Certificates.X509Certificate2]::new($matches[0])
         } finally {
-            $store.Close()
+            if ($null -ne $matches) {
+                foreach ($match in $matches) {
+                    $match.Dispose()
+                }
+            }
+            $store.Dispose()
         }
     }
 
@@ -231,22 +367,25 @@ try {
     $exponent = Convert-ToLowerHex $public.Exponent
     $utf8 = [Text.UTF8Encoding]::new($false, $true)
 
-    $publicKeyPath = $null
-    if (-not [string]::IsNullOrWhiteSpace($PublicKeyOutput)) {
-        $publicKeyPath = Resolve-FullPath $PublicKeyOutput
+    $publicTemporary = $null
+    if ($publicKeyPath) {
         $publicParent = Split-Path -Parent $publicKeyPath
-        if (-not [string]::IsNullOrWhiteSpace($publicParent)) {
-            New-Item -ItemType Directory -Path $publicParent -Force | Out-Null
-        }
+        [void](New-Item -ItemType Directory -Path $publicParent -Force)
+        Assert-SafeFileOutput -Path $publicKeyPath -Description "Update public-key output"
+        $publicTemporary = Join-Path $publicParent (
+            ".zupdate-public-$PID-$([Guid]::NewGuid().ToString('N')).tmp")
+        $stagedOutputs.Add($publicTemporary)
         $publicJson = [ordered]@{
             schema = 1
             algorithm = "RSA-PKCS1-SHA256"
             modulus = $modulus
             exponent = $exponent
         } | ConvertTo-Json
-        [IO.File]::WriteAllText($publicKeyPath, $publicJson + "`n", $utf8)
+        [IO.File]::WriteAllText($publicTemporary, $publicJson + "`n", $utf8)
     }
     if ($PublicKeyOnly) {
+        Publish-AtomicFileSet -Entries @(
+            [pscustomobject]@{ Source = $publicTemporary; Destination = $publicKeyPath })
         return [pscustomobject]@{
             Manifest = $null
             ManifestSha256 = $null
@@ -266,7 +405,8 @@ try {
         "release-notes-url`t$ReleaseNotesUrl"
     )
     foreach ($line in $lines) {
-        if ($line.IndexOf("`r") -ge 0 -or $line.IndexOf("`n") -ge 0 -or $line.Length -gt 8192) {
+        if ($line.IndexOf("`r") -ge 0 -or $line.IndexOf("`n") -ge 0 -or
+            $utf8.GetByteCount($line) -gt 8192) {
             throw "An update manifest field contains an invalid line break or is too long."
         }
     }
@@ -283,22 +423,29 @@ try {
             [Security.Cryptography.RSASignaturePadding]::Pkcs1)) {
         throw "The generated update signature did not verify."
     }
+    if ($signature.Length -ne [int]($rsa.KeySize / 8)) {
+        throw "The generated update signature has an unexpected RSA length."
+    }
     $manifest = $canonical + "signature`t$(Convert-ToLowerHex $signature)`n"
     if ($utf8.GetByteCount($manifest) -gt 64KB) {
         throw "The update manifest exceeds the installer's 64 KiB limit."
     }
 
     $parent = Split-Path -Parent $manifestPath
-    if (-not [string]::IsNullOrWhiteSpace($parent)) {
-        New-Item -ItemType Directory -Path $parent -Force | Out-Null
+    [void](New-Item -ItemType Directory -Path $parent -Force)
+    Assert-SafeFileOutput -Path $manifestPath -Description "Update manifest output"
+    $temporary = Join-Path $parent (
+        ".zupdate-manifest-$PID-$([Guid]::NewGuid().ToString('N')).tmp")
+    $stagedOutputs.Add($temporary)
+    [IO.File]::WriteAllText($temporary, $manifest, $utf8)
+    $publishEntries = [Collections.Generic.List[object]]::new()
+    $publishEntries.Add(
+        [pscustomobject]@{ Source = $temporary; Destination = $manifestPath })
+    if ($publicKeyPath) {
+        $publishEntries.Add(
+            [pscustomobject]@{ Source = $publicTemporary; Destination = $publicKeyPath })
     }
-    $temporary = "$manifestPath.tmp-$PID-$([Guid]::NewGuid().ToString('N'))"
-    try {
-        [IO.File]::WriteAllText($temporary, $manifest, $utf8)
-        Move-Item -LiteralPath $temporary -Destination $manifestPath -Force
-    } finally {
-        Remove-Item -LiteralPath $temporary -Force -ErrorAction SilentlyContinue
-    }
+    Publish-AtomicFileSet -Entries $publishEntries.ToArray()
 
     [pscustomobject]@{
         Manifest = $manifestPath
@@ -308,6 +455,9 @@ try {
         RsaExponent = $exponent
     }
 } finally {
+    foreach ($stagedOutput in $stagedOutputs) {
+        Remove-Item -LiteralPath $stagedOutput -Force -ErrorAction SilentlyContinue
+    }
     if ($null -ne $rsa) {
         $rsa.Dispose()
     }

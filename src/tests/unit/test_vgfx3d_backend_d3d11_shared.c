@@ -1582,6 +1582,32 @@ static void test_depth_probe_bias_instancing_and_rtt_guards(void) {
                 "RTT readback rejects matching but invalid format metadata");
 }
 
+static void test_frame_protocol_submission_guards(void) {
+    EXPECT_TRUE(vgfx3d_d3d11_frame_state_is_idle(0, 0) == 1,
+                "D3D11 frame state is idle only before BeginFrame or after Present");
+    EXPECT_TRUE(vgfx3d_d3d11_frame_state_is_idle(1, 0) == 0,
+                "D3D11 frame mutation is blocked while drawing");
+    EXPECT_TRUE(vgfx3d_d3d11_frame_state_is_idle(0, 1) == 0,
+                "D3D11 frame mutation is blocked between EndFrame and Present");
+    EXPECT_TRUE(vgfx3d_d3d11_frame_state_is_idle(1, 1) == 0,
+                "D3D11 rejects contradictory active and pending state as busy");
+
+    EXPECT_TRUE(vgfx3d_d3d11_draw_submission_is_ready(1, -1, 1, 1, 1, 640, 480) == 1,
+                "D3D11 draw submission accepts a complete active color target");
+    EXPECT_TRUE(vgfx3d_d3d11_draw_submission_is_ready(0, -1, 1, 1, 1, 640, 480) == 0,
+                "D3D11 draw submission rejects calls outside a frame");
+    EXPECT_TRUE(vgfx3d_d3d11_draw_submission_is_ready(1, 0, 1, 1, 1, 640, 480) == 0,
+                "D3D11 ordinary draws cannot overwrite an active shadow pass");
+    EXPECT_TRUE(vgfx3d_d3d11_draw_submission_is_ready(1, -1, 0, 1, 1, 640, 480) == 0,
+                "D3D11 draw submission requires a device context");
+    EXPECT_TRUE(vgfx3d_d3d11_draw_submission_is_ready(1, -1, 1, 0, 1, 640, 480) == 0 &&
+                    vgfx3d_d3d11_draw_submission_is_ready(1, -1, 1, 1, 0, 640, 480) == 0,
+                "D3D11 draw submission requires a published primary render target");
+    EXPECT_TRUE(vgfx3d_d3d11_draw_submission_is_ready(1, -1, 1, 1, 1, 0, 480) == 0 &&
+                    vgfx3d_d3d11_draw_submission_is_ready(1, -1, 1, 1, 1, 640, -1) == 0,
+                "D3D11 draw submission rejects invalid viewport extents");
+}
+
 static void test_postfx_readback_policy_helpers(void) {
     vgfx3d_postfx_effect_desc_t effect;
     vgfx3d_postfx_chain_t chain;
@@ -2099,6 +2125,16 @@ static void test_d3d11_backend_source_contracts(void) {
         return;
     EXPECT_TRUE(strstr(source, "vgfx3d_sanitize_draw_command(cmd, &safe_cmd)") != NULL,
                 "D3D11 sanitizes draw snapshots before native upload");
+    EXPECT_TRUE(count_text(source, "vgfx3d_d3d11_draw_submission_is_ready(") >= 4,
+                "D3D11 gates regular, instanced, skybox, and begin-frame target submission");
+    EXPECT_TRUE(count_text(source, "vgfx3d_d3d11_frame_state_is_idle(") >= 1,
+                "D3D11 blocks render-scale mutation while a completed frame awaits Present");
+    EXPECT_TRUE(strstr(source, "CopyResource(presentedSnapshot)") != NULL &&
+                    strstr(source, "CopySubresourceRegion(depthProbeStaging)") != NULL,
+                "D3D11 checks device health before publishing asynchronous copy results");
+    EXPECT_TRUE(strstr(source, "SyncRTTBeforeUnbind") != NULL &&
+                    strstr(source, "CreateTexture2D(rttStagingRecovery)") != NULL,
+                "D3D11 preserves dirty RTT data and replaces failed staging resources");
     EXPECT_TRUE(
         strstr(source, "ctx->shadow_pass_failed = 1") != NULL &&
             strstr(source, "ctx->shadow_slot_complete[slot] = ctx->shadow_pass_failed ? 0") != NULL,
@@ -2221,10 +2257,16 @@ static void test_d3d11_backend_source_contracts(void) {
                                             "IDXGISwapChain_ResizeBuffers",
                                             "d3d11_destroy_scene_targets(ctx);"),
                 "D3D11 preserves independent scene targets until DXGI accepts a resize");
+    EXPECT_TRUE(text_appears_in_order_after(source,
+                                            "static void d3d11_resize(",
+                                            "IDXGISwapChain_ResizeBuffers",
+                                            "ctx->frame_pending_present = 0;"),
+                "D3D11 retires a superseded pending frame only after DXGI accepts a resize");
     EXPECT_TRUE(strstr(source, "!ctx->frame_pending_present") != NULL &&
-                    strstr(source, "!ctx || !cam || ctx->frame_active") != NULL &&
-                    strstr(source, "!ctx || !ctx->frame_active") != NULL,
-                "D3D11 rejects duplicate or out-of-order frame operations");
+                    strstr(source, "vgfx3d_d3d11_frame_state_is_idle") != NULL &&
+                    strstr(source, "!ctx || !ctx->frame_active") != NULL &&
+                    strstr(source, "ctx->frame_pending_present = prior_pending_present;") != NULL,
+                "D3D11 rejects nested/out-of-order operations and preserves failed continuations");
     EXPECT_TRUE(
         strstr(source, "need_scratch_target = force_offscreen_final ? chain->effect_count > 1") !=
                 NULL &&
@@ -2266,6 +2308,7 @@ int main(void) {
     test_morph_cache_reuse_helper();
     test_shadow_and_rtt_policy_helpers();
     test_depth_probe_bias_instancing_and_rtt_guards();
+    test_frame_protocol_submission_guards();
     test_postfx_readback_policy_helpers();
     test_shadow_projection_helper_handles_all_projection_modes();
     test_d3d11_shader_chunk_join_validation();

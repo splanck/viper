@@ -154,6 +154,30 @@ if (WIN32 AND NOT TARGET test_windows_installer_lifecycle_contract)
             installer packaging requires_windows unit)
 endif ()
 
+if (WIN32 AND NOT TARGET test_windows_installer_cleanup_policy)
+    zanna_add_test(test_windows_installer_cleanup_policy
+            ${ZANNA_TESTS_DIR}/unit/test_windows_installer_cleanup_policy.cpp
+            ${CMAKE_SOURCE_DIR}/src/tools/windows_installer/WindowsInstallerCleanupPolicy.cpp)
+    zanna_add_ctest(test_windows_installer_cleanup_policy
+            test_windows_installer_cleanup_policy)
+    zanna_add_test_labels(test_windows_installer_cleanup_policy
+            installer packaging requires_windows unit)
+endif ()
+
+if (WIN32 AND NOT TARGET test_vg_filedialog_platform_win32)
+    zanna_add_test(test_vg_filedialog_platform_win32
+            ${ZANNA_TESTS_DIR}/unit/test_vg_filedialog_platform_win32.c
+            ${CMAKE_SOURCE_DIR}/src/lib/gui/src/widgets/vg_filedialog_platform_win32.c)
+    target_include_directories(test_vg_filedialog_platform_win32 PRIVATE
+            ${CMAKE_SOURCE_DIR}/src/lib/gui/src/widgets)
+    target_compile_definitions(test_vg_filedialog_platform_win32 PRIVATE
+            UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
+    zanna_add_ctest(test_vg_filedialog_platform_win32
+            test_vg_filedialog_platform_win32)
+    zanna_add_test_labels(test_vg_filedialog_platform_win32
+            gui unit requires_windows)
+endif ()
+
 # Packaging subsystem unit tests (ZAPS)
 if (NOT TARGET test_packaging)
     if (WIN32)
@@ -1307,6 +1331,8 @@ function(zanna_add_runtime_tests)
                 ${ZANNA_TESTS_DIR}/runtime/RTWindowsRuntimeTests.cpp)
         target_link_libraries(test_rt_windows_runtime PRIVATE
                 ${ZANNA_RUNTIME_TEST_LIBS} Threads::Threads)
+        target_compile_definitions(test_rt_windows_runtime PRIVATE
+                ZANNA_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
         zanna_add_ctest(test_rt_windows_runtime test_rt_windows_runtime)
     elseif (UNIX)
         zanna_add_test(test_rt_posix_socket_platform

@@ -162,6 +162,12 @@ macOS the lowercase file is a compatibility launcher for the sibling native
 payload `Zanna Studio`; the authored payload name is what Cocoa exposes in the
 system application menu.
 
+Buildinfo schema 1 identifies the exact Studio/toolchain version and records
+the UTC build time, source revision/state, target architecture, binary byte
+size, lowercase SHA-256, published path, and compiler path. Windows builds
+compile to a same-directory stage and publish the executable/buildinfo pair
+with rollback, so a failed rebuild preserves the previous matched pair.
+
 Full repository builds also build and install Zanna Studio when
 `ZANNA_INSTALL_ZANNASTUDIO=ON` (the default). `cmake --install` stages the IDE as
 `bin/zannastudio` or `bin\zannastudio.exe`, and the toolchain installer wrappers keep

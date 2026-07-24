@@ -552,6 +552,9 @@ HostOptions parseCommandLine(int argc, wchar_t **argv) {
     bool outputSpecified = false;
     bool scopeSpecified = false;
     bool presetSpecified = false;
+    bool elevatedWorkerSpecified = false;
+    bool uninstallWorkerSpecified = false;
+    bool handoffParentSpecified = false;
     bool helpRequested = false;
     auto setOperation = [&](Operation operation) {
         if (explicitOperation && *explicitOperation != operation)
@@ -625,8 +628,14 @@ HostOptions parseCommandLine(int argc, wchar_t **argv) {
         } else if (arg == L"/noshortcuts" || arg == L"/no-shortcuts") {
             setIntegration(result.createShortcuts, false, "shortcuts");
         } else if (arg == L"/elevated-worker") {
+            if (elevatedWorkerSpecified)
+                throw std::runtime_error("/elevated-worker was specified more than once");
+            elevatedWorkerSpecified = true;
             result.elevatedWorker = true;
         } else if (arg == L"/uninstall-worker") {
+            if (uninstallWorkerSpecified)
+                throw std::runtime_error("/uninstall-worker was specified more than once");
+            uninstallWorkerSpecified = true;
             result.uninstallWorker = true;
         } else if (arg == L"/launch-ide") {
             result.launchIDE = true;
@@ -705,11 +714,14 @@ HostOptions parseCommandLine(int argc, wchar_t **argv) {
                 outputSpecified = true;
                 result.outputPath = separatedValue;
             } else if (arg == L"/handoff-parent") {
+                if (handoffParentSpecified)
+                    throw std::runtime_error("/handoff-parent was specified more than once");
                 wchar_t *end = nullptr;
                 errno = 0;
                 const unsigned long value = std::wcstoul(separatedValue.c_str(), &end, 10);
                 if (errno != 0 || !end || *end != L'\0' || value == 0 || value > MAXDWORD)
                     throw std::runtime_error("invalid internal handoff process identifier");
+                handoffParentSpecified = true;
                 result.handoffParentId = static_cast<DWORD>(value);
             } else if (arg == L"/type" || arg == L"/preset") {
                 setPreset(parseComponentPreset(separatedValue));
@@ -725,6 +737,10 @@ HostOptions parseCommandLine(int argc, wchar_t **argv) {
     }
     if (result.componentsSpecified && result.componentPreset != ComponentPreset::Unspecified)
         throw std::runtime_error("/components cannot be combined with /type or /preset");
+    if (result.uninstallWorker != (result.handoffParentId != 0))
+        throw std::runtime_error("/uninstall-worker and /handoff-parent must be supplied together");
+    if (result.elevatedWorker && result.uninstallWorker)
+        throw std::runtime_error("elevated and maintenance-handoff worker modes are exclusive");
     if (helpRequested)
         result.operation = Operation::Help;
     if (outputSpecified && result.outputPath.empty())

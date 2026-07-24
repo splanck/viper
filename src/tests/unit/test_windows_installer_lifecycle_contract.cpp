@@ -16,7 +16,8 @@
 // Ownership/Lifetime:
 //   - The test owns one in-memory copy of the lifecycle implementation source.
 //
-// Links: src/tools/windows_installer/WindowsInstallerLifecycle.cpp
+// Links: src/tools/windows_installer/WindowsInstallerLifecycle.cpp,
+//        src/tools/windows_installer/WindowsInstallerHost.cpp
 //
 //===----------------------------------------------------------------------===//
 
@@ -68,12 +69,23 @@ std::string readLifecycleSource() {
     return {std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()};
 }
 
+std::string readHostSource() {
+    const std::filesystem::path path = std::filesystem::path(ZANNA_SOURCE_DIR) / "src" / "tools" /
+                                       "windows_installer" / "WindowsInstallerHost.cpp";
+    std::ifstream input(path, std::ios::binary);
+    if (!input)
+        return {};
+    return {std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()};
+}
+
 } // namespace
 
 int main() {
     const std::string source = readLifecycleSource();
+    const std::string hostSource = readHostSource();
     expect(!source.empty(), "Windows installer lifecycle source is readable");
-    if (source.empty())
+    expect(!hostSource.empty(), "Windows installer host source is readable");
+    if (source.empty() || hostSource.empty())
         return 1;
 
     expect(source.find("CompareStringOrdinal") != std::string::npos &&
@@ -139,6 +151,24 @@ int main() {
            "Shortcut cleanup cannot remove Desktop or Start Menu roots");
     expect(source.find("refusing to remove a non-file Zanna shortcut path") != std::string::npos,
            "Shortcut cleanup rejects directories and reparse points");
+    expect(appearsInOrder(source,
+                          "int runLifecycle",
+                          "maintenance-handoff worker mode requires the verified cache executable",
+                          "waitForHandoffParent(options.handoffParentId)"),
+           "Maintenance workers prove their cached executable before trusting a handoff PID");
+    expect(source.find("elevated worker mode requires an elevated machine-scope process") !=
+               std::string::npos,
+           "Elevated worker mode proves both machine scope and process elevation");
+    expect(hostSource.find("/uninstall-worker and /handoff-parent must be supplied together") !=
+                   std::string::npos &&
+               hostSource.find("elevated and maintenance-handoff worker modes are exclusive") !=
+                   std::string::npos,
+           "Internal worker options reject unpaired and contradictory combinations");
+    expect(
+        hostSource.find("/handoff-parent was specified more than once") != std::string::npos &&
+            hostSource.find("/elevated-worker was specified more than once") != std::string::npos &&
+            hostSource.find("/uninstall-worker was specified more than once") != std::string::npos,
+        "Internal worker options reject duplicate spellings");
 
     std::cout << testsPassed << "/" << testsRun << " tests passed\n";
     return testsPassed == testsRun ? 0 : 1;

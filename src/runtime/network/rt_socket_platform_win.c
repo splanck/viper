@@ -11,11 +11,15 @@
 // Key invariants:
 //   - One caller performs each WSAStartup attempt; waiters retry if that attempt
 //     fails instead of spinning forever on an abandoned in-progress state.
+//   - The successful WinSock startup reference is process-lifetime state. Native
+//     PE programs may use Zanna's CRT-less entry shim, so this adapter never
+//     registers a CRT atexit callback.
 //   - Socket readiness waits preserve one GetTickCount64 deadline across
 //     WSAEINTR and rebuild select()'s mutable fd/timeval inputs on every retry.
 //
 // Ownership/Lifetime:
-//   - The adapter does not own sockets except during rt_socket_close().
+//   - The OS reclaims the process-lifetime WinSock startup reference at process
+//     teardown. The adapter does not own sockets except during rt_socket_close().
 //
 // Links: src/runtime/network/rt_socket_platform.h
 //
@@ -33,16 +37,14 @@ static volatile LONG g_wsa_init_state = 0; // 0=uninit, 1=in-progress, 2=done
 
 static void rt_socket_set_last_error(int error);
 
-/// @brief atexit handler that releases the process WinSock startup reference.
-/// @details Registered only after a successful WSAStartup call.
-static void rt_net_cleanup_wsa(void) {
-    WSACleanup();
-}
-
 /// @brief Initialize WinSock once for the process.
 /// @details Uses a three-state atomic flag so concurrent callers either perform
 ///          WSAStartup exactly once or wait until the winning caller finishes.
-///          A successful startup registers rt_net_cleanup_wsa() for process exit.
+///          The successful startup reference intentionally lasts for the
+///          process lifetime. Zanna's native Windows executable can enter
+///          through a CRT-less startup shim, where registering a CRT atexit
+///          callback corrupts or blocks the uninitialized CRT exit table.
+///          Windows releases WinSock process state during process teardown.
 void rt_net_init_wsa(void) {
     for (;;) {
         LONG state = InterlockedCompareExchange(&g_wsa_init_state, 0, 0);
@@ -68,12 +70,6 @@ void rt_net_init_wsa(void) {
             WSACleanup();
             InterlockedExchange(&g_wsa_init_state, 0);
             rt_trap("Network: WinSock 2.2 is unavailable");
-            return;
-        }
-        if (atexit(rt_net_cleanup_wsa) != 0) {
-            WSACleanup();
-            InterlockedExchange(&g_wsa_init_state, 0);
-            rt_trap("Network: failed to register WinSock cleanup");
             return;
         }
         InterlockedExchange(&g_wsa_init_state, 2);

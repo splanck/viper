@@ -30,6 +30,7 @@
 #include <audioclient.h>
 #include <mmdeviceapi.h>
 #include <mmreg.h>
+#include <process.h>
 #include <stdlib.h>
 #include <string.h>
 #include <windows.h>
@@ -150,8 +151,14 @@ static int vaud_win32_configure_render_format(vaud_win32_data *plat, const WAVEF
     UINT32 bytes_per_sample = fmt->wBitsPerSample / 8u;
     if (bytes_per_sample == 0 || bytes_per_sample > 4)
         return 0;
-    if (fmt->nBlockAlign < fmt->nChannels * bytes_per_sample)
+    const uint64_t expected_block_align = (uint64_t)fmt->nChannels * bytes_per_sample;
+    if (expected_block_align > UINT16_MAX || fmt->nBlockAlign != expected_block_align)
         return 0;
+    const uint64_t expected_bytes_per_second = (uint64_t)fmt->nSamplesPerSec * expected_block_align;
+    if (expected_bytes_per_second > UINT32_MAX ||
+        fmt->nAvgBytesPerSec != expected_bytes_per_second) {
+        return 0;
+    }
 
     vaud_win32_sample_format sample_format;
     if (vaud_win32_guid_equal(subtype, &VAUD_KSDATAFORMAT_SUBTYPE_IEEE_FLOAT) &&
@@ -394,9 +401,11 @@ static void vaud_win32_join_thread(vaud_context_t ctx, vaud_win32_data *plat, DW
 /// @brief Audio thread function - waits for buffer events and fills audio.
 /// @param arg Pointer to our audio context.
 /// @return 0 on exit.
-static DWORD WINAPI audio_thread_func(LPVOID arg) {
+static unsigned __stdcall audio_thread_func(void *arg) {
     vaud_context_t ctx = (vaud_context_t)arg;
     vaud_win32_data *plat = (vaud_win32_data *)ctx->platform_data;
+    unsigned consecutive_padding_failures = 0;
+    unsigned consecutive_buffer_failures = 0;
     HRESULT hr = CoInitializeEx(NULL, COINIT_MULTITHREADED);
     int com_initialized = SUCCEEDED(hr) ? 1 : 0;
     if (FAILED(hr) && hr != RPC_E_CHANGED_MODE) {
@@ -453,8 +462,16 @@ static DWORD WINAPI audio_thread_func(LPVOID arg) {
         UINT32 padding = 0;
         hr = IAudioClient_GetCurrentPadding(plat->client, &padding);
         if (FAILED(hr)) {
+            if (++consecutive_padding_failures >= 8) {
+                vaud_stats_add(&ctx->stats.backend_write_failures, 1);
+                vaud_set_error(VAUD_ERR_PLATFORM,
+                               "WASAPI repeatedly failed to report buffer padding");
+                InterlockedExchange(&plat->running, 0);
+                break;
+            }
             continue;
         }
+        consecutive_padding_failures = 0;
         if (padding > plat->buffer_frames) {
             vaud_stats_add(&ctx->stats.backend_write_failures, 1);
             vaud_set_error(VAUD_ERR_PLATFORM, "WASAPI reported invalid buffer padding");
@@ -476,14 +493,25 @@ static DWORD WINAPI audio_thread_func(LPVOID arg) {
         BYTE *buffer = NULL;
         hr = IAudioRenderClient_GetBuffer(plat->render, available, &buffer);
         if (FAILED(hr)) {
+            if (++consecutive_buffer_failures >= 8) {
+                vaud_stats_add(&ctx->stats.backend_write_failures, 1);
+                vaud_set_error(VAUD_ERR_PLATFORM,
+                               "WASAPI repeatedly failed to acquire a render buffer");
+                InterlockedExchange(&plat->running, 0);
+                break;
+            }
             continue;
         }
+        consecutive_buffer_failures = 0;
         if (!buffer) {
-            (void)IAudioRenderClient_ReleaseBuffer(
+            hr = IAudioRenderClient_ReleaseBuffer(
                 plat->render, available, AUDCLNT_BUFFERFLAGS_SILENT);
             vaud_stats_add(&ctx->stats.backend_write_failures, 1);
-            vaud_set_error(VAUD_ERR_PLATFORM, "WASAPI returned a null render buffer");
-            continue;
+            vaud_set_error(VAUD_ERR_PLATFORM,
+                           FAILED(hr) ? "WASAPI failed to release a null render buffer"
+                                      : "WASAPI returned a null render buffer");
+            InterlockedExchange(&plat->running, 0);
+            break;
         }
 
         /* Render mixed audio in the negotiated WASAPI format. */
@@ -495,9 +523,13 @@ static DWORD WINAPI audio_thread_func(LPVOID arg) {
         hr = IAudioRenderClient_ReleaseBuffer(plat->render, available, release_flags);
         if (FAILED(hr)) {
             vaud_stats_add(&ctx->stats.backend_write_failures, 1);
+            vaud_set_error(VAUD_ERR_PLATFORM, "WASAPI failed to release a render buffer");
+            InterlockedExchange(&plat->running, 0);
+            break;
         }
     }
 
+    InterlockedExchange(&plat->running, 0);
     if (com_initialized)
         CoUninitialize();
     return 0;
@@ -727,7 +759,8 @@ int vaud_platform_init(vaud_context_t ctx) {
 
     /* Start audio thread */
     InterlockedExchange(&plat->running, 1);
-    plat->thread = CreateThread(NULL, 0, audio_thread_func, ctx, 0, NULL);
+    uintptr_t thread_handle = _beginthreadex(NULL, 0, audio_thread_func, ctx, 0, NULL);
+    plat->thread = thread_handle ? (HANDLE)thread_handle : NULL;
 
     if (!plat->thread) {
         InterlockedExchange(&plat->running, 0);
@@ -852,6 +885,9 @@ void vaud_platform_pause(vaud_context_t ctx) {
     if (plat->client) {
         HRESULT hr = IAudioClient_Stop(plat->client);
         if (FAILED(hr)) {
+            EnterCriticalSection(&plat->pause_cs);
+            InterlockedExchange(&plat->paused, 0);
+            LeaveCriticalSection(&plat->pause_cs);
             vaud_stats_add(&ctx->stats.backend_write_failures, 1);
             vaud_set_error(VAUD_ERR_PLATFORM, "Failed to pause WASAPI client");
         }

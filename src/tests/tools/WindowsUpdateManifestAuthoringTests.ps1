@@ -12,6 +12,7 @@
 #   - The ephemeral test certificate is removed from the user store in finally.
 #   - Generated manifests are canonical UTF-8/LF and deterministic.
 #   - Unsafe origins and ambiguous SemVer spellings fail before publication.
+#   - Public-key and manifest outputs are distinct and publish as a pair.
 #
 # Ownership/Lifetime: Test artifacts are isolated under the supplied build directory.
 #
@@ -156,6 +157,41 @@ try {
     Assert-Fails {
         & $scriptPath @badHttp -OutputPath (Join-Path $workPath "bad-http.txt")
     } "absolute HTTPS URL"
+
+    $badWhitespace = $common.Clone()
+    $badWhitespace["DownloadUrl"] =
+        "https://updates.example.test/zanna/bad installer.exe"
+    Assert-Fails {
+        & $scriptPath @badWhitespace -OutputPath (
+            Join-Path $workPath "bad-whitespace.txt")
+    } "absolute HTTPS URL"
+
+    $badBackslash = $common.Clone()
+    $badBackslash["DownloadUrl"] =
+        "https://updates.example.test/zanna\bad-installer.exe"
+    Assert-Fails {
+        & $scriptPath @badBackslash -OutputPath (
+            Join-Path $workPath "bad-backslash.txt")
+    } "absolute HTTPS URL"
+
+    $aliasedOutput = Join-Path $workPath "aliased-output.txt"
+    Assert-Fails {
+        & $scriptPath @common -OutputPath $aliasedOutput `
+            -PublicKeyOutput $aliasedOutput
+    } "must be distinct"
+
+    $preservedManifest = Join-Path $workPath "preserved-manifest.txt"
+    $blockedPublicKey = Join-Path $workPath "blocked-public-key.json"
+    [IO.File]::WriteAllText(
+        $preservedManifest, "preserve-existing-manifest", [Text.Encoding]::ASCII)
+    [void](New-Item -ItemType Directory -Path $blockedPublicKey)
+    Assert-Fails {
+        & $scriptPath @common -OutputPath $preservedManifest `
+            -PublicKeyOutput $blockedPublicKey
+    } "not a regular file destination"
+    Assert-True ([IO.File]::ReadAllText($preservedManifest) -eq
+                 "preserve-existing-manifest") `
+        "Public-key preflight failure replaced the existing manifest."
 } finally {
     if ($null -ne $certificate) {
         Remove-Item -LiteralPath "Cert:\CurrentUser\My\$($certificate.Thumbprint)" `

@@ -23,6 +23,13 @@
 //
 //===----------------------------------------------------------------------===//
 
+// This boundary suite intentionally uses assert as its executable check
+// primitive, including around Result unwrapping and filesystem operations.
+// Keep those checks active in Release installer validation.
+#ifdef NDEBUG
+#undef NDEBUG
+#endif
+
 #include "rt_asset.h"
 #include "rt_crc32.h"
 #include "rt_graphics.h"

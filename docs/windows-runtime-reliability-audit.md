@@ -15,15 +15,16 @@ native-link cross-layer dependency added for current MSVC object code.
 
 ## Repaired findings
 
-The 2026-07-23 pass added WR-199 through WR-258: 60 concrete repairs, with installer and
-Zanna Studio packaging intentionally receiving the largest share.
+The 2026-07-23 passes added WR-199 through WR-346: 148 concrete repairs, with installer and
+Zanna Studio packaging intentionally receiving the largest share. WR-259 through WR-346 are the
+fresh 88-finding Direct3D/Windows runtime/installer tranche recorded by this audit.
 
 | ID | Area | Finding and repair |
 |----|------|--------------------|
 | WR-01 | WinSock startup | A failed `WSAStartup` attempt left concurrent callers spinning on the in-progress state forever. Failed owners now reset the state so waiters retry. |
 | WR-02 | WinSock startup | Plain reads of the volatile startup state did not provide the atomic visibility used by its writes. All state observations now use interlocked operations. |
 | WR-03 | WinSock startup | A successful call did not verify that WinSock 2.2 was actually negotiated. The adapter now validates `wVersion` and cleans up a mismatched startup. |
-| WR-04 | WinSock startup | Failure to register `WSACleanup` with `atexit` was ignored. Registration failure now cleans up, resets the state, and traps. |
+| WR-04 | WinSock startup | Failure to register `WSACleanup` with `atexit` was ignored. That failure path was initially made explicit; WR-344 later removes the unsafe Windows registration entirely for CRT-less native executables. |
 | WR-05 | WinSock connect | Non-blocking connect classification recognized only `WSAEWOULDBLOCK`. It now also recognizes `WSAEINPROGRESS` and `WSAEALREADY`. |
 | WR-06 | WinSock accept | Listener shutdown could surface `WSAESHUTDOWN` as an unexpected accept failure. It is now classified as the normal close race. |
 | WR-07 | WinSock readiness | The Windows `select` call derived `nfds` from the pointer-sized socket handle and narrowed it to `int`, although WinSock ignores that argument. It now passes zero. |
@@ -263,7 +264,7 @@ Zanna Studio packaging intentionally receiving the largest share.
 | WR-241 | D3D11 cache growth | One frame with unique texture/cubemap identities could grow CPU cache tables toward `INT_MAX` before age pruning ran. Hard entry ceilings now divert excess one-frame entries through existing temporary/fallback resources. |
 | WR-242 | D3D11 frame protocol | Nested begin, duplicate end, and depth probes outside an active frame could corrupt timing, history, or probe batches. Begin/end/probe hooks now enforce the active-frame state machine. |
 | WR-243 | D3D11 presentation protocol | Present or split post-FX could run during drawing, replay an already-presented frame, or consume stale targets. Both paths now require an ended frame with one pending presentation. |
-| WR-244 | D3D11 resize | Scene/overlay targets were destroyed before `ResizeBuffers`, so a rejected DXGI resize discarded a valid independent route; resize could also run mid-frame. Scene teardown now follows successful resize and active frames reject mutation. |
+| WR-244 | D3D11 resize | Scene/overlay targets were destroyed before `ResizeBuffers`, so a rejected DXGI resize discarded a valid independent route; resize could also run mid-frame. Scene teardown now follows successful resize, active frames reject mutation, and an accepted size change explicitly retires any superseded pending frame. |
 | WR-245 | D3D11 post-FX planning | A bad final target was discovered only after intermediate passes, and single-effect offscreen capture allocated an unnecessary scratch texture. Destination validation is upfront and scratch allocation follows the actual ping-pong count. |
 | WR-246 | D3D11 mutable state | Post-FX routing, render-target changes, and shadow operations could mutate the pipeline mid-frame or outside a frame, while frame-serial wrap broke age ordering. Hooks now honor frame ownership and serials saturate instead of wrapping. |
 | WR-247 | Win32 fullscreen | Style/rect/monitor calls and both `SetWindowLong`/`SetWindowPos` phases were unchecked, and fullscreen state was published before success. Entry/exit now snapshot exactly, validate monitor bounds, roll back partial writes, and commit state last. |
@@ -278,13 +279,104 @@ Zanna Studio packaging intentionally receiving the largest share.
 | WR-256 | Studio phase regression | One 880-line probe function generated a verifier workload that exceeded 270 CPU-seconds in Debug and timed out before `main` ran. Focused helper functions preserve every assertion while reducing the same test to about 15 seconds. |
 | WR-257 | Studio file-tree regression | The comprehensive file-tree probe creates hundreds of files and exercises paging, mutation, trash, and multi-root behavior under a display lock, but its 30-second budget was shorter than its full-suite runtime under CPU and filesystem contention. Its normal-suite timeout is now 90 seconds while retaining the same assertions and coverage. |
 | WR-258 | Windows Release native link | Release optimization can emit UCRT's `_fdclass` helper even when a Debug Studio link only needs `_fdtest`. The exact helper is now accepted only on Windows, mapped to the selected UCRT, and covered beside `_fdtest` by platform import tests and ADR 0155. |
+| WR-259 | D3D11 frame begin | Failed target validation unconditionally cleared pending-present state, discarding an earlier completed pass. Begin now blocks nesting, permits the documented multi-pass Begin/End sequence before Flip, and restores prior pending state when a continuation cannot start. |
+| WR-260 | D3D11 frame targets | Frame setup could proceed without an immediate context or usable color target and leave active/pending bits latched. It now validates the complete draw route and rolls the protocol back on failure. |
+| WR-261 | D3D11 draw submission | Regular and instanced draws accepted calls outside `BeginFrame`/`EndFrame` or without a complete color target. A shared readiness policy now rejects those submissions. |
+| WR-262 | D3D11 shadow isolation | Ordinary color draws could execute while the shadow pass owned the output stage. The shared submission policy now reserves shadow rendering for its dedicated entry point. |
+| WR-263 | D3D11 skybox submission | Skybox rendering checked target geometry but not active-frame, device-context, or shadow-pass ownership. It now uses the same full color-draw contract. |
+| WR-264 | D3D11 same-size repair | Repairing an incomplete same-size swapchain route released the surviving targets before replacement was known to succeed. Rebuild now stages a complete target set before publication. |
+| WR-265 | D3D11 RTT selection | Failure to allocate a newly selected render target destroyed the previously usable RTT route. Failed selection now releases only staged resources and preserves the old route. |
+| WR-266 | D3D11 RTT ownership | Switching or unbinding a dirty render target could discard its only GPU color copy. Selection now requires a successful readback before retiring the old target. |
+| WR-267 | D3D11 RTT staging | A failed or successful-null RTT map left the same poisoned staging texture cached for every retry. Failure now evicts it and attempts a validated replacement. |
+| WR-268 | D3D11 asynchronous copies | Snapshot and depth-probe copies were marked valid without checking device removal, because copy commands return no HRESULT. Device health is now checked before publishing either result. |
+| WR-269 | WASAPI block layout | Negotiated block alignment was accepted when merely large enough, allowing per-frame channel addressing to disagree with the endpoint format. It must now equal channels times bytes per sample exactly. |
+| WR-270 | WASAPI byte rate | Negotiated average bytes per second was trusted even when inconsistent with sample rate and block alignment. The exact checked product is now required. |
+| WR-271 | WASAPI CRT lifetime | The audio worker used `CreateThread` despite executing CRT allocation and conversion code. It now uses `_beginthreadex` with the matching calling convention. |
+| WR-272 | WASAPI padding failures | Repeated `GetCurrentPadding` errors could spin forever. Eight consecutive failures now stop the worker with deterministic diagnostics. |
+| WR-273 | WASAPI buffer failures | A successful padding query reset the shared retry counter, so `GetBuffer` could still fail forever. Padding and buffer acquisition now have independent bounded counters. |
+| WR-274 | WASAPI null buffers | Successful acquisition with a null pointer released silence and continued, repeatedly accepting an impossible contract. The worker attempts the required release, records failure, and stops. |
+| WR-275 | WASAPI buffer release | `ReleaseBuffer` failure incremented telemetry but continued as though endpoint ownership had been returned. It now stops the worker immediately. |
+| WR-276 | WASAPI worker state | Several loop exits left `running` set until an external shutdown. Every worker exit now clears the published state. |
+| WR-277 | WASAPI pause state | A failed `IAudioClient::Stop` left the software pause flag set although audio could still be running. Pause state now rolls back under its lock. |
+| WR-278 | native file-dialog COM | `RPC_E_CHANGED_MODE` was treated as usable apartment initialization, after which STA file-dialog calls ran from an incompatible COM apartment. Native dialogs now fail closed on every failed initialization. |
+| WR-279 | native file-dialog filters | A pattern with an empty display name produced an invalid filter record. Windows dialogs now use a stable `Files` label fallback. |
+| WR-280 | native open dialog | Single-file open omitted filesystem, existing-file/path, no-directory-change, and no-recent-list constraints. The complete safe option set is now explicit. |
+| WR-281 | native multi/folder dialogs | Multi-select and folder selection inherited permissive shell-item behavior and could change process state. Both modes now require filesystem paths and preserve directory/recent-list state. |
+| WR-282 | native save dialog | Save omitted overwrite confirmation, filesystem/path constraints, and state-preservation flags. The native save contract now sets all of them. |
+| WR-283 | widget file enumeration | Entry-vector growth multiplied capacity before proving the multiplication safe. Capacity doubling and byte sizing are now checked in separate steps. |
+| WR-284 | widget home lookup | `%USERPROFILE%` was returned without proving that it existed as a directory. Invalid values now fall through to the next supported source. |
+| WR-285 | widget legacy home lookup | `%HOMEDRIVE%%HOMEPATH%` could be relative, nonexistent, or a file. The combined value must now be an absolute existing directory. |
+| WR-286 | widget parent navigation | Parent calculation could trim ordinary UNC, extended drive, or extended UNC share roots into invalid paths. A root parser now preserves every supported root boundary. |
+| WR-287 | Windows locale environment | Locale fallback borrowed `getenv` storage that concurrent environment mutation could invalidate. It now takes an owned `GetEnvironmentVariableW` snapshot with bounded growth-race retries. |
+| WR-288 | Windows locale conversion | Fallback environment text was converted through process narrow storage, and system-locale validation wrote incrementally. Strict UTF-16/UTF-8 conversion and validate-before-write preserve deterministic output. |
+| WR-289 | Win32 title conversion | UTF-8 window-title allocation multiplied a native length without an explicit `size_t` bound. The byte allocation is now overflow-checked. |
+| WR-290 | Win32 thread yield regression | The documented `Sleep(0)` fallback after an unsuccessful `SwitchToThread` was absent from the adapter. The implementation now matches the reliability contract already recorded by WR-29. |
+| WR-291 | cleanup path namespaces | The detached helper accepted any `\\?\` prefix, including arbitrary device namespaces. Parsing now recognizes only drive, UNC, extended-drive, and extended-UNC forms. |
+| WR-292 | cleanup root deletion | Drive and share roots could pass broad absolute-path checks. Every accepted cleanup target must contain a child below its parsed root. |
+| WR-293 | cleanup traversal aliases | Dot components, repeated separators, and empty components admitted ambiguous normalized targets. The lexical policy now rejects all three before filesystem access. |
+| WR-294 | cleanup component aliases | Alternate streams, control/illegal characters, and trailing dots/spaces could change Win32 target interpretation. Every component now has one permitted interpretation. |
+| WR-295 | cleanup device names | Reserved DOS devices, including extension-bearing and superscript-digit COM/LPT aliases, could name devices instead of files. The complete reserved set is rejected case-insensitively. |
+| WR-296 | cleanup duplicate targets | Case or separator aliases could schedule one target more than once. A Windows-ordinal-equivalent comparison now rejects duplicate cleanup requests. |
+| WR-297 | cleanup command line | Options were case-sensitive and duplicate parents or unbounded file/directory lists were accepted. Parsing is now case-insensitive, duplicate-aware, and capped at 64 files plus 64 directories. |
+| WR-298 | cleanup file indirection | A reparse-point leaf passed the old file check and could redirect deletion. File cleanup now refuses every reparse point. |
+| WR-299 | cleanup directory indirection | Directory retries did not revalidate type or reparse state. Every attempt now proves it is still an ordinary directory. |
+| WR-300 | cleanup read-only handling | Failure to clear a read-only file attribute was ignored before deletion retries. It now fails deterministically instead of masking the native boundary failure. |
+| WR-301 | cleanup exit status | Adding raw Win32 errors to 1,000-based offsets could exceed stable process exit-code semantics. The helper now exposes a small documented class of failure codes. |
+| WR-302 | cleanup parent wait | Raw wait/open errors leaked as inconsistent exit statuses, including timeout values. Parent-wait failure now maps to one stable helper result while nonexistent exited parents remain the supported race. |
+| WR-303 | Studio build arguments | Space-splitting CMake options, unchecked job counts, and weak architecture aliases made Windows Studio builds ambiguous. A quote-aware tokenizer, bounded jobs, and native `PROCESSOR_ARCHITEW6432` detection now define the inputs. |
+| WR-304 | Studio cross-architecture trees | Host compiler and target runtime builds could share a CMake tree or silently reuse a tree for the wrong platform. Cross builds require distinct trees and every existing cache is architecture-checked. |
+| WR-305 | Studio tool discovery | Multi-config executables and case-varied standard build configurations were not handled consistently. Discovery now supports both tree layouts and canonicalizes the four CMake configurations. |
+| WR-306 | Studio output safety | Binary, metadata, compiler, compatibility, and protected source paths could collide or traverse reparse/hard-link destinations. Outputs are canonicalized, collision-checked, and indirection-rejected before mutation. |
+| WR-307 | Studio failed compilation | Direct compilation to the published path could destroy the last good executable on a late failure. Compilation now targets a same-directory unique stage first. |
+| WR-308 | Studio PE validation | A produced file was accepted without proving PE32+, target machine, and bounded headers. Host, target, staged, and compatibility executables now pass strict PE validation. |
+| WR-309 | Studio build provenance | The old buildinfo did not bind schema, architecture, byte size, hash, or an exact toolchain version. Schema 1 records and validates all of them with strict UTF-8 and a bounded exact field set. |
+| WR-310 | Studio pair publication | Binary and buildinfo replacement could leave a mixed old/new pair. Publication now backs up both, publishes both staged files, and rolls both back on failure. |
+| WR-311 | Studio compatibility cleanup | `--clean` removed compatibility artifacts even when compatibility copying was explicitly disabled, and temporary/environment state could leak after failure. Disabled outputs are now untouched and all invocation state is restored. |
+| WR-312 | CMake Studio generation | Repository builds compiled directly to the final Studio name and emitted unbound metadata. CMake now compiles to a staged executable and writes architecture/size/SHA-256 schema-1 metadata before final publication. |
+| WR-313 | Studio package completeness | Any Studio-owned asset enabled the optional component even when the canonical executable or buildinfo was absent. Presence of any asset now requires the complete canonical pair. |
+| WR-314 | Studio package file type | The canonical executable/buildinfo could be symlinks, have reversed executable flags, disagree with manifest sizes, or carry the wrong PE machine. All properties are now verified before packaging. |
+| WR-315 | Studio package metadata shape | Empty, oversized, NUL-bearing, duplicate, missing, or unknown buildinfo fields were accepted. Packaging now enforces a bounded exact schema. |
+| WR-316 | Studio package provenance | A stale Studio from another toolchain version or architecture could be packaged when its bytes otherwise looked valid. Version, architecture, size, and lowercase SHA-256 must all match. |
+| WR-317 | Studio nested signing | The Studio executable could be signed once during validation and again during payload iteration, making ordering and metadata binding signer-dependent. It is now signed exactly once before payload assembly. |
+| WR-318 | Studio signed buildinfo | Authenticode changes PE bytes after buildinfo generation, leaving installed hash/size metadata stale. The packager rebinds only validated size/hash fields to the exact signed payload bytes. |
+| WR-319 | installer wrapper inputs | Equals-form input options, empty values, or multiple build/stage/verify modes were classified inconsistently. The wrapper now normalizes supported spellings and requires exactly one caller-owned mode at most. |
+| WR-320 | installer wrapper CMake options | Quoted, separated `-D`, typed BOOL, duplicate, and conflicting Studio definitions could bypass the default. Tokenized parsing accepts only one consistent supported meaning. |
+| WR-321 | installer wrapper Studio gate | A fresh build checked only that Studio files existed. It now proves PE32+, exact repository version, exact metadata schema, architecture, size, and SHA-256 before invoking the packager. |
+| WR-322 | signing/update URLs | Timestamp and update URLs accepted whitespace, backslashes, credentials, fragments, or impractical lengths. Authoring now requires bounded printable credential-free absolute HTTPS URLs. |
+| WR-323 | Authenticode staging | Input/output/PFX/metadata aliases, path indirection, and source mutation during signing could redirect or race publication. All identities are preflighted and the source hash is checked across staging and publication. |
+| WR-324 | Authenticode publication | A successful signed executable could replace the old file before metadata creation or publication failed. Signed bytes and metadata now publish as one rollback-protected pair, including in-place signing. |
+| WR-325 | update-manifest outputs | Manifest, public key, and PFX paths could alias or traverse unsafe destinations, and certificate-store matches outlived their store scope. Paths are distinct/validated and every certificate/store object is disposed deterministically. |
+| WR-326 | update-manifest publication | Line/signature sizes and multi-file publication were incompletely constrained. UTF-8 lines, RSA signature length, total manifest size, and manifest/public-key pair replacement are now exact and failure-atomic. |
+| WR-327 | installer validator capture | Child stdout/stderr were read completely into memory before the nominal limit was checked, and child execution had no universal finite bound. Captures now stream to unique files, enforce byte/time ceilings while running, and kill over-budget processes. |
+| WR-328 | installer validator inspection | `/inspect` output could be oversized, malformed UTF-8/JSON, or a partial identity. The validator caps the file and requires the complete schema-3 toolchain identity and bounded component set. |
+| WR-329 | installer validator paths | Upgrade sentinels and cleanup roots relied on broad joins and clobbering writes. Relative paths are confined component-by-component, sentinels use `CreateNew`, and Windows/reparse roots are rejected. |
+| WR-330 | installer validator architecture | WOW64 could report the emulated process machine, and baseline/current identity was underconstrained. Native host architecture is used and baseline identifier, architecture, and differing version are required. |
+| WR-331 | installer validator replacement | `-ReplaceExisting` trusted any registered command and did not wait for detached cache removal. Replacement is restricted to a verified same-identity maintenance image below the owned cache root and waits for cleanup. |
+| WR-332 | installer validator payload | Installed checks proved names but not executable format, while Apps & Features identity was only partially compared. ARP display/version are exact and every required tool must be an architecture-matched PE32+ image. |
+| WR-333 | installer validator Studio | Installed Studio validation checked only four metadata fields and only once. The full exact versioned schema/hash is now checked after install and again after Minimal-to-Complete component restoration. |
+| WR-334 | installer validator environment | Validation could leak `ZANNA_LIB_PATH`, mishandle `%` in generated batch paths, or verify only the outer release signature. Environment is restored, batch paths are escaped, and release mode recursively verifies maintenance and installed PE signatures. |
+| WR-335 | installer validator cleanup | Failed installs and temporary workspaces were recursively removed without rejecting newly introduced reparse points. Cleanup is path-confined and refuses any reparse-bearing tree. |
+| WR-336 | installer internal options | Duplicate, unpaired, or contradictory elevated/handoff worker switches could enter internal modes from an ambiguous command line. Parsing now rejects all such combinations. |
+| WR-337 | installer worker trust | Handoff waiting occurred before proving that the process was the cached maintenance image or a genuinely elevated machine-scope worker. Both proofs now run before trusting the supplied parent PID. |
+| WR-338 | widget home ownership | Rejecting an invalid `%HOMEDRIVE%%HOMEPATH%` directory freed both converted components before falling through and then freed them a second time. Fallback now has one consolidated release point. |
+| WR-339 | Studio buildinfo classification | The generic `bin/` rule marked buildinfo executable, allowed metadata to satisfy the required-Studio binary lookup, and exposed it as a macOS command. `.buildinfo` is now data and is excluded from tool links. |
+| WR-340 | cross-target package tests | Linux toolchain archive fixtures inherited `.exe`, `.lib`, PE identity, and synthetic NTFS permission bits on Windows, causing their exact payload and mode assertions to depend on the host. The fixtures now normalize Linux names, archive extensions, ELF identity, and the intended POSIX mode before packaging. |
+| WR-341 | Studio phase probe deadlines | Process and debugger waits treated `Sleep(1)` poll counts as elapsed milliseconds, making the Windows end-to-end probe depend on scheduler granularity and cold executable scanning. The waits now use bounded monotonic deadlines, terminate timed-out children, preserve diagnostic output, and have matching serial CTest headroom. |
+| WR-342 | Release boundary assertions | Release installer builds inherited `NDEBUG` in two boundary suites that deliberately use assertions as executable checks, erasing filesystem, Result, and COM calls; the scene-editor and UI Automation tests consequently failed or crashed after their setup disappeared. Both translation units now enable their checks before any header can cache the disabled assertion macro, without changing product or unrelated test flags. |
+| WR-343 | Studio version provenance | The packager compared Studio’s full configured version (for example `0.2.99-snapshot`) with the deliberately numeric CMake package version (`0.2.99`), so a correctly built prerelease Studio could never ship. Install manifests now preserve package and exact product versions separately; Studio provenance binds the staged header’s full version while installer naming and upgrade metadata retain the package-compatible version. |
+| WR-344 | native WinSock teardown | The first `TcpServer.Listen` in a native Windows executable registered `WSACleanup` through CRT `atexit`, but Zanna PE files can enter through a deliberately CRT-less startup shim. The call corrupted the uninitialized CRT exit table (`0xC0000374` in ZannaSQL) before the listener was returned. WinSock now remains process-lifetime state, which Windows reclaims at process teardown, and the native Windows runtime probe opens, inspects, and closes an ephemeral listener through that exact entry path. |
+| WR-345 | Studio lifecycle provenance | The lifecycle validator still compared installed Studio’s full configured version with the installer’s deliberately numeric package/upgrade version, so the correctly repaired prerelease package would fail its own Complete install and restore checks. Validation now obtains the bounded canonical product version from the installed, package-owned `zanna --version` result and uses it for both Studio provenance checks while retaining numeric package identity for Apps & Features. |
+| WR-346 | installer validator version parsing | The Studio provenance helper anchored its version expression to all of `zanna --version`, even though the CLI contract intentionally follows the canonical product-version line with snapshot, source, IL, and feature details. A valid installer therefore failed lifecycle validation after installation. The helper now parses the strict first line from the still-bounded, NUL-free capture and accepts the documented diagnostic lines that follow. |
 
 ## Regression coverage
 
-- `test_rt_windows_runtime` exercises finite wait slicing, concurrent WinSock initialization,
-  deterministic WinSock error/output contracts, entropy argument handling, strict Windows path
-  transcoding, checked directory conversion, ordinal comparison, fail-closed deletion guards,
-  processor-count validity, drive-root temp preservation, and long environment-backed home paths.
+- `test_rt_windows_runtime` exercises finite wait slicing, concurrent process-lifetime WinSock
+  initialization, the CRT-exit-table exclusion, deterministic WinSock error/output contracts,
+  entropy argument handling, strict Windows path transcoding, checked directory conversion,
+  ordinal comparison, fail-closed deletion guards, processor-count validity, drive-root temp
+  preservation, long environment-backed home paths, and the bounded WASAPI
+  thread/format/buffer source contracts. `native_run_windows_environment` additionally compiles
+  and runs an ephemeral `TcpServer` through the CRT-less native PE startup path.
 - `test_rt_file_ext` creates a 3 GiB sparse file and verifies 64-bit seek, stat, visibility, and
   modification-time behavior without allocating the file's logical size.
 - `test_rt_args` races small and 16 KiB environment values across the Win32 size/read boundary.
@@ -300,9 +392,12 @@ Zanna Studio packaging intentionally receiving the largest share.
   `test_rt_threads_thread`, and `test_rt_threads_primitives` cover the affected runtime contracts.
 - `test_vgfx3d_backend_d3d11_shared` covers timestamp/depth-probe poll budgets and source contracts
   requiring stage-before-publish ordering for all repaired D3D11 replacement paths, required
-  startup-object validation, exact presentation status, bounded texture caches, frame-protocol
-  guards, resize ordering, post-FX target planning, overlay-preserving scene replacement, and the
-  shader helpers' initialized single-result control flow; `zia_smoke_d3d11_rtt_readback`,
+  startup-object validation, exact presentation status, bounded texture caches, render-scale
+  mutation guards across the pending-present interval, multi-pass continuation recovery,
+  draw/shadow ownership, transactional RTT
+  switching, staging recovery, resize ordering, post-FX target planning, overlay-preserving scene
+  replacement, and the shader helpers' initialized single-result control flow;
+  `zia_smoke_d3d11_rtt_readback`,
   `g3d_test_canvas3d_viewmodel_sprite`, `g3d_test_canvas3d_point_shadows_d3d11`, and the Ridgebound
   D3D11 smoke exercise the hardware backend.
 - `test_linker_platform_import_planners` verifies that the 64-bit stat and floating-remainder
@@ -312,20 +407,31 @@ Zanna Studio packaging intentionally receiving the largest share.
   `test_basic_lexer` covers CRLF and lone-CR EOL normalization; and `test_rt_model3d` supplies its
   own strict-decoded JPEG fixture.
 - `windows_automation_script_contracts` exercises failure-atomic signing, timestamp-URL rejection,
-  staging cleanup, single-config tool discovery, architecture checks, path confinement, and
-  duplicate demo-output rejection. It also launches the logic-free `.cmd` compatibility shim and
-  pins installer-wrapper help, equals-form input detection, and required Studio output checks.
+  input-race detection, paired metadata publication, staging cleanup, single/multi-config Studio
+  discovery, PE/provenance checks, path confinement, bounded installer validation, and duplicate
+  demo-output rejection. It also launches the logic-free `.cmd` compatibility shim and pins
+  installer-wrapper help, equals-form input detection, required Studio output checks, and the
+  distinct package/product version domains used during lifecycle validation.
+- `test_windows_installer_cleanup_policy` covers supported drive/UNC namespaces, root and traversal
+  refusal, reserved devices, alternate streams, illegal/trailing characters, and ordinal path
+  identity. `test_vg_filedialog_platform_win32` covers root-preserving parent navigation, strict
+  UTF-8 path handling, path joining, and validated home-directory fallback.
 - `test_packaging_WindowsInstallerMetadata_all` covers strict UTF-8 and bounded collections,
   Windows path aliases/devices, control-entry collisions, payload ownership, URL/key structure,
   shortcut and association grammars, integration consistency, and checked size accounting.
+  `ToolchainWindowsPackageBuilder` coverage rejects partial, stale, wrong-architecture,
+  non-executable, and hash-mismatched Studio pairs and proves buildinfo rebinding after nested
+  signing.
 - `test_windows_installer_update` covers partial pinned configurations, key/digest/signature bounds,
   strict signed result fields, ambiguous URLs, and ordinal origin matching.
   `test_windows_installer_lifecycle_contract` protects exact recovery schemas, durable staging,
   validated PATH mutation, required Shell Link outputs, typed registry/elevation handling, bounded
-  destination probes, upgrade filtering, and fail-closed destination/shortcut cleanup.
+  destination probes, upgrade filtering, fail-closed destination/shortcut cleanup, paired internal
+  worker arguments, and cache/elevation proof before handoff waiting.
 - The Studio phase, welcome, bottom-panel, diagnostic-action, BASIC workspace-query, file-tree, and
   project-index regressions cover bounded verifier work, high-DPI logical layouts, canonical
-  Windows query paths, monitor-feasible zoom, and deterministic concurrent snapshot startup.
+  Windows query paths, monitor-feasible zoom, deterministic concurrent snapshot startup, and
+  monotonic subprocess/debug-adapter deadlines under cold Windows process startup.
 
 The required end-to-end gates are `scripts/build_zanna_win.ps1` and
 `scripts/build_demos_win.cmd --run`. The demo shim delegates to the canonical PowerShell
@@ -336,26 +442,34 @@ platform-policy lint remains mandatory for future changes in these adapters.
 
 Revalidated on Windows x64/MSVC on 2026-07-23:
 
-- The canonical `scripts/build_zanna_win.ps1` pipeline completed its warning-as-error Debug build,
-  standalone native Studio link, normal 1,817-test selection, runtime/API audits, platform lint,
-  cross-platform host smokes, and install stage. CTest reported 1,817/1,817 passed in 354.29
-  seconds; the contention-sensitive file-tree probe remained in that normal selection and passed
-  in 50.64 seconds.
-- The focused installer selection passed 16/16. Native user-scope toolchain and Xenoscape
-  lifecycle smokes completed their install, integration, uninstall, and cleanup paths. Focused
-  update, lifecycle, metadata, automation, and native-import planner tests also passed.
+- A canonical warning-as-error Debug run passed 1,819/1,819 CTests in 334.88 seconds. After the
+  final native WinSock repair, the canonical Release pipeline rebuilt the product and standalone
+  native Studio, passed 1,819/1,819 CTests in 243.98 seconds, and completed the runtime/API audits,
+  platform lint, cross-platform host smokes, and install stage. The contention-sensitive Studio
+  file-tree probe passed in 48.95 seconds in Debug and 28.09 seconds in Release; the bounded
+  phase-2/3 probe passed in 9.90 and 4.15 seconds respectively.
+- The native Windows environment probe opens and closes an ephemeral listener through a generated
+  CRT-less PE, and both it and `test_rt_windows_runtime` passed after the ZannaSQL failure was
+  isolated. The final Windows automation contract passed again after lifecycle validation exposed
+  and repaired the multiline `zanna --version` parser.
 - Hardware D3D11 coverage passed for Ridgebound, render-to-texture readback, viewmodel sprites,
   point shadows, and render scaling. Shared backend contract tests cover the bounded caches,
   frame/present protocol, resize ordering, post-FX route validation, and active-frame mutation
   guards added by this audit.
-- `scripts/build_installer.ps1 --target windows` produced the Release
-  `zanna-0.2.99-win-x64.exe` toolchain installer with SHA-256
-  `387fc0d66c2cecc1e9eddc16c2f9e30052f9aecf33920d1b4ae0c6c0708156f5`.
-  Checksum-required verification and the waited installer-host self-test returned zero. Verified
-  inspection reports 1,870 payload files, 623,450,298 installed bytes, and the `core`,
-  `zannastudio`, `sdk`, and `samples` components.
+- `scripts/build_installer.ps1 --build-dir build --config Release --target windows` produced the
+  286,072,746-byte development installer `zanna-0.2.99-win-x64.exe` with SHA-256
+  `1ca60c5ec9715a2ed00be3633c3218649db2c429c0b8472b98c276f04156a853`.
+  Checksum-required verification, the waited installer-host self-test, and schema-3 inspection all
+  returned zero. Inspection reports 1,870 payload files, 623,540,847 installed bytes, and the
+  `core`, `zannastudio`, `sdk`, and `samples` components.
+- `scripts/validate-windows-toolchain-installer.ps1` passed a real user-scope Complete install,
+  exact Studio buildinfo/version/hash validation, Minimal-to-Complete component round trip,
+  byte-exact repair, PATH/association/shortcut checks, interpreted and native execution, external
+  installed-SDK CMake consumer build/run, and uninstall. Independent residue checks found no
+  product registry key, install root, PATH entry, Start Menu directory, validator workspace, or
+  maintenance-cache file.
 - `scripts/build_demos_win.cmd --clean --run` built and launch-smoked all nine curated native x64
   demos successfully: Ashfall, 3dbowling, Ridgebound, Xenoscape, Crackman, Chess, Baseball, Paint,
   and ZannaSQL.
 - `scripts/lint_platform_policy.sh --strict --changed-only`, the PowerShell parser checks, the
-  source-header audit, formatting, and `git diff --check` passed.
+  changed-source header audit, `clang-format --dry-run --Werror`, and `git diff --check` passed.

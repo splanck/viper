@@ -32,13 +32,76 @@
 #include "rt_locale_posix_tag.h"
 #include "rt_platform.h"
 
+#include <limits.h>
 #include <stddef.h>
+#include <stdint.h>
 #include <stdlib.h>
+#include <string.h>
 
 #if RT_PLATFORM_WINDOWS
 
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+
+/// @brief Snapshot a Windows environment variable as strict UTF-8.
+/// @details `getenv()` exposes storage invalidated by concurrent environment
+///          mutation. The Win32 copy API gives this adapter an owned snapshot
+///          and retries bounded growth races.
+static char *rt_locale_environment_utf8(const wchar_t *name) {
+    DWORD capacity;
+
+    if (!name || !*name)
+        return NULL;
+    capacity = GetEnvironmentVariableW(name, NULL, 0);
+    if (capacity == 0)
+        return NULL;
+    for (int attempt = 0; attempt < 8; ++attempt) {
+        wchar_t *wide;
+        DWORD length;
+        int bytes;
+        char *utf8;
+
+        if ((size_t)capacity > SIZE_MAX / sizeof(wchar_t))
+            return NULL;
+        wide = (wchar_t *)malloc((size_t)capacity * sizeof(wchar_t));
+        if (!wide)
+            return NULL;
+        length = GetEnvironmentVariableW(name, wide, capacity);
+        if (length == 0 || length >= capacity) {
+            free(wide);
+            if (length == 0 || length == MAXDWORD)
+                return NULL;
+            capacity = length + 1u;
+            continue;
+        }
+        if (length > INT_MAX) {
+            free(wide);
+            return NULL;
+        }
+        bytes = WideCharToMultiByte(
+            CP_UTF8, WC_ERR_INVALID_CHARS, wide, (int)length, NULL, 0, NULL, NULL);
+        if (bytes <= 0) {
+            free(wide);
+            return NULL;
+        }
+        utf8 = (char *)malloc((size_t)bytes + 1u);
+        if (!utf8) {
+            free(wide);
+            return NULL;
+        }
+        if (WideCharToMultiByte(
+                CP_UTF8, WC_ERR_INVALID_CHARS, wide, (int)length, utf8, bytes, NULL, NULL) !=
+            bytes) {
+            free(utf8);
+            free(wide);
+            return NULL;
+        }
+        free(wide);
+        utf8[bytes] = '\0';
+        return utf8;
+    }
+    return NULL;
+}
 
 /// @brief Detect the Windows system locale and write a BCP-47 tag to @p out.
 /// @details Primary path: calls `GetUserDefaultLocaleName` (Vista+) which returns a
@@ -73,21 +136,28 @@ int rt_locale_platform_detect_system(char *out, size_t cap) {
             wchar_t wc = wbuf[i];
             if (wc > 0x7F)
                 return -1;
-            out[i] = (char)wc;
         }
-        out[n - 1] = '\0';
+        for (int i = 0; i < n - 1; ++i)
+            out[i] = (char)wbuf[i];
+        out[need] = '\0';
         return 0;
     }
 
     // Fallback: MSYS/MinGW environments commonly set LANG. Reuse the POSIX
     // cleanup path for that case.
     static const char *const kVars[] = {"LC_ALL", "LC_MESSAGES", "LANG", NULL};
+    static const wchar_t *const kWideVars[] = {L"LC_ALL", L"LC_MESSAGES", L"LANG", NULL};
     for (size_t i = 0; kVars[i]; ++i) {
-        const char *val = getenv(kVars[i]);
-        if (rt_locale_posix_value_is_invariant(val))
+        char *val = rt_locale_environment_utf8(kWideVars[i]);
+        if (rt_locale_posix_value_is_invariant(val)) {
+            free(val);
             continue;
-        if (rt_locale_clean_posix_tag(val, out, cap) == 0)
+        }
+        if (rt_locale_clean_posix_tag(val, out, cap) == 0) {
+            free(val);
             return 0;
+        }
+        free(val);
     }
     return -1;
 }

@@ -671,6 +671,12 @@ std::vector<std::string> macOSToolNames(const ToolchainInstallManifest &manifest
     for (const auto &file : manifest.files) {
         const std::string rel =
             sanitizePackageRelativePath(file.stagedRelativePath, "macOS tool path");
+        std::string extension = fs::path(rel).extension().generic_string();
+        std::transform(extension.begin(), extension.end(), extension.begin(), [](unsigned char ch) {
+            return static_cast<char>(std::tolower(ch));
+        });
+        if (extension == ".buildinfo")
+            continue;
         if (file.kind != ToolchainFileKind::Binary && rel.rfind("bin/", 0) != 0)
             continue;
         names.push_back(fs::path(rel).filename().generic_string());
