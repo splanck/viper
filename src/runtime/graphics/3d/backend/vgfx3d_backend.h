@@ -21,7 +21,7 @@
 //   - Draw commands and pointed payloads remain Canvas3D-owned for the deferred frame lifetime.
 //
 // Links: plans/3d/05-backend-abstraction.md, rt_canvas3d_internal.h,
-//   docs/adr/0139-graphics3d-transactional-hardening-and-retained-work.md
+//   docs/adr/0173-graphics3d-transactional-hardening-and-retained-work.md
 //
 //===----------------------------------------------------------------------===//
 #pragma once

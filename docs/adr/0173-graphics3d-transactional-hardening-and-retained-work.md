@@ -4,7 +4,7 @@ audience: contributors
 last-verified: 2026-07-21
 ---
 
-# ADR 0139: Make Graphics3D State Transactional and Retain Reusable Work
+# ADR 0173: Make Graphics3D State Transactional and Retain Reusable Work
 
 ## Status
 

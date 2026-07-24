@@ -19,7 +19,7 @@
 //   - Test-only private layout views are read-only and used solely to inspect remapped channels.
 //
 // Links: rt_mesh_simplify.c, rt_morphtarget3d.c,
-//   docs/adr/0139-graphics3d-transactional-hardening-and-retained-work.md
+//   docs/adr/0173-graphics3d-transactional-hardening-and-retained-work.md
 //
 //===----------------------------------------------------------------------===//
 

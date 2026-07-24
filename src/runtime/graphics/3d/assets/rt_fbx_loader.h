@@ -59,7 +59,7 @@ void *rt_fbx_load_recoverable_with_texture_base(rt_string path, rt_string textur
 void rt_fbx_test_set_load_budget_bytes(uint64_t bytes);
 /// @brief CTest hook: report aggregate bytes charged by the latest load on this thread.
 /// @return Monotonic charged byte count, including source bytes and retained parser/extraction
-///         allocations named by ADR 0139.
+///         allocations named by ADR 0173.
 uint64_t rt_fbx_test_get_last_budget_used_bytes(void);
 /// @brief CTest hook: report hash and adjacency probes from the latest load on this thread.
 /// @return Saturating probe count used to verify near-linear numeric graph resolution.

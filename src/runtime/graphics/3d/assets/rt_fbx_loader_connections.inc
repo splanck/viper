@@ -17,7 +17,7 @@
 //   - Included by rt_fbx_loader_parse.inc after object-id hashing is defined.
 //   - fbx_conn_table_t exclusively owns entries, labels, and endpoint maps until freed.
 //
-// Links: rt_fbx_loader.c, rt_fbx_loader_parse.inc, ADR 0139
+// Links: rt_fbx_loader.c, rt_fbx_loader_parse.inc, ADR 0173
 //
 //===----------------------------------------------------------------------===//
 

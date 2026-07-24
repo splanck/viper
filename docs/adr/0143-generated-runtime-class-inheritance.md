@@ -1,3 +1,9 @@
+---
+status: active
+audience: contributors
+last-verified: 2026-07-20
+---
+
 # ADR 0143: Generate Runtime Class Inheritance Metadata
 
 ## Status

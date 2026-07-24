@@ -135,7 +135,6 @@ from [0000-template.md](0000-template.md) and take the next unused number.
 
 ## Graphics3D & Game Systems
 
-- [ADR 0155](0155-scene-object-authoring-metadata-and-duplication.md) — Make Scene Object Metadata and Duplication Authorable
 - [ADR 0157](0157-material-texture-pixel-inspection.md) — Expose Read-Only Material Texture Pixels for Authoring Tools
 - [ADR 0158](0158-scene-level-property-authoring.md) — Make Scene-Level Properties Fully Authorable
 - [ADR 0159](0159-typed-scenenode-metadata-and-vscn-v6.md) — Add Typed SceneNode Metadata and VSCN v6
@@ -148,6 +147,8 @@ from [0000-template.md](0000-template.md) and take the next unused number.
 - [ADR 0170](0170-studio-2d-canvas-marquee-selection.md) — Add Modifier and Marquee Selection to the Studio 2D Canvas
 - [ADR 0171](0171-bounded-scene-flood-fill-and-studio-tile-tools.md) — Add Bounded Scene Flood Fill and Studio Tile Tools
 - [ADR 0172](0172-public-scenenode-light-authoring-and-studio-light-inspector.md) — Expose SceneNode Lights and Add Studio Light Authoring
+- [ADR 0173](0173-graphics3d-transactional-hardening-and-retained-work.md) — Make Graphics3D State Transactional and Retain Reusable Work
+- [ADR 0174](0174-scene-object-authoring-metadata-and-duplication.md) — Make Scene Object Metadata and Duplication Authorable
 - [ADR 0004](0004-graphics3d-runtime-surface-expansion.md) — Graphics3D Runtime Surface Expansion Uses Registry-Only Semantics
 - [ADR 0046](0046-game3d-prefab-loading-api.md) — Game3D Prefab Loading API
 - [ADR 0059](0059-graphics3d-lookup-option-apis.md) — Graphics3D Lookup Option APIs
@@ -188,7 +189,6 @@ from [0000-template.md](0000-template.md) and take the next unused number.
 - [ADR 0112](0112-linux-graphics-backend-selection.md) — Linux Graphics Backend Selection
 - [ADR 0139](0139-native-wayland-backend-and-linux-runtime-selection.md) — Native Wayland Backend and Linux Runtime Selection
 - [ADR 0114](0114-ieee-floating-constant-folding.md) — Preserve IEEE-754 Results During IL Constant Folding
-- [ADR 0139](0139-graphics3d-transactional-hardening-and-retained-work.md) — Make Graphics3D State Transactional and Retain Reusable Work
 - [ADR 0140](0140-tiled-map-and-scene-import.md) — Import Tiled Maps as Scene Documents and Tilemaps
 - [ADR 0141](0141-vscn-v4-scene-asset-fidelity.md) — Preserve Complete Scene Assets in VSCN v4
 - [ADR 0142](0142-complete-fbx-scene-animation-import.md) — Complete FBX Scene and Animation Import

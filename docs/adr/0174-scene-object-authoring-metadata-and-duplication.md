@@ -4,7 +4,7 @@ audience: contributors
 last-verified: 2026-07-23
 ---
 
-# ADR 0155: Make Scene Object Metadata and Duplication Authorable
+# ADR 0174: Make Scene Object Metadata and Duplication Authorable
 
 ## Status
 

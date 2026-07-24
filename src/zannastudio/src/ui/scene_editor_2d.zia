@@ -52,7 +52,7 @@
 //        zannastudio/src/ui/scene_tileset_2d.zia,
 //        zannastudio/src/ui/scene_tileset_inspector_2d.zia,
 //        docs/zannalib/game/scene.md,
-//        docs/adr/0155-scene-object-authoring-metadata-and-duplication.md,
+//        docs/adr/0174-scene-object-authoring-metadata-and-duplication.md,
 //        docs/adr/0156-listbox-selected-row-data.md,
 //        docs/adr/0158-scene-level-property-authoring.md,
 //        docs/adr/0160-project-scene-component-schemas.md,

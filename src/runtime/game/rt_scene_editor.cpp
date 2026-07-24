@@ -18,7 +18,7 @@
 //
 // Links: rt_scene_editor.h, rt_tiled_import.cpp,
 //   docs/adr/0144-complete-tiled-map-import.md,
-//   docs/adr/0155-scene-object-authoring-metadata-and-duplication.md,
+//   docs/adr/0174-scene-object-authoring-metadata-and-duplication.md,
 //   docs/adr/0164-backward-compatible-2d-scene-object-hierarchy.md,
 //   docs/adr/0171-bounded-scene-flood-fill-and-studio-tile-tools.md
 //

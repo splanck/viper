@@ -1,3 +1,9 @@
+---
+status: active
+audience: contributors
+last-verified: 2026-07-18
+---
+
 # ADR 0138: Debug Class-Layout Sidecar for VM Debugger Field Expansion
 
 ## Status

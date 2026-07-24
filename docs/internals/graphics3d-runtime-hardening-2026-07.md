@@ -227,5 +227,5 @@ all 48 requirements to the committed regression names.
 - [Graphics3D architecture](graphics3d-architecture.md)
 - [Runtime testing policy](testing.md)
 - [ADR 0102: Graphics3D runtime boundary](../adr/0102-graphics3d-runtime-boundary-and-contract-manifest.md)
-- ADR 0139 (this program's runtime C ABI and internal boundary decisions; added
+- ADR 0173 (this program's runtime C ABI and internal boundary decisions; added
   with the first ABI-affecting batch)

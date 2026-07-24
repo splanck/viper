@@ -17,7 +17,7 @@
 //   - Included by test_rt_canvas3d_gpu_paths.cpp after its shared fake-backend fixtures.
 //   - Each test tears down Canvas3D frame-owned allocations through cleanup_fake_canvas.
 //
-// Links: test_rt_canvas3d_gpu_paths.cpp, rt_canvas3d_internal.h, ADR 0139
+// Links: test_rt_canvas3d_gpu_paths.cpp, rt_canvas3d_internal.h, ADR 0173
 //
 //===----------------------------------------------------------------------===//
 

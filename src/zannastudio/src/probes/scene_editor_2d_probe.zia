@@ -33,7 +33,7 @@
 //        zannastudio/src/ui/scene_clipboard.zia,
 //        zannastudio/src/ui/scene_tileset_2d.zia,
 //        zannastudio/src/core/document_manager.zia,
-//        docs/adr/0155-scene-object-authoring-metadata-and-duplication.md,
+//        docs/adr/0174-scene-object-authoring-metadata-and-duplication.md,
 //        docs/adr/0158-scene-level-property-authoring.md,
 //        docs/adr/0160-project-scene-component-schemas.md,
 //        docs/adr/0164-backward-compatible-2d-scene-object-hierarchy.md

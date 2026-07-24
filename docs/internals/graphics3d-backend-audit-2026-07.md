@@ -146,7 +146,7 @@ The evidence column uses these abbreviations:
   context storage; they do not extend caller lifetimes.
 - A RenderTarget3D native cache that stores a borrowed shell must install the internal
   `release_backend` hook and clear it before destroying its owning backend context. See
-  [ADR 0139](../adr/0139-graphics3d-transactional-hardening-and-retained-work.md).
+  [ADR 0173](../adr/0173-graphics3d-transactional-hardening-and-retained-work.md).
 - Upload work is either resumable (`pending`) or terminal (`failed`); backends must not infer one
   from a zero generation or missing native handle.
 - Resource replacement is stage-then-publish. On validation/allocation failure, the previous

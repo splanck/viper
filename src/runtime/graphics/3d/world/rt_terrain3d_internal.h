@@ -15,7 +15,7 @@
 //   - Input Terrain3D handles are borrowed for the duration of each call.
 //   - All returned descriptor data is copied into caller-owned storage.
 // Links: rt_terrain3d.c, rt_vegetation3d.c,
-// docs/adr/0139-graphics3d-transactional-hardening-and-retained-work.md
+// docs/adr/0173-graphics3d-transactional-hardening-and-retained-work.md
 //
 //===----------------------------------------------------------------------===//
 

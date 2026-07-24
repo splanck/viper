@@ -97,7 +97,7 @@ extern void *rt_asset_decode_typed(const char *name, const uint8_t *data, size_t
 static RT_FBX_THREAD_LOCAL rt_string g_fbx_texture_base_override = NULL;
 
 /// @brief Per-load accounting and diagnostics shared by binary/ASCII FBX parsing and extraction.
-/// @details Every retained allocation class named by ADR 0139 is charged before allocation. The
+/// @details Every retained allocation class named by ADR 0173 is charged before allocation. The
 ///          context also accumulates hash/adjacency probe telemetry without introducing global
 ///          mutable parser state. A context lives only until its load either publishes an asset or
 ///          rolls back.

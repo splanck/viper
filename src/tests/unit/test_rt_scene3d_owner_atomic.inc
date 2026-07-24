@@ -16,7 +16,7 @@
 //   - Included by test_rt_scene3d.cpp after its trap helper and Scene3D fixtures.
 //   - Runtime objects remain owned by the test runtime heap for process lifetime.
 //
-// Links: test_rt_scene3d.cpp, rt_scene3d_internal.h, ADR 0139
+// Links: test_rt_scene3d.cpp, rt_scene3d_internal.h, ADR 0173
 //
 //===----------------------------------------------------------------------===//
 
